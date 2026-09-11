@@ -32,7 +32,7 @@ export default function RostersPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-stone-900 via-stone-950 to-black p-8 pt-[70px] text-white overflow-y-auto">
+    <div className="min-h-screen p-8 pt-[70px] text-stone-800 overflow-y-auto">
       {rosters.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 opacity-50">
           <div className="text-6xl mb-4">🏀</div>

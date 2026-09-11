@@ -361,14 +361,14 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                     <div 
                       key={pos} 
                       className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[300px] ${
-                        isEligibleHover ? 'bg-emerald-900/20 border-emerald-500/50' : 
-                        isInvalidHover ? 'bg-red-900/10 border-red-500/20' : 
+                        isEligibleHover ? 'bg-emerald-50 border-emerald-400' : 
+                        isInvalidHover ? 'bg-red-50 border-red-300' : 
                         'bg-stone-50 border-stone-200'
                       }`}
                       onDragOver={isEligibleHover ? handleDragOver : undefined}
                       onDrop={(e) => handleDropOnZone(e, pos)}
                     >
-                      <div className="text-center font-black text-stone-600 text-sm border-b border-stone-800 pb-2 mb-2">{pos}</div>
+                      <div className="text-center font-black text-stone-600 text-sm border-b border-stone-200 pb-2 mb-2">{pos}</div>
                       
                       <AnimatePresence>
                         {players.map((p, idx) => {
@@ -429,7 +429,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
             
             {/* G-League Players Lane (Moved above Plays) */}
             <div 
-              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-orange-500 bg-orange-50' : 'border-stone-800 bg-stone-950/50'}`}
+              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white'}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropOnZone(e, 'GLeaguePlayers')}
             >
@@ -456,7 +456,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
             {/* G-League Plays Lane */}
             <div 
-              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-blue-500 bg-blue-50' : 'border-stone-800 bg-stone-950/50'}`}
+              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-blue-500 bg-blue-50' : 'border-stone-200 bg-white'}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropOnZone(e, 'GLeaguePlays')}
             >
@@ -519,7 +519,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
               initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
               className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xl w-full max-w-md shadow-2xl relative"
             >
-              <button onClick={() => setShowSaveModal(false)} className="absolute top-4 right-4 text-stone-400 hover:text-white">
+              <button onClick={() => setShowSaveModal(false)} className="absolute top-4 right-4 text-stone-400 hover:text-stone-600">
                 <X className="w-5 h-5" />
               </button>
               

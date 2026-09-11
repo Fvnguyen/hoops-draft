@@ -186,29 +186,29 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
     return (
       <div 
-        className="group relative w-full h-[60px] bg-stone-900 border border-stone-700 rounded-lg shadow cursor-pointer hover:border-orange-500 overflow-visible flex items-center"
+        className="group relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer hover:border-orange-500 overflow-visible flex items-center"
         onClick={onClick}
       >
         {/* Left Color Bar */}
         <div className="h-full w-2 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
         
         {/* Headshot */}
-        <div className="w-12 h-full bg-stone-800 shrink-0 overflow-hidden relative border-r border-stone-700">
+        <div className="w-12 h-full bg-stone-100 shrink-0 overflow-hidden relative border-r border-stone-200">
           <img src={headshotUrl} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
         
         {/* Details */}
         <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
            <div className="flex items-center justify-between gap-1">
-             <div className="font-black text-[11px] uppercase truncate text-white leading-tight">
+             <div className="font-bold text-[11px] uppercase truncate text-stone-800 leading-tight">
                {player.player.name}
              </div>
-             <div className="text-[9px] font-bold text-stone-500 whitespace-nowrap">{player.player.position}</div>
+             <div className="text-[9px] font-bold text-stone-400 whitespace-nowrap">{player.player.position}</div>
            </div>
            
            <div className="flex items-center gap-1.5 mt-0.5">
              <RarityGem rarity={player.rarity} />
-             <span className="text-[10px] font-bold text-stone-400">
+             <span className="text-[10px] font-bold text-stone-500">
                {player.ratings.overall} OVR
              </span>
            </div>
@@ -403,12 +403,12 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
 
     return (
       <div 
-        className={`group relative w-full h-[60px] bg-stone-900 border border-stone-700 rounded-lg shadow cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
+        className={`group relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
         onClick={onClick}
       >
         <div className={`h-full w-2 shrink-0 ${theme.barColor} rounded-l-[7px]`} />
         <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
-           <div className="font-black text-[10px] uppercase truncate text-white leading-tight" title={play.name}>
+           <div className="font-bold text-[10px] uppercase truncate text-stone-800 leading-tight" title={play.name}>
              {play.name}
            </div>
            <div className="flex items-center gap-1 mt-0.5">
