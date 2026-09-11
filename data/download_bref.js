@@ -23,6 +23,12 @@ async function scrapeBRef() {
     const advancedHTML = await page.content();
     fs.writeFileSync(path.join(__dirname, 'advanced.html'), advancedHTML);
 
+    console.log("Fetching Shooting stats...");
+    await page.waitForTimeout(3000); // polite delay
+    await page.goto(`https://www.basketball-reference.com/leagues/NBA_${season}_shooting.html`, { waitUntil: 'networkidle' });
+    const shootingHTML = await page.content();
+    fs.writeFileSync(path.join(__dirname, 'shooting.html'), shootingHTML);
+
     console.log("Fetching Awards...");
     await page.waitForTimeout(3000);
     const awardsUrl = `https://www.basketball-reference.com/leagues/NBA_${season}.html`;

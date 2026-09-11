@@ -46,6 +46,24 @@ def fetch_and_generate_players():
         advanced_html = f.read()
     df_advanced = get_bref_table(advanced_html, "advanced_stats")
     
+
+    # 3. Shooting Stats
+    with open("shooting.html", "r", encoding="utf-8") as f:
+        shooting_html = f.read()
+    import io
+    import pandas as pd
+    dfs = pd.read_html(io.StringIO(shooting_html))
+    df_shooting = None
+    for df in dfs:
+        if len(df.columns) > 15 and ('Unnamed: 1_level_0', 'Player') in df.columns:
+            df_shooting = df
+            break
+            
+    # Flatten MultiIndex
+    df_shooting.columns = [col[1] if col[0].startswith('Unnamed') else f"{col[0]}_{col[1]}" for col in df_shooting.columns]
+    
+
+
     # Clean data (handled by numeric conversion below)
     
     # For players traded mid-season, B-Ref lists them multiple times (TOT, and then each team).
@@ -63,8 +81,13 @@ def fetch_and_generate_players():
     # Merge datasets
     df = pd.merge(df_per_game, df_advanced[['Player', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP']], on='Player', how='inner')
     
+    # Correctly merge shooting here!
+    df_shooting = df_shooting.drop_duplicates(subset=['Player'])
+    df = pd.merge(df, df_shooting[['Player', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P']], on='Player', how='left')
+
+    
     # Convert numeric columns
-    numeric_cols = ['Age', 'G', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP']
+    numeric_cols = ['Age', 'G', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P']
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
@@ -148,173 +171,208 @@ def fetch_and_generate_players():
     # Calculate Overall Combo Rank for Rarity
     df_filtered['Combo_Rank'] = (df_filtered['PER_Pct'] + df_filtered['VORP_Pct']) / 2.0
     
-    players_json = []
+    # 3. Load Hard Bio Data
+    df_bio = pd.read_csv("bio.csv")
+    from unidecode import unidecode
+    
+    # Pre-process Bio Data
+    bio_map = {}
+    for _, row in df_bio.iterrows():
+        name = unidecode(row['PLAYER'])
+        pos = str(row['POSITION']).replace('-', '/')
+        
+        # Deterministic sorting for positions
+        def sort_pos(p_str):
+            order = {'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5, 'G': 1, 'F': 3}
+            parts = p_str.split('/')
+            parts.sort(key=lambda x: order.get(x, 99))
+            
+            # Standardize G/F to SG/SF etc if we want, but B-Ref gives exact F-G which we sort to G/F
+            return "/".join(parts)
+            
+        pos = sort_pos(pos)
+        
+        height = str(row['HEIGHT'])
+        weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
+        bio_map[name] = {"pos": pos, "height": height, "weight": weight}
+    
+    all_nba_players = {
+        'Cade Cunningham': 1, 'Luka Doncic': 1, 'Shai Gilgeous-Alexander': 1, 'Nikola Jokic': 1, 'Victor Wembanyama': 1,
+        'Jaylen Brown': 2, 'Kawhi Leonard': 2, 'Donovan Mitchell': 2, 'Kevin Durant': 2, 'Jalen Brunson': 2,
+        'Tyrese Maxey': 3, 'Jamal Murray': 3, 'Jalen Johnson': 3, 'Jalen Duren': 3, 'Chet Holmgren': 3
+    }
+    
+    all_defensive_players = {
+        'Victor Wembanyama': 1, 'Rudy Gobert': 1, 'Chet Holmgren': 1, 'Derrick White': 1, 'Ausar Thompson': 1,
+        'Scottie Barnes': 2, 'Cason Wallace': 2, 'Bam Adebayo': 2, 'OG Anunoby': 2, 'Dyson Daniels': 2
+    }
+    
+    major_awards = {
+        'Shai Gilgeous-Alexander': ['MVP'],
+        'Cooper Flagg': ['ROTY'],
+        'Victor Wembanyama': ['DPOY'],
+        'Nickeil Alexander-Walker': ['MIP']
+    }
+
+    all_star_players = set()
+    
+    import sqlite3
+    db_path = "../frontend/game.db"
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
+    
+    # Create Tables
+    c.executescript("""
+    DROP TABLE IF EXISTS Player;
+    DROP TABLE IF EXISTS SeasonStat;
+    DROP TABLE IF EXISTS Award;
+    
+    CREATE TABLE Player (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        position TEXT,
+        height TEXT,
+        weight INTEGER,
+        age INTEGER,
+        team TEXT
+    );
+    
+    CREATE TABLE SeasonStat (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playerId TEXT,
+        season TEXT,
+        gp INTEGER,
+        mpg REAL,
+        pts REAL,
+        trb REAL,
+        ast REAL,
+        stl REAL,
+        blk REAL,
+        fga REAL,
+        fg3a REAL,
+        fg2a REAL,
+        fg_pct REAL,
+        fg3_pct REAL,
+        fg2_pct REAL,
+        ft_pct REAL,
+        per REAL,
+        ts REAL,
+        vorp REAL,
+        dbpm REAL,
+        tov REAL,
+        pct_fga_0_3 REAL,
+        pct_fga_3_10 REAL,
+        pct_fga_10_16 REAL,
+        pct_fga_16_3p REAL,
+        pct_fga_3p REAL,
+        fg_pct_0_3 REAL,
+        fg_pct_3_10 REAL,
+        fg_pct_10_16 REAL,
+        fg_pct_16_3p REAL,
+        fg_pct_3p REAL,
+        FOREIGN KEY(playerId) REFERENCES Player(id)
+    );
+    
+    CREATE TABLE Award (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        playerId TEXT,
+        season TEXT,
+        name TEXT,
+        level INTEGER,
+        FOREIGN KEY(playerId) REFERENCES Player(id)
+    );
+    """)
+    
     import hashlib
     
-    for _, row in df_filtered.iterrows():
-        name = row['Player'].replace('*', '')
-        pos = str(row['Pos'])
-        team = latest_teams.get(row['Player'], row['Team'])
-        
-        combo_pct = row['Combo_Rank']
-        rarity = "Common"
-        if combo_pct >= 0.95: rarity = "Mythic"
-        elif combo_pct >= 0.85: rarity = "Rare"
-        elif combo_pct >= 0.60: rarity = "Uncommon"
-        
-        awards = []
-        is_all_nba = name in all_nba_players
-        is_all_def = name in all_defensive_players
-        is_all_star = name in all_star_players
-        if not all_star_players and combo_pct >= 0.92: is_all_star = True
-        
-        if is_all_nba:
-            awards.append("All-NBA")
-            if rarity in ["Common", "Uncommon"]: rarity = "Rare"
-        if is_all_def:
-            awards.append("All-Defensive")
-            if rarity == "Common": rarity = "Uncommon"
-        if is_all_star:
-            awards.append("All-Star")
-            if rarity == "Common": rarity = "Uncommon"
-            
-        # Game Ratings
-        shooting = int(row['Shooting'])
-        inside = int(row['Inside'])
-        playmaking = int(row['Playmaking'])
-        rebounding = int(row['Rebounding'])
-        perim_def = int(row['PerimDef'])
-        post_def = int(row['PostDef'])
-        vorp = row['VORP']
-        bpm = row['BPM']
-        
-        # Awards Overrides
-        if is_all_def:
-            def_team = all_defensive_players[name]
-            floor = 90 if def_team == 1 else 80
-            if perim_def >= post_def: perim_def = max(perim_def, floor)
-            else: post_def = max(post_def, floor)
-            
-        off_max = max(shooting, inside)
-        off_min = min(shooting, inside)
-        def_max = max(perim_def, post_def)
-        
-        # OVR Formula: Moderate impact from VORP/BPM to prevent artificial 99s
-        overall = off_max*0.4 + playmaking*0.2 + def_max*0.2 + rebounding*0.1 + off_min*0.1 + (vorp * 0.5) + (bpm * 0.5)
-        overall = int(round(max(40, min(99, overall))))
-        
-        if is_all_nba:
-            nba_team = all_nba_players[name]
-            if nba_team == 1: overall = max(overall, 94)
-            elif nba_team == 2: overall = max(overall, 89)
-            elif nba_team == 3: overall = max(overall, 84)
-            
-        # Rarity Gating / Upgrades
-        has_awards = len(awards) > 0
-        
-        if rarity in ["Mythic", "Rare"]:
-            # Downgrade if no awards and not elite production
-            if not has_awards and not (overall >= 80 and row['MP'] >= 30.0):
-                rarity = "Uncommon"
-        else:
-            # Upgrade (like Siakam) if they have elite OVR and minutes despite no awards/efficiency
-            if overall >= 85 and row['MP'] >= 33.0:
-                rarity = "Rare"
-            
-        # Assign Badges
-        traits = []
-        def get_badge_tier(val, badge_name):
-            if val >= 96: return f"3x {badge_name}"
-            if val >= 90: return f"2x {badge_name}"
-            if val >= 80: return f"1x {badge_name}"
-            return None
-            
-        b = get_badge_tier(shooting, "Sharpshooter"); 
-        if b: traits.append(b)
-        b = get_badge_tier(inside, "Finisher"); 
-        if b: traits.append(b)
-        b = get_badge_tier(playmaking, "Floor General"); 
-        if b: traits.append(b)
-        b = get_badge_tier(rebounding, "Glass Cleaner"); 
-        if b: traits.append(b)
-        b = get_badge_tier(perim_def, "Lockdown Defender"); 
-        if b: traits.append(b)
-        b = get_badge_tier(post_def, "Paint Protector"); 
-        if b: traits.append(b)
-        
-        # Hybrid Badges
-        if (perim_def >= 85 or post_def >= 85) and (shooting >= 85 or inside >= 85):
-            traits.append("Two-Way Star")
-        if pos in ['SF', 'PF'] and playmaking >= 80:
-            traits.append("Point Forward")
-        if playmaking >= 85 and (shooting >= 85 or inside >= 85):
-            traits.append("Offensive Engine")
-        
-        real_id = hashlib.md5((name + team + pos).encode('utf-8')).hexdigest()[:8]
-        
-        player_dict = {
-            "id": real_id,
-            "name": name,
-            "position": pos,
-            "team": team,
-            "physicals": {
-                "age": int(row['Age']),
-                "height": "0-0",
-                "weight": 0
-            },
-            "countingStats": {
-                "ppg": round(row['PTS'], 1),
-                "rpg": round(row['TRB'], 1),
-                "apg": round(row['AST'], 1),
-                "spg": round(row['STL'], 1),
-                "bpg": round(row['BLK'], 1),
-                "fg3p": round(row['3P%'], 3),
-                "fga": round(float(row.get('FGA', 0)), 1),
-                "fg3a": round(float(row.get('3PA', 0)), 1),
-                "fg2a": round(float(row.get('2PA', 0)), 1),
-                "fg2p": round(float(row.get('2P%', 0)), 3),
-                "ftp": round(float(row.get('FT%', 0)), 3)
-            },
-            "advancedStats": {
-                "fgp": round(row['FG%'], 3),
-                "ts": round(row['TS%'], 3),
-                "mpg": round(row['MP'], 1),
-                "gp": int(row['G']),
-                "per": round(row['PER'], 1),
-                "vorp": round(row['VORP'], 1),
-                "dbpm": round(row['DBPM'], 1)
-            },
-            "awards": awards,
-            "gameRatings": {
-                "overall": overall,
-                "shooting": shooting,
-                "inside": inside,
-                "playmaking": playmaking,
-                "rebounding": rebounding,
-                "perimeterDefense": perim_def,
-                "postDefense": post_def
-            },
-            "rarity": rarity,
-            "traits": traits
-        }
-        players_json.append(player_dict)
-
+    # Map real NBA IDs
+    nba_dict = {}
+    nba_keys = []
     try:
         from nba_api.stats.static import players
         nba_players = players.get_players()
-        nba_dict = {p['full_name'].lower(): p['id'] for p in nba_players}
-        for p in players_json:
-            name_lower = p['name'].lower()
-            if name_lower in nba_dict:
-                p['id'] = str(nba_dict[name_lower])
+        nba_dict = {unidecode(p['full_name']).lower(): str(p['id']) for p in nba_players}
+        nba_keys = list(nba_dict.keys())
     except Exception as e:
         print("Could not map NBA IDs:", e)
 
-    output_path = os.path.join(os.path.dirname(__file__), "players.json")
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(players_json, f, indent=2)
+    import hashlib
+    import difflib
 
-    print(f"Successfully generated {len(players_json)} players in {output_path}")
+    players_json = []
+
+    for _, row in df_filtered.iterrows():
+        raw_name = row['Player'].replace('*', '')
+        name = unidecode(raw_name)
+        
+        # Fuzzy match for bio
+        bio_name = name
+        if bio_name not in bio_map:
+            matches = difflib.get_close_matches(bio_name, bio_map.keys(), n=1, cutoff=0.7)
+            if matches:
+                bio_name = matches[0]
+                
+        bio = bio_map.get(bio_name, {"pos": str(row['Pos']), "height": "0-0", "weight": 0})
+        pos = bio["pos"]
+        height = bio["height"]
+        weight = bio["weight"]
+        team = latest_teams.get(raw_name, row['Team'])
+        age = int(row['Age'])
+        
+        name_lower = name.lower()
+        if name_lower not in nba_dict:
+            # Fuzzy match for NBA API
+            nba_matches = difflib.get_close_matches(name_lower, nba_keys, n=1, cutoff=0.7)
+            if nba_matches:
+                name_lower = nba_matches[0]
+
+        real_id = nba_dict.get(name_lower) or hashlib.md5((name + team + pos).encode('utf-8')).hexdigest()[:8]
+        
+        # Insert Player
+        c.execute("INSERT INTO Player (id, name, position, height, weight, age, team) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (real_id, raw_name, pos, height, weight, age, team))
+                  
+        # Insert SeasonStat
+        c.execute("""
+            INSERT INTO SeasonStat (
+                playerId, season, gp, mpg, pts, trb, ast, stl, blk, fga, fg3a, fg2a, fg_pct, fg3_pct, fg2_pct, ft_pct, per, ts, vorp, dbpm, tov,
+                pct_fga_0_3, pct_fga_3_10, pct_fga_10_16, pct_fga_16_3p, pct_fga_3p,
+                fg_pct_0_3, fg_pct_3_10, fg_pct_10_16, fg_pct_16_3p, fg_pct_3p
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            real_id, "2025-26", int(row['G']), float(row['MP']), round(row['PTS'], 1), round(row['TRB'], 1), 
+            round(row['AST'], 1), round(row['STL'], 1), round(row['BLK'], 1), float(row.get('FGA', 0)), 
+            float(row.get('3PA', 0)), float(row.get('2PA', 0)), round(row['FG%'], 3), round(row['3P%'], 3), 
+            round(float(row.get('2P%', 0)), 3), round(float(row.get('FT%', 0)), 3), round(row['PER'], 1), 
+            round(row['TS%'], 3), round(row['VORP'], 1), round(row['DBPM'], 1), round(row['TOV'], 1),
+            float(row.get('% of FGA by Distance_0-3', 0)), float(row.get('% of FGA by Distance_3-10', 0)), float(row.get('% of FGA by Distance_10-16', 0)), float(row.get('% of FGA by Distance_16-3P', 0)), float(row.get('% of FGA by Distance_3P', 0)),
+            float(row.get('FG% by Distance_0-3', 0)), float(row.get('FG% by Distance_3-10', 0)), float(row.get('FG% by Distance_10-16', 0)), float(row.get('FG% by Distance_16-3P', 0)), float(row.get('FG% by Distance_3P', 0))
+        ))
+        
+        # Insert Awards
+        if name in all_nba_players:
+            c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, ?)", 
+                      (real_id, "2025-26", "All-NBA", all_nba_players[name]))
+        if name in all_defensive_players:
+            c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, ?)", 
+                      (real_id, "2025-26", "All-Defensive", all_defensive_players[name]))
+        if name in major_awards:
+            for aw in major_awards[name]:
+                c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, NULL)", 
+                          (real_id, "2025-26", aw))
+                          
+        # We append to players_json just so download_images.py still works
+        players_json.append({"id": real_id, "name": raw_name, "rarity": "Common"})
+
+    conn.commit()
+    conn.close()
+    
+    # Save the minimal json just for the image downloader script
+    with open('players.json', 'w', encoding='utf-8') as f:
+        json.dump(players_json, f, indent=2, ensure_ascii=False)
+        
+    print("Database created at frontend/game.db")
+    print(f"Successfully generated {len(players_json)} players in players.json")
 
 if __name__ == "__main__":
     fetch_and_generate_players()
