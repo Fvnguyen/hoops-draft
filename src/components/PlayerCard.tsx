@@ -206,11 +206,11 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
              <div className="text-[9px] font-bold text-stone-400 whitespace-nowrap">{player.player.position}</div>
            </div>
            
-           <div className="flex items-center gap-1.5 mt-0.5">
+           <div className="flex items-center gap-1 mt-0.5">
              <RarityGem rarity={player.rarity} />
-             <span className="text-[10px] font-bold text-stone-500">
-               {player.ratings.overall} OVR
-             </span>
+             {player.traits.slice(0, 3).map(t => (
+               <BadgeIcon key={t.name} name={t.name} level={t.level} size="small" />
+             ))}
            </div>
         </div>
 

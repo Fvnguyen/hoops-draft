@@ -198,6 +198,54 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
       }
     }
 
+    const sourceIsDepth = ['PG', 'SG', 'SF', 'PF', 'C'].includes(sourceZone);
+    const targetIsDepth = ['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone);
+
+    // CASE 1: Both source and target are depth chart columns → single atomic update
+    if (sourceIsDepth && targetIsDepth) {
+      setDepthChart(prev => {
+        const updated = { ...prev };
+        // Remove from source column
+        updated[sourceZone] = prev[sourceZone].filter(p => p.id !== card.id);
+        // Add to target column
+        const targetCol = [...updated[targetZone]];
+        if (targetIndex !== undefined) {
+          targetCol.splice(targetIndex, 0, card as PlayerCardData);
+        } else {
+          targetCol.push(card as PlayerCardData);
+        }
+        updated[targetZone] = targetCol;
+        return updated;
+      });
+      setDraggedItem(null);
+      return;
+    }
+
+    // CASE 2: Source is depth chart, target is G-League → atomic: remove from depth + add to G-League
+    if (sourceIsDepth && targetZone === 'GLeaguePlayers') {
+      setDepthChart(prev => ({ ...prev, [sourceZone]: prev[sourceZone].filter(p => p.id !== card.id) }));
+      setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]));
+      setDraggedItem(null);
+      return;
+    }
+
+    // CASE 3: Source is G-League, target is depth chart
+    if (sourceZone === 'GLeaguePlayers' && targetIsDepth) {
+      setGLeaguePlayers(prev => prev.filter(p => p.id !== card.id));
+      setDepthChart(prev => {
+        const col = [...prev[targetZone]];
+        if (targetIndex !== undefined) {
+          col.splice(targetIndex, 0, card as PlayerCardData);
+        } else {
+          col.push(card as PlayerCardData);
+        }
+        return { ...prev, [targetZone]: col };
+      });
+      setDraggedItem(null);
+      return;
+    }
+
+    // CASE 4: All other cases (plays, etc.)
     removeCardFromSource(card.id, sourceZone);
 
     if (targetZone === 'GLeaguePlayers') {
@@ -217,7 +265,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         next[idx] = card as Play;
         return next;
       });
-    } else if (['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone)) {
+    } else if (targetIsDepth) {
       setDepthChart(prev => {
         const col = [...prev[targetZone]];
         if (targetIndex !== undefined) {
@@ -254,11 +302,13 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
       }
     } else {
       if (currentZone === 'GLeaguePlayers') {
+        // G-League → Depth Chart: remove from G-League, add to depth chart
         const col = getDefaultCol((card as PlayerCardData).player.position);
-        removeCardFromSource(card.id, currentZone);
+        setGLeaguePlayers(prev => prev.filter(p => p.id !== card.id));
         setDepthChart(prev => ({ ...prev, [col]: [...prev[col], card as PlayerCardData] }));
-      } else {
-        removeCardFromSource(card.id, currentZone);
+      } else if (['PG', 'SG', 'SF', 'PF', 'C'].includes(currentZone)) {
+        // Depth Chart → G-League: remove from depth chart, add to G-League
+        setDepthChart(prev => ({ ...prev, [currentZone]: prev[currentZone].filter(p => p.id !== card.id) }));
         setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]));
       }
     }
