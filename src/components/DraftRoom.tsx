@@ -271,8 +271,8 @@ export function DraftRoom() {
         </header>
 
         {/* Cards Grid */}
-        <main className="flex-1 overflow-y-auto flex flex-col items-center pt-8 px-8 pb-32 custom-scrollbar">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 md:gap-5 w-full max-w-[1000px] mx-auto">
+        <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-32 custom-scrollbar">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
             <AnimatePresence>
               {humanSeat.currentPack.map((card, index) => (
                 <motion.div 
