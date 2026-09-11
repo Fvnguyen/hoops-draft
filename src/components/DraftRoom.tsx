@@ -173,16 +173,16 @@ export function DraftRoom() {
   const [humanZones, setHumanZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, processPickAndPass } = useDraftEngine(allPlayers, playsDB);
+  const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, pickLog, processPickAndPass } = useDraftEngine(allPlayers, playsDB);
 
-  // Persist the full draft pod when transitioning to deckbuilding
+  // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {
     if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId) {
-      const id = saveDraftSession(seats);
+      const id = saveDraftSession(seats, pickLog);
       setSessionId(id);
-      console.log(`Draft session saved: ${id} (${seats.length} seats, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
+      console.log(`Draft session saved: ${id} (${seats.length} seats, ${pickLog.length} pick records, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
     }
-  }, [draftState, seats, sessionId]);
+  }, [draftState, seats, sessionId, pickLog]);
 
   useEffect(() => {
     setIsClient(true);

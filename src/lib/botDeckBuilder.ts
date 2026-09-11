@@ -18,6 +18,17 @@ export interface BuiltRoster {
   gLeaguePlays: string[];                 // Bench play card IDs
 }
 
+/** A single pick record for draft replay / analytics */
+export interface DraftPickRecord {
+  packNumber: number;           // 1-3
+  pickNumber: number;           // 1-12 within the pack
+  overallPick: number;          // 1-36 across all packs
+  seatId: string;               // 'human-0' or 'bot-1' through 'bot-7'
+  packContents: string[];       // Card IDs visible to this seat BEFORE picking
+  pickedCardId: string;         // The card ID that was picked
+  zone?: 'Roster' | 'GLeague'; // Only for human picks
+}
+
 export interface DraftSessionSeat {
   id: string;
   isBot: boolean;
@@ -30,6 +41,7 @@ export interface DraftSession {
   id: string;
   timestamp: string;
   seats: DraftSessionSeat[];  // seats[0] = human, seats[1..7] = bots
+  pickLog: DraftPickRecord[]; // Full pick-by-pick history for replay/analytics
 }
 
 // ── Position Eligibility (mirrors DeckBuilder logic) ───────────────────────
@@ -131,7 +143,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
 
 const SESSIONS_KEY = 'hoops-draft-sessions';
 
-export function saveDraftSession(seats: DraftSeat[]): string {
+export function saveDraftSession(seats: DraftSeat[], pickLog: DraftPickRecord[] = []): string {
   const sessionId = `session_${Date.now()}`;
 
   const sessionSeats: DraftSessionSeat[] = seats.map((seat, idx) => ({
@@ -149,6 +161,7 @@ export function saveDraftSession(seats: DraftSeat[]): string {
     id: sessionId,
     timestamp: new Date().toISOString(),
     seats: sessionSeats,
+    pickLog,
   };
 
   const sessions = getAllDraftSessions();

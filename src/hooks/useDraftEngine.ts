@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
 import { DraftSeat, generatePack, getBotPick, BotProfile } from '../lib/draftEngine';
+import { DraftPickRecord } from '../lib/botDeckBuilder';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
@@ -11,6 +12,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   const [currentPackNumber, setCurrentPackNumber] = useState(1); // 1, 2, 3
   const [currentPickNumber, setCurrentPickNumber] = useState(1); // 1 to 12
   const [overallPick, setOverallPick] = useState(1); // 1 to 36
+  const [pickLog, setPickLog] = useState<DraftPickRecord[]>([]);
 
   // Initialize Draft Pod
   useEffect(() => {
@@ -57,29 +59,50 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     if (draftState !== 'drafting') return;
 
     const newSeats = [...seats.map(s => ({ ...s, drafted: [...s.drafted], currentPack: [...s.currentPack] }))];
+    const pickRecords: DraftPickRecord[] = [];
     
     // 1. Record Human Pick
     const humanSeat = newSeats[0];
+    const humanPackSnapshot = humanSeat.currentPack.map(c => c.id); // Snapshot BEFORE picking
     const pickedCardIndex = humanSeat.currentPack.findIndex(c => c.id === humanPickId);
     if (pickedCardIndex !== -1) {
       const pickedCard = humanSeat.currentPack.splice(pickedCardIndex, 1)[0];
-      // Keep track of human's zone choice by modifying the card object temporarily or we can just push to drafted. 
-      // To keep it simple, we'll store zone in a UI-level wrapper later, but for now we just push to drafted.
       humanSeat.drafted.push(pickedCard);
+      pickRecords.push({
+        packNumber: currentPackNumber,
+        pickNumber: currentPickNumber,
+        overallPick,
+        seatId: humanSeat.id,
+        packContents: humanPackSnapshot,
+        pickedCardId: humanPickId,
+        zone,
+      });
     }
 
     // 2. Record Bot Picks
     for (let i = 1; i < 8; i++) {
       const botSeat = newSeats[i];
       if (botSeat.currentPack.length > 0) {
+        const botPackSnapshot = botSeat.currentPack.map(c => c.id); // Snapshot BEFORE picking
         const botPickId = getBotPick(botSeat, overallPick);
         const botPickIndex = botSeat.currentPack.findIndex(c => c.id === botPickId);
         if (botPickIndex !== -1) {
           const pickedCard = botSeat.currentPack.splice(botPickIndex, 1)[0];
           botSeat.drafted.push(pickedCard);
+          pickRecords.push({
+            packNumber: currentPackNumber,
+            pickNumber: currentPickNumber,
+            overallPick,
+            seatId: botSeat.id,
+            packContents: botPackSnapshot,
+            pickedCardId: botPickId,
+          });
         }
       }
     }
+
+    // Append to pick log
+    setPickLog(prev => [...prev, ...pickRecords]);
 
     // 3. Pass Packs
     const packDirection = currentPackNumber === 2 ? 1 : -1; // Pack 1 & 3: Pass Left (-1). Pack 2: Pass Right (+1).
@@ -138,6 +161,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     currentPackNumber,
     currentPickNumber,
     overallPick,
+    pickLog,
     processPickAndPass,
     setDraftState,
   };
