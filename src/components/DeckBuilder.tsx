@@ -5,6 +5,7 @@ import { DraftCard, PlayerCard, PlayCard, Play, PlayerCardData } from './PlayerC
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronUp, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { updateHumanRosterInSession } from '../lib/botDeckBuilder';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -13,7 +14,7 @@ const rarityValue: Record<string, number> = {
   'Common': 1,
 };
 
-export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[] }) {
+export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, sessionId }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], sessionId?: string }) {
   const router = useRouter();
 
   const isEligible = (rawPos: string, targetCol: string) => {
@@ -260,14 +261,18 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     Object.values(depthChart).forEach(col => col.forEach(p => finalZones[p.id] = 'Roster'));
 
     const saveId = rosterId || `roster_${Date.now()}`;
+    const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
+    const activePlayIds = activePlays.map(p => p ? p.id : null).filter(id => id !== null);
+
     const newRosterData = {
       id: saveId,
       name: rosterName,
       timestamp: new Date().toISOString(),
       draftedCards,
       zones: finalZones,
-      depthChartOrder: Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)])),
-      activePlays: activePlays.map(p => p ? p.id : null).filter(id => id !== null)
+      depthChartOrder,
+      activePlays: activePlayIds,
+      sessionId: sessionId ?? null,
     };
 
     const stored = JSON.parse(localStorage.getItem('myRosters') || '[]');
@@ -276,6 +281,24 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     else stored.push(newRosterData);
 
     localStorage.setItem('myRosters', JSON.stringify(stored));
+
+    // Update the human's built roster in the draft session so opponents can be retrieved
+    if (sessionId) {
+      const gLeaguePlayerIds = draftedCards
+        .filter(c => c.type === 'Player' && finalZones[c.id] === 'GLeague')
+        .map(c => c.id);
+      const gLeaguePlayIds = draftedCards
+        .filter(c => c.type === 'Play' && finalZones[c.id] === 'GLeague')
+        .map(c => c.id);
+
+      updateHumanRosterInSession(sessionId, {
+        depthChart: depthChartOrder,
+        activePlays: activePlayIds as string[],
+        gLeaguePlayers: gLeaguePlayerIds,
+        gLeaguePlays: gLeaguePlayIds,
+      });
+    }
+
     router.push('/rosters');
   };
 
