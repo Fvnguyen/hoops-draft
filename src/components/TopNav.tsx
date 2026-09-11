@@ -18,6 +18,7 @@ export function TopNav() {
   const getPageTitle = () => {
     if (pathname.includes('/draft')) return 'Draft Room';
     if (pathname.includes('/deckbuilder')) return 'Deck Builder';
+    if (pathname.includes('/season')) return 'Season';
     if (pathname.includes('/rosters')) return 'My Rosters';
     if (pathname.includes('/data')) return 'Database';
     return '';

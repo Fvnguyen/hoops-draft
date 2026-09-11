@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { DraftCard, PlayerCard, PlayCard, PlayerCardData, Play } from '@/components/PlayerCard';
 import { motion } from 'framer-motion';
-import { Pencil } from 'lucide-react';
+import { Pencil, Swords } from 'lucide-react';
 
 export default function RostersPage() {
+  const router = useRouter();
   const [rosters, setRosters] = useState<any[]>([]);
 
   useEffect(() => {
@@ -77,9 +79,14 @@ export default function RostersPage() {
                       <Pencil className="w-5 h-5" />
                     </Link>
 
-                    <button className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]">
-                      Play Match
-                    </button>
+                    {rosterObj.sessionId && (
+                      <button 
+                        onClick={() => router.push(`/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`)}
+                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                      >
+                        <Swords className="w-4 h-4" /> Play Season
+                      </button>
+                    )}
                   </div>
                 </div>
                 
