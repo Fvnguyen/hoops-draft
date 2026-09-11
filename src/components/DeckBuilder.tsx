@@ -485,8 +485,8 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                               }}
                             >
                               {isStarter ? (
-                                <div className="w-[120px] h-[168px] relative flex justify-center mt-2 mb-2">
-                                  <div className="absolute top-0 w-[200px] origin-top scale-[0.6] pointer-events-none">
+                                <div className="w-full relative" style={{ aspectRatio: '5 / 7' }}>
+                                  <div className="absolute inset-0 pointer-events-none">
                                     <PlayerCard player={p} />
                                   </div>
                                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg tracking-widest uppercase pointer-events-none whitespace-nowrap">
