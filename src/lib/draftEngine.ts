@@ -24,70 +24,97 @@ function pseudoRandom(seed: number, stringSeed: string) {
   return ((h ^ h >>> 16) >>> 0) / 4294967296;
 }
 
-export function generatePack(allPlayers: Player[], playsDB: Play[]): DraftCard[] {
+// ── Cube-Style Draft Pool ──────────────────────────────────────────────────
+
+/**
+ * Generate a complete cube draft pool upfront:
+ * 8 seats × 3 packs × 12 cards = 288 cards needed.
+ * Each player card appears AT MOST ONCE across the entire draft.
+ * Play cards can repeat (they're from a shared pool).
+ * 
+ * Returns 24 packs of 12 cards (8 seats × 3 packs).
+ */
+export function generateCubePool(allPlayers: Player[], playsDB: Play[]): DraftCard[][] {
   if (allPlayers.length === 0) return [];
-  const packCards: DraftCard[] = [];
-
-  const mythics = allPlayers.filter(p => p.rarity === 'Mythic');
-  const rares = allPlayers.filter(p => p.rarity === 'Rare');
-  const uncommons = allPlayers.filter(p => p.rarity === 'Uncommon');
-  const commons = allPlayers.filter(p => p.rarity === 'Common');
-
-  // 1 Rare/Mythic
-  if (Math.random() < 0.125 && mythics.length > 0) {
-    packCards.push(mythics[Math.floor(Math.random() * mythics.length)]);
-  } else if (rares.length > 0) {
-    packCards.push(rares[Math.floor(Math.random() * rares.length)]);
-  }
-
-  // 3 Uncommons
-  const shuffledUncommons = [...uncommons].sort(() => Math.random() - 0.5);
-  packCards.push(...shuffledUncommons.slice(0, 3));
-
-  // 5 Guaranteed Positional Commons
-  const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
-  positions.forEach(pos => {
-    const posCommons = commons.filter(p => p.player.position.includes(pos));
-    if (posCommons.length > 0) {
-      packCards.push(posCommons[Math.floor(Math.random() * posCommons.length)]);
+  
+  const SEATS = 8;
+  const PACKS = 3;
+  const PACK_SIZE = 12;
+  const TOTAL_PACKS = SEATS * PACKS;
+  const PLAYER_CARDS_PER_PACK = 11;  // 11 players + 1 play per pack
+  const TOTAL_PLAYERS_NEEDED = TOTAL_PACKS * PLAYER_CARDS_PER_PACK; // 264
+  
+  // Shuffle the entire player pool
+  const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
+  
+  // If we don't have enough unique players, cycle through with unique IDs
+  const playerPool: Player[] = [];
+  let copyIdx = 0;
+  while (playerPool.length < TOTAL_PLAYERS_NEEDED) {
+    const base = shuffledPlayers[copyIdx % shuffledPlayers.length];
+    if (copyIdx < shuffledPlayers.length) {
+      // First pass: use original cards
+      playerPool.push(base);
+    } else {
+      // Need more cards: create copies with unique IDs (rare — only if < 264 players)
+      playerPool.push({ ...base, id: `${base.id}_copy${Math.floor(copyIdx / shuffledPlayers.length)}` });
     }
-  });
-
-  // 2 Random Commons
-  const usedCommonIds = new Set(packCards.map(c => c.id));
-  const remainingCommons = commons.filter(c => !usedCommonIds.has(c.id));
-  const shuffledCommons = [...remainingCommons].sort(() => Math.random() - 0.5);
-  packCards.push(...shuffledCommons.slice(0, 2));
-
-  // 1 Play Card
-  const randomPlay = playsDB[Math.floor(Math.random() * playsDB.length)];
-  packCards.push(randomPlay);
-
-  // Sort
-  const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
-  packCards.sort((a, b) => {
-    // Systems (Rare/Mythic Plays) to the absolute front
-    const aIsRarePlay = a.type === 'Play' && (a.rarity === 'Rare' || a.rarity === 'Mythic');
-    const bIsRarePlay = b.type === 'Play' && (b.rarity === 'Rare' || b.rarity === 'Mythic');
-    if (aIsRarePlay && !bIsRarePlay) return -1;
-    if (bIsRarePlay && !aIsRarePlay) return 1;
-
-    // Normal Plays (Common/Uncommon) to the absolute end
-    const aIsNormPlay = a.type === 'Play' && (a.rarity === 'Common' || a.rarity === 'Uncommon');
-    const bIsNormPlay = b.type === 'Play' && (b.rarity === 'Common' || b.rarity === 'Uncommon');
-    if (aIsNormPlay && !bIsNormPlay) return 1;
-    if (bIsNormPlay && !aIsNormPlay) return -1;
-
-    // Normal rarity sort for players
-    const rvA = rarityValue[a.rarity] || 1;
-    const rvB = rarityValue[b.rarity] || 1;
-    if (rvA !== rvB) return rvB - rvA;
-    if (a.type !== b.type) return a.type === 'Player' ? -1 : 1;
-    return 0;
-  });
-
-  return packCards;
+    copyIdx++;
+  }
+  
+  // Re-shuffle the full pool
+  playerPool.sort(() => Math.random() - 0.5);
+  
+  // Build packs
+  const packs: DraftCard[][] = [];
+  let poolIdx = 0;
+  
+  for (let p = 0; p < TOTAL_PACKS; p++) {
+    const packCards: DraftCard[] = [];
+    
+    // Take 11 players from the pool (guaranteed unique across all packs)
+    for (let c = 0; c < PLAYER_CARDS_PER_PACK; c++) {
+      packCards.push(playerPool[poolIdx++]);
+    }
+    
+    // Add 1 play card (plays can repeat)
+    const randomPlay = playsDB[Math.floor(Math.random() * playsDB.length)];
+    packCards.push(randomPlay);
+    
+    // Sort: rare/mythic first, commons last, plays at the end
+    const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
+    packCards.sort((a, b) => {
+      const aIsRarePlay = a.type === 'Play' && (a.rarity === 'Rare' || a.rarity === 'Mythic');
+      const bIsRarePlay = b.type === 'Play' && (b.rarity === 'Rare' || b.rarity === 'Mythic');
+      if (aIsRarePlay && !bIsRarePlay) return -1;
+      if (bIsRarePlay && !aIsRarePlay) return 1;
+      
+      const aIsNormPlay = a.type === 'Play' && (a.rarity === 'Common' || a.rarity === 'Uncommon');
+      const bIsNormPlay = b.type === 'Play' && (b.rarity === 'Common' || b.rarity === 'Uncommon');
+      if (aIsNormPlay && !bIsNormPlay) return 1;
+      if (bIsNormPlay && !aIsNormPlay) return -1;
+      
+      const rvA = rarityValue[a.rarity] || 1;
+      const rvB = rarityValue[b.rarity] || 1;
+      if (rvA !== rvB) return rvB - rvA;
+      if (a.type !== b.type) return a.type === 'Player' ? -1 : 1;
+      return 0;
+    });
+    
+    packs.push(packCards);
+  }
+  
+  return packs;
 }
+
+// ── Legacy generatePack (kept for compatibility) ───────────────────────────
+
+export function generatePack(allPlayers: Player[], playsDB: Play[]): DraftCard[] {
+  // This is now only used as a fallback — the cube pool is the primary method
+  return generateCubePool(allPlayers, playsDB)[0] || [];
+}
+
+// ── Bot Pick Logic ─────────────────────────────────────────────────────────
 
 export function scoreCardForBot(bot: DraftSeat, card: DraftCard, overallPickNum: number, currentPackCards: DraftCard[]): number {
   if (!bot.botProfile) return 0;
@@ -95,17 +122,15 @@ export function scoreCardForBot(bot: DraftSeat, card: DraftCard, overallPickNum:
   // Base Value
   let baseScore = 0;
   if (card.type === 'Player') {
-    // Rely on PER as a baseline value metric (usually ranges 10-30)
     baseScore = (card.stats.per || 15) * 10; 
   } else {
-    // Play cards baseline value depending on rarity
     const rarityVals: Record<string, number> = { Common: 120, Uncommon: 150, Rare: 200, Mythic: 250 };
     baseScore = rarityVals[card.rarity] || 150;
   }
 
   // Apply hidden bot variance (15% variance per card)
   const noiseFloat = pseudoRandom(bot.botProfile.noiseSeed, card.id);
-  const noiseMultiplier = 0.85 + (noiseFloat * 0.30); // 0.85 to 1.15
+  const noiseMultiplier = 0.85 + (noiseFloat * 0.30);
   let score = baseScore * noiseMultiplier;
 
   // Mid/Late Draft: Positional Needs Pivot
@@ -114,38 +139,35 @@ export function scoreCardForBot(bot: DraftSeat, card: DraftCard, overallPickNum:
     const samePositionDrafted = draftedPlayers.filter(p => p.player.position.includes(card.player.position)).length;
     
     if (samePositionDrafted === 0) {
-      score *= 1.4; // High desperation for empty slots
+      score *= 1.4;
     } else if (samePositionDrafted > 2) {
-      score *= 0.6; // Diminishing returns if overcrowded
+      score *= 0.6;
     }
   }
 
   // Synergy / Archetype Pivot
   if (overallPickNum > 5) {
     const draftedTraits = bot.drafted.flatMap(c => c.type === 'Player' ? c.traits.map(t => t.name) : c.badges);
-    
-    // Check if this card matches our most common drafted traits
     const cardTraits = card.type === 'Player' ? card.traits.map(t => t.name) : card.badges;
     let synergyMatches = 0;
     
     cardTraits.forEach((trait: string) => {
       const occurrences = draftedTraits.filter(t => t === trait).length;
       if (occurrences > 1) {
-        synergyMatches += occurrences; // Scale score if we are heavy in this trait
+        synergyMatches += occurrences;
       }
     });
 
     if (synergyMatches > 0) {
-      score *= (1 + (synergyMatches * 0.1)); // e.g. 2 matches = 20% boost
+      score *= (1 + (synergyMatches * 0.1));
     }
     
-    // Personal Favored Trait Bias (Bot Personality)
     if (cardTraits.includes(bot.botProfile.favoredTrait)) {
       score *= 1.15;
     }
   }
 
-  // Hate-Drafting Check (If this card is massively better than the rest of the pack, grab it to deny others)
+  // Hate-Drafting
   if (card.type === 'Player' && card.stats.per > 25 && score < 250) {
       score = 250 * noiseMultiplier;
   }

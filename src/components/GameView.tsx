@@ -12,7 +12,7 @@ interface GameViewProps {
 export function GameView({ game, onComplete }: GameViewProps) {
   const [currentPoss, setCurrentPoss] = useState(-1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(250); // ms per possession
+  const [speed, setSpeed] = useState(500); // ms per possession
   const [showBoxScore, setShowBoxScore] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -59,7 +59,7 @@ export function GameView({ game, onComplete }: GameViewProps) {
   const handleTogglePlay = () => setIsPlaying(prev => !prev);
   const handleSkip = () => { setCurrentPoss(totalPoss - 1); setIsPlaying(false); };
   const handleSpeedToggle = () => {
-    setSpeed(prev => prev === 250 ? 100 : prev === 100 ? 50 : 250);
+    setSpeed(prev => prev === 500 ? 200 : prev === 200 ? 80 : 500);
   };
 
   const visiblePossessions = game.possessions.slice(0, currentPoss + 1);
@@ -146,7 +146,7 @@ export function GameView({ game, onComplete }: GameViewProps) {
             </button>
             <button onClick={handleSpeedToggle} className="flex items-center gap-1 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
               <FastForward className="w-4 h-4" />
-              {speed === 250 ? '1×' : speed === 100 ? '2.5×' : '5×'}
+              {speed === 500 ? '1×' : speed === 200 ? '2×' : '5×'}
             </button>
             <button onClick={handleSkip} className="flex items-center gap-1 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
               <SkipForward className="w-4 h-4" /> End

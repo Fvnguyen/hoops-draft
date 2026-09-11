@@ -17,7 +17,12 @@ const rarityValue: Record<string, number> = {
 export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, sessionId }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], sessionId?: string }) {
   const router = useRouter();
 
-  const isEligible = (rawPos: string, targetCol: string) => {
+  // Adjacency map: one position over is allowed (with OVR penalty in game sim)
+  const ADJACENT_POSITIONS: Record<string, string[]> = {
+    PG: ['SG'], SG: ['PG', 'SF'], SF: ['SG', 'PF'], PF: ['SF', 'C'], C: ['PF'],
+  };
+
+  const isEligible = (rawPos: string, targetCol: string): boolean => {
     if (rawPos === 'ALL') return true;
     if (rawPos === 'G' && (targetCol === 'PG' || targetCol === 'SG')) return true;
     if (rawPos === 'F' && (targetCol === 'SF' || targetCol === 'PF')) return true;
@@ -30,6 +35,25 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     if (parts.includes('F') && (targetCol === 'SF' || targetCol === 'PF')) return true;
 
     return false;
+  };
+
+  /** Check if a player can play out of position (one position over) */
+  const isAdjacentEligible = (rawPos: string, targetCol: string): boolean => {
+    if (isEligible(rawPos, targetCol)) return false; // Already naturally eligible
+    const parts = rawPos.split(/[-/]/);
+    // Check if any natural position is adjacent to the target
+    for (const naturalPos of parts) {
+      const mapped = naturalPos === 'G' ? ['PG', 'SG'] : naturalPos === 'F' ? ['SF', 'PF'] : [naturalPos];
+      for (const mp of mapped) {
+        if (ADJACENT_POSITIONS[mp]?.includes(targetCol)) return true;
+      }
+    }
+    return false;
+  };
+
+  /** Can this player be placed in this position (naturally OR adjacent)? */
+  const canPlace = (rawPos: string, targetCol: string): boolean => {
+    return isEligible(rawPos, targetCol) || isAdjacentEligible(rawPos, targetCol);
   };
 
   const getDefaultCol = (pos: string) => {
@@ -168,7 +192,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
       return;
     }
     if (['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone)) {
-      if (!isEligible((card as PlayerCardData).player.position, targetZone)) {
+      if (!canPlace((card as PlayerCardData).player.position, targetZone)) {
         setDraggedItem(null);
         return;
       }
@@ -377,13 +401,15 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
               <div className="grid grid-cols-5 gap-2 flex-1 min-h-0 overflow-y-auto pr-1 pb-4">
                 {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
                   const players = depthChart[pos];
-                  const isEligibleHover = draggedItem?.card.type === 'Player' && isEligible((draggedItem.card as PlayerCardData).player.position, pos);
+                  const isEligibleHover = draggedItem?.card.type === 'Player' && canPlace((draggedItem.card as PlayerCardData).player.position, pos);
+                  const isAdjacentHover = draggedItem?.card.type === 'Player' && isAdjacentEligible((draggedItem.card as PlayerCardData).player.position, pos);
                   const isInvalidHover = draggedItem?.card.type === 'Player' && !isEligibleHover;
 
                   return (
                     <div 
                       key={pos} 
                       className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[300px] ${
+                        isAdjacentHover ? 'bg-amber-50 border-amber-400' :
                         isEligibleHover ? 'bg-emerald-50 border-emerald-400' : 
                         isInvalidHover ? 'bg-red-50 border-red-300' : 
                         'bg-stone-50 border-stone-200'

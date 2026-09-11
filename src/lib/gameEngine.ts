@@ -363,12 +363,15 @@ function resolvePossession(
   const defRating = calcLineupDefense(defenseLineup);
   const edge = (offRating - defRating) / 100;
   
+  // Cap edge to prevent extreme score swings
+  const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
+  
   // Base probabilities + edge modifiers + team bonuses + opponent's defensive bonuses
-  let pTurnover = 0.13 - edge * 0.05 + offenseMods.turnoverRate + defenseFromOpponent.turnoverRate;
-  let pMiss     = 0.42 - edge * 0.10 + offenseMods.missRate + defenseFromOpponent.missRate;
-  let p2pt      = 0.32 + edge * 0.08 + offenseMods.twoPointRate + defenseFromOpponent.twoPointRate;
-  let p3pt      = 0.10 + edge * 0.05 + offenseMods.threePointRate + defenseFromOpponent.threePointRate;
-  let pAnd1     = 0.03 + edge * 0.02 + offenseMods.andOneRate + defenseFromOpponent.andOneRate;
+  let pTurnover = 0.12 - clampedEdge * 0.04 + offenseMods.turnoverRate + defenseFromOpponent.turnoverRate;
+  let pMiss     = 0.38 - clampedEdge * 0.08 + offenseMods.missRate + defenseFromOpponent.missRate;
+  let p2pt      = 0.35 + clampedEdge * 0.06 + offenseMods.twoPointRate + defenseFromOpponent.twoPointRate;
+  let p3pt      = 0.11 + clampedEdge * 0.04 + offenseMods.threePointRate + defenseFromOpponent.threePointRate;
+  let pAnd1     = 0.04 + clampedEdge * 0.02 + offenseMods.andOneRate + defenseFromOpponent.andOneRate;
   
   // Clamp all probabilities to [0.01, 0.80]
   pTurnover = Math.max(0.01, Math.min(0.80, pTurnover));
@@ -533,7 +536,39 @@ export function buildTeamInfo(
     else if (card.type === 'Play') playMap.set(card.id, card as Play);
   }
   
-  // Collect active roster players
+  // Position natural eligibility check
+  const isNaturalPosition = (rawPos: string, col: string): boolean => {
+    if (rawPos === 'ALL') return true;
+    if (rawPos === 'G' && (col === 'PG' || col === 'SG')) return true;
+    if (rawPos === 'F' && (col === 'SF' || col === 'PF')) return true;
+    if ((rawPos === 'G-F' || rawPos === 'F-G') && ['PG','SG','SF','PF'].includes(col)) return true;
+    if (rawPos.includes(col)) return true;
+    const parts = rawPos.split(/[-/]/);
+    if (parts.includes(col)) return true;
+    if (parts.includes('G') && (col === 'PG' || col === 'SG')) return true;
+    if (parts.includes('F') && (col === 'SF' || col === 'PF')) return true;
+    return false;
+  };
+  
+  // Apply -10% penalty for out-of-position players
+  const applyOOPPenalty = (player: PlayerCardData): PlayerCardData => {
+    const penalty = 0.9; // -10%
+    return {
+      ...player,
+      ratings: {
+        overall: Math.round(player.ratings.overall * penalty),
+        finishing: Math.round(player.ratings.finishing * penalty),
+        midRange: Math.round(player.ratings.midRange * penalty),
+        perimeter: Math.round(player.ratings.perimeter * penalty),
+        playmaking: Math.round(player.ratings.playmaking * penalty),
+        rebounding: Math.round(player.ratings.rebounding * penalty),
+        perimeterDefense: Math.round(player.ratings.perimeterDefense * penalty),
+        postDefense: Math.round(player.ratings.postDefense * penalty),
+      },
+    };
+  };
+  
+  // Collect active roster players, applying OOP penalty where needed
   const activePlayers: PlayerCardData[] = [];
   const starters: string[] = [];
   
@@ -541,7 +576,11 @@ export function buildTeamInfo(
     for (const id of ids) {
       const player = playerMap.get(id);
       if (player && !activePlayers.find(p => p.id === id)) {
-        activePlayers.push(player);
+        if (!isNaturalPosition(player.player.position, pos)) {
+          activePlayers.push(applyOOPPenalty(player));
+        } else {
+          activePlayers.push(player);
+        }
       }
     }
     if (ids.length > 0) starters.push(ids[0]);

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
-import { DraftSeat, generatePack, getBotPick, BotProfile } from '../lib/draftEngine';
+import { DraftSeat, generateCubePool, getBotPick, BotProfile } from '../lib/draftEngine';
 import { DraftPickRecord } from '../lib/botDeckBuilder';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
@@ -13,6 +13,9 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   const [currentPickNumber, setCurrentPickNumber] = useState(1); // 1 to 12
   const [overallPick, setOverallPick] = useState(1); // 1 to 36
   const [pickLog, setPickLog] = useState<DraftPickRecord[]>([]);
+  
+  // Store pre-generated cube packs: 24 packs (8 seats × 3 rounds)
+  const cubePacksRef = useRef<DraftCard[][]>([]);
 
   // Initialize Draft Pod
   useEffect(() => {
@@ -22,14 +25,19 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   }, [allPlayers]);
 
   const startNewDraft = useCallback(() => {
+    // Generate ALL 24 packs upfront (cube-style: each player at most once)
+    const allPacks = generateCubePool(allPlayers, playsDB);
+    cubePacksRef.current = allPacks;
+    
     const initialSeats: DraftSeat[] = [];
     
+    // Round 1: packs 0-7
     // Seat 0: Human
     initialSeats.push({
       id: 'human-0',
       isBot: false,
       drafted: [],
-      currentPack: generatePack(allPlayers, playsDB),
+      currentPack: allPacks[0] || [],
     });
 
     // Seats 1-7: Bots
@@ -44,7 +52,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
           favoredTrait: TRAITS_POOL[Math.floor(Math.random() * TRAITS_POOL.length)],
         },
         drafted: [],
-        currentPack: generatePack(allPlayers, playsDB),
+        currentPack: allPacks[i] || [],
       });
     }
 
@@ -134,9 +142,11 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
         setDraftState('deckbuilding');
         return;
       } else {
-        // Generate new packs for next round
+        // Deal pre-generated packs for the next round from cube pool
+        // Round 2: packs 8-15, Round 3: packs 16-23
+        const packOffset = (nextPackNum - 1) * 8;
         for (let i = 0; i < 8; i++) {
-          newSeats[i].currentPack = generatePack(allPlayers, playsDB);
+          newSeats[i].currentPack = cubePacksRef.current[packOffset + i] || [];
         }
       }
     }
