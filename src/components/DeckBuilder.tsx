@@ -1,0 +1,562 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { DraftCard, PlayerCard, PlayCard, Play, PlayerCardData } from './PlayerCard';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { ChevronUp, ChevronDown, ChevronRight, X } from 'lucide-react';
+
+const rarityValue: Record<string, number> = {
+  'Mythic': 4,
+  'Rare': 3,
+  'Uncommon': 2,
+  'Common': 1,
+};
+
+export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[] }) {
+  const router = useRouter();
+
+  const isEligible = (rawPos: string, targetCol: string) => {
+    if (rawPos === 'ALL') return true;
+    if (rawPos === 'G' && (targetCol === 'PG' || targetCol === 'SG')) return true;
+    if (rawPos === 'F' && (targetCol === 'SF' || targetCol === 'PF')) return true;
+    if ((rawPos === 'G-F' || rawPos === 'F-G') && (targetCol === 'PG' || targetCol === 'SG' || targetCol === 'SF' || targetCol === 'PF')) return true;
+    if (rawPos.includes(targetCol)) return true; 
+    
+    const parts = rawPos.split(/[-/]/);
+    if (parts.includes(targetCol)) return true;
+    if (parts.includes('G') && (targetCol === 'PG' || targetCol === 'SG')) return true;
+    if (parts.includes('F') && (targetCol === 'SF' || targetCol === 'PF')) return true;
+
+    return false;
+  };
+
+  const getDefaultCol = (pos: string) => {
+    if (pos.includes('PG')) return 'PG';
+    if (pos.includes('C')) return 'C';
+    if (pos.includes('PF')) return 'PF';
+    if (pos.includes('SG')) return 'SG';
+    if (pos === 'G') return 'PG';
+    if (pos === 'F') return 'SF';
+    if (pos === 'G-F' || pos === 'F-G') return 'SG';
+    return 'SF';
+  };
+
+  const [depthChart, setDepthChart] = useState<Record<string, PlayerCardData[]>>({
+    PG: [], SG: [], SF: [], PF: [], C: []
+  });
+  const [activePlays, setActivePlays] = useState<(Play | null)[]>([null, null, null]);
+  const [gLeaguePlayers, setGLeaguePlayers] = useState<PlayerCardData[]>([]);
+  const [gLeaguePlays, setGLeaguePlays] = useState<Play[]>([]);
+  const [draggedItem, setDraggedItem] = useState<{ card: DraftCard, sourceZone: string, sourceIndex?: number } | null>(null);
+
+  const [isPlaysOpen, setIsPlaysOpen] = useState(true);
+  const [isPlayersOpen, setIsPlayersOpen] = useState(true);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
+
+  useEffect(() => {
+    const initDepth: Record<string, PlayerCardData[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
+    const initGPlayers: PlayerCardData[] = [];
+    const initRPlays: Play[] = [];
+    const initGPlays: Play[] = [];
+
+    draftedCards.forEach(card => {
+      const zone = initialZones[card.id] || 'GLeague';
+      if (card.type === 'Play') {
+        if (zone === 'Roster') initRPlays.push(card as Play);
+        else initGPlays.push(card as Play);
+      } else {
+        const player = card as PlayerCardData;
+        if (zone === 'Roster') {
+          if (!initialDepthOrder) {
+            initDepth[getDefaultCol(player.player.position)].push(player);
+          }
+        } else {
+          initGPlayers.push(player);
+        }
+      }
+    });
+
+    if (initialDepthOrder) {
+      const assignedIds = new Set<string>();
+      for (const pos in initDepth) {
+        if (initialDepthOrder[pos]) {
+           const orderedCol: PlayerCardData[] = [];
+           initialDepthOrder[pos].forEach(id => {
+              const found = draftedCards.find(p => p.id === id) as PlayerCardData;
+              if (found) {
+                orderedCol.push(found);
+                assignedIds.add(id);
+              }
+           });
+           initDepth[pos] = orderedCol;
+        }
+      }
+      draftedCards.forEach(c => {
+        if (c.type === 'Player' && initialZones[c.id] === 'Roster' && !assignedIds.has(c.id)) {
+          initDepth[getDefaultCol((c as PlayerCardData).player.position)].push(c as PlayerCardData);
+        }
+      });
+    } else {
+      for (const pos in initDepth) {
+        initDepth[pos].sort((a, b) => (b.ratings?.overall || 0) - (a.ratings?.overall || 0));
+      }
+    }
+
+    const newActivePlays: (Play | null)[] = [null, null, null];
+    if (initialPlaysOrder) {
+      initialPlaysOrder.forEach((id, idx) => {
+         if (idx < 3) {
+            const found = initRPlays.find(p => p.id === id);
+            if (found) newActivePlays[idx] = found;
+         }
+      });
+    } else {
+      initRPlays.slice(0, 3).forEach((p, i) => { newActivePlays[i] = p; });
+    }
+    setActivePlays(newActivePlays);
+    initGPlayers.sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]);
+    setDepthChart(initDepth);
+    setGLeaguePlayers(initGPlayers);
+    setGLeaguePlays(initGPlays);
+  }, [draftedCards, initialZones]);
+
+
+  const handleDragStart = (e: React.DragEvent, card: DraftCard, sourceZone: string, sourceIndex?: number) => {
+    e.dataTransfer.setData('text/plain', card.id);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedItem({ card, sourceZone, sourceIndex });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const removeCardFromSource = (cardId: string, sourceZone: string) => {
+    if (sourceZone === 'GLeaguePlayers') {
+      setGLeaguePlayers(prev => prev.filter(p => p.id !== cardId));
+    } else if (sourceZone === 'GLeaguePlays') {
+      setGLeaguePlays(prev => prev.filter(p => p.id !== cardId));
+    } else if (sourceZone.startsWith('ActivePlay')) {
+      const idx = parseInt(sourceZone.split('-')[1]);
+      setActivePlays(prev => {
+        const next = [...prev];
+        next[idx] = null;
+        return next;
+      });
+    } else if (['PG', 'SG', 'SF', 'PF', 'C'].includes(sourceZone)) {
+      setDepthChart(prev => ({
+        ...prev,
+        [sourceZone]: prev[sourceZone].filter(p => p.id !== cardId)
+      }));
+    }
+  };
+
+  const handleDropOnZone = (e: React.DragEvent, targetZone: string, targetIndex?: number) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+
+    const { card, sourceZone, sourceIndex: srcIdx } = draggedItem;
+
+    if (card.type === 'Play' && !targetZone.includes('Play')) return;
+    if (card.type === 'Player' && targetZone.includes('Play')) return;
+    if (targetZone === sourceZone && targetIndex === srcIdx) {
+      setDraggedItem(null);
+      return;
+    }
+    if (['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone)) {
+      if (!isEligible((card as PlayerCardData).player.position, targetZone)) {
+        setDraggedItem(null);
+        return;
+      }
+    }
+
+    removeCardFromSource(card.id, sourceZone);
+
+    if (targetZone === 'GLeaguePlayers') {
+      setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]));
+    } else if (targetZone === 'GLeaguePlays') {
+      if (!card.id.startsWith('basic-')) {
+        setGLeaguePlays(prev => [...prev, card as Play]);
+      }
+    } else if (targetZone.startsWith('ActivePlay')) {
+      const idx = parseInt(targetZone.split('-')[1]);
+      setActivePlays(prev => {
+        const next = [...prev];
+        const existing = next[idx];
+        if (existing && !existing.id.startsWith('basic-')) {
+          setGLeaguePlays(g => [...g, existing]);
+        }
+        next[idx] = card as Play;
+        return next;
+      });
+    } else if (['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone)) {
+      setDepthChart(prev => {
+        const col = [...prev[targetZone]];
+        if (targetIndex !== undefined) {
+          col.splice(targetIndex, 0, card as PlayerCardData);
+        } else {
+          col.push(card as PlayerCardData);
+        }
+        return { ...prev, [targetZone]: col };
+      });
+    }
+
+    setDraggedItem(null);
+  };
+
+  const handleCardClick = (card: DraftCard, currentZone: string) => {
+    if (card.type === 'Play') {
+      if (currentZone.startsWith('ActivePlay')) {
+        removeCardFromSource(card.id, currentZone);
+        if (!card.id.startsWith('basic-')) {
+          setGLeaguePlays(prev => [...prev, card as Play]);
+        }
+      } else {
+        const emptyIdx = activePlays.findIndex(p => p === null);
+        if (emptyIdx !== -1) {
+          removeCardFromSource(card.id, currentZone);
+          setActivePlays(prev => {
+            const next = [...prev];
+            next[emptyIdx] = card as Play;
+            return next;
+          });
+        } else {
+          alert("Maximum 3 Active Plays allowed! Drag to swap.");
+        }
+      }
+    } else {
+      if (currentZone === 'GLeaguePlayers') {
+        const col = getDefaultCol((card as PlayerCardData).player.position);
+        removeCardFromSource(card.id, currentZone);
+        setDepthChart(prev => ({ ...prev, [col]: [...prev[col], card as PlayerCardData] }));
+      } else {
+        removeCardFromSource(card.id, currentZone);
+        setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]));
+      }
+    }
+  };
+
+  // Mechanics validation
+  const playersInRoster = Object.values(depthChart).reduce((acc, col) => acc + col.length, 0);
+  const activePlaysCount = activePlays.filter(p => p !== null).length;
+  const missingPos = ['PG', 'SG', 'SF', 'PF', 'C'].find(pos => depthChart[pos].length === 0);
+  
+  const isComplete = playersInRoster === 12 && !missingPos && activePlaysCount === 3;
+  
+  let statusText = 'Save Roster';
+  if (playersInRoster < 12) statusText = `Need ${12 - playersInRoster} Player(s)`;
+  else if (playersInRoster > 12) statusText = `Drop ${playersInRoster - 12} Player(s)`;
+  else if (missingPos) statusText = `Need ${missingPos} Starter`;
+  else if (activePlaysCount < 3) statusText = `Need ${3 - activePlaysCount} Play(s)`;
+
+  const handleSaveRoster = () => {
+    const finalZones: Record<string, 'Roster'|'GLeague'> = {};
+    draftedCards.forEach(c => finalZones[c.id] = 'GLeague');
+    
+    activePlays.forEach(p => { if (p && finalZones[p.id]) finalZones[p.id] = 'Roster'; });
+    Object.values(depthChart).forEach(col => col.forEach(p => finalZones[p.id] = 'Roster'));
+
+    const saveId = rosterId || `roster_${Date.now()}`;
+    const newRosterData = {
+      id: saveId,
+      name: rosterName,
+      timestamp: new Date().toISOString(),
+      draftedCards,
+      zones: finalZones,
+      depthChartOrder: Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)])),
+      activePlays: activePlays.map(p => p ? p.id : null).filter(id => id !== null)
+    };
+
+    const stored = JSON.parse(localStorage.getItem('myRosters') || '[]');
+    const existingIndex = stored.findIndex((r: any) => r.id === saveId);
+    if (existingIndex >= 0) stored[existingIndex] = newRosterData;
+    else stored.push(newRosterData);
+
+    localStorage.setItem('myRosters', JSON.stringify(stored));
+    router.push('/rosters');
+  };
+
+  return (
+    <div className="h-screen p-4 pt-[70px] text-stone-800 flex flex-col overflow-hidden relative">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 overflow-hidden">
+        {/* ACTIVE ROSTER */}
+        <div className="flex-1 flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0">
+          <div className="flex justify-between items-center mb-4 shrink-0">
+            <div className="flex items-center gap-4">
+               <h2 className="text-lg font-bold uppercase text-stone-800 tracking-wider flex items-center gap-2">
+                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                 Active Roster
+               </h2>
+               <div className="flex gap-2">
+                  <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${playersInRoster === 12 ? 'border-emerald-500/50 text-emerald-400' : 'border-red-500/50 text-red-400'}`}>
+                    Players: {playersInRoster}/12
+                  </span>
+                  <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-blue-500/50 text-blue-400' : 'border-red-500/50 text-red-400'}`}>
+                    Plays: {activePlaysCount}/3
+                  </span>
+               </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowSaveModal(true)}
+              disabled={!isComplete}
+              className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
+                isComplete 
+                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] shadow-emerald-500/30' 
+                : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
+              }`}
+            >
+              {statusText}
+            </button>
+          </div>
+          
+          <div className="flex flex-row gap-3 flex-1 min-h-0">
+            {/* Left Column: Active Plays */}
+            <div className="w-[120px] shrink-0 flex flex-col">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Plays (Max 3)</h3>
+              <div className="flex flex-col gap-3 h-full">
+                {[0, 1, 2].map(slotIndex => {
+                  const play = activePlays[slotIndex];
+                  const zoneId = `ActivePlay-${slotIndex}`;
+                  return (
+                    <div 
+                      key={slotIndex} 
+                      className={`w-full h-[60px] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDropOnZone(e, zoneId)}
+                    >
+                      <AnimatePresence>
+                        {play && (
+                          <motion.div 
+                            layoutId={`play-${play.id}`} 
+                            initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} 
+                            className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
+                            draggable
+                            onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
+                          >
+                             <PlayCard play={play} compact popupDirection="right" onClick={() => handleCardClick(play, zoneId)} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                      {!play && <span className="text-stone-600 font-bold uppercase text-[10px] pointer-events-none">Empty</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Right Area: Depth Chart */}
+            <div className="flex-1 flex flex-col min-w-0">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Depth Chart (Starters at Top)</h3>
+              <div className="grid grid-cols-5 gap-2 flex-1 min-h-0 overflow-y-auto pr-1 pb-4">
+                {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
+                  const players = depthChart[pos];
+                  const isEligibleHover = draggedItem?.card.type === 'Player' && isEligible((draggedItem.card as PlayerCardData).player.position, pos);
+                  const isInvalidHover = draggedItem?.card.type === 'Player' && !isEligibleHover;
+
+                  return (
+                    <div 
+                      key={pos} 
+                      className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[300px] ${
+                        isEligibleHover ? 'bg-emerald-900/20 border-emerald-500/50' : 
+                        isInvalidHover ? 'bg-red-900/10 border-red-500/20' : 
+                        'bg-stone-50 border-stone-200'
+                      }`}
+                      onDragOver={isEligibleHover ? handleDragOver : undefined}
+                      onDrop={(e) => handleDropOnZone(e, pos)}
+                    >
+                      <div className="text-center font-black text-stone-600 text-sm border-b border-stone-800 pb-2 mb-2">{pos}</div>
+                      
+                      <AnimatePresence>
+                        {players.map((p, idx) => {
+                          const isStarter = idx === 0;
+                          return (
+                            <motion.div 
+                              key={p.id} layout initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} 
+                              className="relative shrink-0 w-full flex justify-center group/card cursor-grab active:cursor-grabbing"
+                              draggable
+                              onDragStart={(e: any) => handleDragStart(e, p, pos, idx)}
+                              onDragOver={handleDragOver}
+                              onDrop={(e: any) => {
+                                e.stopPropagation();
+                                handleDropOnZone(e, pos, idx);
+                              }}
+                            >
+                              {isStarter ? (
+                                <div className="w-[120px] h-[168px] relative flex justify-center mt-2 mb-2">
+                                  <div className="absolute top-0 w-[200px] origin-top scale-[0.6] pointer-events-none">
+                                    <PlayerCard player={p} />
+                                  </div>
+                                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-30 bg-emerald-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg tracking-widest uppercase pointer-events-none whitespace-nowrap">
+                                    Starter
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="w-full">
+                                  <PlayerCard player={p} compact popupDirection="down" onClick={() => handleCardClick(p, pos)} />
+                                </div>
+                              )}
+                            </motion.div>
+                          );
+                        })}
+                        {players.length === 0 && (
+                          <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-stone-800/50 rounded-lg opacity-50 p-2 text-center text-stone-600 text-[10px] font-bold uppercase pointer-events-none min-h-[100px]">
+                            Drop {pos} here
+                          </div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* G-LEAGUE / SIDEBOARD */}
+        <div 
+          className="w-full lg:w-[350px] flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0 shrink-0"
+        >
+          <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-stone-500"></span>
+            G-League
+          </h2>
+          
+          <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            
+            {/* G-League Players Lane (Moved above Plays) */}
+            <div 
+              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-orange-500 bg-orange-50' : 'border-stone-800 bg-stone-950/50'}`}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropOnZone(e, 'GLeaguePlayers')}
+            >
+              <button onClick={() => setIsPlayersOpen(!isPlayersOpen)} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Players ({gLeaguePlayers.length})</h3>
+                {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
+              </button>
+              
+              <AnimatePresence>
+                {isPlayersOpen && (
+                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                    <div className="p-3 flex flex-col gap-2 min-h-[80px]">
+                      {gLeaguePlayers.map(player => (
+                        <div key={player.id} draggable onDragStart={(e) => handleDragStart(e, player, 'GLeaguePlayers')} className="cursor-grab active:cursor-grabbing w-full">
+                           <PlayerCard player={player} compact popupDirection="down" onClick={() => handleCardClick(player, 'GLeaguePlayers')} />
+                        </div>
+                      ))}
+                      {gLeaguePlayers.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No players on bench.</div>}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* G-League Plays Lane */}
+            <div 
+              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-blue-500 bg-blue-50' : 'border-stone-800 bg-stone-950/50'}`}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropOnZone(e, 'GLeaguePlays')}
+            >
+              <button onClick={() => setIsPlaysOpen(!isPlaysOpen)} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Plays ({gLeaguePlays.length})</h3>
+                {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
+              </button>
+              
+              <AnimatePresence>
+                {isPlaysOpen && (
+                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+                    <div className="p-3 flex flex-col gap-2 min-h-[80px]">
+                      {gLeaguePlays.map(play => (
+                        <div key={play.id} draggable onDragStart={(e) => handleDragStart(e, play, 'GLeaguePlays')} className="cursor-grab active:cursor-grabbing w-full">
+                           <PlayCard play={play as Play} compact popupDirection="down" onClick={() => handleCardClick(play, 'GLeaguePlays')} />
+                        </div>
+                      ))}
+                      {gLeaguePlays.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No plays on bench.</div>}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+          </div>
+
+          {/* Basic Plays */}
+          <div className="shrink-0 mt-4 pt-4 border-t border-stone-200">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-stone-500 mb-3">Basic Plays</h3>
+            <div className="flex gap-2">
+              <div 
+                draggable 
+                onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+                className="flex-1 bg-stone-50 border border-stone-200 hover:border-orange-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+              >
+                <span className="text-orange-500 font-black pointer-events-none">+</span>
+                <span className="text-stone-500 font-bold uppercase text-[10px] group-hover:text-stone-800 pointer-events-none">Offense</span>
+              </div>
+              <div 
+                draggable 
+                onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+                className="flex-1 bg-stone-50 border border-stone-200 hover:border-blue-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+              >
+                <span className="text-blue-500 font-black pointer-events-none">+</span>
+                <span className="text-stone-500 font-bold uppercase text-[10px] group-hover:text-stone-800 pointer-events-none">Defense</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Save Modal */}
+      <AnimatePresence>
+        {showSaveModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+              className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xl w-full max-w-md shadow-2xl relative"
+            >
+              <button onClick={() => setShowSaveModal(false)} className="absolute top-4 right-4 text-stone-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+              
+              <h2 className="text-2xl font-bold uppercase text-stone-800 mb-2">Save Roster</h2>
+              <p className="text-stone-400 text-sm mb-6">Give your active roster a name. You can edit this later from the My Rosters menu.</p>
+              
+              <div className="mb-6">
+                <label className="block text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Roster Name</label>
+                <input 
+                  type="text" 
+                  value={rosterName}
+                  onChange={e => setRosterName(e.target.value)}
+                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 text-stone-800 focus:outline-none focus:border-stone-400 transition-colors"
+                  placeholder="e.g. 2025 Championship Run"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button 
+                  onClick={() => setShowSaveModal(false)}
+                  className="px-6 py-2 rounded-lg font-bold text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSaveRoster}
+                  disabled={!rosterName.trim()}
+                  className="px-6 py-2 rounded-lg font-black uppercase tracking-widest bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Save to Collection
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

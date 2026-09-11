@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Player {
+  id        String       @id
+  name      String
+  position  String
+  height    String
+  weight    Int
+  age       Int
+  team      String
+  stats     SeasonStat[]
+  awards    Award[]
+  traits    Trait[]
+}
+
+model SeasonStat {
+  id        Int      @id @default(autoincrement())
+  playerId  String
+  season    String
+  gp        Int
+  mpg       Float
+  pts       Float
+  trb       Float
+  ast       Float
+  stl       Float
+  blk       Float
+  fga       Float
+  fg3a      Float
+  fg2a      Float
+  fg_pct    Float
+  fg3_pct   Float
+  fg2_pct   Float
+  ft_pct    Float
+  per       Float
+  ts        Float
+  vorp      Float
+  dbpm      Float
+  player    Player   @relation(fields: [playerId], references: [id])
+}
+
+model Award {
+  id        Int      @id @default(autoincrement())
+  playerId  String
+  season    String
+  name      String
+  level     Int?     // 1 for 1st team, etc.
+  player    Player   @relation(fields: [playerId], references: [id])
+}
+
+model Trait {
+  id        Int      @id @default(autoincrement())
+  playerId  String
+  name      String
+  level     Int      // 1x, 2x, 3x
+  player    Player   @relation(fields: [playerId], references: [id])
+}
