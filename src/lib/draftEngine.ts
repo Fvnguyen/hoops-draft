@@ -77,9 +77,9 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[]): DraftCa
       packCards.push(playerPool[poolIdx++]);
     }
     
-    // Add 1 play card (plays can repeat)
+    // Add 1 play card (plays can repeat — give each a unique ID for React keys)
     const randomPlay = playsDB[Math.floor(Math.random() * playsDB.length)];
-    packCards.push(randomPlay);
+    packCards.push({ ...randomPlay, id: `${randomPlay.id}_pack${p}` });
     
     // Sort: rare/mythic first, commons last, plays at the end
     const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
@@ -136,7 +136,7 @@ export function scoreCardForBot(bot: DraftSeat, card: DraftCard, overallPickNum:
   // Mid/Late Draft: Positional Needs Pivot
   if (card.type === 'Player' && overallPickNum >= 10) {
     const draftedPlayers = bot.drafted.filter(c => c.type === 'Player') as Player[];
-    const samePositionDrafted = draftedPlayers.filter(p => p.player.position.includes(card.player.position)).length;
+    const samePositionDrafted = draftedPlayers.filter(p => p.player?.position?.includes(card.player.position)).length;
     
     if (samePositionDrafted === 0) {
       score *= 1.4;
