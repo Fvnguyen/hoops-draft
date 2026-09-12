@@ -161,33 +161,37 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
   }
 
   return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 flex items-center gap-8">
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 grid grid-cols-[3fr_2fr] gap-8 items-start">
 
-      {/* 1. Team identity radar — the two charts are the headline numbers; they keep
-          their size and the synergy list yields (flex-1 min-w-0) */}
-      <div className="shrink-0 flex flex-col items-center gap-1">
-        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={168} />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 leading-none">Team identity</span>
+      {/* Left 60%: the two charts, each a box with its title top-left */}
+      <div className="flex items-stretch gap-8 min-w-0">
+        {/* 1. Team identity radar */}
+        <div className="flex flex-col gap-1 min-w-0">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
+          <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={168} />
+        </div>
+
+        {/* 2. Expected shot diet */}
+        <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 min-w-0">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
+          <div className="flex-1 flex items-center">
+            <DonutChart
+              size={112}
+              strokeWidth={22}
+              data={[
+                { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
+                { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
+                { label: '3PT', value: shotDiet.per, color: '#3b82f6' },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* 2. Expected shot diet */}
-      <div className="shrink-0 pl-6 border-l border-stone-200 flex flex-col items-center gap-1">
-        <DonutChart
-          size={104}
-          strokeWidth={20}
-          data={[
-            { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
-            { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
-            { label: '3PT', value: shotDiet.per, color: '#3b82f6' },
-          ]}
-        />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 leading-none">Shot diet</span>
-      </div>
-
-      {/* 3. Engine tracker — same row style as the season page's "Active mechanics" */}
-      <div className="min-w-0 flex-1 pl-6 border-l border-stone-200 flex flex-col gap-1 self-stretch">
+      {/* Right 40%: active synergies, same row style as the season page */}
+      <div className="min-w-0 pl-8 border-l border-stone-200 flex flex-col gap-1 self-stretch">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active synergies</h3>
           <div className="relative shrink-0">
             <button
               type="button"
@@ -200,7 +204,7 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-1.5 overflow-y-auto max-h-[150px] pr-1 custom-scrollbar">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5 overflow-y-auto max-h-[168px] pr-1 custom-scrollbar">
           {bonuses.activeSynergies.length === 0 && (
             <p className="text-[10px] text-stone-400 italic">No active synergies yet</p>
           )}

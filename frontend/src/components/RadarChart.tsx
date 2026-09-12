@@ -50,11 +50,14 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   const center = size / 2;
   const labelPad = Math.max(14, size * 0.14);
   const maxRadius = center - labelPad;
+  // Side labels ("PERIMETER D", "MID-RANGE") extend past the circle; give the SVG
+  // extra width on both sides so they are never clipped by the container edge.
+  const hPad = 52;
 
   return (
     <svg
-      viewBox={`0 0 ${size} ${size}`}
-      width={size}
+      viewBox={`${-hPad} 0 ${size + 2 * hPad} ${size}`}
+      width={size + 2 * hPad}
       height={size}
       className="overflow-visible"
       role="img"
