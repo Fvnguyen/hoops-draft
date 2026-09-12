@@ -280,15 +280,39 @@ export const SYNERGIES: SynergyDef[] = [
 
 // ── Play Activation ────────────────────────────────────────────────────────
 
-interface PlayRequirement {
+export interface PlayRequirement {
   badge: string;
   levels: number;
 }
 
 interface PlayEffect {
+  /** Display name — must match the play card's name in the plays DB. */
+  name: string;
+  /** One-line effect text for UI (full activation). */
+  summary: string;
+  /** Defensive plays apply their efficiency deltas to the OPPONENT's offense. */
+  defensive?: boolean;
   requirements: PlayRequirement[];
   fullBonus: GameModifiers;
   halfBonus: GameModifiers;
+}
+
+/** Per-requirement result of evaluating a play against a roster's badge totals. */
+export interface PlayRequirementStatus extends PlayRequirement {
+  /** Badge levels the roster currently has. */
+  have: number;
+  met: boolean;
+}
+
+export interface PlayEvaluation {
+  effectId: string;
+  name: string;
+  summary: string;
+  defensive: boolean;
+  requirements: PlayRequirementStatus[];
+  metCount: number;
+  total: number;
+  activation: 'full' | 'partial' | 'none';
 }
 
 /**
@@ -296,71 +320,117 @@ interface PlayEffect {
  * Full bonus if all requirements met, half bonus if ≥50% met, nothing if <50%.
  */
 const PLAY_EFFECTS: Record<string, PlayEffect> = {
-  'play-sys-1': { // Triangle Offense
+  'play-sys-1': {
+    name: 'Triangle Offense',
+    summary: '+3% rim / +4% mid share, +2% rim / +3% mid eff',
     requirements: [{ badge: 'Finisher', levels: 2 }, { badge: 'Mid-Range Maestro', levels: 2 }],
     fullBonus: { ...emptyModifiers(), rimShareBonus: 0.03, midShareBonus: 0.04, rimEffBonus: 0.02, midEffBonus: 0.03, description: ['▲ Triangle Offense (+3% rim/+4% mid share, +2/+3% eff)'] },
     halfBonus: { ...emptyModifiers(), midShareBonus: 0.02, midEffBonus: 0.01, description: ['▲ Triangle Offense (partial, +2% mid share, +1% eff)'] },
   },
-  'play-sys-2': { // 7 Seconds or Less
+  'play-sys-2': {
+    name: '7 Seconds or Less',
+    summary: '+5% 3pt share, +2% 3pt eff, +1 possession',
     requirements: [{ badge: 'Sharpshooter', levels: 3 }, { badge: 'Floor General', levels: 1 }],
     fullBonus: { ...emptyModifiers(), perShareBonus: 0.05, perEffBonus: 0.02, possessionSwing: 1, description: ['⚡ 7SOL (+5% 3pt share, +2% 3pt eff, +1 poss)'] },
     halfBonus: { ...emptyModifiers(), perShareBonus: 0.02, perEffBonus: 0.01, description: ['⚡ 7SOL (partial, +2% 3pt share, +1% eff)'] },
   },
-  'play-sys-3': { // Grit and Grind (defensive)
+  'play-sys-3': {
+    name: 'Grit and Grind',
+    summary: '-3% opp rim eff, -2% opp mid eff, +1 possession',
+    defensive: true,
     requirements: [{ badge: 'Lockdown Defender', levels: 2 }, { badge: 'Glass Cleaner', levels: 1 }],
     fullBonus: { ...emptyModifiers(), rimEffBonus: -0.03, midEffBonus: -0.02, possessionSwing: 1, description: ['🛡️ Grit and Grind (-3% opp rim eff, -2% opp mid eff, +1 poss)'] },
     halfBonus: { ...emptyModifiers(), rimEffBonus: -0.01, description: ['🛡️ Grit and Grind (partial, -1% opp rim eff)'] },
   },
-  'play-sys-4': { // Motion Offense
+  'play-sys-4': {
+    name: 'Motion Offense',
+    summary: '+1% rim / +2% mid / +2% 3pt eff, +1 possession',
     requirements: [{ badge: 'Floor General', levels: 2 }],
     fullBonus: { ...emptyModifiers(), rimEffBonus: 0.01, midEffBonus: 0.02, perEffBonus: 0.02, possessionSwing: 1, description: ['🔄 Motion Offense (+1/+2/+2% eff, +1 poss)'] },
     halfBonus: { ...emptyModifiers(), midEffBonus: 0.01, perEffBonus: 0.01, description: ['🔄 Motion Offense (partial, +1% mid/3pt eff)'] },
   },
-  'play-std-1': { // High Pick & Roll
+  'play-std-1': {
+    name: 'High Pick & Roll',
+    summary: '+3% rim share, +2% rim eff, +2% and-1',
     requirements: [{ badge: 'Floor General', levels: 1 }, { badge: 'Finisher', levels: 1 }],
     fullBonus: { ...emptyModifiers(), rimShareBonus: 0.03, rimEffBonus: 0.02, and1Bonus: 0.02, description: ['🏀 High PnR (+3% rim share, +2% rim eff, +2% and-1)'] },
     halfBonus: { ...emptyModifiers(), rimShareBonus: 0.01, description: ['🏀 High PnR (partial, +1% rim share)'] },
   },
-  'play-std-2': { // Iso Ball
-    requirements: [{ badge: 'Volume Scorer', levels: 1 }],
-    fullBonus: { ...emptyModifiers(), rimShareBonus: 0.02, midShareBonus: 0.02, rimEffBonus: 0.01, midEffBonus: 0.02, description: ['🎯 Iso Ball (+2% rim/mid share, +1/+2% eff)'] },
-    halfBonus: { ...emptyModifiers(), midShareBonus: 0.01, description: ['🎯 Iso Ball (partial, +1% mid share)'] },
-  },
-  'play-std-3': { // Zone Defense (defensive)
+  // Box-and-One: a defensive scheme that takes away the opponent's best shooter.
+  'play-std-2': {
+    name: 'Box-and-One',
+    summary: '-3% opp 3pt eff, -1% opp mid eff',
+    defensive: true,
     requirements: [{ badge: 'Lockdown Defender', levels: 1 }],
-    fullBonus: { ...emptyModifiers(), perEffBonus: -0.03, midEffBonus: -0.01, description: ['🛡️ Zone Defense (-3% opp 3pt eff, -1% opp mid eff)'] },
-    halfBonus: { ...emptyModifiers(), perEffBonus: -0.01, description: ['🛡️ Zone Defense (partial, -1% opp 3pt eff)'] },
+    fullBonus: { ...emptyModifiers(), perEffBonus: -0.03, midEffBonus: -0.01, description: ['🛡️ Box-and-One (-3% opp 3pt eff, -1% opp mid eff)'] },
+    halfBonus: { ...emptyModifiers(), perEffBonus: -0.01, description: ['🛡️ Box-and-One (partial, -1% opp 3pt eff)'] },
   },
-  'play-std-4': { // Fast Break
-    requirements: [{ badge: 'Finisher', levels: 1 }],
-    fullBonus: { ...emptyModifiers(), rimShareBonus: 0.03, rimEffBonus: 0.02, and1Bonus: 0.01, description: ['🏃 Fast Break (+3% rim share, +2% rim eff, +1% and-1)'] },
-    halfBonus: { ...emptyModifiers(), rimShareBonus: 0.01, description: ['🏃 Fast Break (partial, +1% rim share)'] },
+  // Horns: a half-court set built around two bigs at the elbows.
+  'play-std-3': {
+    name: 'Horns',
+    summary: '+2% rim / +2% mid share, +1% rim / +2% mid eff',
+    requirements: [{ badge: 'Finisher', levels: 1 }, { badge: 'Glass Cleaner', levels: 1 }],
+    fullBonus: { ...emptyModifiers(), rimShareBonus: 0.02, midShareBonus: 0.02, rimEffBonus: 0.01, midEffBonus: 0.02, description: ['🐂 Horns (+2% rim/mid share, +1/+2% eff)'] },
+    halfBonus: { ...emptyModifiers(), midShareBonus: 0.01, description: ['🐂 Horns (partial, +1% mid share)'] },
   },
-  'play-std-5': { // 3-Point Barrage
-    requirements: [{ badge: 'Sharpshooter', levels: 2 }],
-    fullBonus: { ...emptyModifiers(), perShareBonus: 0.05, perEffBonus: 0.02, rimShareBonus: -0.02, description: ['☄️ 3-Point Barrage (+5% 3pt share, +2% 3pt eff, -2% rim share)'] },
-    halfBonus: { ...emptyModifiers(), perShareBonus: 0.02, description: ['☄️ 3-Point Barrage (partial, +2% 3pt share)'] },
+  // Full Court Press: forces turnovers (extra possessions) at a small efficiency cost to the opponent.
+  'play-std-4': {
+    name: 'Full Court Press',
+    summary: '+2 possessions, -1% opp rim eff',
+    defensive: true,
+    requirements: [{ badge: 'Lockdown Defender', levels: 1 }],
+    fullBonus: { ...emptyModifiers(), possessionSwing: 2, rimEffBonus: -0.01, description: ['🏃 Full Court Press (+2 poss, -1% opp rim eff)'] },
+    halfBonus: { ...emptyModifiers(), possessionSwing: 1, description: ['🏃 Full Court Press (partial, +1 poss)'] },
+  },
+  // Four Out One In: spacing — four shooters around one big.
+  'play-std-5': {
+    name: 'Four Out One In',
+    summary: '+5% 3pt share, +2% 3pt eff, -2% rim share',
+    requirements: [{ badge: 'Sharpshooter', levels: 2 }, { badge: 'Glass Cleaner', levels: 1 }],
+    fullBonus: { ...emptyModifiers(), perShareBonus: 0.05, perEffBonus: 0.02, rimShareBonus: -0.02, description: ['☄️ Four Out One In (+5% 3pt share, +2% 3pt eff, -2% rim share)'] },
+    halfBonus: { ...emptyModifiers(), perShareBonus: 0.02, description: ['☄️ Four Out One In (partial, +2% 3pt share)'] },
   },
 };
 
+/** Stable effect id for a play card (draft packs suffix `id` with `_pack{N}` for React keys). */
+export function getPlayEffectId(play: Pick<Play, 'id' | 'playId'>): string {
+  return play.playId ?? play.id.replace(/_pack\d+$/, '');
+}
+
+/** The badge requirements of a play (empty for unknown ids). */
+export function getPlayRequirements(playId: string): PlayRequirement[] {
+  return PLAY_EFFECTS[playId]?.requirements.map(r => ({ ...r })) ?? [];
+}
+
+/**
+ * Evaluate a play against a roster's badge totals: which requirements are met, by how
+ * much, and the resulting activation. This is the single source of truth for both the
+ * simulation (checkPlayActivation) and the UI (play card requirement icons).
+ */
+export function evaluatePlay(play: Pick<Play, 'id' | 'playId' | 'name'>, badges: BadgeTotals): PlayEvaluation {
+  const effectId = getPlayEffectId(play);
+  const effect = PLAY_EFFECTS[effectId];
+  if (!effect) {
+    return { effectId, name: play.name, summary: '', defensive: false, requirements: [], metCount: 0, total: 0, activation: 'none' };
+  }
+  const requirements: PlayRequirementStatus[] = effect.requirements.map(r => {
+    const have = badges[r.badge] || 0;
+    return { ...r, have, met: have >= r.levels };
+  });
+  const metCount = requirements.filter(r => r.met).length;
+  const total = requirements.length;
+  const ratio = total > 0 ? metCount / total : 1;
+  const activation: PlayEvaluation['activation'] = ratio >= 1 ? 'full' : ratio >= 0.5 ? 'partial' : 'none';
+  return { effectId, name: effect.name, summary: effect.summary, defensive: !!effect.defensive, requirements, metCount, total, activation };
+}
+
 /** Check a single play's activation against the team's badge totals */
 function checkPlayActivation(play: Play, badges: BadgeTotals): GameModifiers | null {
-  // draftEngine.generateCubePool rewrites `id` to `${id}_pack${p}` for React keys, so
-  // PLAY_EFFECTS must be looked up by the stable `playId` (P0-2 fix). Fall back to
-  // stripping the suffix off `id` for older saved sessions that predate `playId`.
-  const effectId = play.playId ?? play.id.replace(/_pack\d+$/, '');
-  const effect = PLAY_EFFECTS[effectId];
+  const evaluation = evaluatePlay(play, badges);
+  const effect = PLAY_EFFECTS[evaluation.effectId];
   if (!effect) return null;
-
-  let metCount = 0;
-  for (const req of effect.requirements) {
-    if ((badges[req.badge] || 0) >= req.levels) metCount++;
-  }
-
-  const ratio = effect.requirements.length > 0 ? metCount / effect.requirements.length : 1;
-
-  if (ratio >= 1.0) return effect.fullBonus;
-  if (ratio >= 0.5) return effect.halfBonus;
+  if (evaluation.activation === 'full') return effect.fullBonus;
+  if (evaluation.activation === 'partial') return effect.halfBonus;
   return null;
 }
 
@@ -451,12 +521,13 @@ export function calcTeamBonuses(
     const result = checkPlayActivation(play, badges);
     // Resolve the same stable effect id used inside checkPlayActivation (draftEngine
     // suffixes `id` with `_pack{N}` for React keys — see P0-2 comment above).
-    const effectId = play.playId ?? play.id.replace(/_pack\d+$/, '');
+    const effectId = getPlayEffectId(play);
     if (result) {
-      // Defensive plays (Grit and Grind, Zone Defense) apply their eff deltas to the
-      // opponent's offense (defenseMods); possessionSwing is still the owning team's
-      // own gain and is added to the shared accumulator below exactly once (P0-3).
-      if (effectId === 'play-sys-3' || effectId === 'play-std-3') {
+      // Defensive plays apply their eff deltas to the opponent's offense (defenseMods);
+      // possessionSwing is still the owning team's own gain and is added to the shared
+      // accumulator below exactly once (P0-3). Which plays are defensive is a flag on
+      // the effect, so renaming/adding plays never needs an id list here.
+      if (PLAY_EFFECTS[effectId]?.defensive) {
         mergeModifiers(defenseMods, result);
         defenseMods.possessionSwing = 0; // not a defensive effect — see comment above
       } else {

@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { PlayerCardData } from '@/components/PlayerCard';
-import { calcTeamBonuses } from '@/engine/synergies';
+import { calcTeamBonuses, evaluatePlay, getPlayRequirements } from '@/engine/synergies';
 import { simulateGame } from '@/engine/game';
 import { loadPlayers, PLAYS, buildTestTeam } from './helpers';
 
@@ -65,7 +65,7 @@ describe('synergies & plays (post-fix intent)', () => {
     expect(defenders.length).toBeGreaterThan(0);
     const defenseRosterPlayers = dedupe(defenders).slice(0, 12);
 
-    const zoneDefense = PLAYS.find((p) => p.id === 'play-std-3')!;
+    const zoneDefense = PLAYS.find((p) => p.id === 'play-std-2')!;
 
     // Sanity: the play's own stored effect is a negative efficiency delta.
     const bonusesWithPlay = calcTeamBonuses(defenseRosterPlayers, [zoneDefense], new Map());
@@ -133,5 +133,51 @@ describe('synergies & plays (post-fix intent)', () => {
 
     expect(withPlay.activePlays[0].activated).toBe('full');
     expect(withPlay.possessionSwing - withoutPlay.possessionSwing).toBe(1);
+  });
+});
+
+describe('evaluatePlay (wave 0 helper)', () => {
+  it('reports per-requirement have/met counts and the activation tier', () => {
+    const highPnR = PLAYS.find((p) => p.id === 'play-std-1')!;
+    const none = evaluatePlay(highPnR, {});
+    expect(none.activation).toBe('none');
+    expect(none.requirements.map((r) => [r.badge, r.levels, r.have, r.met])).toEqual([
+      ['Floor General', 1, 0, false],
+      ['Finisher', 1, 0, false],
+    ]);
+    const partial = evaluatePlay(highPnR, { 'Floor General': 2 });
+    expect(partial.activation).toBe('partial');
+    expect(partial.metCount).toBe(1);
+    const full = evaluatePlay(highPnR, { 'Floor General': 2, Finisher: 1 });
+    expect(full.activation).toBe('full');
+    expect(full.summary.length).toBeGreaterThan(0);
+  });
+
+  it('resolves the effect through playId or the _packN suffix', () => {
+    const base = PLAYS.find((p) => p.id === 'play-sys-2')!;
+    const suffixed = { ...base, id: `${base.id}_pack7`, playId: undefined };
+    expect(evaluatePlay(suffixed, {}).effectId).toBe('play-sys-2');
+    expect(getPlayRequirements('play-sys-2').length).toBe(2);
+  });
+
+  it('every play card in the DB has an effect whose name matches the card', () => {
+    for (const play of PLAYS) {
+      const ev = evaluatePlay(play, {});
+      expect(ev.name, play.id).toBe(play.name);
+      expect(ev.total, play.id).toBeGreaterThan(0);
+    }
+  });
+
+  it('defensive plays are flagged and land in defenseMods', () => {
+    for (const id of ['play-sys-3', 'play-std-2', 'play-std-4']) {
+      const play = PLAYS.find((p) => p.id === id)!;
+      expect(evaluatePlay(play, {}).defensive, id).toBe(true);
+    }
+    const press = PLAYS.find((p) => p.id === 'play-std-4')!;
+    const defenders = pickForBadgeTotal(loadPlayers(), 'Lockdown Defender', 1);
+    const bonuses = calcTeamBonuses(dedupe(defenders).slice(0, 12), [press], new Map());
+    expect(bonuses.activePlays[0].activated).toBe('full');
+    expect(bonuses.defenseMods.rimEffBonus).toBeLessThan(0);
+    expect(bonuses.possessionSwing).toBe(2);
   });
 });
