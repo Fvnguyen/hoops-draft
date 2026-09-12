@@ -291,23 +291,27 @@ function calcPossessionSplit(
   homeBonuses: TeamBonuses,
   awayBonuses: TeamBonuses
 ): PossessionSplit {
-  // Each team rolls independent noise (NBA pace ~100 poss per team)
-  const homeNoise = (Math.random() - 0.5) * 10; // -5 to +5
-  const awayNoise = (Math.random() - 0.5) * 10;
+  // NBA pace baseline — all noise and swings are relative to this
+  const BASE_PACE = 100;
   
-  let homePoss = 100 + homeNoise;
-  let awayPoss = 100 + awayNoise;
+  // Independent noise per team: ±5% of baseline
+  const NOISE_PCT = 0.05;
+  const homeNoise = (Math.random() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
+  const awayNoise = (Math.random() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
   
-  // Team strength differential shifts possessions (max ±5)
+  let homePoss = BASE_PACE + homeNoise;
+  let awayPoss = BASE_PACE + awayNoise;
+  
+  // Team strength shifts possessions: up to ±8% of baseline per side
   const homeStrength = calcTeamStrength(homePlayers, homeShares);
   const awayStrength = calcTeamStrength(awayPlayers, awayShares);
-  const POSSESSION_SWING = 8;
-  const strengthDelta = ((homeStrength - awayStrength) / 100) * POSSESSION_SWING;
+  const STRENGTH_SWING_PCT = 0.08;
+  const strengthDelta = ((homeStrength - awayStrength) / 100) * BASE_PACE * STRENGTH_SWING_PCT;
   
   homePoss += strengthDelta;
   awayPoss -= strengthDelta;
   
-  // Apply synergy/play possession swing
+  // Apply synergy/play possession swing (small fixed bonuses)
   homePoss += homeBonuses.possessionSwing;
   awayPoss += awayBonuses.possessionSwing;
   
@@ -315,9 +319,9 @@ function calcPossessionSplit(
   homePoss -= awayBonuses.defenseMods.possessionSwing || 0;
   awayPoss -= homeBonuses.defenseMods.possessionSwing || 0;
   
-  // Round and ensure minimums
-  homePoss = Math.max(85, Math.round(homePoss));
-  awayPoss = Math.max(85, Math.round(awayPoss));
+  // Round and ensure minimum at 85% of baseline
+  homePoss = Math.max(Math.round(BASE_PACE * 0.85), Math.round(homePoss));
+  awayPoss = Math.max(Math.round(BASE_PACE * 0.85), Math.round(awayPoss));
   
   const totalPoss = homePoss + awayPoss;
   
