@@ -40,8 +40,6 @@ files.
   `/deckbuilder-test`, `/test-ui`) and API routes (`/api/cards`, `/api/game-logs`)
 - `game.db` — read-only SQLite player database, produced by `../data/fetch_players.py`
 - `public/` — headshots, team logos, `players.json`, arena background images
-- `prisma/schema.prisma` — legacy; the app reads `game.db` directly via `better-sqlite3`,
-  not through Prisma (see root `docs/HANDOVER.md` for details)
 
 For the full picture — how data flows in from the scraper, and what the engine/draft/game
 modules do — see `../AGENTS.md` and `../docs/ARCHITECTURE.md`.

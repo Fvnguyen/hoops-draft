@@ -70,10 +70,9 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 - Client components are explicitly marked `'use client'` (state, localStorage, hooks);
   API routes and `lib/engine.ts` run server-side only.
 - Styling: Tailwind 4 utility classes, no CSS modules.
-- Player data access: `better-sqlite3` opened directly in `engine.ts` — no ORM at runtime
-  despite `frontend/prisma/schema.prisma` existing in the tree. `@prisma/client` is a
-  listed dependency but is not imported anywhere under `frontend/src` — Prisma is legacy
-  and can likely be removed; verify before touching it.
+- Player data access: `better-sqlite3` opened directly in `engine.ts` — no ORM. (Prisma
+  and its schema were removed on 2026-09-12 as unused; the table layout is documented in
+  `data/README.md`.)
 - State persistence is `localStorage`, not a database: draft sessions under
   `hoops-draft-sessions`, seasons under `hoops-draft-seasons`, human-built rosters under
   `myRosters` (all client-side, per-browser).

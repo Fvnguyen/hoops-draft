@@ -29,6 +29,9 @@ visual tests exist for the new components with win32 snapshots.
   not a test).
 - Root `package.json` gained `dev`/`build`/`test`/`test:e2e`/`analyze`/`screenshot`
   scripts so the whole project can be driven from the repo root.
+- Removed unused npm dependencies `@prisma/client` and `unidecode` from `frontend/` and
+  the legacy `frontend/prisma/schema.prisma` (nothing imported them; all DB access is
+  `better-sqlite3` in `engine.ts`).
 - Documentation added/rewritten: this file, `docs/ARCHITECTURE.md`, root `AGENTS.md`,
   root `CLAUDE.md`, root `README.md`, `frontend/README.md`, `data/README.md`.
 
@@ -88,12 +91,7 @@ lines are the user's own hypotheses, not verified conclusions.
 6. **Home court advantage is a no-op.** Home teams won 17/35 (48.6%) with a 0.1-point
    average margin — there is no explicit home-court modifier in `gameEngine.ts`. Not
    necessarily a bug (may be intentional), but worth a decision one way or the other.
-7. **`frontend/prisma/schema.prisma` is dead code.** `@prisma/client` is a listed
-   dependency in `frontend/package.json` but is not imported anywhere under
-   `frontend/src` — all DB access goes through `better-sqlite3` in `engine.ts`. Prisma and
-   its schema file look safe to remove, but confirm with the user before deleting (it may
-   be a placeholder for a future migration to a mutable DB).
-8. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
+7. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
 
 ## Where to look
