@@ -28,7 +28,7 @@ Scripts in `data/` scrape player stats from basketball-reference and bios from t
 Stats API, merge them into per-player ratings, and write a SQLite database
 (`frontend/game.db`) plus a player headshot/logo set into `frontend/public/`. The frontend
 never touches the network for player data — it only reads `game.db` at request time
-through `frontend/src/lib/engine.ts`, which computes overall rating, per-skill ratings,
+through `frontend/src/engine/ratings.ts` at build time (`npm run build:cards`), which computes overall rating, per-skill ratings,
 rarity, and badges on the fly. See `data/README.md` for the exact script order and
 dependencies.
 

@@ -3,22 +3,13 @@ import { useEffect, useState, Suspense } from 'react';
 import { DraftCard } from '@/components/PlayerCard';
 import { DeckBuilder } from '@/components/DeckBuilder';
 import { useSearchParams } from 'next/navigation';
-import { safeGetJSON } from '@/lib/storage';
-
-interface RosterData {
-  id: string;
-  name: string;
-  timestamp: string;
-  draftedCards: DraftCard[];
-  zones: Record<string, 'Roster' | 'GLeague'>;
-  depthChartOrder: Record<string, string[]>;
-  activePlays: string[];
-  sessionId: string | null;
-}
+import { getGameStore } from '@/storage';
+import { useStorageReady } from '@/components/StorageProvider';
 
 function DeckbuilderTestInner() {
   const searchParams = useSearchParams();
   const rosterId = searchParams.get('rosterId');
+  const ready = useStorageReady();
 
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [initialZones, setInitialZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
@@ -27,24 +18,32 @@ function DeckbuilderTestInner() {
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
 
   useEffect(() => {
-    if (rosterId) {
-      // Load from localStorage
-      const stored = safeGetJSON<RosterData[]>('myRosters', []);
-      const savedRoster = stored.find((r: RosterData) => r.id === rosterId);
+    if (!ready) return;
 
-      if (savedRoster) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setCards(savedRoster.draftedCards);
-        setInitialZones(savedRoster.zones);
-        setRosterName(savedRoster.name);
-        setInitialDepthOrder(savedRoster.depthChartOrder);
-        setInitialPlaysOrder(savedRoster.activePlays);
-        return;
+    let cancelled = false;
+
+    async function loadRoster() {
+      if (rosterId) {
+        const store = getGameStore();
+        const savedRoster = await store.getRoster(rosterId as string);
+        if (cancelled) return;
+
+        if (savedRoster) {
+          setCards(savedRoster.draftedCards);
+          setInitialZones(savedRoster.zones);
+          setRosterName(savedRoster.name);
+          setInitialDepthOrder(savedRoster.depthChartOrder);
+          setInitialPlaysOrder(savedRoster.activePlays);
+          return;
+        }
       }
+
+      // Default Random Load if no rosterId or not found
+      loadRandomCards();
     }
 
-    // Default Random Load if no rosterId or not found
-    fetch('/api/cards')
+    function loadRandomCards() {
+      fetch('/api/cards')
       .then(r => r.json())
       .then((data: DraftCard[]) => {
         const randomPlayers = [...data].sort(() => Math.random() - 0.5).slice(0, 30);
@@ -60,17 +59,24 @@ function DeckbuilderTestInner() {
         ] as DraftCard[];
 
         const all = [...draftCards, ...plays].sort(() => Math.random() - 0.5);
-        setCards(all);
-        
+        if (!cancelled) setCards(all);
+
         const initial = all.reduce((acc, c) => {
           acc[c.id] = 'GLeague';
           return acc;
         }, {} as Record<string, 'Roster' | 'GLeague'>);
-        setInitialZones(initial);
+        if (!cancelled) setInitialZones(initial);
       });
-  }, [rosterId]);
+    }
 
-  if (cards.length === 0) return <div className="p-8 text-white">Loading Deckbuilder...</div>;
+    loadRoster();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, rosterId]);
+
+  if (!ready || cards.length === 0) return <div className="p-8 text-white">Loading Deckbuilder...</div>;
 
   return (
     <div className="bg-black">

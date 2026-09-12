@@ -2,7 +2,7 @@
  * Bot Deck Builder
  *
  * Auto-builds a valid 12-man roster from a bot's drafted card pool. Draft
- * session persistence (localStorage) lives in `src/lib/legacyStorage.ts`, not
+ * session persistence lives in `src/storage` (GameStore), not
  * here — the engine has no I/O.
  */
 

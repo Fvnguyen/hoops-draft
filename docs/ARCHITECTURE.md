@@ -8,19 +8,19 @@ flowchart TD
     A -->|"data/fetch_bio.py\n(nba_api)"| C["bio.csv"]
     B --> D["data/fetch_players.py"]
     C --> D
-    D --> E["frontend/game.db\n(SQLite, read-only at runtime)"]
+    D --> E["frontend/game.db\n(SQLite, pipeline output)"]
     D --> F["data/players.json"]
     F -->|"data/download_images.py\ndata/download_logos.py"| G["frontend/public/\nheadshots, logos"]
-    E --> H["frontend/src/lib/engine.ts\ngetAllCards()\nOVR, ratings, rarity, badges"]
-    H --> I["/api/cards route.ts"]
-    I --> J["useDraftEngine hook\n+ draftEngine.ts\ngenerateCubePool, bot picks"]
+    E -->|"npm run build:cards\nscripts/build-cards.ts\nengine/ratings.ts computeCards()"| H["frontend/src/data/cards.json\n(build artifact, committed)"]
+    H --> I["/api/cards route.ts\n(static JSON)"]
+    I --> J["useDraftEngine hook\n+ engine/draft.ts\ngenerateCubePool(rng), bot picks"]
     J --> K["DraftRoom.tsx\n(draft UI)"]
     K --> L["botDeckBuilder.ts\nbuildBotRoster (bots)\nDeckBuilder.tsx (human)"]
-    L --> M["localStorage\nhoops-draft-sessions\nmyRosters"]
-    M --> N["seasonEngine.ts\ncreateSeason / playNextGame"]
-    N --> O["gameEngine.ts\nsimulateGame\n+ synergies.ts calcTeamBonuses"]
+    L --> M["src/storage GameStore\n(IndexedDB via Dexie)\ndraftSessions, rosters"]
+    M --> N["engine/season.ts\ncreateSeason / playNextGame(rng)"]
+    N --> O["engine/game.ts\nsimulateGame(rng)\n+ engine/synergies.ts calcTeamBonuses"]
     O --> P["GameView.tsx / SeasonView.tsx\n(playback UI)"]
-    O --> Q["localStorage\nhoops-draft-seasons"]
+    O --> Q["src/storage GameStore\nseasons (with seeds)"]
     Q -->|"/debug page"| R["POST /api/game-logs\n-> data/game_logs/*.json"]
     R --> S["scripts/analyze_game_data.js\nbalance report"]
     S --> T["docs/analytics/\nanalysis_report.md\nanalytics_summary.md"]
@@ -40,13 +40,15 @@ flowchart TD
 
 Full script contracts (reads/writes/working directory) are in `data/README.md`.
 
-## 2. Card computation (`frontend/src/lib/engine.ts`)
+## 2. Card computation (`frontend/src/engine/ratings.ts`, run at build time)
 
-`getAllCards()` is the only place ratings are computed — there is no cached/precomputed
-rating table. On every call it:
+`computeCards(input)` is the only place ratings are computed. It is pure: it takes the
+`Player`, `SeasonStat` and `Award` rows as plain arrays and returns cards. It runs in
+`scripts/build-cards.ts` (`npm run build:cards`), which reads `game.db` and writes
+`frontend/src/data/cards.json`; the app only ever reads that JSON (`engine/cards.ts`,
+`/api/cards`). Steps:
 
-1. Reads `Player` and `SeasonStat` rows from `game.db` (opened relative to `process.cwd()`
-   — must run with `frontend/` as cwd).
+1. Takes the latest `SeasonStat` row per player.
 2. Buckets each player into a positional pool (`PG`/`SG`/`SF`/`PF`/`C`/`G`/`F`/`G-F`/`F-C`/
    `Gold`) via `getPool()`.
 3. Computes seven skill ratings per player (finishing, mid-range, perimeter, playmaking,
@@ -64,12 +66,16 @@ rating table. On every call it:
 6. Assigns badges (`getBadge`, thresholds 80/90/96) and situational traits (Ironman,
    Sniper, Volume Scorer, etc.) from raw stats.
 
-Served to the client via `frontend/src/app/api/cards/route.ts` (`GET /api/cards`), a thin
-wrapper with no caching — every request recomputes all cards.
+Served to the client via `frontend/src/app/api/cards/route.ts` (`GET /api/cards`), which
+returns the committed JSON with a one-hour cache header. All tuning constants for this
+step (`RATING_CONFIG`, legendary list, badge/rarity thresholds) live in
+`engine/balance.ts`.
 
-## 3. Draft (`draftEngine.ts` + `useDraftEngine.ts` + `DraftRoom.tsx`)
+## 3. Draft (`engine/draft.ts` + `useDraftEngine.ts` + `DraftRoom.tsx`)
 
-- **`generateCubePool`** builds all 24 packs (8 seats x 3 rounds) upfront: shuffles the
+- **`generateCubePool(players, plays, rng)`** builds all 24 packs (8 seats x 3 rounds) upfront
+  from a seeded `Rng` (the seed is minted in `useDraftEngine` and stored on the
+  `DraftSession`): shuffles the
   full player pool, takes 264 player cards (11 per pack) with each player used at most
   once per pass, cycling with a suffixed id only if the pool has fewer than 264 players
   (it currently has 448, from `game.db`, so this should not trigger). Adds one random play
@@ -78,26 +84,28 @@ wrapper with no caching — every request recomputes all cards.
   from `BOT_NAMES`), deals packs, and on each pick rotates packs left/right (standard
   booster-draft snake direction, reversed for the middle pack) via `processPickAndPass`.
   It also records every pick (`DraftPickRecord`) into a `pickLog` for later analysis.
-- **`getBotPick` / `scoreCardForBot`** (`draftEngine.ts`) score each card in a bot's pack:
+- **`getBotPick` / `scoreCardForBot`** (`engine/draft.ts`) score each card in a bot's pack:
   PER-based base value (or a rarity table for play cards), a seeded pseudo-random 15%
   noise multiplier per bot, a positional-need pivot after pick 10, a synergy/trait-overlap
   bonus after pick 5, a favored-trait bonus, and a hate-draft floor for high-PER players.
 
-## 4. Deck building (`botDeckBuilder.ts` + `DeckBuilder.tsx`)
+## 4. Deck building (`engine/deckbuilder.ts` + `DeckBuilder.tsx`)
 
 - **`buildBotRoster`** auto-builds each bot's 12-man active roster: best player per
   position first, then fills to 12 by positional need, then by smallest column; picks the
   top 3 play cards by category (system > special > basic) then rarity; everyone else goes
   to the G-League bench.
 - The human's roster is built interactively in **`DeckBuilder.tsx`** (depth chart
-  ordering, active play selection) and saved to `localStorage` under `myRosters` (see
-  `DeckBuilder.tsx` save handler); `botDeckBuilder.ts`'s `saveDraftSession` /
-  `getAllDraftSessions` persist the whole 8-seat draft under `hoops-draft-sessions`.
+  ordering, active play selection) and saved through the `GameStore` (`saveRoster`); the
+  whole 8-seat draft is saved as a `DraftSession` (`saveDraftSession`) when the draft
+  ends. See section 8 for the storage layer.
 
-## 5. Game engine (`gameEngine.ts` + `synergies.ts`)
+## 5. Game engine (`engine/game.ts` + `engine/synergies.ts`)
 
-`simulateGame(homeTeam, awayTeam)` produces a full `GameTheater` object the UI plays back
-possession-by-possession (no live simulation loop in the UI):
+`simulateGame(homeTeam, awayTeam, { rng })` produces a full `GameTheater` object (which
+records its `seed`) that the UI plays back possession-by-possession (no live simulation
+loop in the UI). Every random draw goes through the `Rng`, so the same seed and rosters
+reproduce the same game:
 
 1. **Possession shares** (`calcPossessionShares`) — per-player share of team possessions,
    derived from OVR gap between starter/backup/deep bench and blended with real MPG.
@@ -122,22 +130,24 @@ possession-by-possession (no live simulation loop in the UI):
 6. Rotation timelines (`generateQuarterRotation`) drive substitutions and which 5-man
    lineup is on court for each possession; overtime uses starters only.
 
-**Tuning knobs to know about** (all in `gameEngine.ts` unless noted): `NBA_BASELINE`
-(shot shares/efficiency), `EFFICIENCY_SCALE`, `MAX_EFF_SHIFT`, `PROFILE_WEIGHT`,
-`AND1_BASE`, `STRENGTH_SWING_PCT`, `NOISE_PCT`; synergy/play numbers live in
-`synergies.ts` (`SYNERGIES`, `PLAY_EFFECTS`).
+**Tuning knobs** all live in `engine/balance.ts`: `NBA_BASELINE` (shot shares/efficiency),
+`LEAGUE_AVG` (edge centring), `EFFICIENCY_SCALE`, `MAX_EFF_SHIFT`, `PROFILE_WEIGHT`,
+`AND1_BASE`, `STRENGTH_SWING_PCT`, `NOISE_PCT`, `TURNOVER_RATE`, possession clamps;
+synergy/play tables live in `engine/synergies.ts` (`SYNERGIES`, `PLAY_EFFECTS`).
+Convention: `TeamBonuses.defenseMods` are deltas added to the *opponent's* offense, so a
+defensive effect is stored negative.
 
-## 6. Season (`seasonEngine.ts` + `SeasonView.tsx`)
+## 6. Season (`engine/season.ts` + `SeasonView.tsx`)
 
-`createSeason` builds a 7-game schedule (one game against each of the other 7 seats, home/
-away alternating) and standings; `playNextGame` simulates one game via `gameEngine.ts` and
-updates standings (wins desc, then point differential). Persisted to `localStorage` under
-`hoops-draft-seasons`, keyed by a `rosterId` + the originating `sessionId`.
+`createSeason(session, rosterId, rng)` builds a 7-game schedule (one game against each of
+the other 7 seats, home/away alternating) and standings, and stores a season `seed`;
+`playNextGame` derives a per-game seed, simulates via `engine/game.ts`, stores the seed on
+the schedule entry and updates standings (wins desc, then point differential). Persisted
+through the `GameStore` (`saveSeason`), keyed by `rosterId` + the originating `sessionId`.
 
 ## 7. Logging and analysis
 
-The `/debug` page reads all three `localStorage` keys (`hoops-draft-sessions`,
-`hoops-draft-seasons`, `myRosters`) and `POST`s them to `/api/game-logs`
+The `/debug` page calls `GameStore.exportAll()` and `POST`s the result to `/api/game-logs`
 (`frontend/src/app/api/game-logs/route.ts`), which writes one JSON file per draft session
 and per season plus a combined `full_dump_*.json` into `data/game_logs/` (resolved as
 `../data/game_logs` relative to `process.cwd()` — again assumes cwd is `frontend/`). That
@@ -150,3 +160,31 @@ activation rates, and score-range sanity checks. The curated writeups in
 `docs/analytics/analytics_summary.md` (findings + the user's own architectural hypotheses,
 quoted as "User Note") are hand-curated snapshots of that script's output, not
 regenerated automatically.
+
+## 8. Persistence (`frontend/src/storage/`)
+
+UI code never touches `localStorage` or IndexedDB directly. It calls `getGameStore()`,
+which returns the single `GameStore` implementation for the environment:
+
+- `indexedDb.ts` — Dexie database `MagicBallDB` with tables `draftSessions`, `rosters`,
+  `seasons`, `meta`. Quota failures surface as `StorageQuotaError`, which the deck
+  builder and season view show inline.
+- `memory.ts` — in-memory store used during SSR and in tests.
+- `migrate.ts` — one-time import of the pre-Phase-1 `localStorage` keys
+  (`hoops-draft-sessions`, `hoops-draft-seasons`, `myRosters`); the old keys are renamed
+  to `*.migrated`, never deleted.
+- `StorageProvider` (`src/components/StorageProvider.tsx`) runs `initStorage()` once at
+  app start and exposes `useStorageReady()` so pages can wait for the migration.
+
+A remote backend (Phase 4, accounts and cloud saves) is a third implementation of the
+same interface, with the IndexedDB store kept as the offline cache.
+
+## 9. Headless tooling
+
+- `npm test` — Vitest: `tests/unit` imports the real engine (ratings, draft, synergies
+  and plays, game sim, season, determinism, engine purity) and `tests/storage` runs the
+  store contract against both backends using `fake-indexeddb`.
+- `npm run balance -- 1000 --seed 42` — `scripts/balance.ts` runs a full
+  draft, roster and season pipeline for N games in a few seconds and prints PPP, score
+  distribution and synergy/play activation rates. This is the tuning loop.
+- `npm run build:cards` — regenerates `src/data/cards.json` from `game.db`.

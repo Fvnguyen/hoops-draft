@@ -187,7 +187,7 @@ improvements, and only then mobile/PWA, accounts, and Android.
 | Phase | Scope | Rough effort | Exit criterion |
 |---|---|---|---|
 | 0. Correctness — **DONE 2026-09-12** (see HANDOVER) | Quick wins 1-7, 9, 10 | 1-2 days | Defensive plays reduce opponent efficiency in a test; plays activate; PPP in a realistic band in `npm run balance` |
-| 1. Engine isolation | Proposals A, B, C (IndexedDB backend), H | 3-5 days | `frontend/src/engine` has no React/Next imports; cards are a build artifact; `better-sqlite3` removed; first Vercel preview deploy |
+| 1. Engine isolation — **DONE 2026-09-12** (see HANDOVER; Vercel deploy pending) | Proposals A, B, C (IndexedDB backend), H | 3-5 days | `frontend/src/engine` has no React/Next imports; cards are a build artifact; `better-sqlite3` removed; first Vercel preview deploy |
 | 2. Game improvements | Re-tune synergies/plays with the headless harness; bot draft valuation using OVR and rarity; home-court decision; fix position data (P2-5) in the pipeline; new season data; new game content | ongoing, before any mobile work | Analytics flags green; drafts feel meaningfully different by strategy |
 | 3. Mobile + PWA | D, G.1 | 1-2 weeks | Every screen usable at 390 px; Lighthouse PWA audit passes; installable on a phone from the Vercel URL |
 | 4. Accounts + cloud saves | E, C (remote backend), F hardening | ~1 week | Sign in, drafts/rosters/seasons sync across devices, offline still works |

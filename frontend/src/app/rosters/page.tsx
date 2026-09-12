@@ -1,35 +1,42 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
 import { motion } from 'framer-motion';
-import { Pencil, Swords } from 'lucide-react';
-import { safeGetJSON } from '@/lib/storage';
-
-interface RosterData {
-  id: string;
-  name: string;
-  timestamp: string;
-  draftedCards: DraftCard[];
-  zones: Record<string, 'Roster' | 'GLeague'>;
-  depthChartOrder: Record<string, string[]>;
-  activePlays: string[];
-  sessionId: string | null;
-}
+import { Pencil, Swords, Trash2 } from 'lucide-react';
+import { getGameStore, SavedRoster } from '@/storage';
+import { useStorageReady } from '@/components/StorageProvider';
 
 export default function RostersPage() {
   const router = useRouter();
-  const [rosters, setRosters] = useState<RosterData[]>([]);
+  const ready = useStorageReady();
+  const [rosters, setRosters] = useState<SavedRoster[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  useEffect(() => {
-    // Load the new 'myRosters' structure saved by DeckBuilder
-    const saved = safeGetJSON<RosterData[]>('myRosters', []);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRosters(saved.sort((a: RosterData, b: RosterData) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  const refresh = useCallback(async () => {
+    const store = getGameStore();
+    const saved = await store.listRosters();
+    setRosters(saved.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    setLoaded(true);
   }, []);
 
-  const getStarter = (rosterData: RosterData, targetPos: string): PlayerCardData | null => {
+  useEffect(() => {
+    if (!ready) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refresh();
+  }, [ready, refresh]);
+
+  const handleDelete = async (rosterId: string) => {
+    if (!confirm('Delete this roster? This also removes any season played with it.')) return;
+    const store = getGameStore();
+    const season = await store.getSeasonByRoster(rosterId);
+    if (season) await store.deleteSeason(season.id);
+    await store.deleteRoster(rosterId);
+    await refresh();
+  };
+
+  const getStarter = (rosterData: SavedRoster, targetPos: string): PlayerCardData | null => {
     // If the depth chart order is saved, use the first ID in the array for that position
     const orderedIds = rosterData.depthChartOrder?.[targetPos];
     if (orderedIds && orderedIds.length > 0) {
@@ -39,7 +46,7 @@ export default function RostersPage() {
     return null;
   };
 
-  const getTeamOverall = (rosterData: RosterData) => {
+  const getTeamOverall = (rosterData: SavedRoster) => {
     const starters = ['PG', 'SG', 'SF', 'PF', 'C'].map(pos => getStarter(rosterData, pos)).filter(Boolean) as PlayerCardData[];
     if (starters.length === 0) return 0;
     const total = starters.reduce((acc, p) => acc + (p.ratings?.overall || 0), 0);
@@ -48,7 +55,12 @@ export default function RostersPage() {
 
   return (
     <div className="min-h-screen p-8 pt-[70px] text-stone-800 overflow-y-auto">
-      {rosters.length === 0 ? (
+      {!ready || !loaded ? (
+        <div className="flex flex-col items-center justify-center h-64 opacity-50">
+          <div className="text-6xl mb-4">🏀</div>
+          <h2 className="text-xl font-bold uppercase tracking-widest">Loading Rosters...</h2>
+        </div>
+      ) : rosters.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-64 opacity-50">
           <div className="text-6xl mb-4">🏀</div>
           <h2 className="text-xl font-bold uppercase tracking-widest">No Rosters Saved</h2>
@@ -93,16 +105,24 @@ export default function RostersPage() {
                     </Link>
 
                     {rosterObj.sessionId && (
-                      <button 
+                      <button
                         onClick={() => router.push(`/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`)}
                         className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]"
                       >
                         <Swords className="w-4 h-4" /> Play Season
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleDelete(rosterObj.id)}
+                      className="p-3 bg-white hover:bg-red-50 text-stone-500 hover:text-red-600 rounded-lg transition-colors border border-stone-700"
+                      title="Delete Roster"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
-                
+
                 <div className="p-6">
                   <div className="flex gap-6">
                     {/* Active Plays */}

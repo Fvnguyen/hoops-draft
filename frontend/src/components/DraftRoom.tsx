@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PlayerCard, PlayCard, Player, Play, DraftCard, PositionIcon } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Users, LayoutList } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
-import { saveDraftSession } from '../lib/legacyStorage';
+import { getGameStore } from '@/storage';
+import { StorageQuotaError } from '@/storage/types';
+import { buildDraftSession } from '../lib/sessionBuilder';
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
 const playsDB: Play[] = [
@@ -164,6 +166,15 @@ function DraftSidebar({
   );
 }
 
+function SaveErrorBanner({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <div className="fixed top-[56px] left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-3">
+      <p className="text-sm text-red-700 font-semibold text-center">{message}</p>
+    </div>
+  );
+}
+
 export function DraftRoom() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
@@ -172,15 +183,30 @@ export function DraftRoom() {
   const [activeZone, setActiveZone] = useState<'Roster' | 'GLeague'>('Roster');
   const [humanZones, setHumanZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const savingSessionRef = useRef(false);
 
   const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
 
   // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {
-    if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId) {
-      const id = saveDraftSession(seats, pickLog, draftSeed);
-      setSessionId(id);
-      console.log(`Draft session saved: ${id} (${seats.length} seats, ${pickLog.length} pick records, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
+    if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId && !savingSessionRef.current) {
+      savingSessionRef.current = true;
+      const session = buildDraftSession(seats, pickLog, draftSeed);
+      getGameStore()
+        .saveDraftSession(session)
+        .then(() => {
+          setSessionId(session.id);
+          console.log(`Draft session saved: ${session.id} (${seats.length} seats, ${pickLog.length} pick records, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
+        })
+        .catch((err) => {
+          savingSessionRef.current = false;
+          if (err instanceof StorageQuotaError) {
+            setSaveError(err.message);
+          } else {
+            setSaveError('Failed to save draft session. Please try again.');
+          }
+        });
     }
   }, [draftState, seats, sessionId, pickLog, draftSeed]);
 
@@ -221,14 +247,20 @@ export function DraftRoom() {
   }
 
   if (draftState === 'deckbuilding') {
-    return <DeckBuilder draftedCards={humanSeat.drafted} initialZones={humanZones} sessionId={sessionId ?? undefined} />;
+    return (
+      <>
+        <SaveErrorBanner message={saveError} />
+        <DeckBuilder draftedCards={humanSeat.drafted} initialZones={humanZones} sessionId={sessionId ?? undefined} />
+      </>
+    );
   }
 
   const isSidebarOpen = isSidebarOpenToggled || selectedCardId !== null;
 
   return (
     <div className="flex flex-col md:flex-row h-screen text-stone-800 font-sans relative overflow-hidden pt-[56px]" style={{ background: '#F5F0EA' }}>
-      
+      <SaveErrorBanner message={saveError} />
+
       {/* Main Draft Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}

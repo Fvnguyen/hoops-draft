@@ -92,24 +92,27 @@ describe('migrateFromLocalStorage', () => {
     expect(await store.getRoster(roster.id)).toEqual(roster);
   });
 
-  it('is idempotent: a second run does not re-import or duplicate data', async () => {
+  it('is idempotent: a second run with nothing new is a no-op, and late-arriving legacy data is still imported', async () => {
     const session = makeDraftSession();
     localStorage.setItem('hoops-draft-sessions', JSON.stringify([session]));
 
     const store = new MemoryGameStore();
     await migrateFromLocalStorage(store);
     const flagAfterFirstRun = await store.getMeta('migratedFromLocalStorage');
+    expect(flagAfterFirstRun).toBeTruthy();
 
-    // A naive second run would find nothing under the old (now-renamed) key anyway;
-    // the real guarantee we want is the meta flag short-circuiting *before* that, so
-    // simulate the key coming back (e.g. an old browser tab still writing to it) and
-    // confirm the flag alone is enough to skip re-import.
-    localStorage.setItem('hoops-draft-sessions', JSON.stringify([makeDraftSession({ id: 'late-arrival' })]));
-
+    // Second run: the legacy key was renamed, so there is nothing to import.
     await migrateFromLocalStorage(store);
-
-    expect(await store.getDraftSession('late-arrival')).toBeNull();
     expect(await store.listDraftSessions()).toEqual([session]);
     expect(await store.getMeta('migratedFromLocalStorage')).toBe(flagAfterFirstRun);
+
+    // Legacy data that appears later (an old tab still writing, a restored backup)
+    // must NOT be silently ignored: the meta entry is a timestamp, not a skip flag.
+    localStorage.setItem('hoops-draft-sessions', JSON.stringify([makeDraftSession({ id: 'late-arrival' })]));
+    await migrateFromLocalStorage(store);
+
+    expect(await store.getDraftSession('late-arrival')).not.toBeNull();
+    expect((await store.listDraftSessions()).map((s) => s.id).sort()).toEqual([session.id, 'late-arrival'].sort());
+    expect(localStorage.getItem('hoops-draft-sessions')).toBeNull();
   });
 });

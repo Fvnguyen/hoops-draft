@@ -2,7 +2,7 @@
  * Season Engine
  *
  * Orchestrates a 7-game mini-season: schedule, standings, game results.
- * Persistence (localStorage) lives in `src/lib/legacyStorage.ts`, not here.
+ * Persistence lives in `src/storage` (GameStore), not here.
  */
 
 import { DraftSession } from './deckbuilder';

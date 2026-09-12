@@ -5,11 +5,11 @@ import { DraftCard, PlayerCard, PlayCard, Play, PlayerCardData } from './PlayerC
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
-import { updateHumanRosterInSession } from '../lib/legacyStorage';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import { calcTeamBonuses } from '../engine/synergies';
 import { TopKPIBand } from './TopKPIBand';
-import { safeGetJSON, safeSetJSON, StorageQuotaError } from '../lib/storage';
+import { getGameStore } from '@/storage';
+import { StorageQuotaError, type SavedRoster } from '@/storage/types';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -338,7 +338,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   else if (missingPos) statusText = `Need ${missingPos} Starter`;
   else if (activePlaysCount < 3) statusText = `Need ${3 - activePlaysCount} Play(s)`;
 
-  const handleSaveRoster = () => {
+  const handleSaveRoster = async () => {
     try {
       setSaveError(null);
       const finalZones: Record<string, 'Roster'|'GLeague'> = {};
@@ -349,9 +349,9 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
       const saveId = rosterId || `roster_${Date.now()}`;
       const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
-      const activePlayIds = activePlays.map(p => p ? p.id : null).filter(id => id !== null);
+      const activePlayIds = activePlays.map(p => p ? p.id : null).filter((id): id is string => id !== null);
 
-      const newRosterData = {
+      const newRosterData: SavedRoster = {
         id: saveId,
         name: rosterName,
         timestamp: new Date().toISOString(),
@@ -362,22 +362,8 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         sessionId: sessionId ?? null,
       };
 
-      interface RosterData {
-        id: string;
-        name: string;
-        timestamp: string;
-        draftedCards: DraftCard[];
-        zones: Record<string, 'Roster' | 'GLeague'>;
-        depthChartOrder: Record<string, string[]>;
-        activePlays: string[];
-        sessionId: string | null;
-      }
-      const stored = safeGetJSON<RosterData[]>('myRosters', []);
-      const existingIndex = stored.findIndex((r: RosterData) => r.id === saveId);
-      if (existingIndex >= 0) stored[existingIndex] = newRosterData;
-      else stored.push(newRosterData);
-
-      safeSetJSON('myRosters', stored);
+      const store = getGameStore();
+      await store.saveRoster(newRosterData);
 
       // Update the human's built roster in the draft session so opponents can be retrieved
       if (sessionId) {
@@ -388,12 +374,16 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
           .filter(c => c.type === 'Play' && finalZones[c.id] === 'GLeague')
           .map(c => c.id);
 
-        updateHumanRosterInSession(sessionId, {
-          depthChart: depthChartOrder,
-          activePlays: activePlayIds as string[],
-          gLeaguePlayers: gLeaguePlayerIds,
-          gLeaguePlays: gLeaguePlayIds,
-        });
+        const session = await store.getDraftSession(sessionId);
+        if (session) {
+          session.seats[0].builtRoster = {
+            depthChart: depthChartOrder,
+            activePlays: activePlayIds,
+            gLeaguePlayers: gLeaguePlayerIds,
+            gLeaguePlays: gLeaguePlayIds,
+          };
+          await store.saveDraftSession(session);
+        }
       }
 
       router.push('/rosters');

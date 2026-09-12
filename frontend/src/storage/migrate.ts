@@ -3,10 +3,12 @@
  * (`hoops-draft-sessions`, `hoops-draft-seasons`, `myRosters`) into a
  * GameStore (IndexedDB in the browser, memory in tests/SSR).
  *
- * Safe to call on every app start: it no-ops once the `migratedFromLocalStorage`
- * meta flag is set. It never deletes user data — the old keys are renamed to
- * `<key>.migrated` rather than removed, so a bug here doesn't lose anyone's
- * drafts/rosters/seasons.
+ * Safe to call on every app start: it no-ops when none of the legacy keys is
+ * present (they are renamed to `<key>.migrated` after a successful import, so
+ * a second run finds nothing to do). The `migratedFromLocalStorage` meta entry
+ * only records when the last import happened; it is NOT used as a skip flag,
+ * so legacy data that shows up later (e.g. restored from a backup) is still
+ * picked up. It never deletes user data.
  */
 
 import type { DraftSession } from '@/engine/deckbuilder';
@@ -62,10 +64,15 @@ function renameKey(key: string): void {
 export async function migrateFromLocalStorage(store: GameStore): Promise<void> {
   if (typeof localStorage === 'undefined') return;
 
-  if (isMetaCapable(store)) {
-    const already = await store.getMeta(MIGRATED_META_KEY);
-    if (already) return;
+  let anyLegacyKey = false;
+  try {
+    anyLegacyKey = [OLD_SESSIONS_KEY, OLD_SEASONS_KEY, OLD_ROSTERS_KEY].some(
+      (k) => localStorage.getItem(k) !== null,
+    );
+  } catch {
+    return;
   }
+  if (!anyLegacyKey) return;
 
   const oldSessions = readAndParse<DraftSession>(OLD_SESSIONS_KEY);
   const oldSeasons = readAndParse<Season>(OLD_SEASONS_KEY);

@@ -43,7 +43,7 @@ Fixed, with tests that import the real engine (`frontend/tests/unit/`):
 - P0-2 play cards never activated (id suffix) → `Play.playId` carries the effect id.
 - P0-3 possession swings dropped/double-counted → single accumulator.
 - P1-1 structural offense>defense edge → edges centred on `LEAGUE_AVG` in `gameEngine.ts`.
-- P1-2 silent localStorage quota failures → `src/lib/storage.ts` helpers; DeckBuilder and
+- P1-2 silent localStorage quota failures → safe storage helpers (since superseded by `src/storage/`); DeckBuilder and
   SeasonView show an inline error on quota.
 - P2-1 `/api/cards` ~900 queries → 3 queries + module-level memo (`clearCardCache()`).
 - P2-2 minutes now scale to game length (48 min regulation + 5 per OT); turnovers are a
@@ -70,12 +70,42 @@ Still open for Phase 2 (game improvements):
   FranchiseDashboard, test-ui) and 15 `react-hooks/static-components` (components defined
   inside render). Mechanical; do before adding CI.
 
+## Phase 1 (engine isolation) — done 2026-09-12
+
+- `frontend/src/engine/` is a pure TypeScript engine (no react/next/fs/sqlite; enforced by
+  `tests/unit/engine-purity.test.ts`). Every tuning constant is in `engine/balance.ts`.
+- Randomness is injected (`engine/rng.ts`, mulberry32). Drafts, seasons and games store
+  their seeds (`DraftSession.seed`, `Season.seed`, `SeasonScheduleEntry.seed`,
+  `GameTheater.seed`); `npm run balance -- 500 --seed 42` is reproducible.
+- Player cards are a build artifact: `npm run build:cards` reads `frontend/game.db` and
+  writes `frontend/src/data/cards.json` (committed). `/api/cards` serves it statically;
+  `better-sqlite3` is a devDependency used only by that script. The app has no cwd
+  dependency any more.
+- Persistence is `frontend/src/storage/` (`GameStore`: IndexedDB via Dexie in the browser,
+  in-memory during SSR/tests). `StorageProvider` at the app root runs a one-time,
+  key-driven migration of the old `localStorage` keys (renamed to `*.migrated`). All
+  pages/components go through `getGameStore()`; `src/lib/` now only holds
+  `sessionBuilder.ts`.
+- Verified in the running app: legacy localStorage data migrates into IndexedDB, the
+  rosters page lists it, a season can be created and a game played and persisted with
+  seeds. 42 Vitest tests (engine + storage on both backends) pass; production build OK.
+- NOT done: the first Vercel preview deploy (needs the user's go-ahead; nothing in the
+  app blocks it any more).
+
+Follow-ups noticed during Phase 1:
+- Score-band test tail: team scores of 174+ appear once in a few hundred games (sd ≈ 16);
+  the band assertion was loosened. Tightening the distribution is a Phase 2 tuning item.
+- Seasons still persist the full `GameTheater` per game (~200 narrated possessions);
+  with seeds stored, Phase 2 can drop that to box score + seed and re-simulate on demand.
+- Remaining lint errors are all UI-side (`any` in dashboards, `react-hooks/static-components`).
+
 ## How to run everything
 
 ```bash
 npm install && npm --prefix frontend install
 npm run dev            # app at http://localhost:3000
-npm test               # Vitest unit tests (frontend/tests/unit) against the real engine
+npm test               # Vitest: frontend/tests/unit (real engine) + tests/storage
+npm run build:cards    # regenerate frontend/src/data/cards.json from frontend/game.db
 npm run balance -- 500 # headless balance report (PPP, scores, synergy/play activation)
 npm run test:e2e       # Playwright specs, needs `npm run dev` running separately
 npm run analyze        # balance report from the latest data/game_logs/full_dump_*.json
@@ -114,7 +144,7 @@ lines are the user's own hypotheses, not verified conclusions.
    91.4%, Court Vision 90.0%, Inside-Out 90.0%, Paint Dominance 87.1%) activate in nearly
    every game, while others are rare (Brotherhood 7.1%, Lockdown Squad 18.6%). User's
    note: *"We need to reduce the number of synergies and how they are triggered."*
-   Thresholds live in `frontend/src/lib/synergies.ts` (`SYNERGIES` array).
+   Thresholds live in `frontend/src/engine/synergies.ts` (`SYNERGIES` array).
 4. **Play-card activation is uneven.** High Pick & Roll fully activates 64.7% of the time;
    Horns and Four Out One In almost never fully activate (91.7% / 100% failure). Check
    `PLAY_EFFECTS` requirements in `synergies.ts` against how rosters actually distribute
@@ -138,12 +168,13 @@ lines are the user's own hypotheses, not verified conclusions.
 
 | Question | File |
 |---|---|
-| How is a player's OVR computed? | `frontend/src/lib/engine.ts` |
-| How does a possession resolve? | `frontend/src/lib/gameEngine.ts` (`resolvePossession`) |
-| What do synergies/plays do? | `frontend/src/lib/synergies.ts`, `docs/game_mechanics.md` |
-| How is the cube built / how do bots draft? | `frontend/src/lib/draftEngine.ts`, `frontend/src/hooks/useDraftEngine.ts` |
-| How do bots build a roster? | `frontend/src/lib/botDeckBuilder.ts` |
-| Season scheduling/standings | `frontend/src/lib/seasonEngine.ts` |
+| How is a player's OVR computed? | `frontend/src/engine/ratings.ts` (+ constants in `engine/balance.ts`) |
+| How does a possession resolve? | `frontend/src/engine/game.ts` (`resolvePossession`) |
+| What do synergies/plays do? | `frontend/src/engine/synergies.ts`, `docs/game_mechanics.md` |
+| How is the cube built / how do bots draft? | `frontend/src/engine/draft.ts`, `frontend/src/hooks/useDraftEngine.ts` |
+| How do bots build a roster? | `frontend/src/engine/deckbuilder.ts` |
+| Season scheduling/standings | `frontend/src/engine/season.ts` |
+| Where is user data stored? | `frontend/src/storage/` (GameStore, IndexedDB) |
 | Data pipeline (scrape -> game.db) | `data/README.md` |
 | Code review, bugs, and roadmap | `docs/ROADMAP.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
