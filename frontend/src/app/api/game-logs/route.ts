@@ -22,6 +22,10 @@ function ensureDir() {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
+  }
+
   try {
     ensureDir();
     const body = await req.json();
@@ -59,17 +63,22 @@ export async function POST(req: NextRequest) {
     fs.writeFileSync(combinedPath, JSON.stringify(body, null, 2), 'utf-8');
     written.push(combinedFilename);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       filesWritten: written,
-      directory: LOGS_DIR 
+      directory: LOGS_DIR
     });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
 export async function GET(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not available in production' }, { status: 404 });
+  }
+
   try {
     ensureDir();
     const fileParam = req.nextUrl.searchParams.get('file');
@@ -99,7 +108,8 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.modified.localeCompare(a.modified));
 
     return NextResponse.json({ directory: LOGS_DIR, files });
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

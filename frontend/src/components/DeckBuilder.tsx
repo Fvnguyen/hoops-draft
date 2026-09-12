@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react';
 import { DraftCard, PlayerCard, PlayCard, Play, PlayerCardData } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronUp, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { updateHumanRosterInSession } from '../lib/botDeckBuilder';
-import { calcRosterIdentity, calcRosterShotDiet, getBadgeTally } from '../lib/rosterStats';
+import { calcRosterIdentity, calcRosterShotDiet } from '../lib/rosterStats';
 import { calcTeamBonuses } from '../lib/synergies';
-import { Menu } from 'lucide-react';
 import { TopKPIBand } from './TopKPIBand';
+import { safeGetJSON, safeSetJSON, StorageQuotaError } from '../lib/storage';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -83,6 +83,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const [isPlayersOpen, setIsPlayersOpen] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     const initDepth: Record<string, PlayerCardData[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
@@ -144,12 +145,13 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     } else {
       initRPlays.slice(0, 3).forEach((p, i) => { newActivePlays[i] = p; });
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActivePlays(newActivePlays);
     initGPlayers.sort((a, b) => rarityValue[b.rarity] - rarityValue[a.rarity]);
     setDepthChart(initDepth);
     setGLeaguePlayers(initGPlayers);
     setGLeaguePlays(initGPlays);
-  }, [draftedCards, initialZones]);
+  }, [draftedCards, initialZones, initialDepthOrder, initialPlaysOrder]);
 
 
   const handleDragStart = (e: React.DragEvent, card: DraftCard, sourceZone: string, sourceIndex?: number) => {
@@ -337,57 +339,81 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   else if (activePlaysCount < 3) statusText = `Need ${3 - activePlaysCount} Play(s)`;
 
   const handleSaveRoster = () => {
-    const finalZones: Record<string, 'Roster'|'GLeague'> = {};
-    draftedCards.forEach(c => finalZones[c.id] = 'GLeague');
-    
-    activePlays.forEach(p => { if (p && finalZones[p.id]) finalZones[p.id] = 'Roster'; });
-    Object.values(depthChart).forEach(col => col.forEach(p => finalZones[p.id] = 'Roster'));
+    try {
+      setSaveError(null);
+      const finalZones: Record<string, 'Roster'|'GLeague'> = {};
+      draftedCards.forEach(c => finalZones[c.id] = 'GLeague');
 
-    const saveId = rosterId || `roster_${Date.now()}`;
-    const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
-    const activePlayIds = activePlays.map(p => p ? p.id : null).filter(id => id !== null);
+      activePlays.forEach(p => { if (p && finalZones[p.id]) finalZones[p.id] = 'Roster'; });
+      Object.values(depthChart).forEach(col => col.forEach(p => finalZones[p.id] = 'Roster'));
 
-    const newRosterData = {
-      id: saveId,
-      name: rosterName,
-      timestamp: new Date().toISOString(),
-      draftedCards,
-      zones: finalZones,
-      depthChartOrder,
-      activePlays: activePlayIds,
-      sessionId: sessionId ?? null,
-    };
+      const saveId = rosterId || `roster_${Date.now()}`;
+      const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
+      const activePlayIds = activePlays.map(p => p ? p.id : null).filter(id => id !== null);
 
-    const stored = JSON.parse(localStorage.getItem('myRosters') || '[]');
-    const existingIndex = stored.findIndex((r: any) => r.id === saveId);
-    if (existingIndex >= 0) stored[existingIndex] = newRosterData;
-    else stored.push(newRosterData);
+      const newRosterData = {
+        id: saveId,
+        name: rosterName,
+        timestamp: new Date().toISOString(),
+        draftedCards,
+        zones: finalZones,
+        depthChartOrder,
+        activePlays: activePlayIds,
+        sessionId: sessionId ?? null,
+      };
 
-    localStorage.setItem('myRosters', JSON.stringify(stored));
+      interface RosterData {
+        id: string;
+        name: string;
+        timestamp: string;
+        draftedCards: DraftCard[];
+        zones: Record<string, 'Roster' | 'GLeague'>;
+        depthChartOrder: Record<string, string[]>;
+        activePlays: string[];
+        sessionId: string | null;
+      }
+      const stored = safeGetJSON<RosterData[]>('myRosters', []);
+      const existingIndex = stored.findIndex((r: RosterData) => r.id === saveId);
+      if (existingIndex >= 0) stored[existingIndex] = newRosterData;
+      else stored.push(newRosterData);
 
-    // Update the human's built roster in the draft session so opponents can be retrieved
-    if (sessionId) {
-      const gLeaguePlayerIds = draftedCards
-        .filter(c => c.type === 'Player' && finalZones[c.id] === 'GLeague')
-        .map(c => c.id);
-      const gLeaguePlayIds = draftedCards
-        .filter(c => c.type === 'Play' && finalZones[c.id] === 'GLeague')
-        .map(c => c.id);
+      safeSetJSON('myRosters', stored);
 
-      updateHumanRosterInSession(sessionId, {
-        depthChart: depthChartOrder,
-        activePlays: activePlayIds as string[],
-        gLeaguePlayers: gLeaguePlayerIds,
-        gLeaguePlays: gLeaguePlayIds,
-      });
+      // Update the human's built roster in the draft session so opponents can be retrieved
+      if (sessionId) {
+        const gLeaguePlayerIds = draftedCards
+          .filter(c => c.type === 'Player' && finalZones[c.id] === 'GLeague')
+          .map(c => c.id);
+        const gLeaguePlayIds = draftedCards
+          .filter(c => c.type === 'Play' && finalZones[c.id] === 'GLeague')
+          .map(c => c.id);
+
+        updateHumanRosterInSession(sessionId, {
+          depthChart: depthChartOrder,
+          activePlays: activePlayIds as string[],
+          gLeaguePlayers: gLeaguePlayerIds,
+          gLeaguePlays: gLeaguePlayIds,
+        });
+      }
+
+      router.push('/rosters');
+    } catch (error) {
+      if (error instanceof StorageQuotaError) {
+        setSaveError(error.message);
+      } else {
+        setSaveError('Failed to save roster. Please try again.');
+      }
     }
-
-    router.push('/rosters');
   };
 
   return (
     <div className="h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50">
       <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} />
+      {saveError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3">
+          <p className="text-sm text-red-700 font-semibold">{saveError}</p>
+        </div>
+      )}
       <div className="flex-1 p-4 flex flex-col lg:flex-row gap-4 overflow-hidden relative">
         {/* ACTIVE ROSTER */}
         <div className="flex-1 flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0">
@@ -442,6 +468,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                             initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} 
                             className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
                             draggable
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
                           >
                              <PlayCard play={play} compact popupDirection="right" onClick={() => handleCardClick(play, zoneId)} />
@@ -487,8 +514,10 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                               key={p.id} layout initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} 
                               className="relative shrink-0 w-full flex justify-center group/card cursor-grab active:cursor-grabbing"
                               draggable
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               onDragStart={(e: any) => handleDragStart(e, p, pos, idx)}
                               onDragOver={handleDragOver}
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               onDrop={(e: any) => {
                                 e.stopPropagation();
                                 handleDropOnZone(e, pos, idx);

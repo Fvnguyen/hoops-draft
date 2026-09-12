@@ -35,12 +35,48 @@ visual tests exist for the new components with win32 snapshots.
 - Documentation added/rewritten: this file, `docs/ARCHITECTURE.md`, root `AGENTS.md`,
   root `CLAUDE.md`, root `README.md`, `frontend/README.md`, `data/README.md`.
 
+## Phase 0 (correctness) — done 2026-09-12
+
+Fixed, with tests that import the real engine (`frontend/tests/unit/`):
+- P0-1 defensive modifiers inverted → `defenseMods` are now deltas added to the opponent's
+  offense (negative = hurts them); documented on the types in `synergies.ts`.
+- P0-2 play cards never activated (id suffix) → `Play.playId` carries the effect id.
+- P0-3 possession swings dropped/double-counted → single accumulator.
+- P1-1 structural offense>defense edge → edges centred on `LEAGUE_AVG` in `gameEngine.ts`.
+- P1-2 silent localStorage quota failures → `src/lib/storage.ts` helpers; DeckBuilder and
+  SeasonView show an inline error on quota.
+- P2-1 `/api/cards` ~900 queries → 3 queries + module-level memo (`clearCardCache()`).
+- P2-2 minutes now scale to game length (48 min regulation + 5 per OT); turnovers are a
+  real 15% share of misses and appear in the box score.
+- P2-3 Fisher-Yates shuffle; possessions clamped to [85, 115] per team.
+- Dead code removed; lint clean in `src/lib` and `src/hooks`; `/api/game-logs` returns 404 in production;
+  `outputFileTracingRoot` set; old inline-mirror node tests deleted.
+
+Measured with `npm run balance -- 1000` after the fixes: PPP ≈ 1.08 (was 1.29), team
+score mean ≈ 114 with sd ≈ 16, ≈ 80% of scores in [90, 130], home win ≈ 50%.
+
+Still open for Phase 2 (game improvements):
+- Margins are wide (mean ≈ 18, NBA ≈ 12) and score sd ≈ 16 (NBA ≈ 12): candidates are
+  `EFFICIENCY_SCALE`, the ±0.25 edge clamp, and rotation swings.
+- Play card NAMES in `DraftRoom.tsx` `playsDB` don't match their EFFECTS in
+  `synergies.ts` `PLAY_EFFECTS` for play-std-2 (card "Box-and-One" → effect "Iso Ball"),
+  play-std-3 ("Horns" → "Zone Defense"), play-std-4 ("Full Court Press" → "Fast Break"),
+  play-std-5 ("Four Out One In" → "3-Point Barrage"). The card text describes something
+  other than what the play does; decide which side is right and align both.
+- Synergy activation is very uneven (Young Guns ≈ 85%, Brotherhood ≈ 14%).
+- Bots still value players by PER only.
+- Lint: 84 errors remain in UI files (`npm run lint` in `frontend/`): 63 `no-explicit-any`
+  (35 in the dev-only `app/debug/page.tsx`, the rest in TopKPIBand, GameView,
+  FranchiseDashboard, test-ui) and 15 `react-hooks/static-components` (components defined
+  inside render). Mechanical; do before adding CI.
+
 ## How to run everything
 
 ```bash
 npm install && npm --prefix frontend install
 npm run dev            # app at http://localhost:3000
-npm test               # tests/test_bot_deckbuilder.js + tests/test_game_engine.js
+npm test               # Vitest unit tests (frontend/tests/unit) against the real engine
+npm run balance -- 500 # headless balance report (PPP, scores, synergy/play activation)
 npm run test:e2e       # Playwright specs, needs `npm run dev` running separately
 npm run analyze        # balance report from the latest data/game_logs/full_dump_*.json
 npm run screenshot -- /draft draft.png --full
@@ -111,5 +147,5 @@ lines are the user's own hypotheses, not verified conclusions.
 | Data pipeline (scrape -> game.db) | `data/README.md` |
 | Code review, bugs, and roadmap | `docs/ROADMAP.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
-| How to regenerate a balance report | `scripts/analyze_game_data.js` (`npm run analyze`) |
+| How to regenerate a balance report | `npm run balance` (headless) or `scripts/analyze_game_data.js` (`npm run analyze`, from app exports) |
 | Screenshotting a route | `scripts/screenshot.js` (`npm run screenshot`) |

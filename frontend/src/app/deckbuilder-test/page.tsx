@@ -1,8 +1,20 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
-import { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
+import { DraftCard } from '@/components/PlayerCard';
 import { DeckBuilder } from '@/components/DeckBuilder';
 import { useSearchParams } from 'next/navigation';
+import { safeGetJSON } from '@/lib/storage';
+
+interface RosterData {
+  id: string;
+  name: string;
+  timestamp: string;
+  draftedCards: DraftCard[];
+  zones: Record<string, 'Roster' | 'GLeague'>;
+  depthChartOrder: Record<string, string[]>;
+  activePlays: string[];
+  sessionId: string | null;
+}
 
 function DeckbuilderTestInner() {
   const searchParams = useSearchParams();
@@ -13,14 +25,15 @@ function DeckbuilderTestInner() {
   const [rosterName, setRosterName] = useState<string>('');
   const [initialDepthOrder, setInitialDepthOrder] = useState<Record<string, string[]> | undefined>();
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
-  
+
   useEffect(() => {
     if (rosterId) {
       // Load from localStorage
-      const stored = JSON.parse(localStorage.getItem('myRosters') || '[]');
-      const savedRoster = stored.find((r: any) => r.id === rosterId);
-      
+      const stored = safeGetJSON<RosterData[]>('myRosters', []);
+      const savedRoster = stored.find((r: RosterData) => r.id === rosterId);
+
       if (savedRoster) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCards(savedRoster.draftedCards);
         setInitialZones(savedRoster.zones);
         setRosterName(savedRoster.name);
@@ -33,7 +46,7 @@ function DeckbuilderTestInner() {
     // Default Random Load if no rosterId or not found
     fetch('/api/cards')
       .then(r => r.json())
-      .then((data: any[]) => {
+      .then((data: DraftCard[]) => {
         const randomPlayers = [...data].sort(() => Math.random() - 0.5).slice(0, 30);
         const draftCards = randomPlayers.map(p => ({ ...p, type: 'Player' } as DraftCard));
         

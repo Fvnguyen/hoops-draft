@@ -6,9 +6,9 @@ Read `AGENTS.md` first, then `docs/HANDOVER.md` (current state, open issues) and
 `docs/ARCHITECTURE.md` (how the pieces connect) before making non-trivial changes.
 
 **Verification expectations:**
-- Run `npm test` (root) after touching anything in `frontend/src/lib/` — the tests in
-  `tests/` mirror the engine/deckbuilder logic inline in plain Node, so update both sides
-  together.
+- Run `npm test` (root) after touching anything in `frontend/src/lib/` — Vitest tests in
+  `frontend/tests/unit/` import the real engine. For balance-relevant changes also run
+  `npm run balance` and quote before/after PPP and score distribution.
 - For any UI-visible change, capture a screenshot with `node scripts/screenshot.js
   [route] [outfile] [--full]` (requires `npm run dev` running) rather than describing the
   change from code alone.

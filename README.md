@@ -38,8 +38,7 @@ dependencies.
 data/        Scraper + stats pipeline (Python + Node/Playwright) — see data/README.md
 docs/        Game mechanics, card schema, architecture, handover notes, analytics reports
 scripts/     npm run analyze / npm run screenshot
-tests/       npm test (plain Node, no framework)
-frontend/    The Next.js app — see frontend/README.md
+frontend/    The Next.js app — see frontend/README.md (npm test, npm run balance live here)
 ```
 
 ## Learn more

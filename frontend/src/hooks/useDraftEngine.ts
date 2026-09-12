@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
-import { DraftSeat, generateCubePool, getBotPick, BotProfile } from '../lib/draftEngine';
+import { DraftSeat, generateCubePool, getBotPick } from '../lib/draftEngine';
 import { DraftPickRecord } from '../lib/botDeckBuilder';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
@@ -16,21 +16,15 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   
   // Store pre-generated cube packs: 24 packs (8 seats × 3 rounds)
   const cubePacksRef = useRef<DraftCard[][]>([]);
-
-  // Initialize Draft Pod
-  useEffect(() => {
-    if (allPlayers.length > 0 && seats.length === 0) {
-      startNewDraft();
-    }
-  }, [allPlayers]);
+  const startedRef = useRef(false);
 
   const startNewDraft = useCallback(() => {
     // Generate ALL 24 packs upfront (cube-style: each player at most once)
     const allPacks = generateCubePool(allPlayers, playsDB);
     cubePacksRef.current = allPacks;
-    
+
     const initialSeats: DraftSeat[] = [];
-    
+
     // Round 1: packs 0-7
     // Seat 0: Human
     initialSeats.push({
@@ -62,6 +56,16 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     setOverallPick(1);
     setDraftState('drafting');
   }, [allPlayers, playsDB]);
+
+  // Initialize Draft Pod — start exactly once, when allPlayers first becomes non-empty.
+  // startNewDraft is recreated when allPlayers changes, so this effect re-runs then;
+  // the ref guards against StrictMode double-invocation and later prop churn.
+  useEffect(() => {
+    if (allPlayers.length > 0 && !startedRef.current) {
+      startedRef.current = true;
+      startNewDraft();
+    }
+  }, [allPlayers, startNewDraft]);
 
   const processPickAndPass = useCallback((humanPickId: string, zone: 'Roster' | 'GLeague') => {
     if (draftState !== 'drafting') return;
@@ -130,7 +134,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     // 4. Update State
     let nextPickNum = currentPickNumber + 1;
     let nextPackNum = currentPackNumber;
-    let nextOverall = overallPick + 1;
+    const nextOverall = overallPick + 1;
 
     if (nextPickNum > 12) {
       nextPickNum = 1;
@@ -156,7 +160,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     setCurrentPackNumber(nextPackNum);
     setOverallPick(nextOverall);
     
-  }, [draftState, seats, currentPackNumber, currentPickNumber, overallPick, allPlayers, playsDB]);
+  }, [draftState, seats, currentPackNumber, currentPickNumber, overallPick]);
 
   const packDirection = currentPackNumber === 2 ? 1 : -1;
   const passingToSeat = seats.length > 0 ? seats[packDirection === 1 ? 1 : 7] : undefined;

@@ -61,6 +61,13 @@ export interface Trait {
   level: number;
 }
 
+export type Rarity = 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
+
+export interface AwardRow {
+  name: string;
+  level: number | null;
+}
+
 export interface PlayerCard {
   id: string;
   player: PlayerBio;
@@ -68,11 +75,35 @@ export interface PlayerCard {
   awards: string[];
   ratings: ComputedRatings;
   traits: Trait[];
-  rarity: 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
-  _debug?: any;
+  rarity: Rarity;
 }
 
-const db = new Database(path.join(process.cwd(), 'game.db'), { readonly: true });
+let db: Database.Database | null = null;
+
+function openDatabase(): Database.Database {
+  const dbPath = path.join(process.cwd(), 'game.db');
+  try {
+    return new Database(dbPath, { readonly: true, fileMustExist: true });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to open game database at expected path "${dbPath}". ` +
+      `Make sure game.db exists (run from the frontend/ directory, or check process.cwd()). ` +
+      `Original error: ${reason}`
+    );
+  }
+}
+
+function getDb(): Database.Database {
+  if (!db) db = openDatabase();
+  return db;
+}
+
+let cache: PlayerCard[] | null = null;
+
+export function clearCardCache(): void {
+  cache = null;
+}
 
 function getBadge(val: number, name: string): Trait | null {
   if (val >= 96) return { name, level: 3 };
@@ -90,6 +121,8 @@ const LEGENDARY_PLAYERS = new Set([
 ]);
 
 export function getAllCards(): PlayerCard[] {
+    if (cache) return cache;
+    const db = getDb();
     const RATING_CONFIG = {
         benchmarkCutoff: 0.075,
         offense: {
@@ -125,11 +158,33 @@ export function getAllCards(): PlayerCard[] {
     };
     
     const players = db.prepare('SELECT * FROM Player').all() as PlayerBio[];
-    
-    const allStats = db.prepare('SELECT * FROM SeasonStat').all() as SeasonStat[];
+
+    const allStats = db.prepare('SELECT * FROM SeasonStat').all() as (SeasonStat & { playerId: string; season: string })[];
     const minDbpm = Math.min(...allStats.map(s => s.dbpm || 0));
     const minVorp = Math.min(...allStats.map(s => s.vorp || 0));
-    
+
+    // Latest season per player: mirrors `ORDER BY season DESC LIMIT 1`, i.e. keep the
+    // max `season` string per playerId, preferring the first-encountered row on ties
+    // (matches SQLite's stable sort over the original table-scan order).
+    const latestStatByPlayer = new Map<string, SeasonStat & { playerId: string; season: string }>();
+    for (const s of allStats) {
+        const existing = latestStatByPlayer.get(s.playerId);
+        if (!existing || s.season > existing.season) {
+            latestStatByPlayer.set(s.playerId, s);
+        }
+    }
+
+    const allAwards = db.prepare('SELECT * FROM Award').all() as (AwardRow & { playerId: string })[];
+    const awardsByPlayer = new Map<string, AwardRow[]>();
+    for (const a of allAwards) {
+        let list = awardsByPlayer.get(a.playerId);
+        if (!list) {
+            list = [];
+            awardsByPlayer.set(a.playerId, list);
+        }
+        list.push(a);
+    }
+
     const cards: PlayerCard[] = [];
     
     const getPool = (pos: string) => {
@@ -148,8 +203,8 @@ export function getAllCards(): PlayerCard[] {
     let maxPts = 0, maxAst = 0, maxTrb = 0, maxStl = 0, maxBlk = 0, max3pm = 0;
 
     const rawScores = players.map(p => {
-        const stat = db.prepare('SELECT * FROM SeasonStat WHERE playerId = ? ORDER BY season DESC LIMIT 1').get(p.id) as SeasonStat;
-        const awardsRows = db.prepare('SELECT * FROM Award WHERE playerId = ?').all(p.id) as {name: string, level: number}[];
+        const stat = latestStatByPlayer.get(p.id) as SeasonStat | undefined;
+        const awardsRows = awardsByPlayer.get(p.id) || [];
         if (!stat) return null;
         
         // Track max stats for League Leader trait
@@ -279,9 +334,9 @@ export function getAllCards(): PlayerCard[] {
       let perimeterDefense = scaleRaw((perimVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill));
       let postDefense = scaleRaw((postVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill));
     
-      const isAllDef = r.awards.some((a: any) => a.name === "All-Defensive");
+      const isAllDef = r.awards.some((a: AwardRow) => a.name === "All-Defensive");
       if (isAllDef) {
-          const defTeam = r.awards.find((a: any) => a.name === "All-Defensive")?.level || 2;
+          const defTeam = r.awards.find((a: AwardRow) => a.name === "All-Defensive")?.level || 2;
           const floor = defTeam === 1 ? 96 : 90;
           if (perimeterDefense >= postDefense) perimeterDefense = Math.max(perimeterDefense, floor);
           else postDefense = Math.max(postDefense, floor);
@@ -337,16 +392,16 @@ export function getAllCards(): PlayerCard[] {
       let overall = Math.round(raw * multiplier);
       overall = Math.max(40, Math.min(99, overall));
       
-      let rarity: "Common" | "Uncommon" | "Rare" | "Mythic" = "Common";
+      let rarity: Rarity = "Common";
       if (overall >= 90) rarity = "Mythic";
       else if (overall >= 80) rarity = "Rare";
       else if (overall >= 65) rarity = "Uncommon";
-      
-      const hasMvp = r.awards.some((a: any) => a.name === "MVP");
-      const hasAllNba1 = r.awards.some((a: any) => a.name === "All-NBA" && a.level === 1);
-      const hasAllNba = r.awards.some((a: any) => a.name === "All-NBA");
-      const hasDpoy = r.awards.some((a: any) => a.name === "DPOY");
-      const hasAllDef = r.awards.some((a: any) => a.name === "All-Defensive");
+
+      const hasMvp = r.awards.some((a: AwardRow) => a.name === "MVP");
+      const hasAllNba1 = r.awards.some((a: AwardRow) => a.name === "All-NBA" && a.level === 1);
+      const hasAllNba = r.awards.some((a: AwardRow) => a.name === "All-NBA");
+      const hasDpoy = r.awards.some((a: AwardRow) => a.name === "DPOY");
+      const hasAllDef = r.awards.some((a: AwardRow) => a.name === "All-Defensive");
       const isLegendary = LEGENDARY_PLAYERS.has(p.name);
       
       const fg3m = stat.fg3a * stat.fg3_pct;
@@ -359,7 +414,7 @@ export function getAllCards(): PlayerCard[] {
           fg3m >= max3pm
       );
       
-      const bumpRarity = (current: string) => {
+      const bumpRarity = (current: Rarity): Rarity => {
           if (current === "Common") return "Uncommon";
           if (current === "Uncommon") return "Rare";
           return "Mythic";
@@ -369,18 +424,18 @@ export function getAllCards(): PlayerCard[] {
       if ((hasMvp || hasAllNba1) && rarity !== "Mythic") rarity = "Mythic";
       else if ((hasAllNba || hasDpoy) && rarity !== "Mythic" && rarity !== "Rare") rarity = "Rare";
       else if (hasAllDef && rarity === "Common") rarity = "Uncommon";
-      
+
       // 2. LEGENDARY BUMP (Adds 1 tier, making drafting harder)
       if (isLegendary) {
-          rarity = bumpRarity(rarity) as any;
+          rarity = bumpRarity(rarity);
       }
-      
+
       // 3. LEAGUE LEADER BUMP
       if (isLeagueLeader) {
-          rarity = bumpRarity(rarity) as any;
+          rarity = bumpRarity(rarity);
       }
-      
-      let traits: Trait[] = [];
+
+      const traits: Trait[] = [];
       let b;
       b = getBadge(finishing, "Finisher"); if (b) traits.push(b);
       b = getBadge(midRange, "Mid-Range Maestro"); if (b) traits.push(b);
@@ -419,11 +474,12 @@ export function getAllCards(): PlayerCard[] {
         player: p,
         stats: stat,
         awards: formattedAwards,
-        ratings: { overall, finishing, midRange, perimeter, playmaking, rebounding, perimeterDefense, postDefense, _baseOvr: raw, _multiplier: multiplier } as any,
+        ratings: { overall, finishing, midRange, perimeter, playmaking, rebounding, perimeterDefense, postDefense, _baseOvr: raw, _multiplier: multiplier },
         traits,
         rarity
       });
     }
-    
+
+    cache = cards;
     return cards;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { safeGetJSON } from '@/lib/storage';
 
 function mean(arr: number[]) { return arr.length ? arr.reduce((a,b) => a+b, 0) / arr.length : 0; }
 function med(arr: number[]) { if (!arr.length) return 0; const s = [...arr].sort((a,b)=>a-b); const m = Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; }
@@ -15,9 +16,9 @@ function corr(x: number[], y: number[]) {
 
 function loadData() {
   return {
-    sessions: JSON.parse(localStorage.getItem('hoops-draft-sessions') || '[]'),
-    seasons: JSON.parse(localStorage.getItem('hoops-draft-seasons') || '[]'),
-    rosters: JSON.parse(localStorage.getItem('myRosters') || '[]'),
+    sessions: safeGetJSON<any[]>('hoops-draft-sessions', []),
+    seasons: safeGetJSON<any[]>('hoops-draft-seasons', []),
+    rosters: safeGetJSON<any[]>('myRosters', []),
   };
 }
 

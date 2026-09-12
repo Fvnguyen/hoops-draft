@@ -14,7 +14,6 @@ better-sqlite3.
 data/            Scraper + stats pipeline (Python + Playwright). See data/README.md.
 docs/            Design docs: game_mechanics.md, card_schema.md, analytics/, ARCHITECTURE.md, HANDOVER.md
 scripts/         Node dev scripts: analyze_game_data.js, check_card_counts.js, screenshot.js
-tests/           Plain-node unit tests: test_bot_deckbuilder.js, test_game_engine.js
 frontend/        The Next.js app (see frontend/README.md)
   src/lib/       engine.ts, gameEngine.ts, seasonEngine.ts, draftEngine.ts,
                  botDeckBuilder.ts, synergies.ts, rosterStats.ts
@@ -24,7 +23,9 @@ frontend/        The Next.js app (see frontend/README.md)
   src/app/       App Router pages + API routes (see below)
   game.db        SQLite player database (read-only at runtime)
   public/        headshots/, logos/, players.json, arena_*.jpg
-  tests/         Playwright specs (visual.spec.ts, home.spec.ts) + win32 snapshots
+  tests/         Playwright specs (visual.spec.ts, home.spec.ts) + win32 snapshots;
+                 tests/unit/ = Vitest unit tests importing the real engine
+  scripts/       balance.ts (headless balance simulator, `npm run balance`)
 ```
 
 ## Commands
@@ -32,9 +33,12 @@ frontend/        The Next.js app (see frontend/README.md)
 Root (from repo root):
 - `npm run dev` — starts the frontend dev server (`npm --prefix frontend run dev`)
 - `npm run build` — production build
-- `npm test` — runs `tests/test_bot_deckbuilder.js` and `tests/test_game_engine.js`. Plain
-  Node scripts (no test framework, no TS import) — they mirror the engine logic inline, so
-  a change to `lib/*.ts` semantics should be reflected in these test files too.
+- `npm test` — Vitest unit tests in `frontend/tests/unit/` that import the REAL engine
+  modules (ratings, draft, synergies/plays, game sim, season). Run from the repo root or
+  `frontend/`. `npm run test:watch` inside `frontend/` for watch mode.
+- `npm run balance [-- 1000]` — `frontend/scripts/balance.ts`: simulates N headless games
+  (draft → bot rosters → sim) and prints PPP, score distribution, synergy and play
+  activation rates. Use it after ANY engine or balance-constant change.
 - `npm run test:e2e` — Playwright specs in `frontend/tests/` (needs `npm run dev` running
   in another terminal first — baseURL is `http://localhost:3000`)
 - `npm run analyze` — runs `scripts/analyze_game_data.js` against the latest
@@ -91,6 +95,11 @@ since it writes to `../data/computed_cards.json`).
 
 ## Verifying game balance
 
+- Fastest loop: `npm run balance` (headless, seconds, no browser). Convention to know:
+  `TeamBonuses.defenseMods` are deltas ADDED to the opponent's offense, so a defensive
+  effect is stored as a negative number; per-channel edges are centred on the league
+  means in `LEAGUE_AVG` (gameEngine.ts) — regenerate those from the balance script's
+  header if the card pool or rating formulas change.
 - `scripts/analyze_game_data.js` (`npm run analyze`) reads the newest
   `data/game_logs/full_dump_*.json` and reports draft cube integrity, rarity distribution,
   OVR-vs-win-rate correlation, synergy/play activation rates, and score-range sanity.

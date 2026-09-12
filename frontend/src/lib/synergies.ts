@@ -16,11 +16,22 @@
  */
 
 import { PlayerCardData, Play } from '../components/PlayerCard';
-import { BuiltRoster } from './botDeckBuilder';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-/** Channel-based modifiers applied to game scoring */
+/**
+ * Channel-based modifiers applied to game scoring.
+ *
+ * SIGN CONVENTION (P0-1): a `GameModifiers` value is always added directly to the
+ * offense it targets — never subtracted. `TeamBonuses.offenseMods` is added to THIS
+ * team's own offense; `TeamBonuses.defenseMods` is added to the OPPONENT's offense.
+ * So a defensive bonus that should hurt the opponent (e.g. Lockdown Defender reducing
+ * opponent rim efficiency) must be stored as a NEGATIVE share/efficiency delta —
+ * gameEngine.ts's calcTeamShotProfile and resolvePossession both do
+ * `offenseMods.xBonus + defenseFromOpponent.xBonus`, never a subtraction. Getting the
+ * sign backwards here (positive instead of negative) turns "reduce opponent" into
+ * "buff opponent", which was the P0-1 bug.
+ */
 export interface GameModifiers {
   // Shot distribution shifts (additive to team shot profile)
   rimShareBonus: number;    // Shift rim attempt share (e.g., +0.03 = +3%)
@@ -31,7 +42,11 @@ export interface GameModifiers {
   midEffBonus: number;      // e.g., +0.02 = +2% mid FG
   perEffBonus: number;      // e.g., +0.02 = +2% 3pt FG
   // Other
-  possessionSwing: number;  // Extra possessions won/lost
+  possessionSwing: number;  // Extra possessions won/lost. Only ever read from the
+                             // top-level TeamBonuses.possessionSwing (own team's gain,
+                             // see P0-3 comment on calcTeamBonuses below) — the
+                             // possessionSwing field on offenseMods/defenseMods
+                             // themselves is not read by calcPossessionSplit.
   and1Bonus: number;        // Additive and-1 chance (all channels)
   description: string[];    // Narrative descriptions of active bonuses
 }
@@ -72,17 +87,6 @@ export function countBadges(players: PlayerCardData[]): BadgeTotals {
     }
   }
   return totals;
-}
-
-// ── Team Playstyle Base Rate Shifts ────────────────────────────────────────
-
-/**
- * (DEPRECATED — shot profile is now computed in gameEngine.ts via calcTeamShotProfile)
- * Playstyle shift has been absorbed into the pre-game shot distribution calculation.
- * This function is kept for backward compatibility but returns empty modifiers.
- */
-export function calcPlaystyleShift(players: PlayerCardData[], possShares: Map<string, number>): GameModifiers {
-  return emptyModifiers();
 }
 
 // ── Synergy Definitions ────────────────────────────────────────────────────
@@ -341,7 +345,11 @@ const PLAY_EFFECTS: Record<string, PlayEffect> = {
 
 /** Check a single play's activation against the team's badge totals */
 function checkPlayActivation(play: Play, badges: BadgeTotals): GameModifiers | null {
-  const effect = PLAY_EFFECTS[play.id];
+  // draftEngine.generateCubePool rewrites `id` to `${id}_pack${p}` for React keys, so
+  // PLAY_EFFECTS must be looked up by the stable `playId` (P0-2 fix). Fall back to
+  // stripping the suffix off `id` for older saved sessions that predate `playId`.
+  const effectId = play.playId ?? play.id.replace(/_pack\d+$/, '');
+  const effect = PLAY_EFFECTS[effectId];
   if (!effect) return null;
   
   let metCount = 0;
@@ -359,11 +367,20 @@ function checkPlayActivation(play: Play, badges: BadgeTotals): GameModifiers | n
 // ── Main: Compute All Bonuses ──────────────────────────────────────────────
 
 export interface TeamBonuses {
-  /** Modifiers for THIS team's offense */
+  /** Modifiers ADDED to THIS team's own offense (calcTeamShotProfile/resolvePossession). */
   offenseMods: GameModifiers;
-  /** Modifiers applied to OPPONENT's offense (defensive bonuses) */
+  /**
+   * Modifiers ADDED to the OPPONENT's offense (defensive bonuses) — never subtracted.
+   * A defensive effect that should hurt the opponent must be stored as a negative
+   * share/efficiency delta here (see the GameModifiers sign-convention comment above).
+   * `defenseMods.possessionSwing` is not read anywhere and is always reset to 0 by
+   * calcTeamBonuses (P0-3) — possession gains always flow through the top-level
+   * `possessionSwing` field below instead, applied exactly once as the owning team's
+   * own gain.
+   */
   defenseMods: GameModifiers;
-  /** Extra possessions won from synergies/plays */
+  /** Extra possessions this team gains from its own synergies/plays (P0-3: the single
+   *  place possession swings are counted — see calcTeamBonuses and calcPossessionSplit). */
   possessionSwing: number;
   /** All active synergies and plays for display */
   activeSynergies: { name: string; description: string }[];
@@ -393,13 +410,23 @@ export function calcTeamBonuses(
   const activePlayResults: { name: string; description: string; activated: 'full' | 'partial' | 'none' }[] = [];
   
   // 1. Synergies
+  //
+  // P0-3: every source's possessionSwing is accumulated exactly once, into this
+  // function's single top-level `possessionSwing` (always read as the OWNING team's
+  // own possession gain — see calcPossessionSplit in gameEngine.ts). It must NOT also
+  // be written into offenseMods.possessionSwing/defenseMods.possessionSwing as a
+  // separate, additionally-applied effect — that was the double-count bug (a
+  // defensive synergy's +N poss counted once for the owning team via this
+  // accumulator, and again via defenseMods being subtracted from the opponent).
   for (const syn of SYNERGIES) {
     const result = syn.check(badges, rosterPlayers);
     if (result) {
-      // Defensive synergies apply to opponent
+      // Defensive synergies apply their eff/share deltas to the opponent's offense
+      // (defenseMods); the possessionSwing they grant is still the owning team's own
+      // gain, accounted for once below via the shared `possessionSwing` accumulator.
       if (syn.id === 'lockdown-squad' || syn.id === 'rim-protection') {
         mergeModifiers(defenseMods, result);
-        defenseMods.possessionSwing -= result.possessionSwing; // Opponent loses possessions
+        defenseMods.possessionSwing = 0; // not a defensive effect — see comment above
       } else if (syn.id === 'two-way-terror') {
         // +1% all eff (self), -1% opp all eff
         mergeModifiers(offenseMods, result);
@@ -417,19 +444,25 @@ export function calcTeamBonuses(
       activeSynergies.push({ name: syn.name, description: syn.description });
     }
   }
-  
+
   // 2. Plays
   for (const play of activePlays) {
     const result = checkPlayActivation(play, badges);
+    // Resolve the same stable effect id used inside checkPlayActivation (draftEngine
+    // suffixes `id` with `_pack{N}` for React keys — see P0-2 comment above).
+    const effectId = play.playId ?? play.id.replace(/_pack\d+$/, '');
     if (result) {
-      // Defensive plays (Grit and Grind, Zone Defense) apply to opponent
-      if (play.id === 'play-sys-3' || play.id === 'play-std-3') {
+      // Defensive plays (Grit and Grind, Zone Defense) apply their eff deltas to the
+      // opponent's offense (defenseMods); possessionSwing is still the owning team's
+      // own gain and is added to the shared accumulator below exactly once (P0-3).
+      if (effectId === 'play-sys-3' || effectId === 'play-std-3') {
         mergeModifiers(defenseMods, result);
-        possessionSwing += result.possessionSwing;
+        defenseMods.possessionSwing = 0; // not a defensive effect — see comment above
       } else {
         mergeModifiers(offenseMods, result);
       }
-      const effect = PLAY_EFFECTS[play.id];
+      possessionSwing += result.possessionSwing;
+      const effect = PLAY_EFFECTS[effectId];
       const activation = result === effect?.fullBonus ? 'full' : 'partial';
       activePlayResults.push({ name: play.name, description: result.description.join(', '), activated: activation });
     } else {

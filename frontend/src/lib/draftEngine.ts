@@ -24,6 +24,21 @@ function pseudoRandom(seed: number, stringSeed: string) {
   return ((h ^ h >>> 16) >>> 0) / 4294967296;
 }
 
+/**
+ * Fisher-Yates shuffle — returns a new shuffled copy, uniformly at random.
+ * `arr.sort(() => Math.random() - 0.5)` (the old approach here and in seasonEngine.ts)
+ * is NOT a uniform shuffle: comparator-based sorts make biased, engine-dependent
+ * numbers of comparisons per element, so some permutations are far likelier than others.
+ */
+export function shuffle<T>(arr: T[]): T[] {
+  const result = [...arr];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
 // ── Cube-Style Draft Pool ──────────────────────────────────────────────────
 
 /**
@@ -39,13 +54,12 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[]): DraftCa
   
   const SEATS = 8;
   const PACKS = 3;
-  const PACK_SIZE = 12;
   const TOTAL_PACKS = SEATS * PACKS;
   const PLAYER_CARDS_PER_PACK = 11;  // 11 players + 1 play per pack
   const TOTAL_PLAYERS_NEEDED = TOTAL_PACKS * PLAYER_CARDS_PER_PACK; // 264
-  
+
   // Shuffle the entire player pool
-  const shuffledPlayers = [...allPlayers].sort(() => Math.random() - 0.5);
+  const shuffledPlayers = shuffle(allPlayers);
   
   // If we don't have enough unique players, cycle through with unique IDs
   const playerPool: Player[] = [];
@@ -63,23 +77,25 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[]): DraftCa
   }
   
   // Re-shuffle the full pool
-  playerPool.sort(() => Math.random() - 0.5);
-  
+  const shuffledPool = shuffle(playerPool);
+
   // Build packs
   const packs: DraftCard[][] = [];
   let poolIdx = 0;
-  
+
   for (let p = 0; p < TOTAL_PACKS; p++) {
     const packCards: DraftCard[] = [];
-    
+
     // Take 11 players from the pool (guaranteed unique across all packs)
     for (let c = 0; c < PLAYER_CARDS_PER_PACK; c++) {
-      packCards.push(playerPool[poolIdx++]);
+      packCards.push(shuffledPool[poolIdx++]);
     }
-    
-    // Add 1 play card (plays can repeat — give each a unique ID for React keys)
+
+    // Add 1 play card (plays can repeat — give each a unique ID for React keys).
+    // `playId` keeps the base effect id so synergies.ts can look up PLAY_EFFECTS
+    // even though `id` carries the `_pack{N}` suffix (P0-2 fix).
     const randomPlay = playsDB[Math.floor(Math.random() * playsDB.length)];
-    packCards.push({ ...randomPlay, id: `${randomPlay.id}_pack${p}` });
+    packCards.push({ ...randomPlay, id: `${randomPlay.id}_pack${p}`, playId: randomPlay.id });
     
     // Sort: rare/mythic first, commons last, plays at the end
     const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
@@ -105,13 +121,6 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[]): DraftCa
   }
   
   return packs;
-}
-
-// ── Legacy generatePack (kept for compatibility) ───────────────────────────
-
-export function generatePack(allPlayers: Player[], playsDB: Play[]): DraftCard[] {
-  // This is now only used as a fallback — the cube pool is the primary method
-  return generateCubePool(allPlayers, playsDB)[0] || [];
 }
 
 // ── Bot Pick Logic ─────────────────────────────────────────────────────────

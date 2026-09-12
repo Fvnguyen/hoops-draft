@@ -4,8 +4,10 @@
   "scripts": {
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
-    "test": "node tests/test_bot_deckbuilder.js && node tests/test_game_engine.js",
+    "test": "npm --prefix frontend run test",
+    "test:unit": "npm --prefix frontend run test",
     "test:e2e": "npm --prefix frontend run test:e2e",
+    "balance": "npm --prefix frontend run balance",
     "analyze": "node scripts/analyze_game_data.js",
     "screenshot": "node scripts/screenshot.js"
   },

@@ -7,6 +7,11 @@
 
 import { DraftSession } from './botDeckBuilder';
 import { simulateGame, buildTeamInfo, GameTheater, TeamInfo } from './gameEngine';
+// Fisher-Yates shuffle lives in draftEngine.ts (not the other way around) to avoid a
+// lib→lib import cycle: draftEngine.ts has no dependency on seasonEngine.ts, while
+// seasonEngine.ts already depends on gameEngine.ts, so importing draftEngine.ts here
+// stays a one-directional edge (P2-3).
+import { shuffle } from './draftEngine';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,12 +51,8 @@ export function createSeason(
 ): Season {
   const humanTeam = buildTeamInfo(session.seats[0], true);
   
-  // Randomize opponent order
-  const opponentIndices = [1, 2, 3, 4, 5, 6, 7];
-  for (let i = opponentIndices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [opponentIndices[i], opponentIndices[j]] = [opponentIndices[j], opponentIndices[i]];
-  }
+  // Randomize opponent order (P2-3: shared Fisher-Yates helper from draftEngine.ts)
+  const opponentIndices = shuffle([1, 2, 3, 4, 5, 6, 7]);
   
   const schedule: SeasonScheduleEntry[] = opponentIndices.map((seatIdx, gameIdx) => ({
     gameIndex: gameIdx,

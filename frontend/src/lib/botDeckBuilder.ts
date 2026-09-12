@@ -8,6 +8,7 @@
 
 import { DraftCard, PlayerCardData, Play } from '../components/PlayerCard';
 import { BotProfile, DraftSeat } from './draftEngine';
+import { safeGetJSON, safeSetJSON } from './storage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ function getEligiblePositions(rawPos: string): string[] {
 
 // ── Bot Auto Deck Builder ──────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): BuiltRoster {
   const players = drafted.filter((c): c is PlayerCardData => c.type === 'Player');
   const plays = drafted.filter((c): c is Play => c.type === 'Play');
@@ -146,7 +148,7 @@ const SESSIONS_KEY = 'hoops-draft-sessions';
 export function saveDraftSession(seats: DraftSeat[], pickLog: DraftPickRecord[] = []): string {
   const sessionId = `session_${Date.now()}`;
 
-  const sessionSeats: DraftSessionSeat[] = seats.map((seat, idx) => ({
+  const sessionSeats: DraftSessionSeat[] = seats.map((seat) => ({
     id: seat.id,
     isBot: seat.isBot,
     botProfile: seat.botProfile,
@@ -166,17 +168,13 @@ export function saveDraftSession(seats: DraftSeat[], pickLog: DraftPickRecord[] 
 
   const sessions = getAllDraftSessions();
   sessions.push(session);
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  safeSetJSON(SESSIONS_KEY, sessions);
 
   return sessionId;
 }
 
 export function getAllDraftSessions(): DraftSession[] {
-  try {
-    return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  return safeGetJSON<DraftSession[]>(SESSIONS_KEY, []);
 }
 
 export function getDraftSession(sessionId: string): DraftSession | null {
@@ -189,6 +187,6 @@ export function updateHumanRosterInSession(sessionId: string, builtRoster: Built
   const session = sessions.find(s => s.id === sessionId);
   if (session && session.seats[0]) {
     session.seats[0].builtRoster = builtRoster;
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    safeSetJSON(SESSIONS_KEY, sessions);
   }
 }

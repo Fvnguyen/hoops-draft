@@ -64,6 +64,14 @@ export type Player = PlayerCardData;
 export interface Play {
   type: 'Play';
   id: string;
+  /**
+   * Base effect id (matches a key in synergies.ts PLAY_EFFECTS), independent of `id`.
+   * `id` gets a `_pack{N}` suffix in draftEngine.generateCubePool so React has a unique
+   * key per pack copy; `playId` is the stable id effect lookups should use. Optional so
+   * older saved sessions (localStorage) without this field still fall back to stripping
+   * the suffix off `id` — see checkPlayActivation in synergies.ts.
+   */
+  playId?: string;
   name: string;
   rarity: 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
   playCategory: 'system' | 'special' | 'basic';

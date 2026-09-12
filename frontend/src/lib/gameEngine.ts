@@ -10,8 +10,8 @@
  *   4. Synergy/Play bonuses applied as modifiers
  */
 
-import { PlayerCardData, Play, DraftCard } from '../components/PlayerCard';
-import { DraftSession, DraftSessionSeat, BuiltRoster } from './botDeckBuilder';
+import { PlayerCardData, Play } from '../components/PlayerCard';
+import { DraftSessionSeat } from './botDeckBuilder';
 import { calcTeamBonuses, TeamBonuses, GameModifiers } from './synergies';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -84,21 +84,13 @@ export interface TeamInfo {
 
 // ── Rotation Engine ────────────────────────────────────────────────────────
 
-interface RotationSlot {
-  playerId: string;
-  possStart: number; // Possession number this player enters
-  possEnd: number;   // Possession number this player exits
-  position: string;  // PG, SG, SF, PF, C
-}
-
 /**
  * Calculate possession shares for each player (0-1, how much of the game they play).
  * Used for team strength calculations and playstyle weighting.
  */
 export function calcPossessionShares(
   depthChart: Record<string, string[]>,
-  players: PlayerCardData[],
-  totalPossessions: number
+  players: PlayerCardData[]
 ): Map<string, number> {
   const shares = new Map<string, number>();
   const playerMap = new Map(players.map(p => [p.id, p]));
@@ -292,17 +284,22 @@ function calcPossessionSplit(
   homePoss += strengthDelta;
   awayPoss -= strengthDelta;
   
-  // Apply synergy/play possession swing (small fixed bonuses)
+  // Apply synergy/play possession swing (small fixed bonuses). P0-3: this is the ONLY
+  // place possession swings are applied — every synergy/play source (offensive or
+  // defensive) accumulates into TeamBonuses.possessionSwing exactly once (see
+  // calcTeamBonuses in synergies.ts). There is deliberately no second adjustment from
+  // defenseMods.possessionSwing here — that field is always 0 and reading it too used
+  // to double-count defensive plays/synergies (e.g. Grit and Grind's +1 poss counted
+  // for the owning team AND subtracted from the opponent).
   homePoss += homeBonuses.possessionSwing;
   awayPoss += awayBonuses.possessionSwing;
-  
-  // Apply defensive possession swing (opponent loses possessions)
-  homePoss -= awayBonuses.defenseMods.possessionSwing || 0;
-  awayPoss -= homeBonuses.defenseMods.possessionSwing || 0;
-  
-  // Round and ensure minimum at 85% of baseline
-  homePoss = Math.max(Math.round(BASE_PACE * 0.85), Math.round(homePoss));
-  awayPoss = Math.max(Math.round(BASE_PACE * 0.85), Math.round(awayPoss));
+
+  // Round and clamp to [85%, 115%] of baseline so noise + strength + synergies
+  // cannot push a team outside a realistic pace band.
+  const MIN_POSS = Math.round(BASE_PACE * 0.85);
+  const MAX_POSS = Math.round(BASE_PACE * 1.15);
+  homePoss = Math.min(MAX_POSS, Math.max(MIN_POSS, Math.round(homePoss)));
+  awayPoss = Math.min(MAX_POSS, Math.max(MIN_POSS, Math.round(awayPoss)));
   
   const totalPoss = homePoss + awayPoss;
   
@@ -336,6 +333,28 @@ const NBA_BASELINE = {
   three: { share: 0.40, efficiency: 0.36 },  // 36% FG from 3
 };
 
+/**
+ * League-average ratings per channel (P1-1), used to centre the offense/defense edge
+ * so an average lineup facing an average defense gets an edge of ~0, not a
+ * structural free bonus. Without this, the edge in resolvePossession was computed as
+ * `(offRating - defRating) / 100`, but offense and defense ratings are on different
+ * scales in the card pool (offense-side ratings run noticeably higher than
+ * defense-side ratings), so nearly every matchup produced a positive edge for the
+ * offense regardless of relative team quality.
+ *
+ * Derivation: mean rating over all 448 players in data/computed_cards.json (pulled
+ * 2026-09-12) — finishing 55.5, midRange 49.0, perimeter 57.5, perimeterDefense 53.5,
+ * postDefense 46.4. `mid.def` blends perimeterDefense/postDefense the same 0.4/0.6 way
+ * resolvePossession does for the mid-range defense rating: 0.4*53.5 + 0.6*46.4 = 49.2.
+ * Regenerate these by re-running the same means over an updated card pool (e.g. after
+ * a new season import) — this is a plain average, no other transform.
+ */
+const LEAGUE_AVG: Record<ShotChannel, { off: number; def: number }> = {
+  rim:   { off: 55.5, def: 46.4 },  // finishing vs postDefense
+  mid:   { off: 49.0, def: 49.2 },  // midRange vs 0.4*perimeterDefense + 0.6*postDefense
+  three: { off: 57.5, def: 53.5 },  // perimeter vs perimeterDefense
+};
+
 // And-1 probability per channel (descending by distance)
 const AND1_BASE: Record<ShotChannel, number> = {
   rim:   0.08,   // 8% of rim makes → and-1
@@ -350,6 +369,13 @@ const MAX_EFF_SHIFT = 0.10;  // ±10 percentage points max
 
 // Profile blending: 50% NBA baseline, 50% team tendency
 const PROFILE_WEIGHT = 0.50;
+
+// P2-2: fraction of missed possessions attributed to the shooter as a turnover rather
+// than a missed field goal, so PlayerBoxScore.turnovers is populated (previously
+// always 0). Rough placeholder in line with NBA team turnover rates (~13-14 per ~100
+// possessions); not derived from the card pool like LEAGUE_AVG, so it's fair game to
+// retune alongside EFFICIENCY_SCALE once real balance numbers are measured.
+const TURNOVER_RATE = 0.15;
 
 /**
  * Pre-game: Calculate team possession rating for the possession battle.
@@ -431,10 +457,13 @@ export function calcTeamShotProfile(
   let mid = (1 - PROFILE_WEIGHT) * NBA_BASELINE.mid.share + PROFILE_WEIGHT * midTendency;
   let per = (1 - PROFILE_WEIGHT) * NBA_BASELINE.three.share + PROFILE_WEIGHT * perTendency;
 
-  // Apply synergy/play shot distribution bonuses
-  rim += offenseMods.rimShareBonus - (defenseFromOpponent.rimShareBonus || 0);
-  mid += offenseMods.midShareBonus - (defenseFromOpponent.midShareBonus || 0);
-  per += offenseMods.perShareBonus - (defenseFromOpponent.perShareBonus || 0);
+  // Apply synergy/play shot distribution bonuses. P0-1: defenseFromOpponent deltas are
+  // ADDED, matching the sign convention documented on GameModifiers/TeamBonuses in
+  // synergies.ts — defensive share bonuses are stored negative so adding them here
+  // actually shrinks the offense's share of that channel.
+  rim += offenseMods.rimShareBonus + (defenseFromOpponent.rimShareBonus || 0);
+  mid += offenseMods.midShareBonus + (defenseFromOpponent.midShareBonus || 0);
+  per += offenseMods.perShareBonus + (defenseFromOpponent.perShareBonus || 0);
 
   // Ensure no negative shares before normalizing
   rim = Math.max(0, rim);
@@ -463,8 +492,9 @@ function resolvePossession(
   defenseLineup: PlayerCardData[],
   shotProfile: TeamShotProfile,
   offenseMods: GameModifiers,
-  defenseFromOpponent: GameModifiers
-): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
+  defenseFromOpponent: GameModifiers,
+  leagueAvg: Record<ShotChannel, { off: number; def: number }> = LEAGUE_AVG
+): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
 
   // Step 1: Roll shot type from team distribution
   const roll = Math.random();
@@ -495,18 +525,24 @@ function resolvePossession(
       break;
   }
 
-  const edge = (offRating - defRating) / 100;
+  // P1-1: centre both ratings on their league-average means before differencing, so a
+  // league-average offense vs a league-average defense in this channel nets ~0 edge
+  // instead of a permanent structural bonus (see LEAGUE_AVG comment above).
+  const edge = ((offRating - leagueAvg[channel].off) - (defRating - leagueAvg[channel].def)) / 100;
   const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
 
   // Step 3: Roll efficiency
   const baseEff = NBA_BASELINE[channel].efficiency;
   const effShift = Math.max(-MAX_EFF_SHIFT, Math.min(MAX_EFF_SHIFT, clampedEdge * EFFICIENCY_SCALE));
 
-  // Apply synergy/play efficiency bonuses
+  // Apply synergy/play efficiency bonuses. P0-1: defenseFromOpponent deltas are ADDED
+  // (see the sign-convention comment on GameModifiers/TeamBonuses in synergies.ts) —
+  // defensive efficiency bonuses are stored negative, so adding them here correctly
+  // reduces the offense's efficiency; subtracting them (the old bug) inflated it.
   let channelEffBonus = 0;
-  if (channel === 'rim')   channelEffBonus = offenseMods.rimEffBonus - (defenseFromOpponent.rimEffBonus || 0);
-  if (channel === 'mid')   channelEffBonus = offenseMods.midEffBonus - (defenseFromOpponent.midEffBonus || 0);
-  if (channel === 'three') channelEffBonus = offenseMods.perEffBonus - (defenseFromOpponent.perEffBonus || 0);
+  if (channel === 'rim')   channelEffBonus = offenseMods.rimEffBonus + (defenseFromOpponent.rimEffBonus || 0);
+  if (channel === 'mid')   channelEffBonus = offenseMods.midEffBonus + (defenseFromOpponent.midEffBonus || 0);
+  if (channel === 'three') channelEffBonus = offenseMods.perEffBonus + (defenseFromOpponent.perEffBonus || 0);
 
   const efficiency = Math.max(0.15, Math.min(0.85, baseEff + effShift + channelEffBonus));
 
@@ -522,7 +558,13 @@ function resolvePossession(
   const made = Math.random() < efficiency;
 
   if (!made) {
-    return { outcome: 'miss', points: 0, isAnd1: false, channel, scorerId, narrativeHint: 'miss' };
+    // P2-2: attribute a fraction of misses to the would-be shooter as a turnover
+    // instead of a missed field goal, so PlayerBoxScore.turnovers (previously always
+    // 0) reflects something. Narrative text and box-score attribution are kept in
+    // sync by deciding the turnover here rather than leaving it to the randomly
+    // chosen narrative flavor text.
+    const isTurnover = Math.random() < TURNOVER_RATE;
+    return { outcome: 'miss', points: 0, isAnd1: false, isTurnover, channel, scorerId, narrativeHint: isTurnover ? 'turnover' : 'miss' };
   }
 
   // Step 4: Points + and-1 check
@@ -564,7 +606,7 @@ function resolvePossession(
     }
   }
 
-  return { outcome: channel, points, isAnd1, channel, scorerId, assistId, narrativeHint };
+  return { outcome: channel, points, isAnd1, isTurnover: false, channel, scorerId, assistId, narrativeHint };
 }
 
 function weightedRandom<T>(items: T[], weights: number[]): T {
@@ -580,16 +622,21 @@ function weightedRandom<T>(items: T[], weights: number[]): T {
 
 // ── Narrative Generator ────────────────────────────────────────────────────
 
-// Miss narratives include turnovers/blocks/steals for possession flavor
+// Missed-shot narratives (blocks included — still a missed field goal, not a turnover)
 const MISS_TEXTS = [
   '{player} misses the jumper.',
   'Contested shot by {player} — no good.',
   'Blocked! Shot rejected.',
   '{player} rattles it out.',
+  '{player} can\'t connect.',
+];
+
+// Turnover-flavored narratives — used when resolvePossession rolls isTurnover: true
+// (P2-2), so the box score's turnover count and the narrative text stay in sync.
+const TURNOVER_TEXTS = [
   'Stolen by the defense!',
   'Bad pass — turnover!',
   '{player} loses the handle.',
-  '{player} can\'t connect.',
 ];
 
 const RIM_MAKE_TEXTS = [
@@ -657,6 +704,7 @@ function generateNarrative(
   let texts: string[];
   switch (narrativeHint) {
     case 'miss': texts = MISS_TEXTS; break;
+    case 'turnover': texts = TURNOVER_TEXTS; break;
     case 'rim_make': texts = RIM_MAKE_TEXTS; break;
     case 'rim_ft': texts = RIM_FT_TEXTS; break;
     case 'mid_make': texts = MID_MAKE_TEXTS; break;
@@ -664,10 +712,10 @@ function generateNarrative(
     case 'and1': texts = AND1_TEXTS; break;
     default: texts = MISS_TEXTS;
   }
-  
+
   let text = texts[Math.floor(Math.random() * texts.length)].replace('{player}', scorerName);
-  
-  if (assistName && narrativeHint !== 'miss') {
+
+  if (assistName && narrativeHint !== 'miss' && narrativeHint !== 'turnover') {
     const assistText = ASSIST_TEXTS[Math.floor(Math.random() * ASSIST_TEXTS.length)].replace('{assist}', assistName);
     text += assistText;
   }
@@ -691,12 +739,15 @@ export function buildTeamInfo(
     else if (card.type === 'Play') playMap.set(card.id, card as Play);
   }
   
-  // Position natural eligibility check
-  const isNaturalPosition = (rawPos: string, col: string): boolean => {
+  // Position natural eligibility check. Data uses '/' (e.g. 'G/F'); the '-' checks
+  // below are stale from an older format but harmless — normalise to '/' first so
+  // both spellings hit the same branches.
+  const isNaturalPosition = (rawPosIn: string, col: string): boolean => {
+    const rawPos = rawPosIn.replace('-', '/');
     if (rawPos === 'ALL') return true;
     if (rawPos === 'G' && (col === 'PG' || col === 'SG')) return true;
     if (rawPos === 'F' && (col === 'SF' || col === 'PF')) return true;
-    if ((rawPos === 'G-F' || rawPos === 'F-G') && ['PG','SG','SF','PF'].includes(col)) return true;
+    if ((rawPos === 'G/F' || rawPos === 'F/G') && ['PG','SG','SF','PF'].includes(col)) return true;
     if (rawPos.includes(col)) return true;
     const parts = rawPos.split(/[-/]/);
     if (parts.includes(col)) return true;
@@ -760,26 +811,36 @@ export function buildTeamInfo(
 
 // ── Main Simulation ────────────────────────────────────────────────────────
 
-export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheater {
+export function simulateGame(
+  homeTeam: TeamInfo,
+  awayTeam: TeamInfo,
+  opts?: { leagueAvg?: typeof LEAGUE_AVG }
+): GameTheater {
+  const leagueAvg = opts?.leagueAvg ?? LEAGUE_AVG;
   const playerNameMap = new Map<string, string>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
     playerNameMap.set(p.id, p.player?.name || p.id);
   }
   
   // 1. Calculate possession shares
-  const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players, 200);
-  const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players, 200);
+  const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
+  const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players);
   
   // 2. Calculate bonuses (synergies + plays)
   const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares);
   const awayBonuses = calcTeamBonuses(awayTeam.players, awayTeam.plays, awayShares);
   
   // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
+  // Minutes are credited per on-court possession (offense and defense), scaled to
+  // the actual game length: a player on court for every possession gets exactly 48.
+  // (Defined before the split so the constant can be derived from it below.)
+  let REG_MIN_PER_POSS = 0.24;
   const split = calcPossessionSplit(
     homeTeam.players, awayTeam.players,
     homeTeam.depthChart, awayTeam.depthChart,
     homeBonuses, awayBonuses
   );
+  REG_MIN_PER_POSS = 48 / split.totalPoss;
   
   // 4. Pre-game shot profiles (team-wide, blended with NBA baseline)
   const homeShotProfile = calcTeamShotProfile(
@@ -878,14 +939,24 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
       
       // Resolve the possession (multi-channel: shot type → edge → efficiency)
       const shotProfile = isHome ? homeShotProfile : awayShotProfile;
-      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp);
-      
+      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp, leagueAvg);
+
       if (isHome) homeScore += result.points; else awayScore += result.points;
-      
-      // Update box score
+
+      // Update box score. P2-2: minutes accrue 0.24 per possession a player is on
+      // court for, whether on offense OR defense (previously only offensive
+      // possessions counted, so a starter topped out around 24 min instead of ~36).
+      // A team is on-court for ~100 of its own offensive possessions plus ~100 of the
+      // opponent's per game (~200 combined @ BASE_PACE=100/team), so a player with
+      // ~75% possession share (typical starter, see calcPossessionShares) lands near
+      // 200 * 0.75 * 0.24 ≈ 36 min; a true iron-man (100% share both ways) caps at 48.
       for (const id of offenseIds) {
         const bs = boxStats.get(id);
-        if (bs) { bs.possessions++; bs.minutes += 0.24; } // ~48 min / 200 poss
+        if (bs) { bs.possessions++; bs.minutes += REG_MIN_PER_POSS; }
+      }
+      for (const id of defenseIds) {
+        const bs = boxStats.get(id);
+        if (bs) { bs.minutes += REG_MIN_PER_POSS; }
       }
       if (result.scorerId && result.points > 0) {
         const bs = boxStats.get(result.scorerId);
@@ -896,6 +967,10 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
           if (result.channel === 'three') bs.threePointers++;
           if (result.isAnd1) bs.andOnes++;
         }
+      }
+      if (result.isTurnover && result.scorerId) {
+        const bs = boxStats.get(result.scorerId);
+        if (bs) bs.turnovers++;
       }
       if (result.assistId && result.points > 0) {
         const bs = boxStats.get(result.assistId);
@@ -946,6 +1021,7 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
     isOvertime = true;
     overtimePeriods++;
     const otPoss = 10; // 5 per team + noise
+    const OT_MIN_PER_POSS = 5 / otPoss; // a 5-minute period
     const homeOTPoss = 5 + Math.round((Math.random() - 0.5) * 2);
     const awayOTPoss = otPoss - homeOTPoss;
     const otQuarter = 4 + overtimePeriods;
@@ -973,13 +1049,20 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
       const otShotProfile = isHome ? homeShotProfile : awayShotProfile;
       
-      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp);
+      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp, leagueAvg);
       if (isHome) homeScore += result.points; else awayScore += result.points;
-      
-      // Box score
+
+      // Box score. Same 0.24-per-possession-on-court convention as regulation (P2-2):
+      // OT lineups are starters-only on both ends, so crediting both offense and
+      // defense lineups here (instead of the old offense-only 0.48) keeps a full OT
+      // period worth the same total minutes as before, just attributed consistently.
       for (const p of offenseLineup) {
         const bs = boxStats.get(p.id);
-        if (bs) { bs.possessions++; bs.minutes += 0.48; }
+        if (bs) { bs.possessions++; bs.minutes += OT_MIN_PER_POSS; }
+      }
+      for (const p of defenseLineup) {
+        const bs = boxStats.get(p.id);
+        if (bs) { bs.minutes += OT_MIN_PER_POSS; }
       }
       if (result.scorerId && result.points > 0) {
         const bs = boxStats.get(result.scorerId);
@@ -990,6 +1073,10 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
           if (result.channel === 'three') bs.threePointers++;
           if (result.isAnd1) bs.andOnes++;
         }
+      }
+      if (result.isTurnover && result.scorerId) {
+        const bs = boxStats.get(result.scorerId);
+        if (bs) bs.turnovers++;
       }
       if (result.assistId && result.points > 0) { const bs = boxStats.get(result.assistId); if (bs) bs.assists++; }
       

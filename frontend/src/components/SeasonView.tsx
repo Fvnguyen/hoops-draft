@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { getDraftSession } from '../lib/botDeckBuilder';
 import { Season, createSeason, playNextGame, saveSeason, getSeasonByRoster } from '../lib/seasonEngine';
 import { GameTheater } from '../lib/gameEngine';
 import { GameView } from './GameView';
 import { Trophy, Swords, ChevronLeft, ArrowRight } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
+import { StorageQuotaError } from '../lib/storage';
 
 interface SeasonViewProps {
   rosterId: string;
@@ -20,49 +21,62 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const [activeGame, setActiveGame] = useState<GameTheater | null>(null);
   const [activeGameIndex, setActiveGameIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Load or create season
   useEffect(() => {
     const session = getDraftSession(sessionId);
     if (!session) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setError('Draft session not found. The session may have been cleared from browser storage.');
       return;
     }
 
     // Check for existing season for this roster
-    let existingSeason = getSeasonByRoster(rosterId);
+    const existingSeason = getSeasonByRoster(rosterId);
     if (existingSeason) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSeason(existingSeason);
     } else {
       const newSeason = createSeason(session, rosterId);
       saveSeason(newSeason);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSeason(newSeason);
     }
   }, [rosterId, sessionId]);
 
   const handlePlayGame = (gameIndex: number) => {
-    if (!season) return;
-    const session = getDraftSession(sessionId);
-    if (!session) return;
+    try {
+      setSaveError(null);
+      if (!season) return;
+      const session = getDraftSession(sessionId);
+      if (!session) return;
 
-    const entry = season.schedule[gameIndex];
-    if (entry.played && entry.result) {
-      // Already played — show replay
-      setActiveGame(entry.result);
+      const entry = season.schedule[gameIndex];
+      if (entry.played && entry.result) {
+        // Already played — show replay
+        setActiveGame(entry.result);
+        setActiveGameIndex(gameIndex);
+        return;
+      }
+
+      // Must be the next game in order
+      if (gameIndex !== season.currentGame) return;
+
+      const result = playNextGame(season, session);
+      if (!result) return;
+
+      setSeason({ ...result.season });
+      saveSeason(result.season);
+      setActiveGame(result.gameResult);
       setActiveGameIndex(gameIndex);
-      return;
+    } catch (err) {
+      if (err instanceof StorageQuotaError) {
+        setSaveError(err.message);
+      } else {
+        setSaveError('Failed to save season. Please try again.');
+      }
     }
-
-    // Must be the next game in order
-    if (gameIndex !== season.currentGame) return;
-
-    const result = playNextGame(season, session);
-    if (!result) return;
-
-    setSeason({ ...result.season });
-    saveSeason(result.season);
-    setActiveGame(result.gameResult);
-    setActiveGameIndex(gameIndex);
   };
 
   const handleGameComplete = () => {
@@ -143,6 +157,12 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
             </div>
           )}
         </div>
+
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
+            <p className="text-sm text-red-700 font-semibold">{saveError}</p>
+          </div>
+        )}
 
         {/* Franchise Dashboard Banner */}
         <div className="mb-6 rounded-xl overflow-hidden border border-stone-200">

@@ -2,31 +2,44 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { DraftCard, PlayerCard, PlayCard, PlayerCardData, Play } from '@/components/PlayerCard';
+import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
 import { motion } from 'framer-motion';
 import { Pencil, Swords } from 'lucide-react';
+import { safeGetJSON } from '@/lib/storage';
+
+interface RosterData {
+  id: string;
+  name: string;
+  timestamp: string;
+  draftedCards: DraftCard[];
+  zones: Record<string, 'Roster' | 'GLeague'>;
+  depthChartOrder: Record<string, string[]>;
+  activePlays: string[];
+  sessionId: string | null;
+}
 
 export default function RostersPage() {
   const router = useRouter();
-  const [rosters, setRosters] = useState<any[]>([]);
+  const [rosters, setRosters] = useState<RosterData[]>([]);
 
   useEffect(() => {
     // Load the new 'myRosters' structure saved by DeckBuilder
-    const saved = JSON.parse(localStorage.getItem('myRosters') || '[]');
-    setRosters(saved.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    const saved = safeGetJSON<RosterData[]>('myRosters', []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRosters(saved.sort((a: RosterData, b: RosterData) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   }, []);
 
-  const getStarter = (rosterData: any, targetPos: string): PlayerCardData | null => {
+  const getStarter = (rosterData: RosterData, targetPos: string): PlayerCardData | null => {
     // If the depth chart order is saved, use the first ID in the array for that position
     const orderedIds = rosterData.depthChartOrder?.[targetPos];
     if (orderedIds && orderedIds.length > 0) {
       const starterId = orderedIds[0];
-      return rosterData.draftedCards.find((c: any) => c.id === starterId) as PlayerCardData;
+      return rosterData.draftedCards.find((c: DraftCard) => c.id === starterId) as PlayerCardData;
     }
     return null;
   };
 
-  const getTeamOverall = (rosterData: any) => {
+  const getTeamOverall = (rosterData: RosterData) => {
     const starters = ['PG', 'SG', 'SF', 'PF', 'C'].map(pos => getStarter(rosterData, pos)).filter(Boolean) as PlayerCardData[];
     if (starters.length === 0) return 0;
     const total = starters.reduce((acc, p) => acc + (p.ratings?.overall || 0), 0);
@@ -97,8 +110,8 @@ export default function RostersPage() {
                       <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 text-center">Plays</h3>
                       <div className="flex flex-col gap-2">
                         {rosterObj.activePlays?.map((playId: string) => {
-                          const play = rosterObj.draftedCards.find((c: any) => c.id === playId);
-                          return play ? <PlayCard key={play.id} play={play} compact /> : null;
+                          const play = rosterObj.draftedCards.find((c: DraftCard) => c.id === playId);
+                          return play && play.type === 'Play' ? <PlayCard key={play.id} play={play} compact /> : null;
                         })}
                         {(!rosterObj.activePlays || rosterObj.activePlays.length === 0) && (
                           <div className="text-stone-400 text-[10px] uppercase font-bold text-center py-4 border border-stone-300 border-dashed rounded-lg bg-stone-900/50">No Plays</div>
