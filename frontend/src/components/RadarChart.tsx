@@ -53,6 +53,12 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   // Side labels ("PERIMETER D", "MID-RANGE") extend past the circle; give the SVG
   // extra width on both sides so they are never clipped by the container edge.
   const hPad = 52;
+  // Relative strength per axis (team minus league average) drives the vertex dots and
+  // the emphasised labels: the biggest positive gap is the peak, the most negative the
+  // valley. Shapes and colours only — no numbers (product rule).
+  const diffs = AXES.map(a => (data[a.key] ?? 0) - (average[a.key] ?? 0));
+  const peakIndex = diffs.indexOf(Math.max(...diffs));
+  const valleyIndex = diffs.indexOf(Math.min(...diffs));
 
   return (
     <svg
@@ -107,6 +113,26 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
         strokeLinejoin="round"
       />
 
+      {/* Vertex dots: green above league average, rose below; peak and valley are larger */}
+      {AXES.map((axis, i) => {
+        const value = Math.max(0, Math.min(MAX_VALUE, data[axis.key] ?? 0));
+        const [x, y] = pointAt(center, center, (value / MAX_VALUE) * maxRadius, axisAngle(i));
+        const above = diffs[i] >= 0;
+        const extreme = i === peakIndex || i === valleyIndex;
+        return (
+          <circle
+            key={`dot-${axis.key}`}
+            cx={x}
+            cy={y}
+            r={extreme ? 4.5 : 2.5}
+            className={`${above ? 'fill-emerald-500' : 'fill-rose-500'} stroke-white`}
+            strokeWidth={1.5}
+          >
+            <title>{`${axis.label}: ${above ? 'above' : 'below'} league average${i === peakIndex ? ' (strength)' : i === valleyIndex ? ' (weakness)' : ''}`}</title>
+          </circle>
+        );
+      })}
+
       {/* Axis labels — outside the vertices, no numbers */}
       {AXES.map((axis, i) => {
         const angle = axisAngle(i);
@@ -115,16 +141,18 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
         const sin = Math.sin(angle);
         const textAnchor = cos > 0.15 ? 'start' : cos < -0.15 ? 'end' : 'middle';
         const dy = sin >= 0 ? 7 : -3;
+        const emphasis = i === peakIndex ? 'fill-emerald-600' : i === valleyIndex ? 'fill-rose-600' : 'fill-stone-500';
+        const prefix = i === peakIndex ? '▲ ' : i === valleyIndex ? '▼ ' : '';
         return (
           <text
             key={axis.key}
             x={x}
             y={y + dy}
             textAnchor={textAnchor}
-            className="fill-stone-500 uppercase"
-            style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.05em' }}
+            className={`${emphasis} uppercase`}
+            style={{ fontSize: 8, fontWeight: i === peakIndex || i === valleyIndex ? 800 : 700, letterSpacing: '0.05em' }}
           >
-            {axis.label}
+            {prefix}{axis.label}
           </text>
         );
       })}

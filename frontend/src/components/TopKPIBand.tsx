@@ -177,76 +177,43 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
   );
 
   return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 grid grid-cols-[3fr_2fr] gap-8 items-stretch">
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 flex items-stretch gap-8">
 
-      {/* Left 60%: three boxes — identity, shot diet, next up — each titled top-left */}
-      <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-8 min-w-0">
-        <div className="flex flex-col gap-1 min-w-0">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
-          <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={176} />
-        </div>
+      {/* 1. Team identity */}
+      <div className="flex flex-col gap-1 shrink-0">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
+        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={176} />
+      </div>
 
-        <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 min-w-0">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
-          <div className="flex-1 flex items-center">
-            <DonutChart
-              size={120}
-              strokeWidth={22}
-              data={[
-                { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
-                { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
-                { label: '3PT', value: shotDiet.per, color: '#3b82f6' },
-              ]}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 min-w-0">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Next up</h3>
-          {topTeasers.length === 0 ? (
-            <p className="text-[10px] text-stone-400 italic">Every stacking synergy is active.</p>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {topTeasers.map(teaser => {
-                const parts = teaser.text.split(' ');
-                const fraction = parts.pop();
-                const name = parts.join(' ');
-                return (
-                  <div key={teaser.text} title={teaser.text} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
-                    <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
-                    <div className="flex flex-col leading-tight min-w-0 flex-1">
-                      <span className="font-bold text-[10px] text-stone-600 truncate">{name}</span>
-                      <span className="flex items-center gap-1.5 mt-1">
-                        <span className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                          <span className="block h-full bg-emerald-400" style={{ width: `${teaser.progress * 100}%` }} />
-                        </span>
-                        <span className="text-[9px] font-bold text-stone-500 shrink-0">{fraction}</span>
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {/* 2. Shot diet */}
+      <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 shrink-0">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
+        <div className="flex-1 flex items-center">
+          <DonutChart
+            size={124}
+            strokeWidth={20}
+            data={[
+              { label: 'RIM', value: shotDiet.rim, color: '#f43f5e' },
+              { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
+              { label: '3PT', value: shotDiet.per, color: '#0284c7' },
+            ]}
+          />
         </div>
       </div>
 
-      {/* Right 40%: active synergies — at most 6 rows, then "+N more" (no clipped rows) */}
-      <div className="min-w-0 pl-8 border-l border-stone-200 flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-2">
+      {/* 3. Active synergies — at most 6 rows, then "+N more" (no clipped rows) */}
+      <div className="min-w-0 flex-1 pl-8 border-l border-stone-200 flex flex-col gap-1">
+        <div className="flex items-start justify-between gap-2">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active synergies</h3>
-          <div className="flex items-center gap-2">
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setPopoverOpen(o => !o)}
-                className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
-              >
-                All synergies
-              </button>
-              {popoverOpen && <SynergyPopover activeNames={activeNames} onClose={() => setPopoverOpen(false)} />}
-            </div>
-            {collapseButton}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setPopoverOpen(o => !o)}
+              className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
+            >
+              All synergies
+            </button>
+            {popoverOpen && <SynergyPopover activeNames={activeNames} onClose={() => setPopoverOpen(false)} />}
           </div>
         </div>
 
@@ -273,6 +240,39 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
           >
             +{hiddenCount} more active
           </button>
+        )}
+      </div>
+
+      {/* 4. Next up — last in the row */}
+      <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 w-[250px] shrink-0 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Next up</h3>
+          {collapseButton}
+        </div>
+        {topTeasers.length === 0 ? (
+          <p className="text-[10px] text-stone-400 italic">Every stacking synergy is active.</p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {topTeasers.map(teaser => {
+              const parts = teaser.text.split(' ');
+              const fraction = parts.pop();
+              const name = parts.join(' ');
+              return (
+                <div key={teaser.text} title={teaser.text} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
+                  <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
+                  <div className="flex flex-col leading-tight min-w-0 flex-1">
+                    <span className="font-bold text-[10px] text-stone-600 truncate">{name}</span>
+                    <span className="flex items-center gap-1.5 mt-1">
+                      <span className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                        <span className="block h-full bg-emerald-400" style={{ width: `${teaser.progress * 100}%` }} />
+                      </span>
+                      <span className="text-[9px] font-bold text-stone-500 shrink-0">{fraction}</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
