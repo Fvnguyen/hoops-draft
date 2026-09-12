@@ -43,7 +43,7 @@ export interface PossessionEvent {
   team: 'home' | 'away';
   lineupOnCourt: string[];    // 5 player IDs on offense
   defenseOnCourt: string[];   // 5 player IDs on defense
-  outcome: 'turnover' | 'miss' | '2pt' | '3pt' | 'and1';
+  outcome: 'miss' | '2pt' | '3pt' | 'and1';
   scoringPlayerId?: string;
   assistPlayerId?: string;
   isPossessionWinEvent?: boolean;  // Steal, OREB, etc. that earned extra possession
@@ -254,26 +254,7 @@ function extractSubstitutions(
 
 // ── Possession Battle ──────────────────────────────────────────────────────
 
-function calcTeamStrength(
-  players: PlayerCardData[],
-  shares: Map<string, number>
-): number {
-  let strength = 0;
-  let totalShare = 0;
-  
-  for (const p of players) {
-    const share = shares.get(p.id) || 0;
-    if (share <= 0) continue;
-    totalShare += share;
-    strength += share * (
-      (p.ratings?.rebounding ?? 50) * 0.5 +
-      (p.ratings?.perimeterDefense ?? 50) * 0.3 +
-      (p.ratings?.postDefense ?? 50) * 0.2
-    );
-  }
-  
-  return totalShare > 0 ? strength / totalShare : 50;
-}
+// (calcTeamStrength removed — replaced by calcTeamPossRating in scoring engine v2)
 
 interface PossessionSplit {
   homePoss: number;
@@ -286,8 +267,8 @@ interface PossessionSplit {
 function calcPossessionSplit(
   homePlayers: PlayerCardData[],
   awayPlayers: PlayerCardData[],
-  homeShares: Map<string, number>,
-  awayShares: Map<string, number>,
+  homeDepthChart: Record<string, string[]>,
+  awayDepthChart: Record<string, string[]>,
   homeBonuses: TeamBonuses,
   awayBonuses: TeamBonuses
 ): PossessionSplit {
@@ -302,11 +283,11 @@ function calcPossessionSplit(
   let homePoss = BASE_PACE + homeNoise;
   let awayPoss = BASE_PACE + awayNoise;
   
-  // Team strength shifts possessions: up to ±8% of baseline per side
-  const homeStrength = calcTeamStrength(homePlayers, homeShares);
-  const awayStrength = calcTeamStrength(awayPlayers, awayShares);
+  // Team possession battle: playmaking + rebounding + defense (starters ×2, bench ×1)
+  const homePossRating = calcTeamPossRating(homePlayers, homeDepthChart);
+  const awayPossRating = calcTeamPossRating(awayPlayers, awayDepthChart);
   const STRENGTH_SWING_PCT = 0.08;
-  const strengthDelta = ((homeStrength - awayStrength) / 100) * BASE_PACE * STRENGTH_SWING_PCT;
+  const strengthDelta = ((homePossRating - awayPossRating) / 100) * BASE_PACE * STRENGTH_SWING_PCT;
   
   homePoss += strengthDelta;
   awayPoss -= strengthDelta;
@@ -333,108 +314,254 @@ function calcPossessionSplit(
   return { homePoss, awayPoss, totalPoss, homeAdvantageEvents, awayAdvantageEvents };
 }
 
-// ── Scoring Engine ─────────────────────────────────────────────────────────
+/// ── Scoring Engine (v2 — Multi-Channel) ───────────────────────────────────
+//
+// Architecture:
+//   PRE-GAME (team-wide):
+//     1. calcTeamPossRating → possession battle delta
+//     2. calcTeamShotProfile → team shot distribution [rim%, mid%, per%]
+//
+//   PER-POSSESSION (lineup-specific):
+//     3. Roll shot type from team distribution
+//     4. Compute channel edge (lineup offense vs opponent lineup defense)
+//     5. Roll efficiency (base + edge × SCALE, clamped ±10pp)
+//     6. Points + and-1 check
 
-type Outcome = 'turnover' | 'miss' | '2pt' | '3pt' | 'and1';
+type ShotChannel = 'rim' | 'mid' | 'three';
 
-function calcLineupOffense(lineup: PlayerCardData[]): number {
-  if (lineup.length === 0) return 50;
-  const sum = lineup.reduce((s, p) => s + (
-    (p.ratings?.finishing ?? 50) * 0.30 +
-    (p.ratings?.midRange ?? 50) * 0.25 +
-    (p.ratings?.perimeter ?? 50) * 0.25 +
-    (p.ratings?.playmaking ?? 50) * 0.20
-  ), 0);
-  return sum / lineup.length;
+// NBA baseline shot distribution and efficiency
+const NBA_BASELINE = {
+  rim:   { share: 0.35, efficiency: 0.65 },  // 65% FG at rim
+  mid:   { share: 0.25, efficiency: 0.42 },  // 42% FG mid-range
+  three: { share: 0.40, efficiency: 0.36 },  // 36% FG from 3
+};
+
+// And-1 probability per channel (descending by distance)
+const AND1_BASE: Record<ShotChannel, number> = {
+  rim:   0.08,   // 8% of rim makes → and-1
+  mid:   0.03,   // 3% of mid makes → and-1 (foul on jumper)
+  three: 0.01,   // 1% of 3pt makes → and-1 (4-point play, very rare)
+};
+
+// Efficiency scaling: how much the edge shifts base efficiency
+// Edge clamped to [-0.25, +0.25], max shift clamped to ±10pp
+const EFFICIENCY_SCALE = 0.30;
+const MAX_EFF_SHIFT = 0.10;  // ±10 percentage points max
+
+// Profile blending: 50% NBA baseline, 50% team tendency
+const PROFILE_WEIGHT = 0.50;
+
+/**
+ * Pre-game: Calculate team possession rating for the possession battle.
+ * Uses weighted averages (starters ×2, bench ×1).
+ */
+export function calcTeamPossRating(
+  players: PlayerCardData[],
+  depthChart: Record<string, string[]>
+): number {
+  const starterIds = new Set<string>();
+  for (const ids of Object.values(depthChart)) {
+    if (ids.length > 0) starterIds.add(ids[0]);
+  }
+
+  let totalWeight = 0;
+  let totalRating = 0;
+
+  for (const p of players) {
+    const weight = starterIds.has(p.id) ? 2.0 : 1.0;
+    const avgDef = ((p.ratings?.perimeterDefense ?? 50) + (p.ratings?.postDefense ?? 50)) / 2;
+    const possRating =
+      (p.ratings?.playmaking ?? 50) * 0.40 +
+      (p.ratings?.rebounding ?? 50) * 0.35 +
+      avgDef * 0.25;
+    totalWeight += weight;
+    totalRating += weight * possRating;
+  }
+
+  return totalWeight > 0 ? totalRating / totalWeight : 50;
 }
 
-function calcLineupDefense(lineup: PlayerCardData[]): number {
-  if (lineup.length === 0) return 50;
-  const sum = lineup.reduce((s, p) => s + (
-    (p.ratings?.perimeterDefense ?? 50) * 0.50 +
-    (p.ratings?.postDefense ?? 50) * 0.50
-  ), 0);
-  return sum / lineup.length;
+/** Shot profile: [rim%, mid%, per%] pre-computed per team */
+export interface TeamShotProfile {
+  rim: number;
+  mid: number;
+  per: number;
 }
 
+/**
+ * Pre-game: Calculate team shot distribution blending NBA baseline with team's
+ * offensive rating profile. Starters weighted ×2, bench ×1.
+ */
+export function calcTeamShotProfile(
+  players: PlayerCardData[],
+  depthChart: Record<string, string[]>,
+  offenseMods: GameModifiers,
+  defenseFromOpponent: GameModifiers
+): TeamShotProfile {
+  const starterIds = new Set<string>();
+  for (const ids of Object.values(depthChart)) {
+    if (ids.length > 0) starterIds.add(ids[0]);
+  }
+
+  let totalWeight = 0;
+  let teamFinishing = 0, teamMidRange = 0, teamPerimeter = 0;
+
+  for (const p of players) {
+    const weight = starterIds.has(p.id) ? 2.0 : 1.0;
+    totalWeight += weight;
+    teamFinishing += weight * (p.ratings?.finishing ?? 50);
+    teamMidRange += weight * (p.ratings?.midRange ?? 50);
+    teamPerimeter += weight * (p.ratings?.perimeter ?? 50);
+  }
+
+  if (totalWeight > 0) {
+    teamFinishing /= totalWeight;
+    teamMidRange /= totalWeight;
+    teamPerimeter /= totalWeight;
+  }
+
+  // Team tendency from offensive ratings
+  const total = teamFinishing + teamMidRange + teamPerimeter;
+  const rimTendency = total > 0 ? teamFinishing / total : 0.333;
+  const midTendency = total > 0 ? teamMidRange / total : 0.333;
+  const perTendency = total > 0 ? teamPerimeter / total : 0.334;
+
+  // Blend 50/50 with NBA baseline
+  let rim = (1 - PROFILE_WEIGHT) * NBA_BASELINE.rim.share + PROFILE_WEIGHT * rimTendency;
+  let mid = (1 - PROFILE_WEIGHT) * NBA_BASELINE.mid.share + PROFILE_WEIGHT * midTendency;
+  let per = (1 - PROFILE_WEIGHT) * NBA_BASELINE.three.share + PROFILE_WEIGHT * perTendency;
+
+  // Apply synergy/play shot distribution bonuses
+  rim += offenseMods.rimShareBonus - (defenseFromOpponent.rimShareBonus || 0);
+  mid += offenseMods.midShareBonus - (defenseFromOpponent.midShareBonus || 0);
+  per += offenseMods.perShareBonus - (defenseFromOpponent.perShareBonus || 0);
+
+  // Normalize to sum to 1.0
+  const sum = rim + mid + per;
+  if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
+
+  return { rim, mid, per };
+}
+
+/**
+ * Per-possession: Resolve a single possession using multi-channel shot engine.
+ * 
+ * Flow:
+ *   1. Roll shot type from team distribution
+ *   2. Compute channel-specific edge (offense rating vs defense rating)
+ *   3. Roll efficiency = base + edge × SCALE (clamped ±10pp)
+ *   4. If make → points + and-1 check
+ *   5. If miss → narrated as turnover/block/miss for variety
+ */
 function resolvePossession(
   offenseLineup: PlayerCardData[],
   defenseLineup: PlayerCardData[],
+  shotProfile: TeamShotProfile,
   offenseMods: GameModifiers,
   defenseFromOpponent: GameModifiers
-): { outcome: Outcome; scorerId?: string; assistId?: string } {
-  const offRating = calcLineupOffense(offenseLineup);
-  const defRating = calcLineupDefense(defenseLineup);
-  const edge = (offRating - defRating) / 100;
-  
-  // Cap edge to prevent extreme score swings
-  const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
-  
-  // Base probabilities + edge modifiers + team bonuses + opponent's defensive bonuses
-  // NBA-realistic: ~38% FGA are 3s, ~62% are 2s. Base rates reflect this with TO as our
-  // possession-variance mechanic (not comparable to real NBA TO%).
-  let pTurnover = 0.12 - clampedEdge * 0.04 + offenseMods.turnoverRate + defenseFromOpponent.turnoverRate;
-  let pMiss     = 0.34 - clampedEdge * 0.06 + offenseMods.missRate + defenseFromOpponent.missRate;
-  let p2pt      = 0.30 + clampedEdge * 0.04 + offenseMods.twoPointRate + defenseFromOpponent.twoPointRate;
-  let p3pt      = 0.16 + clampedEdge * 0.04 + offenseMods.threePointRate + defenseFromOpponent.threePointRate;
-  let pAnd1     = 0.04 + clampedEdge * 0.02 + offenseMods.andOneRate + defenseFromOpponent.andOneRate;
-  
-  // Factor in lineup 3pt ability: teams with better perimeter players shoot more 3s
-  const avgPerimeter = offenseLineup.reduce((s, p) => s + (p.ratings?.perimeter ?? 50), 0) / offenseLineup.length;
-  const perimeterShift = (avgPerimeter - 55) / 500; // ±0.03 shift based on lineup perimeter rating
-  p3pt += perimeterShift;
-  p2pt -= perimeterShift;
-  
-  // Clamp all probabilities to [0.01, 0.80]
-  pTurnover = Math.max(0.01, Math.min(0.80, pTurnover));
-  pMiss     = Math.max(0.01, Math.min(0.80, pMiss));
-  p2pt      = Math.max(0.01, Math.min(0.80, p2pt));
-  p3pt      = Math.max(0.01, Math.min(0.80, p3pt));
-  pAnd1     = Math.max(0.01, Math.min(0.80, pAnd1));
-  
-  // Normalize
-  const total = pTurnover + pMiss + p2pt + p3pt + pAnd1;
-  pTurnover /= total;
-  pMiss /= total;
-  p2pt /= total;
-  p3pt /= total;
-  pAnd1 /= total;
-  
-  // Roll
+): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
+
+  // Step 1: Roll shot type from team distribution
   const roll = Math.random();
-  let outcome: Outcome;
-  if (roll < pTurnover) outcome = 'turnover';
-  else if (roll < pTurnover + pMiss) outcome = 'miss';
-  else if (roll < pTurnover + pMiss + p2pt) outcome = '2pt';
-  else if (roll < pTurnover + pMiss + p2pt + p3pt) outcome = '3pt';
-  else outcome = 'and1';
-  
-  // Pick scorer and assist
+  let channel: ShotChannel;
+  if (roll < shotProfile.rim)                          channel = 'rim';
+  else if (roll < shotProfile.rim + shotProfile.mid)   channel = 'mid';
+  else                                                 channel = 'three';
+
+  // Step 2: Compute channel-specific edge from lineup ratings
+  const avgRating = (lineup: PlayerCardData[], fn: (p: PlayerCardData) => number) =>
+    lineup.length > 0 ? lineup.reduce((s, p) => s + fn(p), 0) / lineup.length : 50;
+
+  let offRating: number, defRating: number;
+  switch (channel) {
+    case 'rim':
+      offRating = avgRating(offenseLineup, p => p.ratings?.finishing ?? 50);
+      defRating = avgRating(defenseLineup, p => p.ratings?.postDefense ?? 50);
+      break;
+    case 'mid':
+      offRating = avgRating(offenseLineup, p => p.ratings?.midRange ?? 50);
+      defRating = avgRating(defenseLineup, p =>
+        (p.ratings?.perimeterDefense ?? 50) * 0.4 + (p.ratings?.postDefense ?? 50) * 0.6
+      );
+      break;
+    case 'three':
+      offRating = avgRating(offenseLineup, p => p.ratings?.perimeter ?? 50);
+      defRating = avgRating(defenseLineup, p => p.ratings?.perimeterDefense ?? 50);
+      break;
+  }
+
+  const edge = (offRating - defRating) / 100;
+  const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
+
+  // Step 3: Roll efficiency
+  const baseEff = NBA_BASELINE[channel].efficiency;
+  const effShift = Math.max(-MAX_EFF_SHIFT, Math.min(MAX_EFF_SHIFT, clampedEdge * EFFICIENCY_SCALE));
+
+  // Apply synergy/play efficiency bonuses
+  let channelEffBonus = 0;
+  if (channel === 'rim')   channelEffBonus = offenseMods.rimEffBonus - (defenseFromOpponent.rimEffBonus || 0);
+  if (channel === 'mid')   channelEffBonus = offenseMods.midEffBonus - (defenseFromOpponent.midEffBonus || 0);
+  if (channel === 'three') channelEffBonus = offenseMods.perEffBonus - (defenseFromOpponent.perEffBonus || 0);
+
+  const efficiency = Math.max(0.15, Math.min(0.85, baseEff + effShift + channelEffBonus));
+
+  const made = Math.random() < efficiency;
+
+  if (!made) {
+    return { outcome: 'miss', points: 0, isAnd1: false, channel, narrativeHint: 'miss' };
+  }
+
+  // Step 4: Points + and-1 check
+  let points: number;
+  let narrativeHint: string;
+
+  if (channel === 'rim') {
+    // Rim makes: 50% → 2pts (clean make), 50% → 1pt (foul/FTs) → avg 1.5
+    points = Math.random() < 0.5 ? 2 : 1;
+    narrativeHint = points === 2 ? 'rim_make' : 'rim_ft';
+  } else if (channel === 'mid') {
+    points = 2;
+    narrativeHint = 'mid_make';
+  } else {
+    points = 3;
+    narrativeHint = 'three_make';
+  }
+
+  // And-1 check (descending by distance)
+  const and1Base = AND1_BASE[channel];
+  const and1Chance = and1Base + offenseMods.and1Bonus;
+  const isAnd1 = Math.random() < and1Chance;
+  if (isAnd1) {
+    points += 1;
+    narrativeHint = 'and1';
+  }
+
+  // Pick scorer (weighted by channel-relevant rating)
   let scorerId: string | undefined;
   let assistId: string | undefined;
-  
-  if (outcome === '2pt' || outcome === '3pt' || outcome === 'and1') {
-    // Weight scoring by offensive ratings
-    const weights = offenseLineup.map(p => {
-      if (outcome === '3pt') return (p.ratings?.perimeter ?? 50);
-      if (outcome === '2pt') return (p.ratings?.finishing ?? 50) * 0.5 + (p.ratings?.midRange ?? 50) * 0.5;
-      return (p.ratings?.finishing ?? 50); // and1
-    });
-    scorerId = weightedPick(offenseLineup, weights)?.id;
-    
-    // Assist from a different player, weighted by playmaking
-    const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
-    if (assistCandidates.length > 0 && Math.random() < 0.55) { // ~55% of baskets are assisted
-      const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
-      assistId = weightedPick(assistCandidates, assistWeights)?.id;
-    }
+
+  const scorerWeights = offenseLineup.map(p => {
+    if (channel === 'three') return p.ratings?.perimeter ?? 50;
+    if (channel === 'mid') return p.ratings?.midRange ?? 50;
+    return p.ratings?.finishing ?? 50; // rim
+  });
+  const scorer = weightedRandom(offenseLineup, scorerWeights);
+  scorerId = scorer?.id;
+
+  // Assist: playmaking-weighted, excluding scorer
+  const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
+  if (assistCandidates.length > 0 && Math.random() < 0.65) {
+    const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
+    const assister = weightedRandom(assistCandidates, assistWeights);
+    assistId = assister?.id;
   }
-  
-  return { outcome, scorerId, assistId };
+
+  return { outcome: channel, points, isAnd1, channel, scorerId, assistId, narrativeHint };
 }
 
-function weightedPick<T>(items: T[], weights: number[]): T {
-  const total = weights.reduce((s, w) => s + w, 0);
+function weightedRandom<T>(items: T[], weights: number[]): T {
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) return items[0];
   let roll = Math.random() * total;
   for (let i = 0; i < items.length; i++) {
     roll -= weights[i];
@@ -445,35 +572,41 @@ function weightedPick<T>(items: T[], weights: number[]): T {
 
 // ── Narrative Generator ────────────────────────────────────────────────────
 
-const TURNOVER_TEXTS = [
-  '{player} turns it over!',
-  'Stolen by the defense!',
-  'Bad pass by {player} — turnover.',
-  'Shot clock violation!',
-  '{player} loses the handle.',
-  'Stripped! Turnover on {player}.',
-];
-
+// Miss narratives include turnovers/blocks/steals for possession flavor
 const MISS_TEXTS = [
   '{player} misses the jumper.',
   'Contested shot by {player} — no good.',
-  '{player} can\'t connect from mid-range.',
   'Blocked! Shot rejected.',
   '{player} rattles it out.',
-  'Airball by {player}!',
+  'Stolen by the defense!',
+  'Bad pass — turnover!',
+  '{player} loses the handle.',
+  '{player} can\'t connect.',
 ];
 
-const TWO_PT_TEXTS = [
+const RIM_MAKE_TEXTS = [
   '{player} scores on a layup!',
-  '{player} with the mid-range jumper — cash!',
   '{player} drives and finishes!',
   '{player} with the floater — bucket!',
-  '{player} backs down and scores!',
   'Dunk by {player}!',
-  '{player} with the fadeaway — money!',
+  '{player} powers through to the rim!',
 ];
 
-const THREE_PT_TEXTS = [
+const RIM_FT_TEXTS = [
+  '{player} is fouled going to the basket — to the line.',
+  '{player} draws the foul driving in.',
+  'Shooting foul on {player} — free throws.',
+];
+
+const MID_MAKE_TEXTS = [
+  '{player} with the mid-range jumper — cash!',
+  '{player} pulls up from the elbow — money!',
+  '{player} with the fadeaway — bucket!',
+  '{player} hits the turnaround jumper!',
+  '{player} from mid-range — got it!',
+];
+
+const THREE_MAKE_TEXTS = [
   '{player} drains the three!',
   '{player} from downtown — BANG!',
   '{player} for three... got it!',
@@ -483,7 +616,7 @@ const THREE_PT_TEXTS = [
 ];
 
 const AND1_TEXTS = [
-  '{player} drives, scores AND the foul!',
+  '{player} scores AND the foul!',
   '{player} finishes through contact — and one!',
   '{player} powers through for the and-one!',
   'Tough finish by {player} — plus the free throw!',
@@ -503,7 +636,7 @@ const POSSESSION_WIN_TEXTS = [
 ];
 
 function generateNarrative(
-  outcome: Outcome,
+  narrativeHint: string,
   scorerName: string,
   assistName?: string,
   isPossWin?: boolean
@@ -514,17 +647,19 @@ function generateNarrative(
   }
   
   let texts: string[];
-  switch (outcome) {
-    case 'turnover': texts = TURNOVER_TEXTS; break;
+  switch (narrativeHint) {
     case 'miss': texts = MISS_TEXTS; break;
-    case '2pt': texts = TWO_PT_TEXTS; break;
-    case '3pt': texts = THREE_PT_TEXTS; break;
+    case 'rim_make': texts = RIM_MAKE_TEXTS; break;
+    case 'rim_ft': texts = RIM_FT_TEXTS; break;
+    case 'mid_make': texts = MID_MAKE_TEXTS; break;
+    case 'three_make': texts = THREE_MAKE_TEXTS; break;
     case 'and1': texts = AND1_TEXTS; break;
+    default: texts = MISS_TEXTS;
   }
   
   let text = texts[Math.floor(Math.random() * texts.length)].replace('{player}', scorerName);
   
-  if (assistName && (outcome === '2pt' || outcome === '3pt' || outcome === 'and1')) {
+  if (assistName && narrativeHint !== 'miss') {
     const assistText = ASSIST_TEXTS[Math.floor(Math.random() * ASSIST_TEXTS.length)].replace('{assist}', assistName);
     text += assistText;
   }
@@ -617,15 +752,6 @@ export function buildTeamInfo(
 
 // ── Main Simulation ────────────────────────────────────────────────────────
 
-function pointsForOutcome(outcome: Outcome): number {
-  switch (outcome) {
-    case '2pt': return 2;
-    case '3pt': return 3;
-    case 'and1': return 1;
-    default: return 0;
-  }
-}
-
 export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheater {
   const playerNameMap = new Map<string, string>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
@@ -636,15 +762,25 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players, 200);
   const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players, 200);
   
-  // 2. Calculate bonuses
+  // 2. Calculate bonuses (synergies + plays)
   const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares);
   const awayBonuses = calcTeamBonuses(awayTeam.players, awayTeam.plays, awayShares);
   
-  // 3. Possession battle
+  // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
   const split = calcPossessionSplit(
     homeTeam.players, awayTeam.players,
-    homeShares, awayShares,
+    homeTeam.depthChart, awayTeam.depthChart,
     homeBonuses, awayBonuses
+  );
+  
+  // 4. Pre-game shot profiles (team-wide, blended with NBA baseline)
+  const homeShotProfile = calcTeamShotProfile(
+    homeTeam.players, homeTeam.depthChart,
+    homeBonuses.offenseMods, awayBonuses.defenseMods
+  );
+  const awayShotProfile = calcTeamShotProfile(
+    awayTeam.players, awayTeam.depthChart,
+    awayBonuses.offenseMods, homeBonuses.defenseMods
   );
   
   // 4. Distribute possessions across 4 quarters with noise
@@ -732,39 +868,40 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
         isPossWin = true; awayExtraPoss--;
       }
       
-      // Resolve the possession
-      const result = resolvePossession(offenseLineup, defenseLineup, offenseMods, defFromOpp);
-      const points = pointsForOutcome(result.outcome);
+      // Resolve the possession (multi-channel: shot type → edge → efficiency)
+      const shotProfile = isHome ? homeShotProfile : awayShotProfile;
+      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp);
       
-      if (isHome) homeScore += points; else awayScore += points;
+      if (isHome) homeScore += result.points; else awayScore += result.points;
       
       // Update box score
       for (const id of offenseIds) {
         const bs = boxStats.get(id);
         if (bs) { bs.possessions++; bs.minutes += 0.24; } // ~48 min / 200 poss
       }
-      if (result.scorerId) {
+      if (result.scorerId && result.points > 0) {
         const bs = boxStats.get(result.scorerId);
         if (bs) {
-          bs.points += points;
-          if (result.outcome === '2pt') bs.twoPointers++;
-          if (result.outcome === '3pt') bs.threePointers++;
-          if (result.outcome === 'and1') bs.andOnes++;
+          bs.points += result.points;
+          if (result.channel === 'rim') bs.twoPointers++;
+          if (result.channel === 'mid') bs.twoPointers++;
+          if (result.channel === 'three') bs.threePointers++;
+          if (result.isAnd1) bs.andOnes++;
         }
       }
-      if (result.assistId) {
+      if (result.assistId && result.points > 0) {
         const bs = boxStats.get(result.assistId);
         if (bs) bs.assists++;
-      }
-      if (result.outcome === 'turnover') {
-        // Attribute turnover to a random offensive player
-        const tovPlayer = offenseLineup[Math.floor(Math.random() * offenseLineup.length)];
-        const bs = boxStats.get(tovPlayer.id);
-        if (bs) bs.turnovers++;
       }
       
       const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
       const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
+      
+      // Map channel result to PossessionEvent outcome format
+      const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
+        : result.channel === 'three' ? '3pt' as const
+        : result.isAnd1 ? 'and1' as const
+        : '2pt' as const;
       
       allPossessions.push({
         index: possIndex,
@@ -772,11 +909,11 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
         team,
         lineupOnCourt: offenseIds,
         defenseOnCourt: defenseIds,
-        outcome: result.outcome,
+        outcome: outcomeForEvent,
         scoringPlayerId: result.scorerId,
         assistPlayerId: result.assistId,
         isPossessionWinEvent: isPossWin,
-        narrativeText: generateNarrative(result.outcome, scorerName, assistName, isPossWin),
+        narrativeText: generateNarrative(result.narrativeHint, scorerName, assistName, isPossWin),
         runningScore: [homeScore, awayScore],
       });
       
@@ -826,28 +963,34 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
       
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
+      const otShotProfile = isHome ? homeShotProfile : awayShotProfile;
       
-      const result = resolvePossession(offenseLineup, defenseLineup, offenseMods, defFromOpp);
-      const points = pointsForOutcome(result.outcome);
-      if (isHome) homeScore += points; else awayScore += points;
+      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp);
+      if (isHome) homeScore += result.points; else awayScore += result.points;
       
       // Box score
       for (const p of offenseLineup) {
         const bs = boxStats.get(p.id);
         if (bs) { bs.possessions++; bs.minutes += 0.48; }
       }
-      if (result.scorerId) {
+      if (result.scorerId && result.points > 0) {
         const bs = boxStats.get(result.scorerId);
         if (bs) {
-          bs.points += points;
-          if (result.outcome === '2pt') bs.twoPointers++;
-          if (result.outcome === '3pt') bs.threePointers++;
-          if (result.outcome === 'and1') bs.andOnes++;
+          bs.points += result.points;
+          if (result.channel === 'rim') bs.twoPointers++;
+          if (result.channel === 'mid') bs.twoPointers++;
+          if (result.channel === 'three') bs.threePointers++;
+          if (result.isAnd1) bs.andOnes++;
         }
       }
-      if (result.assistId) { const bs = boxStats.get(result.assistId); if (bs) bs.assists++; }
+      if (result.assistId && result.points > 0) { const bs = boxStats.get(result.assistId); if (bs) bs.assists++; }
       
       const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
+      
+      const otOutcomeForEvent = result.outcome === 'miss' ? 'miss' as const
+        : result.channel === 'three' ? '3pt' as const
+        : result.isAnd1 ? 'and1' as const
+        : '2pt' as const;
       
       allPossessions.push({
         index: possIndex++,
@@ -855,10 +998,10 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
         team,
         lineupOnCourt: offenseLineup.map(p => p.id),
         defenseOnCourt: defenseLineup.map(p => p.id),
-        outcome: result.outcome,
+        outcome: otOutcomeForEvent,
         scoringPlayerId: result.scorerId,
         assistPlayerId: result.assistId,
-        narrativeText: generateNarrative(result.outcome, scorerName, result.assistId ? playerNameMap.get(result.assistId) : undefined),
+        narrativeText: generateNarrative(result.narrativeHint, scorerName, result.assistId ? playerNameMap.get(result.assistId) : undefined),
         runningScore: [homeScore, awayScore],
       });
       
