@@ -136,7 +136,7 @@ function RarityGem({ rarity }: { rarity: PlayerCardData['rarity'] }) {
     'Rare': 'bg-yellow-500 border-yellow-300',
     'Mythic': 'bg-orange-500 border-orange-300'
   };
-  return <div className={`w-2.5 h-2.5 rounded-full border shadow-inner ${colors[rarity] || colors['Common']}`} />;
+  return <div className={`w-3 h-3 rounded-full border shadow-inner ${colors[rarity] || colors['Common']}`} />;
 }
 
 // NBA team abbreviation to simple color mapping for team stripe
@@ -241,22 +241,22 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         {/* FRONT */}
         <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl border-4 ${borderColor} flex flex-col`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
           {/* Top Bar */}
-          <div className="flex justify-between items-center px-2.5 py-1.5 bg-white/50 backdrop-blur-sm shadow-sm">
+          <div className="flex justify-between items-center px-3 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
             <div className="flex items-center gap-1.5 min-w-0">
               <RarityGem rarity={player.rarity} />
-              <span className={`font-black tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 16 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
+              <span className={`font-black tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 16 ? 'text-[12px]' : 'text-[15px]'}`}>{player.player.name}</span>
             </div>
             <div className="flex flex-col items-end shrink-0">
-              <div className="text-[11px] font-bold text-stone-500 leading-none">{player.player.team} {player.player.age}Y</div>
+              <div className="text-[12px] font-bold text-stone-500 leading-none">{player.player.team} {player.player.age}Y</div>
             </div>
           </div>
           
           {/* Main Visual */}
           <div className="flex-1 relative overflow-hidden bg-stone-200">
             {/* Team color stripe with Logo */}
-            <div className="absolute top-0 right-0 w-8 h-full opacity-90 flex flex-col items-center pt-1.5" style={{ backgroundColor: teamColor }}>
+            <div className="absolute top-0 right-0 w-9 h-full opacity-90 flex flex-col items-center pt-2" style={{ backgroundColor: teamColor }}>
               {logoUrl && (
-                <img src={logoUrl} alt={player.player.team} className="w-6 h-6 object-contain opacity-100 drop-shadow-md" />
+                <img src={logoUrl} alt={player.player.team} className="w-7 h-7 object-contain opacity-100 drop-shadow-md" />
               )}
             </div>
             
@@ -273,7 +273,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
               }}
             />
             {/* Traits/Badges as Icons */}
-            <div className="absolute bottom-1.5 w-full flex justify-center gap-1.5 px-1.5">
+            <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
               {player.traits.slice(0, 4).map((trait, i) => (
                 <BadgeIcon key={i} name={trait.name} level={trait.level} />
               ))}
@@ -282,12 +282,12 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
           {/* Stats Row */}
           <div className="grid grid-cols-6 text-center bg-white border-t border-stone-200">
-            <div className="py-1 border-r border-stone-100"><div className="text-[7px] text-stone-400 font-bold uppercase">PPG</div><div className="text-[11px] font-black text-stone-800 leading-none">{player.stats.pts.toFixed(1)}</div></div>
-            <div className="py-1 border-r border-stone-100"><div className="text-[7px] text-stone-400 font-bold uppercase">RPG</div><div className="text-[11px] font-black text-stone-800 leading-none">{player.stats.trb.toFixed(1)}</div></div>
-            <div className="py-1 border-r border-stone-100"><div className="text-[7px] text-stone-400 font-bold uppercase">APG</div><div className="text-[11px] font-black text-stone-800 leading-none">{player.stats.ast.toFixed(1)}</div></div>
-            <div className="py-1 border-r border-stone-100"><div className="text-[7px] text-stone-400 font-bold uppercase">SPG</div><div className="text-[11px] font-black text-stone-800 leading-none">{player.stats.stl.toFixed(1)}</div></div>
-            <div className="py-1 border-r border-stone-100"><div className="text-[7px] text-stone-400 font-bold uppercase">BPG</div><div className="text-[11px] font-black text-stone-800 leading-none">{player.stats.blk.toFixed(1)}</div></div>
-            <div className="py-1"><div className="text-[7px] text-stone-400 font-bold uppercase">FG%</div><div className="text-[11px] font-black text-stone-800 leading-none">{(player.stats.fg_pct * 100).toFixed(0)}</div></div>
+            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">PPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.pts.toFixed(1)}</div></div>
+            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">RPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.trb.toFixed(1)}</div></div>
+            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">APG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.ast.toFixed(1)}</div></div>
+            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">SPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.stl.toFixed(1)}</div></div>
+            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">BPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.blk.toFixed(1)}</div></div>
+            <div className="py-1.5"><div className="text-[9px] text-stone-400 font-bold uppercase">FG%</div><div className="text-sm font-black text-stone-800 leading-none">{(player.stats.fg_pct * 100).toFixed(0)}</div></div>
           </div>
 
           {/* Bottom accent bar */}
@@ -304,16 +304,16 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
           {/* Header */}
           <div className="px-3 py-1.5 flex items-center justify-between border-b border-stone-700 bg-stone-800/80 backdrop-blur">
-            <div className="font-black uppercase tracking-tight text-[13px]">
+            <div className="font-black uppercase tracking-tight text-[15px]">
               {player.player.name}
             </div>
-            <PositionIcon position={player.player.position} className="w-[22px] h-[22px] text-[8px]" />
+            <PositionIcon position={player.player.position} className="w-[24px] h-[24px] text-[9px]" />
           </div>
 
           {/* Detailed Averages */}
           <div className="px-3 pt-2 pb-1 flex-1 flex flex-col justify-center overflow-y-auto">
-            <div className="text-[8px] text-stone-500 font-bold uppercase tracking-widest mb-1.5 text-center">Season Averages</div>
-              <div className="grid grid-cols-2 gap-[3px] mb-1.5">
+            <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1.5 text-center">Season Averages</div>
+              <div className="grid grid-cols-2 gap-1 mb-1.5">
                 {[
                   ['GP', String(player.stats.gp)],
                   ['MPG', player.stats.mpg.toFixed(1)],
@@ -330,9 +330,9 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                   ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
                   ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
                 ].map(([label, val]) => (
-                  <div key={label} className="flex justify-between items-center px-2 py-[2px] bg-stone-800 rounded border border-stone-700">
-                    <span className="text-[7px] text-stone-400 font-bold uppercase">{label}</span>
-                    <span className="text-[10px] font-black text-white">{val}</span>
+                  <div key={label} className="flex justify-between items-center px-2 py-[3px] bg-stone-800 rounded border border-stone-700">
+                    <span className="text-[9px] text-stone-400 font-bold uppercase">{label}</span>
+                    <span className="text-[12px] font-black text-white">{val}</span>
                   </div>
                 ))}
               </div>
@@ -340,10 +340,10 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
             {/* Awards */}
             {player.awards && player.awards.length > 0 && (
               <div className="mt-1">
-                <div className="text-[8px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
+                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
                 <div className="flex flex-wrap justify-center gap-1">
                   {player.awards.map((award, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[8px] font-black uppercase tracking-widest rounded border border-yellow-500/50">
+                    <span key={i} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[9px] font-black uppercase tracking-widest rounded border border-yellow-500/50">
                       {award}
                     </span>
                   ))}
@@ -354,13 +354,13 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
             {/* Badges */}
             {player.traits && player.traits.length > 0 && (
               <div className="mt-1">
-                <div className="text-[8px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
+                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
                 <div className="flex flex-wrap justify-center gap-1">
                   {player.traits.map((trait, i) => {
                     const cfg = badgeConfig[trait.name];
                     return (
-                      <span key={i} className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border border-white/10 flex items-center gap-0.5" style={{ color: cfg?.color || '#9CA3AF', backgroundColor: `${cfg?.color || '#9CA3AF'}15` }}>
-                        {trait.level > 1 && <span className="text-[7px] opacity-60">{trait.level}×</span>}
+                      <span key={i} className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-white/10 flex items-center gap-0.5" style={{ color: cfg?.color || '#9CA3AF', backgroundColor: `${cfg?.color || '#9CA3AF'}15` }}>
+                        {trait.level > 1 && <span className="text-[8px] opacity-60">{trait.level}×</span>}
                         {trait.name}
                       </span>
                     );
@@ -370,7 +370,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
             )}
             
             {/* Bio */}
-            <div className="mt-2 text-center text-[7px] text-stone-500 font-bold tracking-widest uppercase">
+            <div className="mt-2 text-center text-[8px] text-stone-500 font-bold tracking-widest uppercase">
                 {player.player.height} • {player.player.weight} LBS • {player.player.age}Y
             </div>
           </div>
