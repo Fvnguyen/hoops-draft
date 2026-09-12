@@ -40,9 +40,9 @@ function testResolvePossession(offRating, defRating) {
   const edge = (offRating - defRating) / 100;
   const cEdge = Math.max(-0.25, Math.min(0.25, edge));
   let pt = Math.max(0.01, Math.min(0.80, 0.12 - cEdge * 0.04));
-  let pm = Math.max(0.01, Math.min(0.80, 0.38 - cEdge * 0.08));
-  let p2 = Math.max(0.01, Math.min(0.80, 0.35 + cEdge * 0.06));
-  let p3 = Math.max(0.01, Math.min(0.80, 0.11 + cEdge * 0.04));
+  let pm = Math.max(0.01, Math.min(0.80, 0.34 - cEdge * 0.06));
+  let p2 = Math.max(0.01, Math.min(0.80, 0.30 + cEdge * 0.04));
+  let p3 = Math.max(0.01, Math.min(0.80, 0.16 + cEdge * 0.04));
   let pa = Math.max(0.01, Math.min(0.80, 0.04 + cEdge * 0.02));
   const total = pt + pm + p2 + p3 + pa;
   return { turnover: pt/total, miss: pm/total, two: p2/total, three: p3/total, and1: pa/total };
@@ -50,23 +50,23 @@ function testResolvePossession(offRating, defRating) {
 
 // Even matchup (both teams 70 rating)
 const even = testResolvePossession(70, 70);
-assert(Math.abs(even.turnover - 0.12) < 0.02, `Even TO rate ~12% (got ${(even.turnover*100).toFixed(1)}%)`);
-assert(Math.abs(even.miss - 0.38) < 0.02, `Even miss rate ~38% (got ${(even.miss*100).toFixed(1)}%)`);
-assert(Math.abs(even.two - 0.35) < 0.02, `Even 2pt rate ~35% (got ${(even.two*100).toFixed(1)}%)`);
-assert(Math.abs(even.three - 0.11) < 0.02, `Even 3pt rate ~11% (got ${(even.three*100).toFixed(1)}%)`);
+assert(Math.abs(even.turnover - 0.125) < 0.02, `Even TO rate ~12.5% (got ${(even.turnover*100).toFixed(1)}%)`);
+assert(Math.abs(even.miss - 0.354) < 0.02, `Even miss rate ~35% (got ${(even.miss*100).toFixed(1)}%)`);
+assert(Math.abs(even.two - 0.313) < 0.02, `Even 2pt rate ~31% (got ${(even.two*100).toFixed(1)}%)`);
+assert(Math.abs(even.three - 0.167) < 0.02, `Even 3pt rate ~17% (got ${(even.three*100).toFixed(1)}%)`);
 
 // Strong offense vs weak defense
 const strong = testResolvePossession(85, 55);
 assert(strong.two > even.two, `Strong offense has higher 2pt rate (${(strong.two*100).toFixed(1)}% vs ${(even.two*100).toFixed(1)}%)`);
 assert(strong.turnover < even.turnover, `Strong offense has lower TO rate (${(strong.turnover*100).toFixed(1)}% vs ${(even.turnover*100).toFixed(1)}%)`);
 
-// Expected points per 50 possessions (even matchup)
+// Expected points per 100 possessions (even matchup)
 const ePPP = even.two * 2 + even.three * 3 + even.and1 * 1;
-const ePer50 = ePPP * 50;
+const ePer100 = ePPP * 100;
 console.log(`\n2. Expected Scoring (even matchup):`);
-assert(ePer50 > 45 && ePer50 < 65, `Expected ~50-60 pts per 50 poss (got ${ePer50.toFixed(1)})`);
-const eGameTotal = ePer50 * 2;
-assert(eGameTotal > 95 && eGameTotal < 130, `Expected game total ~100-120 (got ${eGameTotal.toFixed(1)})`);
+assert(ePer100 > 95 && ePer100 < 125, `Expected ~100-120 pts per 100 poss (got ${ePer100.toFixed(1)})`);
+const eGameTotal = ePer100 * 2;
+assert(eGameTotal > 195 && eGameTotal < 250, `Expected game total ~200-240 (got ${eGameTotal.toFixed(1)})`);
 
 // ── Test 2: Possession share calculation ───────────────────────────────────
 
@@ -165,7 +165,7 @@ assert(badges['Finisher'] >= 2 && badges['Sharpshooter'] >= 2, 'Inside-Out syner
 console.log('\n5. Monte Carlo (1000 games, even teams):');
 
 function simQuickGame(offRating, defRating) {
-  const poss = 50; // Each team gets ~50
+  const poss = 100; // Each team gets ~100
   let homeScore = 0, awayScore = 0;
   
   for (let i = 0; i < poss; i++) {
@@ -182,7 +182,7 @@ function simQuickGame(offRating, defRating) {
 function quickResolve(offR, defR) {
   const edge = (offR - defR) / 100;
   const cEdge = Math.max(-0.25, Math.min(0.25, edge));
-  let pt = 0.12 - cEdge*0.04, pm = 0.38 - cEdge*0.08, p2 = 0.35 + cEdge*0.06, p3 = 0.11 + cEdge*0.04, pa = 0.04 + cEdge*0.02;
+  let pt = 0.12 - cEdge*0.04, pm = 0.34 - cEdge*0.06, p2 = 0.30 + cEdge*0.04, p3 = 0.16 + cEdge*0.04, pa = 0.04 + cEdge*0.02;
   const tot = pt+pm+p2+p3+pa;
   pt/=tot; pm/=tot; p2/=tot; p3/=tot; pa/=tot;
   const r = Math.random();
@@ -211,9 +211,9 @@ const avgHome = totalHomeScore / N;
 const avgAway = totalAwayScore / N;
 const avgTotal = (totalHomeScore + totalAwayScore) / N;
 
-assert(avgHome > 40 && avgHome < 65, `Avg home score 40-65 (got ${avgHome.toFixed(1)})`);
-assert(avgTotal > 85 && avgTotal < 125, `Avg game total 85-125 (got ${avgTotal.toFixed(1)})`);
-assert(min > 50 && max < 170, `Score range realistic: min=${min}, max=${max}`);
+assert(avgHome > 90 && avgHome < 125, `Avg home score 90-125 (got ${avgHome.toFixed(1)})`);
+assert(avgTotal > 190 && avgTotal < 250, `Avg game total 190-250 (got ${avgTotal.toFixed(1)})`);
+assert(min > 100 && max < 340, `Score range realistic: min=${min}, max=${max}`);
 console.log(`  📊 Avg: ${avgHome.toFixed(1)}-${avgAway.toFixed(1)} (total ${avgTotal.toFixed(1)}), range ${min}-${max}, ties: ${ties}/${N}`);
 
 // ── Test 5: Strong vs weak team ────────────────────────────────────────────
@@ -223,7 +223,7 @@ let strongWins = 0;
 for (let i = 0; i < N; i++) {
   // Strong team: 85 offense, 75 defense. Weak team: 55 offense, 50 defense.
   let homeScore = 0, awayScore = 0;
-  for (let p = 0; p < 50; p++) {
+  for (let p = 0; p < 100; p++) {
     homeScore += quickResolve(85, 50);  // Strong offense vs weak defense
     awayScore += quickResolve(55, 75);  // Weak offense vs strong defense
   }
