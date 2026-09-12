@@ -1,14 +1,17 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useRef, useState } from 'react';
 import { RosterIdentity, getBadgeTally } from '../engine/rosterStats';
 import { SYNERGIES } from '../engine/synergies';
 import type { TeamBonuses } from '../engine/synergies';
 import type { TeamShotProfile } from '../engine/game';
 import type { PlayerCardData } from '../engine/types';
 import { DonutChart } from './DonutChart';
+import { RadarChart } from './RadarChart';
 
 // League-mean values for each identity axis, computed over the full card pool
-// (see docs/ROADMAP.md P1-1). Used ONLY to draw a reference tick on the identity
-// bars — never rendered as a number (product rule: no ratings or OVR shown).
+// (see docs/ROADMAP.md P1-1). Used ONLY to draw the reference polygon on the
+// identity radar — never rendered as a number (product rule: no ratings or OVR shown).
 const LEAGUE_AVG_IDENTITY: Record<keyof RosterIdentity, number> = {
   finishing: 55.5,
   midRange: 49.0,
@@ -19,37 +22,85 @@ const LEAGUE_AVG_IDENTITY: Record<keyof RosterIdentity, number> = {
   postDef: 46.4,
 };
 
-// Synergy ids whose "stacking" badge teaser (from getBadgeTally) can be shown on an
-// inactive chip, mapped to the badge-name prefix used in that teaser's text.
-const STACKING_TEASER_PREFIX: Record<string, string> = {
-  'shooting-gallery': 'Sharpshooter',
-  'paint-dominance': 'Finisher',
-  'lockdown-squad': 'Lockdown Def',
-  'boards-brigade': 'Glass Cleaner',
-  'court-vision': 'Floor General',
-  'midrange-money': 'Mid-Range Maestro',
-};
+const COLLAPSE_STORAGE_KEY = 'deckbuilder.reportCollapsed';
 
-const IDENTITY_ROWS: Array<{ key: keyof RosterIdentity; label: string; color: string }> = [
-  { key: 'finishing', label: 'Finishing', color: 'bg-purple-500' },
-  { key: 'midRange', label: 'Mid-Range', color: 'bg-purple-500' },
-  { key: 'perimeter', label: '3PT', color: 'bg-purple-500' },
-  { key: 'playmaking', label: 'Playmaking', color: 'bg-pink-500' },
-  { key: 'rebounding', label: 'Rebounding', color: 'bg-pink-500' },
-  { key: 'perDef', label: 'Perimeter D', color: 'bg-teal-500' },
-  { key: 'postDef', label: 'Post D', color: 'bg-teal-500' },
-];
+function readStoredCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
-function IdentityBar({ label, value, avg, color }: { label: string; value: number; avg: number; color: string }) {
-  const pct = Math.min(100, Math.max(0, value));
-  const avgPct = Math.min(100, Math.max(0, avg));
+function writeStoredCollapsed(collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(COLLAPSE_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // best-effort persistence only — localStorage may be unavailable (private mode, SSR, etc.)
+  }
+}
+
+/** Some synergy descriptions read "<condition/name> (<effect>)" — keep just the
+ *  parenthesized effect so chips stay short. Descriptions with no trailing
+ *  parenthetical (the common case today) pass through untouched. */
+function extractEffectText(description: string): string {
+  const match = description.match(/\(([^)]+)\)\s*$/);
+  return match ? match[1] : description;
+}
+
+function ChevronIcon({ direction }: { direction: 'up' | 'down' }) {
   return (
-    <div className="flex items-center gap-2 h-[14px]">
-      <span className="w-[76px] shrink-0 text-[9px] font-bold uppercase tracking-wide text-stone-500 text-right leading-none whitespace-nowrap">{label}</span>
-      <div className="relative flex-1 h-2 rounded-full bg-stone-100 border border-stone-200">
-        <div className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${pct}%` }} />
-        {/* League-average tick: a thin dark line, no number */}
-        <div className="absolute -top-[2px] h-[12px] w-px bg-stone-700/70" style={{ left: `${avgPct}%` }} title="League average" />
+    <svg
+      width={14}
+      height={14}
+      viewBox="0 0 20 20"
+      fill="none"
+      className={direction === 'down' ? 'rotate-180' : undefined}
+      aria-hidden="true"
+    >
+      <path d="M5 12l5-5 5 5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SynergyPopover({ activeNames, onClose }: { activeNames: Set<string>; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute right-0 top-full mt-1 w-80 max-h-80 overflow-y-auto rounded-md border border-stone-200 bg-white shadow-lg z-50 p-2"
+    >
+      <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 px-1 mb-1">All synergies</h4>
+      <div className="flex flex-col gap-1">
+        {SYNERGIES.map(syn => {
+          const active = activeNames.has(syn.name);
+          return (
+            <div key={syn.id} className={`rounded px-2 py-1 ${active ? 'bg-emerald-50' : 'bg-stone-50'}`}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {active && <span className="text-[9px] font-black text-emerald-600 shrink-0">✓</span>}
+                <span className="text-[10px] font-bold text-stone-700 truncate">{syn.name}</span>
+                <span className="text-[8px] font-bold uppercase tracking-wide text-stone-400 shrink-0 ml-auto">{syn.category}</span>
+              </div>
+              <p className="text-[9px] text-stone-500 leading-snug mt-0.5">{syn.description}</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -61,36 +112,65 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
   bonuses: TeamBonuses;
   depthChart: Record<string, PlayerCardData[]>;
 }) {
-  const { teasers } = getBadgeTally(depthChart);
-  const activeSynergyNames = new Set(bonuses.activeSynergies.map(s => s.name));
+  // Default expanded on every render (including SSR); synced from localStorage
+  // after mount so server and first client render always agree.
+  const [collapsed, setCollapsed] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const synergyChips = SYNERGIES.map(syn => {
-    const active = activeSynergyNames.has(syn.name);
-    const activeData = bonuses.activeSynergies.find(a => a.name === syn.name);
-    const teaserPrefix = STACKING_TEASER_PREFIX[syn.id];
-    const teaser = !active && teaserPrefix ? teasers.find(t => t.text.startsWith(teaserPrefix)) : undefined;
-    // Teaser text is "<Badge> 3/4" — keep only the fraction for the chip.
-    const fraction = teaser ? teaser.text.split(' ').pop() : undefined;
-    return { id: syn.id, name: syn.name, description: activeData?.description ?? syn.description, active, progress: teaser?.progress, fraction };
-  }).sort((a, b) => Number(b.active) - Number(a.active));
+  // One-time sync from localStorage after mount: keeps SSR and the first client
+  // render identical (collapsed=false, no hydration mismatch) while still
+  // restoring the user's remembered preference once we're on the client.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCollapsed(readStoredCollapsed());
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      const next = !prev;
+      writeStoredCollapsed(next);
+      return next;
+    });
+  }
+
+  const { teasers } = getBadgeTally(depthChart);
+  const activeNames = new Set(bonuses.activeSynergies.map(s => s.name));
+  const topTeasers = [...teasers].sort((a, b) => b.progress - a.progress).slice(0, 3);
+
+  const rimPct = Math.round(shotDiet.rim * 100);
+  const midPct = Math.round(shotDiet.mid * 100);
+  const perPct = Math.round(shotDiet.per * 100);
+
+  if (collapsed) {
+    return (
+      <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 h-7 px-4 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 truncate">
+          Team report · {bonuses.activeSynergies.length} synergies active · RIM {rimPct}% MID {midPct}% 3PT {perPct}%
+        </span>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expand team report"
+          title="Expand team report"
+          className="shrink-0 text-stone-400 hover:text-stone-600"
+        >
+          <ChevronIcon direction="down" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-white border-b border-stone-200 px-4 py-2.5 shrink-0 shadow-sm z-10 grid gap-x-6 gap-y-2 items-start grid-cols-1 lg:grid-cols-[minmax(280px,3fr)_auto_minmax(340px,5fr)]">
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-4 py-2 flex items-center gap-6">
 
-      {/* 1. Team identity — one column of seven rows, labels never wrap */}
-      <div className="min-w-0">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Team Identity</h3>
-        <div className="flex flex-col gap-[3px]">
-          {IDENTITY_ROWS.map(r => (
-            <IdentityBar key={r.key} label={r.label} value={identity[r.key]} avg={LEAGUE_AVG_IDENTITY[r.key]} color={r.color} />
-          ))}
-        </div>
-        <div className="text-[8px] text-stone-400 mt-1 pl-[84px]">| league avg</div>
+      {/* 1. Team identity radar */}
+      <div className="shrink-0 flex flex-col items-center gap-0.5">
+        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={100} />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 leading-none">Team identity</span>
       </div>
 
       {/* 2. Expected shot diet */}
-      <div className="min-w-0 lg:px-4 lg:border-x lg:border-stone-200">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Shot Diet</h3>
+      <div className="shrink-0 pl-4 border-l border-stone-200">
         <DonutChart
           size={64}
           strokeWidth={13}
@@ -102,50 +182,77 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
         />
       </div>
 
-      {/* 3. Engine tracker — one line per chip, all chips visible, nothing cut mid-word */}
-      <div className="min-w-0">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Engine Tracker</h3>
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-1">
-          {synergyChips.map(chip => chip.active ? (
-            <div key={chip.id} title={chip.description} className="flex items-center gap-1 h-5 px-2 rounded bg-emerald-500 text-white min-w-0">
-              <span className="text-[9px] font-black leading-none shrink-0">✓</span>
-              <span className="text-[9px] font-bold uppercase truncate">{chip.name}</span>
-            </div>
-          ) : (
-            <div key={chip.id} title={chip.fraction ? `${chip.name}: ${chip.fraction} — ${chip.description}` : chip.description} className="flex items-center gap-1.5 h-5 px-2 rounded border border-stone-200 bg-stone-50 text-stone-400 min-w-0">
-              <span className="text-[9px] font-bold uppercase truncate flex-1 min-w-0">{chip.name}</span>
-              {chip.progress !== undefined && (
-                <>
-                  <span className="w-5 h-1 bg-stone-200 rounded-full overflow-hidden shrink-0">
-                    <span className="block h-full bg-stone-400" style={{ width: `${chip.progress * 100}%` }} />
-                  </span>
-                  <span className="text-[8px] font-bold shrink-0">{chip.fraction}</span>
-                </>
-              )}
-            </div>
-          ))}
+      {/* 3. Engine tracker — active synergies first, then closest-to-activating teasers */}
+      <div className="min-w-0 flex-1 pl-4 border-l border-stone-200 flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active</h3>
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setPopoverOpen(o => !o)}
+              className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
+            >
+              All synergies
+            </button>
+            {popoverOpen && <SynergyPopover activeNames={activeNames} onClose={() => setPopoverOpen(false)} />}
+          </div>
         </div>
 
-        {bonuses.activePlays.length > 0 && (
-          <div className="flex items-center gap-1 mt-1.5 min-w-0">
-            <span className="text-[8px] font-bold uppercase tracking-widest text-stone-400 shrink-0 mr-1">Plays</span>
-            {bonuses.activePlays.map((p, i) => (
+        {bonuses.activeSynergies.length === 0 ? (
+          <p className="text-[10px] text-stone-400">No active synergies yet</p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {bonuses.activeSynergies.map(s => (
               <div
-                key={`${p.name}-${i}`}
-                title={p.description}
-                className={`flex items-center gap-1 h-5 px-2 rounded min-w-0 ${
-                  p.activated === 'full' ? 'bg-amber-500 text-white' :
-                  p.activated === 'partial' ? 'bg-amber-50 border border-amber-300 text-amber-700' :
-                  'bg-stone-50 border border-stone-200 text-stone-400'
-                }`}
+                key={s.name}
+                title={`${s.name}: ${s.description}`}
+                className="flex items-center gap-1 h-5 px-2 rounded bg-emerald-500 text-white max-w-full min-w-0"
               >
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.activated === 'full' ? 'bg-white' : p.activated === 'partial' ? 'bg-amber-400' : 'bg-stone-300'}`} />
-                <span className="text-[9px] font-bold uppercase truncate">{p.name}</span>
+                <span className="text-[10px] font-black leading-none shrink-0">✓</span>
+                <span className="text-[10px] font-bold uppercase shrink-0">{s.name}</span>
+                <span className="text-[10px] font-medium normal-case opacity-90 truncate">{extractEffectText(s.description)}</span>
               </div>
             ))}
           </div>
         )}
+
+        {topTeasers.length > 0 && (
+          <>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">Next up</h3>
+            <div className="flex flex-wrap gap-1">
+              {topTeasers.map(teaser => {
+                const parts = teaser.text.split(' ');
+                const fraction = parts.pop();
+                const name = parts.join(' ');
+                return (
+                  <div
+                    key={teaser.text}
+                    title={teaser.text}
+                    className="flex items-center gap-1.5 h-5 px-2 rounded border border-stone-200 bg-stone-50 text-stone-400 max-w-full min-w-0"
+                  >
+                    <span className="text-[10px] font-bold uppercase truncate">{name}</span>
+                    <span className="w-6 h-1 bg-stone-200 rounded-full overflow-hidden shrink-0">
+                      <span className="block h-full bg-stone-400" style={{ width: `${teaser.progress * 100}%` }} />
+                    </span>
+                    <span className="text-[10px] font-bold shrink-0">{fraction}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Collapse toggle */}
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-label="Collapse team report"
+        title="Collapse team report"
+        className="shrink-0 self-start text-stone-400 hover:text-stone-600"
+      >
+        <ChevronIcon direction="up" />
+      </button>
     </div>
   );
 }

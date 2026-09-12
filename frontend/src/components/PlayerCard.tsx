@@ -6,6 +6,7 @@ import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, C
 import type { LucideIcon } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard } from '@/engine/types';
+import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation, type PlayRequirement, type PlayRequirementStatus } from '@/engine/synergies';
 
 // Re-exported so existing `from '@/components/PlayerCard'` type-only imports
 // elsewhere in the app keep working — the canonical definitions live in
@@ -62,6 +63,55 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 text-white text-[8px] font-bold uppercase tracking-wider rounded whitespace-nowrap opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-30 border border-white/10">
         {name}
       </div>
+    </div>
+  );
+}
+
+// A play's requirement can be shown "neutral" (plain PlayRequirement — no roster to
+// compare against, e.g. draft room / home page) or "evaluated" against a roster's
+// badge totals (PlayRequirementStatus — carries `have`/`met`). This tells the two apart.
+function isRequirementStatus(r: PlayRequirement | PlayRequirementStatus): r is PlayRequirementStatus {
+  return 'have' in r && 'met' in r;
+}
+
+/**
+ * Requirement icons for a play's Synergy Key. Exported so DeckBuilder can render the
+ * same icons outside a full PlayCard. Pass plain `PlayRequirement[]` (from
+ * `getPlayRequirements`) for a neutral state, or `PlayRequirementStatus[]` (from a
+ * `PlayEvaluation`) to show met/unmet state.
+ */
+export function PlayRequirementIcons({ requirements, size = 'small' }: { requirements: PlayRequirementStatus[] | PlayRequirement[]; size?: 'xs' | 'small' }) {
+  if (requirements.length === 0) return null;
+
+  const title = requirements
+    .map(req => isRequirementStatus(req)
+      ? `${req.badge}: ${req.have} of ${req.levels} ${req.met ? '✓' : '✗'}`
+      : `${req.badge}: need ${req.levels}`)
+    .join('\n');
+
+  return (
+    <div className="flex gap-1 flex-wrap justify-center" title={title}>
+      {requirements.map((req, i) => {
+        const status = isRequirementStatus(req) ? req : null;
+        return (
+          <div key={i} className={`relative ${status ? (status.met ? 'ring-2 ring-emerald-400 rounded-full' : 'opacity-40 grayscale') : ''}`}>
+            <BadgeIcon name={req.badge} level={1} size={size} />
+            {status?.met && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-stone-900 flex items-center justify-center text-[6px] text-white leading-none">✓</span>
+            )}
+            {status && !status.met && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-black text-stone-100 bg-stone-900 px-0.5 rounded-sm leading-none whitespace-nowrap">
+                {status.have}/{status.levels}
+              </span>
+            )}
+            {!status && (
+              <span className="absolute -bottom-1 -right-1.5 text-[8px] font-black text-stone-100 bg-stone-900 px-0.5 rounded-sm leading-none">
+                ×{req.levels}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -579,8 +629,20 @@ function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
   );
 }
 
-export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up' }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right' }) {
+export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up', evaluation }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right'; evaluation?: PlayEvaluation }) {
   const [isFlipped, setIsFlipped] = useState(false);
+
+  // Requirements come from the synergy engine, never from the legacy `play.badges`
+  // flavour text. Without an `evaluation` (draft room, home page) they render neutral;
+  // with one (in-game / roster context) each requirement carries have/met state.
+  const requirements: PlayRequirementStatus[] | PlayRequirement[] = evaluation
+    ? evaluation.requirements
+    : getPlayRequirements(getPlayEffectId(play));
+  const effectSummary = evaluation?.summary ?? evaluatePlay(play, {}).summary;
+  const stateLabel = !evaluation ? null
+    : evaluation.activation === 'full' ? { text: 'ACTIVE', color: 'text-emerald-400' }
+    : evaluation.activation === 'partial' ? { text: `PARTIAL ${evaluation.metCount}/${evaluation.total}`, color: 'text-amber-400' }
+    : { text: 'INACTIVE', color: 'text-stone-400' };
 
   // Category-driven theming
   const cat = play.playCategory || 'special';
@@ -603,17 +665,22 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
         onClick={onClick}
       >
         <div className={`h-full w-2 shrink-0 ${theme.barColor} rounded-l-[7px]`} />
-        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
+        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5 overflow-hidden">
            <div className="font-bold text-[10px] uppercase truncate text-stone-800 leading-tight" title={play.name}>
              {play.name}
            </div>
-           <div className="flex items-center gap-1 mt-0.5">
-             <span className={`text-[9px] font-bold ${theme.labelColor}`}>{theme.label}</span>
+           <div className="flex items-center gap-1.5 overflow-hidden">
+             <span className={`text-[9px] font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
+             {requirements.length > 0 && (
+               <div className="flex-1 min-w-0 overflow-hidden [&>div]:justify-start [&>div]:flex-nowrap">
+                 <PlayRequirementIcons requirements={requirements} size="xs" />
+               </div>
+             )}
            </div>
         </div>
         <div className={`hidden group-hover:block absolute z-50 pointer-events-none scale-110 ${popClasses}`}>
            <div className="w-[180px] shadow-2xl">
-             <PlayCard play={play} />
+             <PlayCard play={play} evaluation={evaluation} />
            </div>
         </div>
       </div>
@@ -668,17 +735,14 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
             </div>
           </div>
 
-          {/* Badges Required / Granted */}
-          {play.badges.length > 0 && (
+          {/* Requirement icons — driven by the synergy engine, not the legacy play.badges flavour text */}
+          {requirements.length > 0 && (
             <div className="px-2 py-2 bg-white flex flex-col items-center gap-1 border-t border-stone-200 min-h-[40px] justify-center">
                 <span className="text-[6px] text-stone-400 font-bold uppercase tracking-widest leading-none">Synergy Key</span>
-                <div className="flex gap-1 flex-wrap justify-center">
-                    {play.badges.map(badge => (
-                        <span key={badge} className="px-1.5 py-0.5 text-[7px] bg-stone-800 text-stone-100 font-bold uppercase tracking-wider rounded-sm shadow-sm">
-                        {badge}
-                        </span>
-                    ))}
-                </div>
+                <PlayRequirementIcons requirements={requirements} size="small" />
+                {stateLabel && (
+                  <span className={`text-[8px] font-black uppercase tracking-widest ${stateLabel.color}`}>{stateLabel.text}</span>
+                )}
             </div>
           )}
 
@@ -708,11 +772,36 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
           </div>
 
           {/* Mechanic Explanation */}
-          <div className="flex-1 p-3 flex flex-col items-center justify-center text-center bg-stone-800">
-            <span className={`text-[8px] ${theme.mechLabel} font-bold uppercase tracking-widest mb-2 border-b ${theme.mechBorder} pb-1`}>Play Mechanic</span>
-            <p className="text-white text-[10px] leading-relaxed font-medium">
-              {play.mechanicText}
-            </p>
+          <div className="flex-1 p-3 flex flex-col items-center justify-center text-center bg-stone-800 gap-2 overflow-hidden">
+            <div>
+              <span className={`text-[8px] ${theme.mechLabel} font-bold uppercase tracking-widest mb-2 border-b ${theme.mechBorder} pb-1 block`}>Play Mechanic</span>
+              <p className="text-white text-[10px] leading-relaxed font-medium">
+                {play.mechanicText}
+              </p>
+            </div>
+
+            {effectSummary && (
+              <div className="w-full px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/30">
+                <span className="text-[7px] text-emerald-400 font-black uppercase tracking-widest block mb-0.5">Effect</span>
+                <span className="text-emerald-200 text-[9px] font-bold leading-snug block">{effectSummary}</span>
+              </div>
+            )}
+
+            {requirements.length > 0 && (
+              <div className="w-full flex flex-col gap-0.5">
+                {requirements.map((req, i) => {
+                  const status = isRequirementStatus(req) ? req : null;
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
+                      <span className="font-bold text-stone-300 uppercase truncate">{req.badge}</span>
+                      <span className={`font-black shrink-0 ${status ? (status.met ? 'text-emerald-400' : 'text-red-400') : 'text-stone-400'}`}>
+                        {status ? `${status.have}/${status.levels} ${status.met ? '✓' : '✗'}` : `×${req.levels}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className={`h-1 ${theme.accent}`} />

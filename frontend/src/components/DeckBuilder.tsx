@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData } from './PlayerCard';
+import { useState, useEffect, useMemo } from 'react';
+import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData, getPosColors } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
-import { calcTeamBonuses } from '../engine/synergies';
+import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
@@ -422,6 +422,10 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const identity = calcRosterIdentity(depthChart);
   const shotDiet = calcRosterShotDiet(depthChart, validActivePlays);
   const allPlayers = Object.values(depthChart).flat();
+  // Badge totals across the current depth chart (starters + bench), recomputed
+  // whenever the roster changes — feeds evaluatePlay() so play cards can show
+  // live requirement status without exposing any OVR/rating numbers.
+  const badgeTotals = useMemo(() => countBadges(Object.values(depthChart).flat()), [depthChart]);
   const bonuses = calcTeamBonuses(allPlayers, validActivePlays, new Map());
   const missingPos = ['PG', 'SG', 'SF', 'PF', 'C'].find(pos => depthChart[pos].length === 0);
 
@@ -551,40 +555,50 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
           </div>
 
           <div className="flex flex-row gap-3 flex-1 min-h-0">
-            {/* Left Column: Active Plays */}
-            <div className="w-[120px] shrink-0 flex flex-col">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Plays (Max 3)</h3>
-              <div className="flex flex-col gap-3 h-full">
+            {/* Left Column: Active Plays — full-size cards so requirements/mechanics
+                are actually readable (was a 60px compact row). */}
+            <div className="w-[170px] shrink-0 flex flex-col min-h-0">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Plays (Max 3)</h3>
+              <div className="flex flex-col gap-3 overflow-y-auto pr-1 pb-1">
                 {[0, 1, 2].map(slotIndex => {
                   const play = activePlays[slotIndex];
                   const zoneId = `ActivePlay-${slotIndex}`;
                   const status = play ? activePlayStatus.get(play.id) : undefined;
+                  const evaluation = play ? evaluatePlay(play, badgeTotals) : undefined;
+                  if (!play) {
+                    return (
+                      <div
+                        key={slotIndex}
+                        className={`w-full aspect-[5/7] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDropOnZone(e, zoneId)}
+                      >
+                        <span className="text-stone-500 font-bold uppercase text-[10px] pointer-events-none text-center px-2">Empty play slot</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={slotIndex}
-                      className={`w-full h-[60px] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                      className="relative w-full"
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropOnZone(e, zoneId)}
                     >
-                      <AnimatePresence>
-                        {play && (
-                          <motion.div
-                            layoutId={`play-${play.id}`}
-                            initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                            className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
-                            draggable
-                            // framer-motion's motion.div overloads onDragStart for its own drag
-                            // gesture (PointerEvent/MouseEvent/TouchEvent), which conflicts with the
-                            // native HTML5 DragEvent this handler actually needs — `any` bridges that.
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
-                            onClick={(e) => { e.stopPropagation(); handlePlayClick(play, zoneId); }}
-                          >
-                             <PlayCard play={play} compact popupDirection="right" />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                      {play && status && (
+                      <motion.div
+                        layoutId={`play-${play.id}`}
+                        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                        className="w-full cursor-grab active:cursor-grabbing"
+                        draggable
+                        // framer-motion's motion.div overloads onDragStart for its own drag
+                        // gesture (PointerEvent/MouseEvent/TouchEvent), which conflicts with the
+                        // native HTML5 DragEvent this handler actually needs — `any` bridges that.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
+                        onClick={(e) => { e.stopPropagation(); handlePlayClick(play, zoneId); }}
+                      >
+                        <PlayCard play={play} evaluation={evaluation} />
+                      </motion.div>
+                      {status && (
                         <span
                           title={status === 'full' ? 'Fully activated' : status === 'partial' ? 'Partially activated' : 'Not activated'}
                           className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full border-2 border-white z-30 pointer-events-none ${
@@ -592,19 +606,20 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                           }`}
                         />
                       )}
-                      {!play && <span className="text-stone-600 font-bold uppercase text-[10px] pointer-events-none">Empty</span>}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* Right Area: Depth Chart */}
-            <div className="flex-1 flex flex-col min-w-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Depth Chart (Starters at Top)</h3>
-              <div className="grid grid-cols-5 gap-3 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
+            {/* Right Area: Depth Chart — starters get the full card at the top of
+                each column, 2nd/3rd string are medium compact cards below. */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
+              <div className="grid grid-cols-5 gap-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
                 {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
                   const players = depthChart[pos];
+                  const [posC1, posC2] = getPosColors(pos);
                   const isEligibleHover = draggedItem?.card.type === 'Player' && canPlace((draggedItem.card as PlayerCardData).player.position, pos);
                   const isAdjacentHover = draggedItem?.card.type === 'Player' && isAdjacentEligible((draggedItem.card as PlayerCardData).player.position, pos);
                   const isInvalidHover = draggedItem?.card.type === 'Player' && !isEligibleHover;
@@ -614,7 +629,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                   return (
                     <div
                       key={pos}
-                      className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[300px] min-w-0 ${
+                      className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[320px] min-w-0 ${
                         isAdjacentHover || isClickAdjacent ? 'bg-amber-50 border-amber-400 ring-1 ring-amber-300' :
                         isEligibleHover || isClickEligible ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-300' :
                         isInvalidHover ? 'bg-red-50 border-red-300' :
@@ -624,7 +639,9 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                       onDrop={(e) => handleDropOnZone(e, pos)}
                       onClick={(e) => { e.stopPropagation(); placeSelectedInColumn(pos); }}
                     >
-                      <div className="text-center font-black text-stone-600 text-sm border-b border-stone-200 pb-2 mb-2 pointer-events-none">{pos}</div>
+                      {/* 3px position-colour accent + column header */}
+                      <div className="h-[3px] w-full rounded-full shrink-0 pointer-events-none" style={{ background: `linear-gradient(to right, ${posC1}, ${posC2})` }} />
+                      <div className="text-center font-black text-stone-600 text-sm pb-1 pointer-events-none shrink-0">{pos}</div>
 
                       <AnimatePresence>
                         {players.map((p, idx) => {
@@ -644,69 +661,58 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                                 handleDropOnZone(e, pos, idx);
                               }}
                             >
+                              {isStarter && (
+                                <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">
+                                  Starter
+                                </div>
+                              )}
                               <div
                                 className="group relative w-full cursor-grab active:cursor-grabbing"
                                 onClick={(e) => { e.stopPropagation(); handlePlacedPlayerClick(p, pos); }}
                               >
-                                {/* Clip only the row's own overflow (badges can outrun a narrow
-                                    column) — kept as its own box so the absolutely-positioned
-                                    controls/tag and hover pop-up below (siblings, not children of
-                                    this clipped box) are never cut off. */}
                                 {isStarter ? (
-                                  /* Starters get the medium compact card (headshot, gem, pill,
-                                     badges, own hover pop-up); backups stay dense list rows. */
-                                  <PlayerCard player={p} compact popupDirection="down" isSelected={isSelected} />
+                                  /* Starter = the full 5:7 card, sized by the column width. */
+                                  <PlayerCard player={p} isSelected={isSelected} />
                                 ) : (
-                                  <div className="overflow-hidden rounded-lg">
-                                    <CardListRow card={p} selected={isSelected} />
-                                  </div>
-                                )}
-                                {isSelected ? (
-                                  <div
-                                    className="absolute -top-2 -right-2 z-20 flex items-center gap-0.5"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <button
-                                      type="button"
-                                      disabled={idx === 0}
-                                      onClick={() => promotePlayer(pos, idx)}
-                                      title="Promote"
-                                      className="w-5 h-5 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[10px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
-                                    >▲</button>
-                                    <button
-                                      type="button"
-                                      disabled={idx === players.length - 1}
-                                      onClick={() => demotePlayer(pos, idx)}
-                                      title="Demote"
-                                      className="w-5 h-5 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[10px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
-                                    >▼</button>
-                                    <button
-                                      type="button"
-                                      onClick={() => sendPlacedToGLeague(p, pos)}
-                                      title="Send to G-League"
-                                      className="w-5 h-5 flex items-center justify-center rounded-full bg-red-600 border border-white text-white text-[10px] leading-none hover:bg-red-500 shadow"
-                                    >✕</button>
-                                  </div>
-                                ) : isStarter ? (
-                                  <span className="absolute -top-1.5 -right-1.5 z-20 text-[8px] font-black uppercase tracking-widest text-white bg-emerald-600 border border-white rounded px-1 py-0.5 whitespace-nowrap shadow">
-                                    Starter
-                                  </span>
-                                ) : null}
-                                {/* Hover pop-up for backups (the compact starter card has its own) */}
-                                {!isStarter && (
-                                  <div className="hidden group-hover:block absolute z-50 pointer-events-none top-full left-1/2 -translate-x-1/2 mt-2 origin-top">
-                                    <div className="w-[160px] shadow-2xl">
-                                      <PlayerCard player={p} />
-                                    </div>
-                                  </div>
+                                  /* 2nd/3rd string = the medium (60px) compact card, with its
+                                     own hover pop-up showing the full card. */
+                                  <PlayerCard player={p} compact popupDirection="down" isSelected={isSelected} />
                                 )}
                               </div>
+                              {/* Selection control strip lives BELOW the card (not an overlay tag). */}
+                              {isSelected && (
+                                <div
+                                  className="flex items-center justify-center gap-1 mt-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() => promotePlayer(pos, idx)}
+                                    title="Promote"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[11px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
+                                  >▲</button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === players.length - 1}
+                                    onClick={() => demotePlayer(pos, idx)}
+                                    title="Demote"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[11px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
+                                  >▼</button>
+                                  <button
+                                    type="button"
+                                    onClick={() => sendPlacedToGLeague(p, pos)}
+                                    title="Send to G-League"
+                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-red-600 border border-white text-white text-[11px] leading-none hover:bg-red-500 shadow"
+                                  >✕</button>
+                                </div>
+                              )}
                             </motion.div>
                           );
                         })}
                         {players.length === 0 && (
                           <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-stone-800/50 rounded-lg opacity-50 p-2 text-center text-stone-600 text-[10px] font-bold uppercase pointer-events-none min-h-[100px]">
-                            Drop {pos} here
+                            Drop a {pos} here
                           </div>
                         )}
                       </AnimatePresence>
@@ -804,7 +810,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                           onClick={(e) => { e.stopPropagation(); handlePlayClick(play, 'GLeaguePlays'); }}
                           className="cursor-grab active:cursor-grabbing w-full"
                         >
-                           <PlayCard play={play as Play} compact popupDirection="down" />
+                           <PlayCard play={play as Play} compact popupDirection="down" evaluation={evaluatePlay(play, badgeTotals)} />
                         </div>
                       ))}
                       {gLeaguePlays.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No plays on bench.</div>}
@@ -823,6 +829,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
               <div
                 draggable
                 onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+                title="Adds a basic play card with no requirements"
                 className="flex-1 bg-stone-50 border border-stone-200 hover:border-orange-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
               >
                 <span className="text-orange-500 font-black pointer-events-none">+</span>
@@ -831,6 +838,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
               <div
                 draggable
                 onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+                title="Adds a basic play card with no requirements"
                 className="flex-1 bg-stone-50 border border-stone-200 hover:border-blue-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
               >
                 <span className="text-blue-500 font-black pointer-events-none">+</span>
