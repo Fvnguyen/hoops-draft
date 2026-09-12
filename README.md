@@ -47,4 +47,5 @@ frontend/    The Next.js app — see frontend/README.md
 - `docs/ARCHITECTURE.md` — how data flows from scraper to screen
 - `docs/game_mechanics.md` — the shot/possession model in prose
 - `docs/HANDOVER.md` — current state, open balance issues, where to look next
+- `docs/ROADMAP.md` — code review findings and the PWA / database / Vercel plan
 - `AGENTS.md` — conventions and commands for anyone (human or agent) working in this repo

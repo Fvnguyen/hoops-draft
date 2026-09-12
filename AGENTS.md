@@ -98,7 +98,8 @@ since it writes to `../data/computed_cards.json`).
   `localStorage` state and POSTs it to `/api/game-logs`, which writes the JSON that
   `analyze_game_data.js` consumes. Play a few drafts/seasons, hit export on `/debug`, then
   run `npm run analyze`.
-- Known open balance issues are tracked in `docs/HANDOVER.md`; the underlying findings are
+- Known bugs and the improvement roadmap are in `docs/ROADMAP.md`; open balance issues
+  are tracked in `docs/HANDOVER.md`; the underlying findings are
   in `docs/analytics/analysis_report.md` and `docs/analytics/analytics_summary.md`.
 
 ## Gotchas discovered in the code
