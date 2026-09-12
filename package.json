@@ -1,4 +1,14 @@
 {
+  "name": "magic-ball",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "node tests/test_bot_deckbuilder.js && node tests/test_game_engine.js",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "analyze": "node scripts/analyze_game_data.js",
+    "screenshot": "node scripts/screenshot.js"
+  },
   "devDependencies": {
     "playwright": "^1.63.0"
   }

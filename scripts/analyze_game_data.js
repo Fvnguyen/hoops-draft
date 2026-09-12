@@ -5,8 +5,8 @@
  * Reads game logs from data/game_logs/ and produces a full analytics report.
  * 
  * Usage:
- *   node tests/analyze_game_data.js                    # auto-discover latest dump
- *   node tests/analyze_game_data.js data/game_logs/full_dump_*.json  # specific file
+ *   node scripts/analyze_game_data.js                    # auto-discover latest dump
+ *   node scripts/analyze_game_data.js data/game_logs/full_dump_*.json  # specific file
  * 
  * Output:
  *   - Terminal report (colored)

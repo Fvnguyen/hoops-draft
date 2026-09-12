@@ -19,7 +19,8 @@ __pycache__/
 .venv/
 
 # --- runtime game logs (exported from /debug; regenerate, don't commit) ---
-data/game_logs/*.json
+data/game_logs/*
+!data/game_logs/.gitkeep
 data/fetch.log
 
 # --- screenshots / scratch images (dev artifacts, not source) ---
@@ -32,3 +33,6 @@ mock-*.png
 .DS_Store
 Thumbs.db
 *.pem
+
+# local screenshot output from scripts/screenshot.js
+screenshots/

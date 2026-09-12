@@ -1,5 +1,18 @@
+#!/usr/bin/env node
+/**
+ * Card Count Validator
+ *
+ * Validates cube composition, player card uniqueness, and position coverage.
+ *
+ * Usage:
+ *   node scripts/check_card_counts.js
+ */
+
 const fs = require('fs');
-const cards = JSON.parse(fs.readFileSync('./data/computed_cards.json', 'utf-8'));
+const path = require('path');
+
+const cardsPath = path.resolve(__dirname, '..', 'data', 'computed_cards.json');
+const cards = JSON.parse(fs.readFileSync(cardsPath, 'utf-8'));
 const players = cards.filter(c => c.type === 'Player');
 const plays = cards.filter(c => c.type === 'Play');
 console.log(`Total cards: ${cards.length} (${players.length} players, ${plays.length} plays)`);
