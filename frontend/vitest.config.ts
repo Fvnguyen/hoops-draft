@@ -3,7 +3,7 @@ import path from 'path';
 
 export default defineConfig({
   test: {
-    include: ['tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts', 'tests/storage/**/*.test.ts'],
     environment: 'node',
     testTimeout: 60000,
     hookTimeout: 60000,

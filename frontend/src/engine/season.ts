@@ -1,17 +1,13 @@
 /**
  * Season Engine
- * 
+ *
  * Orchestrates a 7-game mini-season: schedule, standings, game results.
- * Persists season state to localStorage for resume/review.
+ * Persistence (localStorage) lives in `src/lib/legacyStorage.ts`, not here.
  */
 
-import { DraftSession } from './botDeckBuilder';
-import { simulateGame, buildTeamInfo, GameTheater, TeamInfo } from './gameEngine';
-// Fisher-Yates shuffle lives in draftEngine.ts (not the other way around) to avoid a
-// lib→lib import cycle: draftEngine.ts has no dependency on seasonEngine.ts, while
-// seasonEngine.ts already depends on gameEngine.ts, so importing draftEngine.ts here
-// stays a one-directional edge (P2-3).
-import { shuffle } from './draftEngine';
+import { DraftSession } from './deckbuilder';
+import { simulateGame, buildTeamInfo, GameTheater, TeamInfo } from './game';
+import { Rng, createRng, randomSeed, shuffle } from './rng';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +16,8 @@ export interface SeasonScheduleEntry {
   opponentSeatIndex: number;  // 1-7 (bot seat index in the draft session)
   result?: GameTheater;       // Populated after game is played
   played: boolean;
+  /** RNG seed the game was (or will be) simulated with — set once the game is played. */
+  seed?: number;
 }
 
 export interface StandingsEntry {
@@ -41,25 +39,29 @@ export interface Season {
   standings: StandingsEntry[];
   currentGame: number;        // Next game to play (0-6, or 7 if complete)
   humanTeam: TeamInfo;
+  /** RNG seed used to generate the opponent schedule order. */
+  seed: number;
 }
 
 // ── Season Creation ────────────────────────────────────────────────────────
 
 export function createSeason(
   session: DraftSession,
-  rosterId: string
+  rosterId: string,
+  rng?: Rng
 ): Season {
+  const seasonRng = rng ?? createRng(randomSeed());
   const humanTeam = buildTeamInfo(session.seats[0], true);
-  
-  // Randomize opponent order (P2-3: shared Fisher-Yates helper from draftEngine.ts)
-  const opponentIndices = shuffle([1, 2, 3, 4, 5, 6, 7]);
-  
+
+  // Randomize opponent order
+  const opponentIndices = shuffle([1, 2, 3, 4, 5, 6, 7], seasonRng);
+
   const schedule: SeasonScheduleEntry[] = opponentIndices.map((seatIdx, gameIdx) => ({
     gameIndex: gameIdx,
     opponentSeatIndex: seatIdx,
     played: false,
   }));
-  
+
   // Initialize standings with all 8 seats
   const standings: StandingsEntry[] = session.seats.map((seat, idx) => ({
     seatId: seat.id,
@@ -70,7 +72,7 @@ export function createSeason(
     pointsAgainst: 0,
     pointDiff: 0,
   }));
-  
+
   return {
     id: `season_${Date.now()}`,
     sessionId: session.id,
@@ -80,6 +82,7 @@ export function createSeason(
     standings,
     currentGame: 0,
     humanTeam,
+    seed: seasonRng.seed,
   };
 }
 
@@ -87,82 +90,61 @@ export function createSeason(
 
 export function playNextGame(
   season: Season,
-  session: DraftSession
+  session: DraftSession,
+  rng?: Rng
 ): { season: Season; gameResult: GameTheater } | null {
   if (season.currentGame >= 7) return null;
-  
+
   const entry = season.schedule[season.currentGame];
   const opponentSeat = session.seats[entry.opponentSeatIndex];
   const opponentTeam = buildTeamInfo(opponentSeat, false);
-  
+
   // Alternate home/away each game
   const isHomeGame = season.currentGame % 2 === 0;
   const homeTeam = isHomeGame ? season.humanTeam : opponentTeam;
   const awayTeam = isHomeGame ? opponentTeam : season.humanTeam;
-  
-  const gameResult = simulateGame(homeTeam, awayTeam);
-  
+
+  // Reuse the entry's stored seed when replaying a game that was already
+  // simulated once (e.g. re-deriving box scores); otherwise mint a fresh one.
+  const gameRng = rng ?? createRng(entry.seed ?? randomSeed());
+  const gameResult = simulateGame(homeTeam, awayTeam, { rng: gameRng });
+
   // Determine human result
   const humanIsHome = isHomeGame;
   const humanScore = humanIsHome ? gameResult.finalScore[0] : gameResult.finalScore[1];
   const oppScore = humanIsHome ? gameResult.finalScore[1] : gameResult.finalScore[0];
   const humanWon = humanScore > oppScore;
-  
+
   // Update schedule
   entry.result = gameResult;
   entry.played = true;
-  
+  entry.seed = gameResult.seed;
+
   // Update standings
   const humanStanding = season.standings.find(s => s.seatId === 'human-0');
   const oppStanding = season.standings.find(s => s.seatId === opponentSeat.id);
-  
+
   if (humanStanding) {
     if (humanWon) humanStanding.wins++; else humanStanding.losses++;
     humanStanding.pointsFor += humanScore;
     humanStanding.pointsAgainst += oppScore;
     humanStanding.pointDiff = humanStanding.pointsFor - humanStanding.pointsAgainst;
   }
-  
+
   if (oppStanding) {
     if (!humanWon) oppStanding.wins++; else oppStanding.losses++;
     oppStanding.pointsFor += oppScore;
     oppStanding.pointsAgainst += humanScore;
     oppStanding.pointDiff = oppStanding.pointsFor - oppStanding.pointsAgainst;
   }
-  
+
   // Sort standings: wins desc, then point diff desc
   season.standings.sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins;
     return b.pointDiff - a.pointDiff;
   });
-  
+
   season.currentGame++;
-  
+
   return { season, gameResult };
-}
-
-// ── Persistence ────────────────────────────────────────────────────────────
-
-const SEASONS_KEY = 'hoops-draft-seasons';
-
-export function saveSeason(season: Season): void {
-  const seasons = getAllSeasons();
-  const existing = seasons.findIndex(s => s.id === season.id);
-  if (existing >= 0) seasons[existing] = season;
-  else seasons.push(season);
-  localStorage.setItem(SEASONS_KEY, JSON.stringify(seasons));
-}
-
-export function getAllSeasons(): Season[] {
-  try {
-    return JSON.parse(localStorage.getItem(SEASONS_KEY) || '[]');
-  } catch { return []; }
-}
-
-export function getSeason(seasonId: string): Season | null {
-  return getAllSeasons().find(s => s.id === seasonId) ?? null;
-}
-
-export function getSeasonByRoster(rosterId: string): Season | null {
-  return getAllSeasons().find(s => s.rosterId === rosterId) ?? null;
 }

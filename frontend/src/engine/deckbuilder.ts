@@ -1,14 +1,14 @@
 /**
- * Bot Deck Builder & Draft Session Persistence
- * 
- * Handles:
- * 1. Auto-building a valid roster from a bot's drafted card pool
- * 2. Persisting/loading full draft sessions (all 8 seats) to localStorage
+ * Bot Deck Builder
+ *
+ * Auto-builds a valid 12-man roster from a bot's drafted card pool. Draft
+ * session persistence (localStorage) lives in `src/lib/legacyStorage.ts`, not
+ * here — the engine has no I/O.
  */
 
-import { DraftCard, PlayerCardData, Play } from '../components/PlayerCard';
-import { BotProfile, DraftSeat } from './draftEngine';
-import { safeGetJSON, safeSetJSON } from './storage';
+import { DraftCard, PlayerCardData, Play } from './types';
+import { BotProfile } from './draft';
+import { TARGET_ROSTER } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,7 @@ export interface DraftSession {
   timestamp: string;
   seats: DraftSessionSeat[];  // seats[0] = human, seats[1..7] = bots
   pickLog: DraftPickRecord[]; // Full pick-by-pick history for replay/analytics
+  seed?: number;              // The cube-pool seed this draft was generated from
 }
 
 // ── Position Eligibility (mirrors DeckBuilder logic) ───────────────────────
@@ -91,7 +92,6 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
   // Phase 2: Fill to 12 active players (2-3 per position)
   // Distribute remaining players to their best-fit positions, keeping roster balanced
   const remaining = sortedPlayers.filter(p => !assigned.has(p.id));
-  const TARGET_ROSTER = 12;
   const activeCount = () => Object.values(depthChart).reduce((s, col) => s + col.length, 0);
 
   for (const player of remaining) {
@@ -118,7 +118,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
   // Phase 3: Select 3 best plays (by rarity, prefer system > special > basic)
   const playPriority: Record<string, number> = { system: 3, special: 2, basic: 1 };
   const rarityPriority: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
-  
+
   const sortedPlays = [...plays].sort((a, b) => {
     const catDiff = (playPriority[b.playCategory] ?? 0) - (playPriority[a.playCategory] ?? 0);
     if (catDiff !== 0) return catDiff;
@@ -139,54 +139,4 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
     gLeaguePlayers: benchPlayers.map(p => p.id),
     gLeaguePlays: benchPlays.map(p => p.id),
   };
-}
-
-// ── Draft Session Persistence ──────────────────────────────────────────────
-
-const SESSIONS_KEY = 'hoops-draft-sessions';
-
-export function saveDraftSession(seats: DraftSeat[], pickLog: DraftPickRecord[] = []): string {
-  const sessionId = `session_${Date.now()}`;
-
-  const sessionSeats: DraftSessionSeat[] = seats.map((seat) => ({
-    id: seat.id,
-    isBot: seat.isBot,
-    botProfile: seat.botProfile,
-    drafted: seat.drafted,
-    // Auto-build roster for bots; human gets empty roster (filled after deckbuilding)
-    builtRoster: seat.isBot
-      ? buildBotRoster(seat.drafted, seat.botProfile)
-      : { depthChart: { PG: [], SG: [], SF: [], PF: [], C: [] }, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] },
-  }));
-
-  const session: DraftSession = {
-    id: sessionId,
-    timestamp: new Date().toISOString(),
-    seats: sessionSeats,
-    pickLog,
-  };
-
-  const sessions = getAllDraftSessions();
-  sessions.push(session);
-  safeSetJSON(SESSIONS_KEY, sessions);
-
-  return sessionId;
-}
-
-export function getAllDraftSessions(): DraftSession[] {
-  return safeGetJSON<DraftSession[]>(SESSIONS_KEY, []);
-}
-
-export function getDraftSession(sessionId: string): DraftSession | null {
-  const sessions = getAllDraftSessions();
-  return sessions.find(s => s.id === sessionId) ?? null;
-}
-
-export function updateHumanRosterInSession(sessionId: string, builtRoster: BuiltRoster): void {
-  const sessions = getAllDraftSessions();
-  const session = sessions.find(s => s.id === sessionId);
-  if (session && session.seats[0]) {
-    session.seats[0].builtRoster = builtRoster;
-    safeSetJSON(SESSIONS_KEY, sessions);
-  }
 }

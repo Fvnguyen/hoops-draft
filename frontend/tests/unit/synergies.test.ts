@@ -7,8 +7,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { PlayerCardData } from '@/components/PlayerCard';
-import { calcTeamBonuses } from '@/lib/synergies';
-import { simulateGame } from '@/lib/gameEngine';
+import { calcTeamBonuses } from '@/engine/synergies';
+import { simulateGame } from '@/engine/game';
 import { loadPlayers, PLAYS, buildTestTeam } from './helpers';
 
 /** Pick real players until the summed badge level for `badgeName` reaches `minTotal`. */

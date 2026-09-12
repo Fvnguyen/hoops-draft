@@ -2,16 +2,37 @@
 /**
  * Headless balance report.
  *
- * Usage: tsx scripts/balance.ts [games=500]
+ * Usage: tsx scripts/balance.ts [games=500] [--seed N]
  *
  * Runs the same headless draft -> roster -> game pipeline as the vitest
  * suite (tests/unit/helpers.ts) and prints a compact tuning report: PPP,
  * score distribution, home-court/OT rates, possession counts, margins, and
  * synergy/play activation rates. Intended to replace the
  * play -> /debug -> export -> analyze loop for balance tuning.
+ *
+ * Pass --seed N to make the run reproducible: the same games (draft, pairing,
+ * and simulation) are generated every time for a given seed + game count.
  */
 
 import { loadPlayers, PLAYS, simulateMany, activationRates } from '../tests/unit/helpers';
+import { randomSeed } from '../src/engine/rng';
+
+function parseArgs(argv: string[]): { games: number; seed: number } {
+  let games = 500;
+  let seed: number | undefined;
+
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--seed') {
+      seed = parseInt(argv[++i], 10);
+    } else {
+      positional.push(argv[i]);
+    }
+  }
+  if (positional[0]) games = parseInt(positional[0], 10);
+
+  return { games, seed: seed ?? randomSeed() };
+}
 
 function mean(arr: number[]): number {
   return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -35,7 +56,8 @@ function pct(n: number, d: number): string {
 }
 
 function main(): void {
-  const n = parseInt(process.argv[2] || '500', 10);
+  const { games: n, seed } = parseArgs(process.argv.slice(2));
+  console.log(`Seed: ${seed}`);
   const t0 = Date.now();
 
   const players = loadPlayers();
@@ -46,12 +68,12 @@ function main(): void {
     'rebounding', 'perimeterDefense', 'postDefense',
   ] as const;
   for (const key of ratingKeys) {
-    const m = mean(players.map((p) => (p.ratings as any)[key] ?? 0));
+    const m = mean(players.map((p) => p.ratings[key] ?? 0));
     console.log(`  ${key.padEnd(18)} ${m.toFixed(2)}`);
   }
 
   console.log(`\nRunning ${n} headless games...`);
-  const games = simulateMany(n, players, PLAYS);
+  const games = simulateMany(n, players, PLAYS, seed);
   const dt = Date.now() - t0;
 
   const allTeamScores: number[] = [];

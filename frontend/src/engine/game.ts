@@ -1,18 +1,29 @@
 /**
  * Game Simulation Engine
- * 
+ *
  * Pre-computes a full game into a GameTheater object that the UI plays back.
- * 
+ *
  * Layers:
  *   1. Rotation Engine — NBA-style substitution patterns
  *   2. Possession Battle — defense + rebounding determines total possessions
  *   3. Scoring Engine — offense vs defense matchup per possession
  *   4. Synergy/Play bonuses applied as modifiers
+ *
+ * Every random draw in this file goes through the injected `Rng` (mulberry32,
+ * see rng.ts) instead of `Math.random()` directly, so a game is fully
+ * reproducible from `{ seed }` — see `simulateGame`'s `opts.rng`.
  */
 
-import { PlayerCardData, Play } from '../components/PlayerCard';
-import { DraftSessionSeat } from './botDeckBuilder';
+import { PlayerCardData, Play } from './types';
+import { DraftSessionSeat } from './deckbuilder';
 import { calcTeamBonuses, TeamBonuses, GameModifiers } from './synergies';
+import { Rng, createRng, randomSeed } from './rng';
+import {
+  BASE_PACE, NOISE_PCT, STRENGTH_SWING_PCT,
+  POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
+  OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
+  NBA_BASELINE, LEAGUE_AVG, AND1_BASE, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
+} from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +82,8 @@ export interface GameTheater {
   awayBonuses: TeamBonuses;
   isOvertime: boolean;
   overtimePeriods: number;
+  /** RNG seed this game was simulated with — replay it via simulateGame(..., { rng: createRng(seed) }). */
+  seed: number;
 }
 
 export interface TeamInfo {
@@ -94,22 +107,22 @@ export function calcPossessionShares(
 ): Map<string, number> {
   const shares = new Map<string, number>();
   const playerMap = new Map(players.map(p => [p.id, p]));
-  
-  for (const [pos, ids] of Object.entries(depthChart)) {
+
+  for (const [, ids] of Object.entries(depthChart)) {
     if (ids.length === 0) continue;
-    
+
     const starter = playerMap.get(ids[0]);
     const backup = ids[1] ? playerMap.get(ids[1]) : null;
     const deep = ids[2] ? playerMap.get(ids[2]) : null;
-    
+
     // Base shares
     let starterShare = 0.70;
     let backupShare = 0.25;
     let deepShare = 0.05;
-    
+
     if (starter && backup) {
       const ovrGap = (starter.ratings?.overall ?? 70) - (backup.ratings?.overall ?? 50);
-      
+
       // OVR gap modifier: smaller gap → more even distribution
       if (ovrGap < 5) {
         starterShare = 0.58; backupShare = 0.35; deepShare = 0.07;
@@ -118,7 +131,7 @@ export function calcPossessionShares(
       } else if (ovrGap > 15) {
         starterShare = 0.78; backupShare = 0.18; deepShare = 0.04;
       }
-      
+
       // MPG anchor: blend with real MPG ratio
       if (starter.stats?.mpg && backup.stats?.mpg) {
         const totalMpg = starter.stats.mpg + backup.stats.mpg + (deep?.stats?.mpg || 0);
@@ -130,12 +143,12 @@ export function calcPossessionShares(
           backupShare = backupShare * 0.6 + mpgBackup * 0.4;
         }
       }
-      
+
       // Age penalty for players 35+
       if (starter.player?.age >= 35) starterShare *= 0.92;
       if (backup?.player?.age >= 35) backupShare *= 0.92;
     }
-    
+
     if (!backup) {
       starterShare = 1.0; backupShare = 0; deepShare = 0;
     } else if (!deep) {
@@ -144,14 +157,14 @@ export function calcPossessionShares(
       starterShare += 0.03;
       backupShare += 0.02;
     }
-    
+
     // Normalize
     const total = starterShare + backupShare + deepShare;
     shares.set(ids[0], (starterShare / total));
     if (ids[1]) shares.set(ids[1], (backupShare / total));
     if (ids[2]) shares.set(ids[2], (deepShare / total));
   }
-  
+
   return shares;
 }
 
@@ -169,23 +182,22 @@ function generateQuarterRotation(
   // Each entry = lineup at that possession index: Map<position, playerId>
   const timeline: Map<string, string>[] = [];
   const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
-  
+
   for (let p = 0; p < quarterPoss; p++) {
     const lineup = new Map<string, string>();
-    
+
     for (const pos of positions) {
       const ids = depthChart[pos] || [];
       if (ids.length === 0) continue;
-      
+
       if (ids.length === 1) {
         lineup.set(pos, ids[0]);
         continue;
       }
-      
+
       // NBA rotation pattern per quarter
       const starterPoss = Math.round(quarterPoss * (shares.get(ids[0]) || 0.7));
-      const progress = p / quarterPoss;
-      
+
       if (quarter === 1 || quarter === 3) {
         // Starter starts, backup mid-quarter, starter closes
         if (p < starterPoss * 0.55) {
@@ -207,10 +219,10 @@ function generateQuarterRotation(
         }
       }
     }
-    
+
     timeline.push(lineup);
   }
-  
+
   return timeline;
 }
 
@@ -224,7 +236,7 @@ function extractSubstitutions(
 ): SubstitutionEvent[] {
   const subs: SubstitutionEvent[] = [];
   const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
-  
+
   for (let i = 1; i < timeline.length; i++) {
     for (const pos of positions) {
       const prev = timeline[i - 1].get(pos);
@@ -240,7 +252,7 @@ function extractSubstitutions(
       }
     }
   }
-  
+
   return subs;
 }
 
@@ -262,28 +274,24 @@ function calcPossessionSplit(
   homeDepthChart: Record<string, string[]>,
   awayDepthChart: Record<string, string[]>,
   homeBonuses: TeamBonuses,
-  awayBonuses: TeamBonuses
+  awayBonuses: TeamBonuses,
+  rng: Rng
 ): PossessionSplit {
-  // NBA pace baseline — all noise and swings are relative to this
-  const BASE_PACE = 100;
-  
-  // Independent noise per team: ±5% of baseline
-  const NOISE_PCT = 0.05;
-  const homeNoise = (Math.random() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
-  const awayNoise = (Math.random() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
-  
+  // Independent noise per team: ±NOISE_PCT of BASE_PACE
+  const homeNoise = (rng.next() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
+  const awayNoise = (rng.next() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
+
   let homePoss = BASE_PACE + homeNoise;
   let awayPoss = BASE_PACE + awayNoise;
-  
+
   // Team possession battle: playmaking + rebounding + defense (starters ×2, bench ×1)
   const homePossRating = calcTeamPossRating(homePlayers, homeDepthChart);
   const awayPossRating = calcTeamPossRating(awayPlayers, awayDepthChart);
-  const STRENGTH_SWING_PCT = 0.08;
   const strengthDelta = ((homePossRating - awayPossRating) / 100) * BASE_PACE * STRENGTH_SWING_PCT;
-  
+
   homePoss += strengthDelta;
   awayPoss -= strengthDelta;
-  
+
   // Apply synergy/play possession swing (small fixed bonuses). P0-3: this is the ONLY
   // place possession swings are applied — every synergy/play source (offensive or
   // defensive) accumulates into TeamBonuses.possessionSwing exactly once (see
@@ -294,20 +302,20 @@ function calcPossessionSplit(
   homePoss += homeBonuses.possessionSwing;
   awayPoss += awayBonuses.possessionSwing;
 
-  // Round and clamp to [85%, 115%] of baseline so noise + strength + synergies
-  // cannot push a team outside a realistic pace band.
-  const MIN_POSS = Math.round(BASE_PACE * 0.85);
-  const MAX_POSS = Math.round(BASE_PACE * 1.15);
+  // Round and clamp to [POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT] of baseline
+  // so noise + strength + synergies cannot push a team outside a realistic pace band.
+  const MIN_POSS = Math.round(BASE_PACE * POSSESSION_CLAMP_MIN_PCT);
+  const MAX_POSS = Math.round(BASE_PACE * POSSESSION_CLAMP_MAX_PCT);
   homePoss = Math.min(MAX_POSS, Math.max(MIN_POSS, Math.round(homePoss)));
   awayPoss = Math.min(MAX_POSS, Math.max(MIN_POSS, Math.round(awayPoss)));
-  
+
   const totalPoss = homePoss + awayPoss;
-  
+
   // Possession-winning events: the team with more possessions needs to "earn" the extras
   const basePoss = Math.min(homePoss, awayPoss);
   const homeAdvantageEvents = Math.max(0, homePoss - basePoss);
   const awayAdvantageEvents = Math.max(0, awayPoss - basePoss);
-  
+
   return { homePoss, awayPoss, totalPoss, homeAdvantageEvents, awayAdvantageEvents };
 }
 
@@ -325,57 +333,6 @@ function calcPossessionSplit(
 //     6. Points + and-1 check
 
 type ShotChannel = 'rim' | 'mid' | 'three';
-
-// NBA baseline shot distribution and efficiency
-const NBA_BASELINE = {
-  rim:   { share: 0.35, efficiency: 0.65 },  // 65% FG at rim
-  mid:   { share: 0.25, efficiency: 0.42 },  // 42% FG mid-range
-  three: { share: 0.40, efficiency: 0.36 },  // 36% FG from 3
-};
-
-/**
- * League-average ratings per channel (P1-1), used to centre the offense/defense edge
- * so an average lineup facing an average defense gets an edge of ~0, not a
- * structural free bonus. Without this, the edge in resolvePossession was computed as
- * `(offRating - defRating) / 100`, but offense and defense ratings are on different
- * scales in the card pool (offense-side ratings run noticeably higher than
- * defense-side ratings), so nearly every matchup produced a positive edge for the
- * offense regardless of relative team quality.
- *
- * Derivation: mean rating over all 448 players in data/computed_cards.json (pulled
- * 2026-09-12) — finishing 55.5, midRange 49.0, perimeter 57.5, perimeterDefense 53.5,
- * postDefense 46.4. `mid.def` blends perimeterDefense/postDefense the same 0.4/0.6 way
- * resolvePossession does for the mid-range defense rating: 0.4*53.5 + 0.6*46.4 = 49.2.
- * Regenerate these by re-running the same means over an updated card pool (e.g. after
- * a new season import) — this is a plain average, no other transform.
- */
-const LEAGUE_AVG: Record<ShotChannel, { off: number; def: number }> = {
-  rim:   { off: 55.5, def: 46.4 },  // finishing vs postDefense
-  mid:   { off: 49.0, def: 49.2 },  // midRange vs 0.4*perimeterDefense + 0.6*postDefense
-  three: { off: 57.5, def: 53.5 },  // perimeter vs perimeterDefense
-};
-
-// And-1 probability per channel (descending by distance)
-const AND1_BASE: Record<ShotChannel, number> = {
-  rim:   0.08,   // 8% of rim makes → and-1
-  mid:   0.03,   // 3% of mid makes → and-1 (foul on jumper)
-  three: 0.01,   // 1% of 3pt makes → and-1 (4-point play, very rare)
-};
-
-// Efficiency scaling: how much the edge shifts base efficiency
-// Edge clamped to [-0.25, +0.25], max shift clamped to ±10pp
-const EFFICIENCY_SCALE = 0.30;
-const MAX_EFF_SHIFT = 0.10;  // ±10 percentage points max
-
-// Profile blending: 50% NBA baseline, 50% team tendency
-const PROFILE_WEIGHT = 0.50;
-
-// P2-2: fraction of missed possessions attributed to the shooter as a turnover rather
-// than a missed field goal, so PlayerBoxScore.turnovers is populated (previously
-// always 0). Rough placeholder in line with NBA team turnover rates (~13-14 per ~100
-// possessions); not derived from the card pool like LEAGUE_AVG, so it's fair game to
-// retune alongside EFFICIENCY_SCALE once real balance numbers are measured.
-const TURNOVER_RATE = 0.15;
 
 /**
  * Pre-game: Calculate team possession rating for the possession battle.
@@ -452,7 +409,7 @@ export function calcTeamShotProfile(
   const midTendency = total > 0 ? teamMidRange / total : 0.333;
   const perTendency = total > 0 ? teamPerimeter / total : 0.334;
 
-  // Blend 50/50 with NBA baseline
+  // Blend PROFILE_WEIGHT/(1-PROFILE_WEIGHT) with NBA baseline
   let rim = (1 - PROFILE_WEIGHT) * NBA_BASELINE.rim.share + PROFILE_WEIGHT * rimTendency;
   let mid = (1 - PROFILE_WEIGHT) * NBA_BASELINE.mid.share + PROFILE_WEIGHT * midTendency;
   let per = (1 - PROFILE_WEIGHT) * NBA_BASELINE.three.share + PROFILE_WEIGHT * perTendency;
@@ -469,7 +426,7 @@ export function calcTeamShotProfile(
   rim = Math.max(0, rim);
   mid = Math.max(0, mid);
   per = Math.max(0, per);
-  
+
   // Normalize to sum to 1.0
   const sum = rim + mid + per;
   if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
@@ -479,7 +436,7 @@ export function calcTeamShotProfile(
 
 /**
  * Per-possession: Resolve a single possession using multi-channel shot engine.
- * 
+ *
  * Flow:
  *   1. Roll shot type from team distribution
  *   2. Compute channel-specific edge (offense rating vs defense rating)
@@ -493,11 +450,12 @@ function resolvePossession(
   shotProfile: TeamShotProfile,
   offenseMods: GameModifiers,
   defenseFromOpponent: GameModifiers,
-  leagueAvg: Record<ShotChannel, { off: number; def: number }> = LEAGUE_AVG
+  leagueAvg: Record<ShotChannel, { off: number; def: number }>,
+  rng: Rng
 ): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
 
   // Step 1: Roll shot type from team distribution
-  const roll = Math.random();
+  const roll = rng.next();
   let channel: ShotChannel;
   if (roll < shotProfile.rim)                          channel = 'rim';
   else if (roll < shotProfile.rim + shotProfile.mid)   channel = 'mid';
@@ -527,7 +485,7 @@ function resolvePossession(
 
   // P1-1: centre both ratings on their league-average means before differencing, so a
   // league-average offense vs a league-average defense in this channel nets ~0 edge
-  // instead of a permanent structural bonus (see LEAGUE_AVG comment above).
+  // instead of a permanent structural bonus (see LEAGUE_AVG comment in balance.ts).
   const edge = ((offRating - leagueAvg[channel].off) - (defRating - leagueAvg[channel].def)) / 100;
   const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
 
@@ -552,10 +510,10 @@ function resolvePossession(
     if (channel === 'mid') return p.ratings?.midRange ?? 50;
     return p.ratings?.finishing ?? 50; // rim
   });
-  const scorer = weightedRandom(offenseLineup, scorerWeights);
+  const scorer = weightedRandom(offenseLineup, scorerWeights, rng);
   const scorerId = scorer?.id;
 
-  const made = Math.random() < efficiency;
+  const made = rng.next() < efficiency;
 
   if (!made) {
     // P2-2: attribute a fraction of misses to the would-be shooter as a turnover
@@ -563,7 +521,7 @@ function resolvePossession(
     // 0) reflects something. Narrative text and box-score attribution are kept in
     // sync by deciding the turnover here rather than leaving it to the randomly
     // chosen narrative flavor text.
-    const isTurnover = Math.random() < TURNOVER_RATE;
+    const isTurnover = rng.next() < TURNOVER_RATE;
     return { outcome: 'miss', points: 0, isAnd1: false, isTurnover, channel, scorerId, narrativeHint: isTurnover ? 'turnover' : 'miss' };
   }
 
@@ -573,7 +531,7 @@ function resolvePossession(
 
   if (channel === 'rim') {
     // Rim makes: 50% → 2pts (clean make), 50% → 1pt (foul/FTs) → avg 1.5
-    points = Math.random() < 0.5 ? 2 : 1;
+    points = rng.next() < 0.5 ? 2 : 1;
     narrativeHint = points === 2 ? 'rim_make' : 'rim_ft';
   } else if (channel === 'mid') {
     points = 2;
@@ -588,7 +546,7 @@ function resolvePossession(
   if (points >= 2) {
     const and1Base = AND1_BASE[channel];
     const and1Chance = and1Base + offenseMods.and1Bonus;
-    if (Math.random() < and1Chance) {
+    if (rng.next() < and1Chance) {
       isAnd1 = true;
       points += 1;
       narrativeHint = 'and1';
@@ -599,9 +557,9 @@ function resolvePossession(
   let assistId: string | undefined;
   if (points >= 2) {
     const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
-    if (assistCandidates.length > 0 && Math.random() < 0.65) {
+    if (assistCandidates.length > 0 && rng.next() < 0.65) {
       const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
-      const assister = weightedRandom(assistCandidates, assistWeights);
+      const assister = weightedRandom(assistCandidates, assistWeights, rng);
       assistId = assister?.id;
     }
   }
@@ -609,10 +567,10 @@ function resolvePossession(
   return { outcome: channel, points, isAnd1, isTurnover: false, channel, scorerId, assistId, narrativeHint };
 }
 
-function weightedRandom<T>(items: T[], weights: number[]): T {
+function weightedRandom<T>(items: T[], weights: number[], rng: Rng): T {
   const total = weights.reduce((a, b) => a + b, 0);
   if (total <= 0) return items[0];
-  let roll = Math.random() * total;
+  let roll = rng.next() * total;
   for (let i = 0; i < items.length; i++) {
     roll -= weights[i];
     if (roll <= 0) return items[i];
@@ -693,14 +651,15 @@ const POSSESSION_WIN_TEXTS = [
 function generateNarrative(
   narrativeHint: string,
   scorerName: string,
+  rng: Rng,
   assistName?: string,
   isPossWin?: boolean
 ): string {
   let prefix = '';
   if (isPossWin) {
-    prefix = POSSESSION_WIN_TEXTS[Math.floor(Math.random() * POSSESSION_WIN_TEXTS.length)] + ' ';
+    prefix = POSSESSION_WIN_TEXTS[Math.floor(rng.next() * POSSESSION_WIN_TEXTS.length)] + ' ';
   }
-  
+
   let texts: string[];
   switch (narrativeHint) {
     case 'miss': texts = MISS_TEXTS; break;
@@ -713,13 +672,13 @@ function generateNarrative(
     default: texts = MISS_TEXTS;
   }
 
-  let text = texts[Math.floor(Math.random() * texts.length)].replace('{player}', scorerName);
+  let text = texts[Math.floor(rng.next() * texts.length)].replace('{player}', scorerName);
 
   if (assistName && narrativeHint !== 'miss' && narrativeHint !== 'turnover') {
-    const assistText = ASSIST_TEXTS[Math.floor(Math.random() * ASSIST_TEXTS.length)].replace('{assist}', assistName);
+    const assistText = ASSIST_TEXTS[Math.floor(rng.next() * ASSIST_TEXTS.length)].replace('{assist}', assistName);
     text += assistText;
   }
-  
+
   return prefix + text;
 }
 
@@ -733,12 +692,12 @@ export function buildTeamInfo(
   const allCards = seat.drafted;
   const playerMap = new Map<string, PlayerCardData>();
   const playMap = new Map<string, Play>();
-  
+
   for (const card of allCards) {
     if (card.type === 'Player') playerMap.set(card.id, card as PlayerCardData);
     else if (card.type === 'Play') playMap.set(card.id, card as Play);
   }
-  
+
   // Position natural eligibility check. Data uses '/' (e.g. 'G/F'); the '-' checks
   // below are stale from an older format but harmless — normalise to '/' first so
   // both spellings hit the same branches.
@@ -755,7 +714,7 @@ export function buildTeamInfo(
     if (parts.includes('F') && (col === 'SF' || col === 'PF')) return true;
     return false;
   };
-  
+
   // Apply -10% penalty for out-of-position players
   const applyOOPPenalty = (player: PlayerCardData): PlayerCardData => {
     const penalty = 0.9; // -10%
@@ -773,11 +732,11 @@ export function buildTeamInfo(
       },
     };
   };
-  
+
   // Collect active roster players, applying OOP penalty where needed
   const activePlayers: PlayerCardData[] = [];
   const starters: string[] = [];
-  
+
   for (const [pos, ids] of Object.entries(roster.depthChart)) {
     for (const id of ids) {
       const player = playerMap.get(id);
@@ -791,14 +750,14 @@ export function buildTeamInfo(
     }
     if (ids.length > 0) starters.push(ids[0]);
   }
-  
+
   // Collect active plays
   const activePlays: Play[] = [];
   for (const id of roster.activePlays) {
     const play = playMap.get(id);
     if (play) activePlays.push(play);
   }
-  
+
   return {
     seatId: seat.id,
     name: isHuman ? 'You' : (seat.botProfile?.name || seat.id),
@@ -814,22 +773,23 @@ export function buildTeamInfo(
 export function simulateGame(
   homeTeam: TeamInfo,
   awayTeam: TeamInfo,
-  opts?: { leagueAvg?: typeof LEAGUE_AVG }
+  opts?: { rng?: Rng; leagueAvg?: typeof LEAGUE_AVG }
 ): GameTheater {
+  const rng = opts?.rng ?? createRng(randomSeed());
   const leagueAvg = opts?.leagueAvg ?? LEAGUE_AVG;
   const playerNameMap = new Map<string, string>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
     playerNameMap.set(p.id, p.player?.name || p.id);
   }
-  
+
   // 1. Calculate possession shares
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
   const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players);
-  
+
   // 2. Calculate bonuses (synergies + plays)
   const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares);
   const awayBonuses = calcTeamBonuses(awayTeam.players, awayTeam.plays, awayShares);
-  
+
   // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
   // Minutes are credited per on-court possession (offense and defense), scaled to
   // the actual game length: a player on court for every possession gets exactly 48.
@@ -838,10 +798,11 @@ export function simulateGame(
   const split = calcPossessionSplit(
     homeTeam.players, awayTeam.players,
     homeTeam.depthChart, awayTeam.depthChart,
-    homeBonuses, awayBonuses
+    homeBonuses, awayBonuses,
+    rng
   );
   REG_MIN_PER_POSS = 48 / split.totalPoss;
-  
+
   // 4. Pre-game shot profiles (team-wide, blended with NBA baseline)
   const homeShotProfile = calcTeamShotProfile(
     homeTeam.players, homeTeam.depthChart,
@@ -851,18 +812,18 @@ export function simulateGame(
     awayTeam.players, awayTeam.depthChart,
     awayBonuses.offenseMods, homeBonuses.defenseMods
   );
-  
+
   // 4. Distribute possessions across 4 quarters with noise
-  const quarterPoss = distributeQuarters(split.homePoss, split.awayPoss);
-  
+  const quarterPoss = distributeQuarters(split.homePoss, split.awayPoss, rng);
+
   // 5. Generate rotation timelines per quarter
   const allPossessions: PossessionEvent[] = [];
   const allSubs: SubstitutionEvent[] = [];
   const quarterSummaries: QuarterSummary[] = [];
-  
+
   let homeScore = 0, awayScore = 0;
   let possIndex = 0;
-  
+
   // Box score tracking
   const boxStats = new Map<string, PlayerBoxScore>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
@@ -873,40 +834,39 @@ export function simulateGame(
       turnovers: 0, assists: 0,
     });
   }
-  
+
   // Possession-winning events to distribute
   let homeExtraPoss = split.homeAdvantageEvents;
   let awayExtraPoss = split.awayAdvantageEvents;
-  
+
   for (let q = 0; q < 4; q++) {
     const quarter = q + 1;
     const homeQ = quarterPoss[q].home;
     const awayQ = quarterPoss[q].away;
-    const totalQ = homeQ + awayQ;
-    
+
     // Generate rotation for this quarter
     const homeRotation = generateQuarterRotation(homeTeam.depthChart, homeTeam.players, homeQ, quarter, homeShares);
     const awayRotation = generateQuarterRotation(awayTeam.depthChart, awayTeam.players, awayQ, quarter, awayShares);
-    
+
     // Extract subs
     const homeSubs = extractSubstitutions(homeRotation, possIndex, quarter);
     const awaySubs = extractSubstitutions(awayRotation, possIndex, quarter);
     allSubs.push(...homeSubs, ...awaySubs);
-    
+
     const qStartScore: [number, number] = [homeScore, awayScore];
     let homePossCount = 0, awayPossCount = 0;
-    
+
     // Interleave possessions: alternate home/away
     let homeIdx = 0, awayIdx = 0;
-    let isHomeTurn = Math.random() < 0.5; // Random first possession per quarter
-    
+    let isHomeTurn = rng.next() < 0.5; // Random first possession per quarter
+
     while (homeIdx < homeQ || awayIdx < awayQ) {
       let team: 'home' | 'away';
-      
+
       if (homeIdx >= homeQ) { team = 'away'; }
       else if (awayIdx >= awayQ) { team = 'home'; }
       else { team = isHomeTurn ? 'home' : 'away'; isHomeTurn = !isHomeTurn; }
-      
+
       const isHome = team === 'home';
       const rotIdx = isHome ? homeIdx : awayIdx;
       const rotation = isHome ? homeRotation : awayRotation;
@@ -914,32 +874,32 @@ export function simulateGame(
       const defenseTeam = isHome ? awayTeam : homeTeam;
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
-      
+
       // Get current lineup from rotation
       const lineupMap = rotation[Math.min(rotIdx, rotation.length - 1)];
       const offenseIds = Array.from(lineupMap.values());
-      
+
       // Get defense lineup (use the other team's rotation at their current index)
       const defRotation = isHome ? awayRotation : homeRotation;
       const defIdx = isHome ? awayIdx : homeIdx;
       const defLineupMap = defRotation[Math.min(defIdx, defRotation.length - 1)];
       const defenseIds = Array.from(defLineupMap.values());
-      
+
       // Resolve lineup to player objects
       const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
       const defenseLineup = defenseIds.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-      
+
       // Check if this is a possession-winning event
       let isPossWin = false;
-      if (isHome && homeExtraPoss > 0 && Math.random() < homeExtraPoss / (homeQ - homeIdx)) {
+      if (isHome && homeExtraPoss > 0 && rng.next() < homeExtraPoss / (homeQ - homeIdx)) {
         isPossWin = true; homeExtraPoss--;
-      } else if (!isHome && awayExtraPoss > 0 && Math.random() < awayExtraPoss / (awayQ - awayIdx)) {
+      } else if (!isHome && awayExtraPoss > 0 && rng.next() < awayExtraPoss / (awayQ - awayIdx)) {
         isPossWin = true; awayExtraPoss--;
       }
-      
+
       // Resolve the possession (multi-channel: shot type → edge → efficiency)
       const shotProfile = isHome ? homeShotProfile : awayShotProfile;
-      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp, leagueAvg);
+      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp, leagueAvg, rng);
 
       if (isHome) homeScore += result.points; else awayScore += result.points;
 
@@ -976,16 +936,16 @@ export function simulateGame(
         const bs = boxStats.get(result.assistId);
         if (bs) bs.assists++;
       }
-      
+
       const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
       const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
-      
+
       // Map channel result to PossessionEvent outcome format
       const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
         : result.channel === 'three' ? '3pt' as const
         : result.isAnd1 ? 'and1' as const
         : '2pt' as const;
-      
+
       allPossessions.push({
         index: possIndex,
         quarter,
@@ -996,14 +956,14 @@ export function simulateGame(
         scoringPlayerId: result.scorerId,
         assistPlayerId: result.assistId,
         isPossessionWinEvent: isPossWin,
-        narrativeText: generateNarrative(result.narrativeHint, scorerName, assistName, isPossWin),
+        narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin),
         runningScore: [homeScore, awayScore],
       });
-      
+
       possIndex++;
       if (isHome) { homeIdx++; homePossCount++; } else { awayIdx++; awayPossCount++; }
     }
-    
+
     quarterSummaries.push({
       quarter,
       homeScore: homeScore - qStartScore[0],
@@ -1012,44 +972,44 @@ export function simulateGame(
       awayPossessions: awayPossCount,
     });
   }
-  
+
   // Overtime if tied
   let isOvertime = false;
   let overtimePeriods = 0;
-  
+
   while (homeScore === awayScore) {
     isOvertime = true;
     overtimePeriods++;
-    const otPoss = 10; // 5 per team + noise
-    const OT_MIN_PER_POSS = 5 / otPoss; // a 5-minute period
-    const homeOTPoss = 5 + Math.round((Math.random() - 0.5) * 2);
+    const otPoss = OT_POSS_PER_TEAM * 2; // 5 per team + noise
+    const OT_MIN_PER_POSS = OT_PERIOD_MINUTES / otPoss;
+    const homeOTPoss = OT_POSS_PER_TEAM + Math.round((rng.next() - 0.5) * 2);
     const awayOTPoss = otPoss - homeOTPoss;
     const otQuarter = 4 + overtimePeriods;
-    
+
     // OT: starters only
     const otStartScore: [number, number] = [homeScore, awayScore];
     let homeOTIdx = 0, awayOTIdx = 0;
-    let otHomeTurn = Math.random() < 0.5;
-    
+    let otHomeTurn = rng.next() < 0.5;
+
     while (homeOTIdx < homeOTPoss || awayOTIdx < awayOTPoss) {
       let team: 'home' | 'away';
       if (homeOTIdx >= homeOTPoss) team = 'away';
       else if (awayOTIdx >= awayOTPoss) team = 'home';
       else { team = otHomeTurn ? 'home' : 'away'; otHomeTurn = !otHomeTurn; }
-      
+
       const isHome = team === 'home';
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
-      
+
       // Starters only in OT
       const offenseLineup = offenseTeam.starters.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
       const defenseLineup = defenseTeam.starters.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-      
+
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
       const otShotProfile = isHome ? homeShotProfile : awayShotProfile;
-      
-      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp, leagueAvg);
+
+      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp, leagueAvg, rng);
       if (isHome) homeScore += result.points; else awayScore += result.points;
 
       // Box score. Same 0.24-per-possession-on-court convention as regulation (P2-2):
@@ -1079,14 +1039,14 @@ export function simulateGame(
         if (bs) bs.turnovers++;
       }
       if (result.assistId && result.points > 0) { const bs = boxStats.get(result.assistId); if (bs) bs.assists++; }
-      
+
       const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
-      
+
       const otOutcomeForEvent = result.outcome === 'miss' ? 'miss' as const
         : result.channel === 'three' ? '3pt' as const
         : result.isAnd1 ? 'and1' as const
         : '2pt' as const;
-      
+
       allPossessions.push({
         index: possIndex++,
         quarter: otQuarter,
@@ -1096,13 +1056,13 @@ export function simulateGame(
         outcome: otOutcomeForEvent,
         scoringPlayerId: result.scorerId,
         assistPlayerId: result.assistId,
-        narrativeText: generateNarrative(result.narrativeHint, scorerName, result.assistId ? playerNameMap.get(result.assistId) : undefined),
+        narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, result.assistId ? playerNameMap.get(result.assistId) : undefined),
         runningScore: [homeScore, awayScore],
       });
-      
+
       if (isHome) homeOTIdx++; else awayOTIdx++;
     }
-    
+
     quarterSummaries.push({
       quarter: otQuarter,
       homeScore: homeScore - otStartScore[0],
@@ -1111,12 +1071,12 @@ export function simulateGame(
       awayPossessions: awayOTPoss,
     });
   }
-  
+
   // Round minutes
   for (const bs of boxStats.values()) {
     bs.minutes = Math.round(bs.minutes * 10) / 10;
   }
-  
+
   // Split box scores
   const homeIds = new Set(homeTeam.players.map(p => p.id));
   const homeBox = Array.from(boxStats.values())
@@ -1125,7 +1085,7 @@ export function simulateGame(
   const awayBox = Array.from(boxStats.values())
     .filter(bs => !homeIds.has(bs.playerId))
     .sort((a, b) => b.points - a.points);
-  
+
   return {
     homeTeam,
     awayTeam,
@@ -1138,6 +1098,7 @@ export function simulateGame(
     awayBonuses,
     isOvertime,
     overtimePeriods,
+    seed: rng.seed,
   };
 }
 
@@ -1145,28 +1106,29 @@ export function simulateGame(
 
 function distributeQuarters(
   homePoss: number,
-  awayPoss: number
+  awayPoss: number,
+  rng: Rng
 ): { home: number; away: number }[] {
   const quarters: { home: number; away: number }[] = [];
   let homeRemaining = homePoss;
   let awayRemaining = awayPoss;
-  
+
   for (let q = 0; q < 4; q++) {
     const remaining = 4 - q;
     const homeBase = Math.round(homeRemaining / remaining);
     const awayBase = Math.round(awayRemaining / remaining);
-    
+
     // Add noise ±1
-    const homeNoise = q < 3 ? Math.round((Math.random() - 0.5) * 2) : 0;
-    const awayNoise = q < 3 ? Math.round((Math.random() - 0.5) * 2) : 0;
-    
+    const homeNoise = q < 3 ? Math.round((rng.next() - 0.5) * 2) : 0;
+    const awayNoise = q < 3 ? Math.round((rng.next() - 0.5) * 2) : 0;
+
     const homeQ = q < 3 ? Math.max(20, homeBase + homeNoise) : homeRemaining;
     const awayQ = q < 3 ? Math.max(20, awayBase + awayNoise) : awayRemaining;
-    
+
     quarters.push({ home: homeQ, away: awayQ });
     homeRemaining -= homeQ;
     awayRemaining -= awayQ;
   }
-  
+
   return quarters;
 }

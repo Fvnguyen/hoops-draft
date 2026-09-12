@@ -1,5 +1,5 @@
-import { PlayerCardData, Play } from '../components/PlayerCard';
-import { calcTeamShotProfile } from './gameEngine';
+import { PlayerCardData, Play } from './types';
+import { calcTeamShotProfile } from './game';
 import { countBadges, SYNERGIES, emptyModifiers, calcTeamBonuses } from './synergies';
 
 export interface RosterIdentity {
@@ -32,7 +32,7 @@ export function calcRosterIdentity(depthChart: Record<string, PlayerCardData[]>)
     players.forEach((p, idx) => {
       const weight = idx === 0 ? 2.0 : 1.0;
       totalWeight += weight;
-      
+
       const r = p.ratings;
       if (r) {
         totals.finishing += (r.finishing ?? 50) * weight;
@@ -72,9 +72,9 @@ export function calcRosterShotDiet(depthChart: Record<string, PlayerCardData[]>,
   for (const pos in depthChart) {
     allPlayers.push(...depthChart[pos]);
   }
-  
+
   // To show shot diet in vacuum, we calculate bonuses with no opponent defense
-  const fakePossShares = new Map<string, number>(); 
+  const fakePossShares = new Map<string, number>();
   const bonuses = calcTeamBonuses(allPlayers, activePlays, fakePossShares);
 
   // calcTeamShotProfile needs players array and depthChart
@@ -91,7 +91,7 @@ export function getBadgeTally(depthChart: Record<string, PlayerCardData[]>) {
     allPlayers.push(...depthChart[pos]);
   }
   const badges = countBadges(allPlayers);
-  
+
   const teasers = [];
   for (const syn of SYNERGIES) {
     // For teasers, we look at synergies that require a single badge (stacking) or multiple (combo)
@@ -120,7 +120,7 @@ export function getBadgeTally(depthChart: Record<string, PlayerCardData[]>) {
        if (lvl > 0 && lvl < 4) teasers.push({ text: `Mid-Range Maestro ${lvl}/4`, progress: lvl/4 });
     }
   }
-  
+
   return {
     badges,
     teasers

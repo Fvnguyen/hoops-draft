@@ -9,11 +9,12 @@
  * buildBotRoster() -> DraftSessionSeat -> buildTeamInfo() -> simulateGame().
  */
 
-import { getAllCards } from '@/lib/engine';
+import { getAllCards } from '@/engine/cards';
 import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
-import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/lib/draftEngine';
-import { buildBotRoster, type DraftSessionSeat } from '@/lib/botDeckBuilder';
-import { buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/lib/gameEngine';
+import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
+import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
+import { buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
+import { createRng, randomSeed, type Rng } from '@/engine/rng';
 import { PLAYS } from './fixtures/plays';
 
 export { PLAYS };
@@ -22,11 +23,10 @@ export { PLAYS };
 
 let cachedPlayers: PlayerCardData[] | null = null;
 
-/** getAllCards() + tag each card `type: 'Player'` (mirrors DraftRoom.tsx ~line 189). */
+/** getAllCards() from the build-time card artifact (already tagged `type: 'Player'`). */
 export function loadPlayers(): PlayerCardData[] {
   if (cachedPlayers) return cachedPlayers;
-  const cards = getAllCards();
-  cachedPlayers = cards.map((c) => ({ ...c, type: 'Player' as const }));
+  cachedPlayers = getAllCards();
   return cachedPlayers;
 }
 
@@ -35,11 +35,11 @@ export function loadPlayers(): PlayerCardData[] {
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner', 'CourtSense'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
 
-function makeBotProfile(seatIndex: number): BotProfile {
+function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
   return {
     id: seatIndex === 0 ? 'human-0' : `bot-${seatIndex}`,
     name: BOT_NAMES[seatIndex % BOT_NAMES.length],
-    noiseSeed: Math.floor(Math.random() * 1_000_000),
+    noiseSeed: Math.floor(rng.next() * 1_000_000),
     favoredTrait: TRAITS_POOL[seatIndex % TRAITS_POOL.length],
   };
 }
@@ -53,15 +53,16 @@ function makeBotProfile(seatIndex: number): BotProfile {
  * 12 picks per pack, rotate packs (pack 2 passes right, packs 1 & 3 pass
  * left), 3 packs dealt from the pre-generated 24-pack cube pool.
  */
-export function runHeadlessDraft(players: PlayerCardData[], plays: Play[] = PLAYS): DraftSessionSeat[] {
-  const allPacks = generateCubePool(players, plays); // 24 packs of 12 (8 seats x 3 rounds)
+export function runHeadlessDraft(players: PlayerCardData[], plays: Play[] = PLAYS, seed?: number): DraftSessionSeat[] {
+  const rng = createRng(seed ?? randomSeed());
+  const allPacks = generateCubePool(players, plays, rng); // 24 packs of 12 (8 seats x 3 rounds)
 
   const seats: DraftSeat[] = [];
   for (let i = 0; i < 8; i++) {
     seats.push({
       id: i === 0 ? 'human-0' : `bot-${i}`,
       isBot: true,
-      botProfile: makeBotProfile(i),
+      botProfile: makeBotProfile(i, rng),
       drafted: [],
       currentPack: allPacks[i] || [],
     });
@@ -134,24 +135,29 @@ export function buildTestTeam(players: PlayerCardData[], plays: Play[] = [], sea
  * Simulate `n` games. Each game drafts a fresh 8-team pod (headless) and
  * plays a random pairing from it, so results sample many different roster
  * constructions rather than always the same 8 teams.
+ *
+ * Pass `seed` to make the entire run (draft + pairing + game) reproducible:
+ * the same seed always yields the same sequence of games.
  */
-export function simulateMany(n: number, players?: PlayerCardData[], plays?: Play[]): GameTheater[] {
+export function simulateMany(n: number, players?: PlayerCardData[], plays?: Play[], seed?: number): GameTheater[] {
   const pool = players ?? loadPlayers();
   const playPool = plays ?? PLAYS;
+  const rng = createRng(seed ?? randomSeed());
   const games: GameTheater[] = [];
 
   for (let i = 0; i < n; i++) {
-    const seats = runHeadlessDraft(pool, playPool);
+    const draftSeed = Math.floor(rng.next() * 4294967296);
+    const seats = runHeadlessDraft(pool, playPool, draftSeed);
     const teams = buildTeams(seats);
 
-    const a = Math.floor(Math.random() * teams.length);
-    let b = Math.floor(Math.random() * teams.length);
-    while (b === a) b = Math.floor(Math.random() * teams.length);
+    const a = Math.floor(rng.next() * teams.length);
+    let b = Math.floor(rng.next() * teams.length);
+    while (b === a) b = Math.floor(rng.next() * teams.length);
 
-    const home = Math.random() < 0.5 ? teams[a] : teams[b];
+    const home = rng.next() < 0.5 ? teams[a] : teams[b];
     const away = home === teams[a] ? teams[b] : teams[a];
 
-    games.push(simulateGame(home, away));
+    games.push(simulateGame(home, away, { rng }));
   }
 
   return games;

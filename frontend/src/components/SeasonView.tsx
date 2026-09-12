@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getDraftSession } from '../lib/botDeckBuilder';
-import { Season, createSeason, playNextGame, saveSeason, getSeasonByRoster } from '../lib/seasonEngine';
-import { GameTheater } from '../lib/gameEngine';
+import { getDraftSession, saveSeason, getSeasonByRoster } from '../lib/legacyStorage';
+import { Season, createSeason, playNextGame } from '../engine/season';
+import { GameTheater } from '../engine/game';
 import { GameView } from './GameView';
 import { Trophy, Swords, ChevronLeft, ArrowRight } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';

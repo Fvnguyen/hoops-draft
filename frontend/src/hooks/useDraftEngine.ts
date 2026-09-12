@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
-import { DraftSeat, generateCubePool, getBotPick } from '../lib/draftEngine';
-import { DraftPickRecord } from '../lib/botDeckBuilder';
+import { DraftSeat, generateCubePool, getBotPick } from '../engine/draft';
+import { DraftPickRecord } from '../engine/deckbuilder';
+import { createRng, randomSeed } from '../engine/rng';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
@@ -13,15 +14,19 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   const [currentPickNumber, setCurrentPickNumber] = useState(1); // 1 to 12
   const [overallPick, setOverallPick] = useState(1); // 1 to 36
   const [pickLog, setPickLog] = useState<DraftPickRecord[]>([]);
-  
+  const [draftSeed, setDraftSeed] = useState<number | undefined>(undefined);
+
   // Store pre-generated cube packs: 24 packs (8 seats × 3 rounds)
   const cubePacksRef = useRef<DraftCard[][]>([]);
   const startedRef = useRef(false);
 
   const startNewDraft = useCallback(() => {
-    // Generate ALL 24 packs upfront (cube-style: each player at most once)
-    const allPacks = generateCubePool(allPlayers, playsDB);
+    // Generate ALL 24 packs upfront (cube-style: each player at most once), from a
+    // fresh seed so the draft is reproducible/replayable from `draftSeed` alone.
+    const seed = randomSeed();
+    const allPacks = generateCubePool(allPlayers, playsDB, createRng(seed));
     cubePacksRef.current = allPacks;
+    setDraftSeed(seed);
 
     const initialSeats: DraftSeat[] = [];
 
@@ -178,5 +183,6 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     pickLog,
     processPickAndPass,
     setDraftState,
+    draftSeed,
   };
 }

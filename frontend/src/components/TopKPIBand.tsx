@@ -1,5 +1,5 @@
 import React from 'react';
-import { RosterIdentity } from '../lib/rosterStats';
+import { RosterIdentity } from '../engine/rosterStats';
 import { DonutChart } from './DonutChart';
 
 export function TopKPIBand({ identity, shotDiet, bonuses }: { identity: RosterIdentity, shotDiet: any, bonuses: any }) {

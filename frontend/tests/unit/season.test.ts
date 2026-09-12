@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createSeason, playNextGame } from '@/lib/seasonEngine';
-import type { DraftSession } from '@/lib/botDeckBuilder';
+import { createSeason, playNextGame } from '@/engine/season';
+import type { DraftSession } from '@/engine/deckbuilder';
 import { loadPlayers, PLAYS, runHeadlessDraft } from './helpers';
 
 // createSeason/playNextGame never touch localStorage (only saveSeason does),

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getAllCards } from '@/lib/engine';
+import cards from '@/data/cards.json';
+
+export const dynamic = 'force-static';
 
 export async function GET() {
-  try {
-    const cards = getAllCards();
-    return NextResponse.json(cards);
-  } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: 'Failed to generate cards' }, { status: 500 });
-  }
+  return NextResponse.json(cards, {
+    headers: {
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
 }

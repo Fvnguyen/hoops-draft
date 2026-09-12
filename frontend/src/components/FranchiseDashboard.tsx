@@ -1,7 +1,7 @@
 import React from 'react';
-import { TeamInfo } from '../lib/gameEngine';
-import { calcRosterIdentity, calcRosterShotDiet, resolveDepthChart } from '../lib/rosterStats';
-import { calcTeamBonuses } from '../lib/synergies';
+import { TeamInfo } from '../engine/game';
+import { calcRosterIdentity, calcRosterShotDiet, resolveDepthChart } from '../engine/rosterStats';
+import { calcTeamBonuses } from '../engine/synergies';
 import { PlayerCardData, Play, MiniPlayerCard } from './PlayerCard';
 import { DonutChart } from './DonutChart';
 

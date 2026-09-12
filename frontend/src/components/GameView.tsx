@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { GameTheater, PossessionEvent } from '../lib/gameEngine';
+import { GameTheater, PossessionEvent } from '../engine/game';
 import { Play as PlayIcon, FastForward, Pause, SkipForward } from 'lucide-react';
-import { calcRosterIdentity, resolveDepthChart } from '../lib/rosterStats';
-import { calcTeamBonuses } from '../lib/synergies';
+import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
+import { calcTeamBonuses } from '../engine/synergies';
 import { MiniPlayerCard } from './PlayerCard';
 
 interface GameViewProps {

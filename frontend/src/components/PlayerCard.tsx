@@ -5,7 +5,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCw, Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-import { PlayerCard as DBPlayerCard } from '@/lib/engine';
+import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard } from '@/engine/types';
+
+// Re-exported so existing `from '@/components/PlayerCard'` type-only imports
+// elsewhere in the app keep working — the canonical definitions live in
+// `@/engine/types` (pure TypeScript, no React/Next/fs/sqlite).
+// NOTE: the engine's `PlayerCard` type is intentionally NOT re-exported under
+// that name — it would collide with the `PlayerCard` component function
+// defined below in this same file.
+export type { PlayerBio, SeasonStat, ComputedRatings, Trait, Rarity, AwardRow, RatingsInput } from '@/engine/types';
+export type PlayerCardData = EnginePlayerCardData;
+export type Player = EnginePlayer;
+export type Play = EnginePlay;
+export type DraftCard = EngineDraftCard;
 
 // Badge icon + color mapping
 const badgeConfig: Record<string, { icon: LucideIcon; color: string; bg: string }> = {
@@ -53,34 +65,6 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
     </div>
   );
 }
-
-export interface PlayerCardData extends DBPlayerCard {
-  type: 'Player';
-  imageUrl?: string;
-}
-
-export type Player = PlayerCardData;
-
-export interface Play {
-  type: 'Play';
-  id: string;
-  /**
-   * Base effect id (matches a key in synergies.ts PLAY_EFFECTS), independent of `id`.
-   * `id` gets a `_pack{N}` suffix in draftEngine.generateCubePool so React has a unique
-   * key per pack copy; `playId` is the stable id effect lookups should use. Optional so
-   * older saved sessions (localStorage) without this field still fall back to stripping
-   * the suffix off `id` — see checkPlayActivation in synergies.ts.
-   */
-  playId?: string;
-  name: string;
-  rarity: 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
-  playCategory: 'system' | 'special' | 'basic';
-  badges: string[];
-  mechanicText: string;
-  imageUrl?: string;
-}
-
-export type DraftCard = PlayerCardData | Play;
 
 export const basePosColors = {
   PG: '#3B82F6', // Blue

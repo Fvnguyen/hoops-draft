@@ -5,9 +5,9 @@ import { DraftCard, PlayerCard, PlayCard, Play, PlayerCardData } from './PlayerC
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
-import { updateHumanRosterInSession } from '../lib/botDeckBuilder';
-import { calcRosterIdentity, calcRosterShotDiet } from '../lib/rosterStats';
-import { calcTeamBonuses } from '../lib/synergies';
+import { updateHumanRosterInSession } from '../lib/legacyStorage';
+import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
+import { calcTeamBonuses } from '../engine/synergies';
 import { TopKPIBand } from './TopKPIBand';
 import { safeGetJSON, safeSetJSON, StorageQuotaError } from '../lib/storage';
 

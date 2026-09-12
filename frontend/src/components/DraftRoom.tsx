@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Users, LayoutList } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
-import { saveDraftSession } from '../lib/botDeckBuilder';
+import { saveDraftSession } from '../lib/legacyStorage';
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
 const playsDB: Play[] = [
@@ -173,16 +173,16 @@ export function DraftRoom() {
   const [humanZones, setHumanZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, pickLog, processPickAndPass } = useDraftEngine(allPlayers, playsDB);
+  const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
 
   // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {
     if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId) {
-      const id = saveDraftSession(seats, pickLog);
+      const id = saveDraftSession(seats, pickLog, draftSeed);
       setSessionId(id);
       console.log(`Draft session saved: ${id} (${seats.length} seats, ${pickLog.length} pick records, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
     }
-  }, [draftState, seats, sessionId, pickLog]);
+  }, [draftState, seats, sessionId, pickLog, draftSeed]);
 
   useEffect(() => {
     setIsClient(true);

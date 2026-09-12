@@ -3,7 +3,7 @@ import { TopKPIBand } from '../../components/TopKPIBand';
 import { FranchiseDashboard } from '../../components/FranchiseDashboard';
 import { GameView } from '../../components/GameView';
 import { PlayerCardData } from '../../components/PlayerCard';
-import { TeamInfo, GameTheater } from '../../lib/gameEngine';
+import { TeamInfo, GameTheater } from '../../engine/game';
 
 const mockPlayer = (name: string, pos: string, ovr: number, id: string): PlayerCardData => ({
   type: 'Player',
@@ -71,7 +71,8 @@ const mockGameTheater: GameTheater = {
   boxScore: { home: [], away: [] },
   homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: {} as any, defenseMods: {} as any, playstyle: [] },
   awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: {} as any, defenseMods: {} as any, playstyle: [] },
-  finalScore: [0, 0]
+  finalScore: [0, 0],
+  seed: 0,
 };
 
 export default function TestUI() {

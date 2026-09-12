@@ -1,13 +1,13 @@
 /**
  * Synergy & Play Bonus System (v2 — Channel-Based)
- * 
+ *
  * Three tiers:
  *   1. Badges — on player cards, no direct bonus, act as requirements
  *   2. Plays — actively chosen (3 slots), conditional bonuses if badge requirements met
  *   3. Synergies — passive/emergent from roster composition (like MtG tribal)
- * 
+ *
  * Badges are summed raw across the 12-man roster (not weighted by lineup).
- * 
+ *
  * Bonuses target channel-specific modifiers:
  *   - Shot distribution: rimShareBonus, midShareBonus, perShareBonus
  *   - Shot efficiency: rimEffBonus, midEffBonus, perEffBonus
@@ -15,7 +15,7 @@
  *   - And-1: and1Bonus
  */
 
-import { PlayerCardData, Play } from '../components/PlayerCard';
+import { PlayerCardData, Play } from './types';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -250,7 +250,7 @@ export const SYNERGIES: SynergyDef[] = [
       const maxTeam = Math.max(...Object.values(teamCounts));
       if (maxTeam < 3) return null;
       const bonus = (maxTeam - 2) * 0.01;
-      const teamName = Object.entries(teamCounts).find(([_, c]) => c === maxTeam)?.[0] || '';
+      const teamName = Object.entries(teamCounts).find(([, c]) => c === maxTeam)?.[0] || '';
       return { ...emptyModifiers(), rimEffBonus: bonus, midEffBonus: bonus, perEffBonus: bonus, description: [`Brotherhood: ${teamName} (${maxTeam} players, +${(bonus*100).toFixed(0)}% all eff)`] };
     },
   },
@@ -291,7 +291,7 @@ interface PlayEffect {
   halfBonus: GameModifiers;
 }
 
-/** 
+/**
  * Play effects keyed by play ID.
  * Full bonus if all requirements met, half bonus if ≥50% met, nothing if <50%.
  */
@@ -351,14 +351,14 @@ function checkPlayActivation(play: Play, badges: BadgeTotals): GameModifiers | n
   const effectId = play.playId ?? play.id.replace(/_pack\d+$/, '');
   const effect = PLAY_EFFECTS[effectId];
   if (!effect) return null;
-  
+
   let metCount = 0;
   for (const req of effect.requirements) {
     if ((badges[req.badge] || 0) >= req.levels) metCount++;
   }
-  
+
   const ratio = effect.requirements.length > 0 ? metCount / effect.requirements.length : 1;
-  
+
   if (ratio >= 1.0) return effect.fullBonus;
   if (ratio >= 0.5) return effect.halfBonus;
   return null;
@@ -391,7 +391,7 @@ export interface TeamBonuses {
 
 /**
  * Calculate all bonuses for a team.
- * 
+ *
  * @param rosterPlayers - All 12 players in the active roster
  * @param activePlays - The 3 active Play cards
  * @param possShares - Map of playerId → possession share (from rotation engine)
@@ -399,16 +399,17 @@ export interface TeamBonuses {
 export function calcTeamBonuses(
   rosterPlayers: PlayerCardData[],
   activePlays: Play[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- not currently read (kept for API stability / future rotation-weighted synergies)
   possShares: Map<string, number>
 ): TeamBonuses {
   const badges = countBadges(rosterPlayers);
-  
+
   const offenseMods = emptyModifiers();
   const defenseMods = emptyModifiers();
   let possessionSwing = 0;
   const activeSynergies: { name: string; description: string }[] = [];
   const activePlayResults: { name: string; description: string; activated: 'full' | 'partial' | 'none' }[] = [];
-  
+
   // 1. Synergies
   //
   // P0-3: every source's possessionSwing is accumulated exactly once, into this
@@ -469,7 +470,7 @@ export function calcTeamBonuses(
       activePlayResults.push({ name: play.name, description: 'Requirements not met', activated: 'none' });
     }
   }
-  
+
   return {
     offenseMods,
     defenseMods,
