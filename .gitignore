@@ -1,0 +1,34 @@
+# --- dependencies ---
+node_modules/
+
+# --- Next.js / build output ---
+frontend/.next/
+frontend/out/
+frontend/build/
+*.tsbuildinfo
+frontend/next-env.d.ts
+
+# --- test artifacts ---
+frontend/playwright-report/
+frontend/test-results/
+coverage/
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+
+# --- runtime game logs (exported from /debug; regenerate, don't commit) ---
+data/game_logs/*.json
+data/fetch.log
+
+# --- screenshots / scratch images (dev artifacts, not source) ---
+screenshot*.png
+*_screenshot.png
+mock-*.png
+
+# --- env / OS ---
+.env*
+.DS_Store
+Thumbs.db
+*.pem
