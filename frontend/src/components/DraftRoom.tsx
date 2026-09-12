@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { PlayerCard, PlayCard, Player, Play, DraftCard, PositionIcon } from './PlayerCard';
+import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronLeft, Users, LayoutList } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
+import { DraftSidebar } from './DraftSidebar';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { buildDraftSession } from '../lib/sessionBuilder';
+import type { DraftSeat } from '../engine/draft';
+import type { DraftPickRecord } from '../engine/deckbuilder';
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
 const playsDB: Play[] = [
@@ -23,145 +26,48 @@ const playsDB: Play[] = [
   { type: 'Play', id: 'play-std-5', name: 'Four Out One In', rarity: 'Common', playCategory: 'special', badges: ['Sharpshooter', 'Glass Cleaner'], mechanicText: 'Boosts Sharpshooter effectiveness when paired with a Glass Cleaner.' }
 ];
 
-function RarityDot({ rarity }: { rarity: DraftCard['rarity'] }) {
-  const colors = {
-    Common: 'bg-black border-stone-500',
-    Uncommon: 'bg-stone-300 border-white',
-    Rare: 'bg-yellow-400 border-yellow-200',
-    Mythic: 'bg-orange-500 border-orange-300'
-  };
-  return <div className={`w-2 h-2 rounded-full border ${colors[rarity]} shrink-0`} />;
+// ── Bot pick ticker ──────────────────────────────────────────────────────
+//
+// Surfaces the most recent bot picks (pickLog) so the draft doesn't feel
+// solitary. Resolves names from the seats' own `drafted` arrays rather than
+// a separate id->card map, since every picked card already lives there.
+// Neighbour seats' picks are prioritized to the front of the ticker.
+function resolvePickLabel(record: DraftPickRecord, seats: DraftSeat[]): string | null {
+  const seat = seats.find(s => s.id === record.seatId);
+  if (!seat) return null;
+  const card = seat.drafted.find(c => c.id === record.pickedCardId);
+  if (!card) return null;
+  const cardName = card.type === 'Play' ? card.name : card.player.name;
+  const botName = seat.botProfile?.name || 'Bot';
+  return `${botName} took ${cardName}`;
 }
 
-function DraftSidebar({ 
-  drafted, humanZones, isOpen, toggle, activeZone, setActiveZone, onDrop 
-}: { 
-  drafted: DraftCard[], 
-  humanZones: Record<string, 'Roster' | 'GLeague'>,
-  isOpen: boolean, 
-  toggle: () => void,
-  activeZone: 'Roster' | 'GLeague',
-  setActiveZone: (z: 'Roster' | 'GLeague') => void,
-  onDrop: (cardId: string, zone: 'Roster' | 'GLeague') => void
-}) {
-  const roster = drafted.filter(c => humanZones[c.id] !== 'GLeague');
-  const gleague = drafted.filter(c => humanZones[c.id] === 'GLeague');
+function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: DraftSeat[] }) {
+  const neighbourIds = new Set([seats[7]?.id, seats[1]?.id].filter(Boolean));
 
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (e: React.DragEvent, zone: 'Roster' | 'GLeague') => {
-    e.preventDefault();
-    const cardId = e.dataTransfer.getData('text/plain');
-    if (cardId) onDrop(cardId, zone);
-  };
+  const items = pickLog
+    .filter(r => r.seatId !== 'human-0')
+    .slice(-16)
+    .sort((a, b) => {
+      const aFirst = neighbourIds.has(a.seatId) ? 0 : 1;
+      const bFirst = neighbourIds.has(b.seatId) ? 0 : 1;
+      if (aFirst !== bFirst) return aFirst - bFirst;
+      return b.overallPick - a.overallPick;
+    })
+    .map(r => resolvePickLabel(r, seats))
+    .filter((s): s is string => !!s)
+    .slice(0, 6);
+
+  if (items.length === 0) return null;
 
   return (
-    <div className="relative h-full shrink-0 z-40 transition-all duration-300" style={{ width: isOpen ? 320 : 64 }}>
-      {/* 
-        The sidebar uses absolute positioning so the inner 320px container never gets crushed.
-        We just slide it horizontally.
-      */}
-      <div 
-        className="absolute top-0 right-0 h-full w-[320px] bg-white border-l border-stone-200 flex flex-col shadow-xl transition-transform duration-300 ease-out"
-        style={{ transform: isOpen ? 'translateX(0)' : 'translateX(256px)' }}
-      >
-        <button 
-          onClick={toggle} 
-          className="absolute top-4 -left-3 bg-white border border-stone-200 p-1 rounded-full text-stone-400 hover:text-stone-600 z-50 shadow-md"
-        >
-          {isOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
-
-        {/* Collapsed Strip Overlay (Always lives in the leftmost 64px) */}
-        <div className={`absolute top-0 left-0 w-[64px] h-full flex flex-col items-center pt-16 gap-6 z-20 transition-opacity duration-200 ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <div 
-            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1 cursor-pointer transition-colors ${activeZone === 'Roster' ? 'bg-stone-100 border-stone-800' : 'border-transparent hover:bg-stone-50'}`}
-            onClick={() => { setActiveZone('Roster'); toggle(); }}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'Roster')}
-          >
-             <Users size={20} className={activeZone === 'Roster' ? 'text-stone-800' : 'text-stone-400'} />
-             <span className="text-[10px] font-black text-stone-700">{roster.length}</span>
-          </div>
-          <div 
-            className={`p-3 rounded-xl border-2 flex flex-col items-center gap-1 cursor-pointer transition-colors ${activeZone === 'GLeague' ? 'bg-stone-100 border-stone-800' : 'border-transparent hover:bg-stone-50'}`}
-            onClick={() => { setActiveZone('GLeague'); toggle(); }}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'GLeague')}
-          >
-             <LayoutList size={20} className={activeZone === 'GLeague' ? 'text-stone-800' : 'text-stone-400'} />
-             <span className="text-[10px] font-black text-stone-700">{gleague.length}</span>
-          </div>
-        </div>
-
-        {/* Expanded UI */}
-        <div className={`flex-1 flex flex-col w-full h-full z-10 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="p-4 border-b border-stone-200 bg-stone-50 flex items-center gap-3">
-            <div className="w-8 h-8 shrink-0 bg-white rounded-md flex items-center justify-center border border-stone-200 cursor-pointer hover:bg-stone-50" onClick={toggle}>
-               <LayoutList className="text-stone-600" size={18} />
-            </div>
-            <div className="whitespace-nowrap">
-              <h2 className="text-stone-800 font-bold uppercase tracking-wider text-lg leading-tight">My Team</h2>
-              <div className="text-stone-400 text-xs font-medium uppercase tracking-widest">{drafted.length}/36 Drafted</div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
-            {/* Roster */}
-            <div 
-              onClick={() => setActiveZone('Roster')}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'Roster')}
-              className={`p-2 -m-2 rounded-lg transition-colors border-2 ${activeZone === 'Roster' ? 'bg-stone-50 border-stone-300' : 'border-transparent hover:border-stone-200'}`}
-            >
-              <div className="flex items-center justify-between mb-3 px-2">
-                <h3 className={`font-bold uppercase tracking-widest text-sm flex items-center gap-2 ${activeZone === 'Roster' ? 'text-stone-800' : 'text-stone-500'}`}>
-                  <Users size={16} /> Roster
-                </h3>
-                <span className="text-stone-400 text-xs font-bold">{roster.length}</span>
-              </div>
-              <div className="flex flex-col gap-1.5 min-h-[50px]">
-                {roster.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
-                {roster.map((c, idx) => (
-                  <div key={`${c.id}-${idx}`} className="flex items-center bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded px-2 py-1.5 cursor-default group transition-colors">
-                    <RarityDot rarity={c.rarity} />
-                    <div className="ml-2 flex items-center justify-center w-6">
-                      {c.type === 'Play' ? <div className="text-[10px] font-black text-teal-600">PLY</div> : <PositionIcon position={c.player.position} className="w-[18px] h-[18px] text-[7px]" />}
-                    </div>
-                    <div className={`flex-1 text-sm font-bold truncate ml-1 ${c.type === 'Play' ? 'text-teal-700' : 'text-stone-700'}`}>{c.type === 'Play' ? c.name : c.player.name}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* G-League */}
-            <div 
-              onClick={() => setActiveZone('GLeague')}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, 'GLeague')}
-              className={`p-2 -m-2 rounded-lg transition-colors border-2 ${activeZone === 'GLeague' ? 'bg-stone-50 border-stone-300' : 'border-transparent hover:border-stone-200'}`}
-            >
-              <div className="flex items-center justify-between mb-3 px-2">
-                <h3 className={`font-bold uppercase tracking-widest text-sm flex items-center gap-2 ${activeZone === 'GLeague' ? 'text-stone-800' : 'text-stone-500'}`}>
-                  <LayoutList size={16} /> G-League
-                </h3>
-                <span className="text-stone-400 text-xs font-bold">{gleague.length}</span>
-              </div>
-              <div className="flex flex-col gap-1.5 min-h-[50px]">
-                {gleague.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
-                {gleague.map((c, idx) => (
-                  <div key={`${c.id}-${idx}`} className="flex items-center bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded px-2 py-1.5 cursor-default group transition-colors">
-                    <RarityDot rarity={c.rarity} />
-                    <div className="ml-2 flex items-center justify-center w-6">
-                      {c.type === 'Play' ? <div className="text-[10px] font-black text-teal-600">PLY</div> : <PositionIcon position={c.player.position} className="w-[18px] h-[18px] text-[7px]" />}
-                    </div>
-                    <div className={`flex-1 text-sm font-bold truncate ml-1 ${c.type === 'Play' ? 'text-teal-700' : 'text-stone-700'}`}>{c.type === 'Play' ? c.name : c.player.name}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="w-full overflow-x-auto whitespace-nowrap px-8 py-1.5 bg-stone-100/70 border-b border-stone-200 text-[11px] text-stone-500 font-medium custom-scrollbar shrink-0">
+      {items.map((text, i) => (
+        <span key={i}>
+          {i > 0 && <span className="mx-2 text-stone-300">·</span>}
+          {text}
+        </span>
+      ))}
     </div>
   );
 }
@@ -179,14 +85,19 @@ export function DraftRoom() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
-  const [isSidebarOpenToggled, setIsSidebarOpenToggled] = useState(false);
+  // Sidebar defaults open on lg+ screens (>=1024px), collapsed strip below that.
+  // Read only at mount: this component renders null until isClient flips true,
+  // so by the time this state is actually shown, `window` is always defined.
+  const [isSidebarOpenToggled, setIsSidebarOpenToggled] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth >= 1024
+  );
   const [activeZone, setActiveZone] = useState<'Roster' | 'GLeague'>('Roster');
   const [humanZones, setHumanZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
 
-  const { draftState, seats, humanSeat, passingToSeat, receivingFromSeat, currentPackNumber, currentPickNumber, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
+  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
 
   // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {
@@ -214,9 +125,9 @@ export function DraftRoom() {
     setIsClient(true);
     fetch('/api/cards')
       .then(r => r.json())
-      .then((data: any[]) => {
+      .then((data: Array<Omit<Player, 'type'>>) => {
         // Tag with type for DeckBuilder
-        const cards = data.map(c => ({ ...c, type: 'Player' }));
+        const cards = data.map(c => ({ ...c, type: 'Player' as const }));
         setAllPlayers(cards);
       })
       .catch(e => console.error("Failed to load cards API:", e));
@@ -230,10 +141,19 @@ export function DraftRoom() {
     }
   };
 
+  // Dropping a just-selected pack card onto a zone: assigns the zone AND
+  // advances the draft (the card hasn't been picked yet).
   const handleDrop = (cardId: string, zone: 'Roster' | 'GLeague') => {
     setHumanZones(prev => ({ ...prev, [cardId]: zone }));
     processPickAndPass(cardId, zone);
     setSelectedCardId(null);
+  };
+
+  // Re-filing an already-drafted card between Roster/G-League (sidebar's
+  // trailing zone-toggle button): zone bookkeeping only, never touches the
+  // pick counter or pack contents.
+  const handleReassignZone = (cardId: string, zone: 'Roster' | 'GLeague') => {
+    setHumanZones(prev => ({ ...prev, [cardId]: zone }));
   };
 
   if (!isClient) return null;
@@ -279,10 +199,20 @@ export function DraftRoom() {
              {/* Central Pass UI */}
              <div className="flex items-center gap-3 sm:gap-6">
                 {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
-                <div className="flex flex-col items-center">
-                   <div className="text-stone-400 font-medium uppercase tracking-widest text-[10px]">Pack {currentPackNumber}</div>
-                   <div className="text-2xl font-bold text-stone-800 leading-none mt-1 whitespace-nowrap">
-                     Pick {currentPickNumber} <span className="text-stone-400 text-lg">/ 12</span>
+                <div className="flex flex-col items-center gap-1.5">
+                   <div className="text-stone-800 font-bold text-sm leading-none whitespace-nowrap">
+                     Pack {currentPackNumber} <span className="text-stone-400 font-medium">·</span> Pick {currentPickNumber} of 12
+                   </div>
+                   <div className="w-56 sm:w-72 h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-[1.5px]">
+                     {Array.from({ length: 36 }).map((_, i) => (
+                       <div
+                         key={i}
+                         className={`flex-1 rounded-[1px] ${i < overallPick - 1 ? 'bg-orange-500' : 'bg-stone-200'}`}
+                       />
+                     ))}
+                   </div>
+                   <div className="text-stone-400 font-medium uppercase tracking-widest text-[9px]">
+                     Overall Pick {overallPick} / 36
                    </div>
                 </div>
                 {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
@@ -302,12 +232,14 @@ export function DraftRoom() {
           </div>
         </header>
 
+        <BotPickTicker pickLog={pickLog} seats={seats} />
+
         {/* Cards Grid */}
         <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-32 custom-scrollbar">
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
             <AnimatePresence>
               {humanSeat.currentPack.map((card, index) => (
-                <motion.div 
+                <motion.div
                   key={card.id}
                   initial={{ opacity: 0, y: 50, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -315,8 +247,14 @@ export function DraftRoom() {
                   transition={{ delay: index * 0.05, type: "spring", stiffness: 300, damping: 25 }}
                   className="flex justify-center [perspective:1000px]"
                   draggable
-                  onDragStart={(e: any) => {
-                    e.dataTransfer?.setData('text/plain', card.id);
+                  // motion.div types onDragStart as its own pan/drag-gesture handler
+                  // (MouseEvent | TouchEvent | PointerEvent), which doesn't carry
+                  // dataTransfer — but the `draggable` attribute still fires a real
+                  // native HTML5 dragstart event at runtime, so we cast to the type
+                  // that's actually there instead of widening the param to `any`.
+                  onDragStart={(e) => {
+                    const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
+                    dragEvent.dataTransfer?.setData('text/plain', card.id);
                     setSelectedCardId(card.id);
                   }}
                   onDragEnd={() => setSelectedCardId(null)}
@@ -328,10 +266,11 @@ export function DraftRoom() {
                       onClick={() => setSelectedCardId(card.id)}
                     />
                   ) : (
-                    <PlayerCard 
-                      player={card as Player} 
+                    <PlayerCard
+                      player={card as Player}
                       isSelected={selectedCardId === card.id}
                       onClick={() => setSelectedCardId(card.id)}
+                      size="sm"
                     />
                   )}
                 </motion.div>
@@ -340,28 +279,41 @@ export function DraftRoom() {
           </div>
         </main>
 
-        {/* Confirm Button */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-stone-950 via-stone-950/90 to-transparent flex justify-center pb-10 pointer-events-none z-30">
-          <motion.button
-            initial={{ y: 150, opacity: 0 }}
-            animate={{ y: selectedCardId ? 0 : 150, opacity: selectedCardId ? 1 : 0 }}
-            onClick={handleConfirmPick}
-            className="pointer-events-auto px-16 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-black text-xl rounded-full shadow-[0_0_40px_rgba(249,115,22,0.4)] transition-all transform hover:scale-105 active:scale-95 border-2 border-white/20 uppercase tracking-widest flex flex-col items-center leading-none"
-          >
-            <span>Confirm Pick</span>
-          </motion.button>
-        </div>
+        {/* Confirm Button — the gradient wrapper only mounts while a card is
+            selected, so it no longer permanently darkens the last row of cards. */}
+        <AnimatePresence>
+          {selectedCardId && (
+            <motion.div
+              key="confirm-bar"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-stone-950 via-stone-950/90 to-transparent flex justify-center pb-10 pointer-events-none z-30"
+            >
+              <motion.button
+                initial={{ y: 150 }}
+                animate={{ y: 0 }}
+                exit={{ y: 150 }}
+                onClick={handleConfirmPick}
+                className="pointer-events-auto px-16 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-black text-xl rounded-full shadow-[0_0_40px_rgba(249,115,22,0.4)] transition-all transform hover:scale-105 active:scale-95 border-2 border-white/20 uppercase tracking-widest flex flex-col items-center leading-none"
+              >
+                <span>Confirm Pick</span>
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Draft Sidebar */}
-      <DraftSidebar 
-        drafted={humanSeat.drafted} 
+      <DraftSidebar
+        drafted={humanSeat.drafted}
         humanZones={humanZones}
-        isOpen={isSidebarOpen} 
+        isOpen={isSidebarOpen}
         toggle={() => setIsSidebarOpenToggled(!isSidebarOpenToggled)}
         activeZone={activeZone}
         setActiveZone={setActiveZone}
-        onDrop={handleDrop}
+        onDropPick={handleDrop}
+        onReassignZone={handleReassignZone}
       />
     </div>
   );

@@ -80,6 +80,17 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
   exports from `/debug`), screenshots, `.next/`, `tsbuildinfo`. All gitignored — regenerate
   instead of hand-editing.
 
+## Product rules (from the owner — do not "improve" these away)
+
+- **Never show a player's OVR or the seven engine ratings to users** — not on cards, lists,
+  rosters, or as a team OVR. They exist only for the engine and the dev-only `/data` page.
+  Season averages (PPG, RPG, …) are fine to show.
+- **Rarity is a MtG-style gem/icon, never a coloured frame** (frames fight with position
+  and team colours). Rare and Mythic should feel splashy.
+- **Draft zoning stays**: drafted cards are sorted into Roster / G-League during the draft
+  (MTG Arena style pre-building). No card "inspect" panel; bot pick ticker is wanted.
+- No auto-fill in the deck builder; the human builds the lineup.
+
 ## Conventions
 
 - TypeScript strict mode, Next.js App Router (`src/app/**/page.tsx`,

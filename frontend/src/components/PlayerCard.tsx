@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCw, Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -94,12 +94,16 @@ export function getPosColors(position: string): [string, string] {
   return ['#6B7280', '#6B7280']; // Fallback
 }
 
-export function PositionIcon({ position, className = "w-5 h-5 text-[8px]", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
+// Position pill. Kept the historical name/props (`position`, `className`,
+// `borderClass`) since DraftRoom/DeckBuilder/rosters call this directly —
+// `borderClass` is accepted for compatibility but is no longer tied to
+// rarity (rarity communication moved to RarityGem; see UI brief).
+export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1 text-[10px]", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
   const p = position.replace('-', '/');
-  
+
   if (p === 'ALL' || p === 'STAR') {
     return (
-      <div className={`relative rounded-full overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
+      <div className={`relative rounded-md overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
         <div className="absolute inset-0" style={{ background: 'conic-gradient(#3B82F6 0 72deg, #8B5CF6 72deg 144deg, #10B981 144deg 216deg, #F59E0B 216deg 288deg, #EF4444 288deg 360deg)' }} />
         <Star size={10} className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" fill="currentColor" />
       </div>
@@ -109,26 +113,115 @@ export function PositionIcon({ position, className = "w-5 h-5 text-[8px]", borde
   const [c1, c2] = getPosColors(p);
 
   return (
-    <div className={`relative rounded-full overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
+    <div className={`relative rounded-md overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
       {c1 !== c2 ? (
         <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)` }} />
       ) : (
         <div className="absolute inset-0" style={{ backgroundColor: c1 }} />
       )}
-      <span className="relative z-10 font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] leading-none" style={{ letterSpacing: '-0.5px', fontSize: p.length > 3 ? '0.7em' : '1em' }}>{p}</span>
+      <span className="relative z-10 font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] leading-none whitespace-nowrap" style={{ letterSpacing: '-0.3px', fontSize: p.length > 3 ? '9px' : '10px' }}>{p}</span>
     </div>
   );
 }
 
-// Small MtG-style rarity gem
-function RarityGem({ rarity }: { rarity: PlayerCardData['rarity'] }) {
-  const colors: Record<string, string> = {
-    'Common': 'bg-stone-900 border-stone-700',
-    'Uncommon': 'bg-stone-300 border-stone-100',
-    'Rare': 'bg-yellow-500 border-yellow-300',
-    'Mythic': 'bg-orange-500 border-orange-300'
-  };
-  return <div className={`w-3 h-3 rounded-full border shadow-inner ${colors[rarity] || colors['Common']}`} />;
+// MtG-inspired rarity gem: a faceted diamond, not a coloured frame/border.
+// Rarity reads from this + the (Rare/Mythic-only) top accent line / foil
+// overlay on the card, deliberately kept separate from position colour and
+// team stripe — see UI brief section 1.
+type GemRarity = 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
+
+const gemPalettes: Record<GemRarity, { base: string; light1: string; light2: string; dark1: string; dark2: string; stroke: string; glow?: string }> = {
+  Common:   { base: '#57534e', light1: '#78716c', light2: '#6b6560', dark1: '#3f3b38', dark2: '#2f2c2a', stroke: '#292524' },
+  Uncommon: { base: '#cbd5e1', light1: '#f8fafc', light2: '#e2e8f0', dark1: '#94a3b8', dark2: '#7d8ea3', stroke: '#94a3b8', glow: '0 0 3px rgba(203,213,225,0.65)' },
+  Rare:     { base: '#eab308', light1: '#fde68a', light2: '#fbbf24', dark1: '#b45309', dark2: '#92400e', stroke: '#a16207', glow: '0 0 6px rgba(234,179,8,0.65)' },
+  Mythic:   { base: '#f97316', light1: '#fed7aa', light2: '#fb923c', dark1: '#dc2626', dark2: '#991b1b', stroke: '#c2410c', glow: '0 0 8px rgba(249,115,22,0.8)' },
+};
+
+const gemPixelSizes: Record<'sm' | 'md' | 'lg', number> = { sm: 12, md: 16, lg: 22 };
+
+// Rarity-coloured text used on the card back header.
+export const rarityTextColor: Record<GemRarity, string> = {
+  Common: 'text-stone-400',
+  Uncommon: 'text-slate-300',
+  Rare: 'text-amber-400',
+  Mythic: 'text-orange-400',
+};
+
+export function RarityGem({ rarity, size = 'md' }: { rarity: 'Common' | 'Uncommon' | 'Rare' | 'Mythic'; size?: 'sm' | 'md' | 'lg' }) {
+  const palette = gemPalettes[rarity] || gemPalettes.Common;
+  const px = gemPixelSizes[size];
+  const isMythic = rarity === 'Mythic';
+
+  return (
+    <span
+      className={`inline-block shrink-0 align-middle ${isMythic ? 'gem-mythic-shimmer' : ''}`}
+      style={{ width: px, height: px, filter: !isMythic && palette.glow ? `drop-shadow(${palette.glow})` : undefined }}
+      title={rarity}
+    >
+      {isMythic && (
+        <style>{`
+          @keyframes gemMythicShimmer {
+            0%, 100% { filter: drop-shadow(0 0 5px rgba(249,115,22,0.6)) brightness(1); }
+            50% { filter: drop-shadow(0 0 12px rgba(249,115,22,1)) brightness(1.3); }
+          }
+          .gem-mythic-shimmer { animation: gemMythicShimmer 3s ease-in-out infinite; }
+        `}</style>
+      )}
+      <svg viewBox="0 0 24 24" width={px} height={px}>
+        <polygon points="12,1 21,9 12,23 3,9" fill={palette.base} stroke={palette.stroke} strokeWidth="1" />
+        <polygon points="12,1 21,9 12,9" fill={palette.light1} opacity="0.65" />
+        <polygon points="12,1 3,9 12,9" fill={palette.light2} opacity="0.35" />
+        <polygon points="3,9 12,23 12,9" fill={palette.dark1} opacity="0.3" />
+        <polygon points="21,9 12,23 12,9" fill={palette.dark2} opacity="0.18" />
+      </svg>
+    </span>
+  );
+}
+
+// Compact one-line row (~44px) for the draft sidebar / deck builder lists.
+// [gem sm] [position pill] [headshot or play icon] [name] [badges or play
+// category] [trailing slot].
+export function CardListRow({ card, onClick, selected = false, trailing, className = '' }: { card: DraftCard; onClick?: () => void; selected?: boolean; trailing?: ReactNode; className?: string }) {
+  const rowClasses = `flex items-center gap-2 h-11 px-2 rounded-lg border transition-colors bg-white ${selected ? 'border-orange-500 ring-1 ring-orange-500 bg-orange-50/40' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
+
+  if (card.type === 'Player') {
+    const headshotUrl = `/headshots/${card.player.id}.png`;
+    return (
+      <div className={rowClasses} onClick={onClick}>
+        <RarityGem rarity={card.rarity} size="sm" />
+        <PositionIcon position={card.player.position} />
+        <img
+          src={headshotUrl}
+          alt=""
+          className="w-7 h-7 rounded-full object-cover object-top border border-stone-200 shrink-0 bg-stone-100"
+          onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+        />
+        <span className="flex-1 min-w-0 font-bold text-[12px] text-stone-800 uppercase truncate">{card.player.name}</span>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {card.traits.slice(0, 4).map((t, i) => (
+            <BadgeIcon key={i} name={t.name} level={t.level} size="small" />
+          ))}
+        </div>
+        {trailing && <div className="shrink-0 ml-1">{trailing}</div>}
+      </div>
+    );
+  }
+
+  const catLabel: Record<Play['playCategory'], string> = { system: 'SYSTEM', special: 'SPECIAL', basic: 'BASIC' };
+  const catColor: Record<Play['playCategory'], string> = { system: 'text-amber-600', special: 'text-teal-600', basic: 'text-slate-500' };
+
+  return (
+    <div className={rowClasses} onClick={onClick}>
+      <RarityGem rarity={card.rarity} size="sm" />
+      <PositionIcon position="STAR" />
+      <div className="w-7 h-7 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0">
+        <ClipboardList size={14} className="text-stone-500" />
+      </div>
+      <span className="flex-1 min-w-0 font-bold text-[12px] text-stone-800 uppercase truncate">{card.name}</span>
+      <span className={`text-[9px] font-black uppercase shrink-0 ${catColor[card.playCategory]}`}>{catLabel[card.playCategory]}</span>
+      {trailing && <div className="shrink-0 ml-1">{trailing}</div>}
+    </div>
+  );
 }
 
 // NBA team abbreviation to simple color mapping for team stripe
@@ -150,35 +243,49 @@ const teamIds: Record<string, string> = {
   SAC: '1610612758', SAS: '1610612759', TOR: '1610612761', UTA: '1610612762', WAS: '1610612764',
 };
 
+// Small semi-transparent flip control shared by PlayerCard/PlayCard.
+// stopPropagation so clicking it never also fires the card's onClick
+// (selection), per the "flip on click of a corner button" brief.
+function FlipButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`w-[22px] h-[22px] rounded-full bg-black/35 hover:bg-black/55 backdrop-blur-sm flex items-center justify-center text-white transition-colors shrink-0 ${className}`}
+      aria-label="Flip card"
+    >
+      <RotateCw size={12} />
+    </button>
+  );
+}
+
+// One cell of the front card's stats row.
+function StatCell({ label, value, border = true, className = '' }: { label: string; value: string; border?: boolean; className?: string }) {
+  return (
+    <div className={`py-1.5 ${border ? 'border-r border-stone-100' : ''} ${className}`}>
+      <div className="text-[9px] text-stone-400 font-bold uppercase">{label}</div>
+      <div className="text-sm font-black text-stone-800 leading-none">{value}</div>
+    </div>
+  );
+}
+
 export function MiniPlayerCard({ player, className = "", onClick }: { player: PlayerCardData, className?: string, onClick?: () => void }) {
   const [isHovered, setIsHovered] = useState(false);
-  const rarityBorders: Record<string, string> = {
-    'Common': 'border-stone-700',
-    'Uncommon': 'border-stone-400',
-    'Rare': 'border-yellow-400',
-    'Mythic': 'border-orange-500'
-  };
-  const rarityShadows: Record<string, string> = {
-    'Common': 'shadow-stone-900/10',
-    'Uncommon': 'shadow-stone-400/20',
-    'Rare': 'shadow-yellow-400/30',
-    'Mythic': 'shadow-orange-500/40 glow-orange'
-  };
-  
-  const borderColor = rarityBorders[player.rarity] || 'border-stone-700';
-  const shadowClass = rarityShadows[player.rarity] || 'shadow-sm';
   const tmColor = teamColors[player.player.team] || '#9ca3af';
   const headshotUrl = `/headshots/${player.player.id}.png`;
-  
+
   return (
-    <div 
-      className={`relative rounded border-[1.5px] bg-white cursor-pointer transition-transform hover:-translate-y-1 ${borderColor} ${shadowClass} ${className}`}
+    <div
+      className={`relative rounded border border-stone-300 bg-white cursor-pointer transition-transform hover:-translate-y-1 shadow-sm ${className}`}
       style={{ width: '40px', height: '56px' }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}
     >
       <div className="absolute top-0 w-full h-1.5 opacity-80" style={{ backgroundColor: tmColor }} />
+      <div className="absolute top-0.5 right-0.5 z-10">
+        <RarityGem rarity={player.rarity} size="sm" />
+      </div>
       <div className="w-full h-full p-[2px] pt-2 flex flex-col items-center justify-start overflow-hidden bg-stone-50">
         <img 
           src={headshotUrl} 
@@ -213,56 +320,50 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
   );
 }
 
-export function PlayerCard({ player, onClick, isSelected = false, compact = false, popupDirection = 'up' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' }) {
+export function PlayerCard({ player, onClick, isSelected = false, compact = false, popupDirection = 'up', size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down'; size?: 'sm' | 'md' }) {
   const [isFlipped, setIsFlipped] = useState(false);
 
   const [c1, c2] = getPosColors(player.player.position);
   const teamColor = teamColors[player.player.team] || '#374151';
   const teamId = teamIds[player.player.team];
-  
+
   // NBA CDN headshot URL -> now served locally via the offline script!
   const headshotUrl = `/headshots/${player.player.id}.png`;
   const logoUrl = teamId ? `/logos/${teamId}.svg` : null;
-
-  const rarityBorders: Record<string, string> = {
-    'Common': 'border-stone-700',
-    'Uncommon': 'border-stone-300',
-    'Rare': 'border-yellow-500',
-    'Mythic': 'border-orange-500'
-  };
-  const borderColor = rarityBorders[player.rarity] || 'border-stone-700';
+  const isRareOrMythic = player.rarity === 'Rare' || player.rarity === 'Mythic';
+  const rarityAccentColor = player.rarity === 'Mythic' ? '#f97316' : '#eab308';
 
   if (compact) {
-    const popClasses = popupDirection === 'up' 
-      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom" 
-      : popupDirection === 'down' 
+    const popClasses = popupDirection === 'up'
+      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom"
+      : popupDirection === 'down'
       ? "top-full left-1/2 -translate-x-1/2 mt-2 origin-top"
       : "left-full top-1/2 -translate-y-1/2 ml-2 origin-left";
 
     return (
-      <div 
+      <div
         className={`group relative w-full h-[60px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
         onClick={onClick}
       >
         {/* Left Color Bar */}
         <div className="h-full w-2 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
-        
+
         {/* Headshot */}
         <div className="w-12 h-full bg-stone-100 shrink-0 overflow-hidden relative border-r border-stone-200">
           <img src={headshotUrl} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
-        
-        {/* Details */}
-        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
+
+        {/* Details — two-line header: name + position pill, then gem + badges */}
+        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5">
            <div className="flex items-center justify-between gap-1">
              <div className="font-bold text-[11px] uppercase truncate text-stone-800 leading-tight">
                {player.player.name}
              </div>
-             <div className="text-[9px] font-bold text-stone-400 whitespace-nowrap">{player.player.position}</div>
+             <PositionIcon position={player.player.position} className="min-w-[24px] h-[16px] px-1 text-[9px] shrink-0" />
            </div>
-           
-           <div className="flex items-center gap-1 mt-0.5">
-             <RarityGem rarity={player.rarity} />
+
+           <div className="flex items-center gap-1">
+             <RarityGem rarity={player.rarity} size="sm" />
              {player.traits.slice(0, 3).map(t => (
                <BadgeIcon key={t.name} name={t.name} level={t.level} size="small" />
              ))}
@@ -280,12 +381,10 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
   }
 
   return (
-    <div 
-      className={`w-full select-none ${onClick ? 'cursor-pointer' : ''}`}
+    <div
+      className={`group @container w-full select-none transition-transform duration-200 hover:-translate-y-1 ${onClick ? 'cursor-pointer' : ''}`}
       style={{ perspective: 1000, aspectRatio: '5 / 7' }}
       onClick={onClick}
-      onMouseEnter={() => setIsFlipped(true)}
-      onMouseLeave={() => setIsFlipped(false)}
     >
       <motion.div
         className="w-full h-full relative"
@@ -294,18 +393,22 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         transition={{ duration: 0.3, type: 'spring', stiffness: 200, damping: 20 }}
       >
         {/* FRONT */}
-        <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl border border-stone-300 flex flex-col ${isSelected ? 'ring-2 ring-orange-500' : ''}`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
-          {/* Top Bar */}
-          <div className="flex justify-between items-center px-3 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
+        <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl group-hover:shadow-2xl transition-shadow border border-stone-300 flex flex-col ${isSelected ? 'ring-2 ring-orange-500' : ''}`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
+          {/* Rarity top accent line — Rare/Mythic only; frame itself stays neutral */}
+          {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: rarityAccentColor }} />}
+
+          {/* Top Bar — two lines: [gem + name], [position pill + team/age] */}
+          <div className="flex flex-col gap-1 px-3 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
             <div className="flex items-center gap-1.5 min-w-0">
-              <PositionIcon position={player.player.position} className="w-5 h-5 text-[8px]" borderClass={`border-[3px] ${borderColor}`} />
-              <span className={`font-black tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 16 ? 'text-[12px]' : 'text-[15px]'}`}>{player.player.name}</span>
+              <RarityGem rarity={player.rarity} size="md" />
+              <span className={`font-black tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
             </div>
-            <div className="flex flex-col items-end shrink-0">
-              <div className="text-[12px] font-bold text-stone-500 leading-none">{player.player.team} {player.player.age}Y</div>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <PositionIcon position={player.player.position} />
+              <span className="text-[9px] font-bold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
             </div>
           </div>
-          
+
           {/* Main Visual */}
           <div className="flex-1 relative overflow-hidden bg-stone-200">
             {/* Team color stripe with Logo */}
@@ -316,7 +419,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                 </div>
               )}
             </div>
-            
+
             <img
               src={headshotUrl}
               alt={player.player.name}
@@ -329,22 +432,32 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                 }
               }}
             />
+            {/* Mythic foil highlight — faint diagonal overlay, kept off other rarities */}
+            {player.rarity === 'Mythic' && (
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.28) 100%)', mixBlendMode: 'overlay' }}
+              />
+            )}
             {/* Traits/Badges as Icons */}
             <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
               {player.traits.slice(0, 4).map((trait, i) => (
                 <BadgeIcon key={i} name={trait.name} level={trait.level} />
               ))}
             </div>
+
+            {/* Flip control */}
+            <FlipButton onClick={() => setIsFlipped(true)} className="absolute top-1.5 right-1.5 z-20" />
           </div>
 
-          {/* Stats Row */}
-          <div className="grid grid-cols-6 text-center bg-white border-t border-stone-200">
-            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">PPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.pts.toFixed(1)}</div></div>
-            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">RPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.trb.toFixed(1)}</div></div>
-            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">APG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.ast.toFixed(1)}</div></div>
-            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">SPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.stl.toFixed(1)}</div></div>
-            <div className="py-1.5 border-r border-stone-100"><div className="text-[9px] text-stone-400 font-bold uppercase">BPG</div><div className="text-sm font-black text-stone-800 leading-none">{player.stats.blk.toFixed(1)}</div></div>
-            <div className="py-1.5"><div className="text-[9px] text-stone-400 font-bold uppercase">FG%</div><div className="text-sm font-black text-stone-800 leading-none">{(player.stats.fg_pct * 100).toFixed(0)}</div></div>
+          {/* Stats Row — 4 cols under 180px container width (or size="sm"), 6 at/above */}
+          <div className={`grid text-center bg-white border-t border-stone-200 ${size === 'sm' ? 'grid-cols-4' : 'grid-cols-4 @[180px]:grid-cols-6'}`}>
+            <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
+            <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
+            <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
+            <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
+            <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
+            <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
           </div>
 
           {/* Bottom accent bar */}
@@ -353,21 +466,19 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
         {/* ===== BACK ===== */}
         <div
-          className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-900 text-stone-100 border border-stone-700"
+          className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-stone-900 text-stone-100 border border-stone-700"
           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
         >
           {/* Top accent bar (same as front) */}
           <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
 
-          {/* Header */}
-          <div className="px-3 py-1.5 flex items-center justify-between border-b border-stone-700 bg-stone-800/80 backdrop-blur">
-            <div className="flex flex-col min-w-0">
-              <div className="font-black uppercase tracking-tight text-[15px] truncate">
-                {player.player.name}
-              </div>
-              <div className="text-[8px] font-bold text-stone-400 uppercase tracking-widest">{player.rarity}</div>
-            </div>
-            <PositionIcon position={player.player.position} className="w-[24px] h-[24px] text-[9px]" borderClass={`border-[2px] ${borderColor}`} />
+          {/* Header: gem + rarity text + position pill + flip control */}
+          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-stone-700 bg-stone-800/80 backdrop-blur">
+            <RarityGem rarity={player.rarity} size="lg" />
+            <span className={`text-[11px] font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
+            <div className="flex-1" />
+            <PositionIcon position={player.player.position} />
+            <FlipButton onClick={() => setIsFlipped(false)} />
           </div>
 
           {/* Detailed Averages */}
@@ -382,7 +493,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                   ['TRB', player.stats.trb.toFixed(1)],
                   ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
                   ['AST', player.stats.ast.toFixed(1)],
-                  ['2PA', ((player.stats as any).fg2a || 0).toFixed(1)],
+                  ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
                   ['STL', player.stats.stl.toFixed(1)],
                   ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
                   ['BLK', player.stats.blk.toFixed(1)],
@@ -443,6 +554,48 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
   );
 }
 
+// Tactical board visual per play category. Module-level (not defined inside
+// PlayCard's render) so it isn't recreated as a new component identity every
+// render.
+function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
+  if (cat === 'system') {
+    // Clipboard / chalkboard diagram style
+    return (
+      <>
+        <div className="w-20 h-14 border-2 border-white/25 rounded-md absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        <div className="absolute top-[20%] left-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
+        <div className="absolute top-[20%] right-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
+        <div className="absolute bottom-[25%] left-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
+        <div className="absolute bottom-[25%] right-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
+        <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-300/40" />
+        <span className="text-white/50 font-black italic tracking-[0.3em] text-xs drop-shadow-md">SYSTEM</span>
+      </>
+    );
+  }
+  if (cat === 'basic') {
+    // Simple arrows / minimal
+    return (
+      <>
+        <div className="w-12 h-[2px] bg-white/30 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+        <div className="w-0 h-0 border-l-[6px] border-l-white/30 border-y-[4px] border-y-transparent absolute top-1/2 right-[30%] -translate-y-1/2" />
+        <div className="w-8 h-[2px] bg-white/20 absolute top-[35%] left-[35%] rotate-[30deg]" />
+        <div className="w-8 h-[2px] bg-white/20 absolute bottom-[35%] left-[35%] -rotate-[30deg]" />
+        <span className="text-white/40 font-bold tracking-[0.2em] text-[10px] mt-4">BASIC</span>
+      </>
+    );
+  }
+  // Special play — target / crosshair
+  return (
+    <>
+      <div className="w-14 h-14 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div className="w-8 h-8 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div className="w-[2px] h-10 bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div className="w-10 h-[2px] bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div className="w-2 h-2 bg-teal-300/50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+    </>
+  );
+}
+
 export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up' }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right' }) {
   const [isFlipped, setIsFlipped] = useState(false);
 
@@ -484,58 +637,14 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
     );
   }
 
-  // Tactical board visual per category
-  const BoardGraphic = () => {
-    if (cat === 'system') {
-      // Clipboard / chalkboard diagram style
-      return (
-        <>
-          <div className="w-20 h-14 border-2 border-white/25 rounded-md absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-          <div className="absolute top-[20%] left-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
-          <div className="absolute top-[20%] right-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
-          <div className="absolute bottom-[25%] left-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
-          <div className="absolute bottom-[25%] right-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
-          <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-300/40" />
-          <span className="text-white/50 font-black italic tracking-[0.3em] text-xs drop-shadow-md">SYSTEM</span>
-        </>
-      );
-    }
-    if (cat === 'basic') {
-      // Simple arrows / minimal
-      return (
-        <>
-          <div className="w-12 h-[2px] bg-white/30 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-          <div className="w-0 h-0 border-l-[6px] border-l-white/30 border-y-[4px] border-y-transparent absolute top-1/2 right-[30%] -translate-y-1/2" />
-          <div className="w-8 h-[2px] bg-white/20 absolute top-[35%] left-[35%] rotate-[30deg]" />
-          <div className="w-8 h-[2px] bg-white/20 absolute bottom-[35%] left-[35%] -rotate-[30deg]" />
-          <span className="text-white/40 font-bold tracking-[0.2em] text-[10px] mt-4">BASIC</span>
-        </>
-      );
-    }
-    // Special play — target / crosshair
-    return (
-      <>
-        <div className="w-14 h-14 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="w-8 h-8 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="w-[2px] h-10 bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="w-10 h-[2px] bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="w-2 h-2 bg-teal-300/50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      </>
-    );
-  };
-
   return (
     <div
-      className={`relative w-full aspect-[5/7] cursor-pointer transition-transform ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.03] ${theme.hoverShadow}`}`}
+      className={`group relative w-full aspect-[5/7] cursor-pointer transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
-      onMouseEnter={() => setIsFlipped(true)}
-      onMouseLeave={() => setIsFlipped(false)}
       onTouchStart={() => setIsFlipped(!isFlipped)}
     >
-      <div className="absolute -top-1 -right-1 z-20 opacity-40 pointer-events-none">
-        <RotateCw className="w-3 h-3 text-white" />
-      </div>
+      <FlipButton onClick={() => setIsFlipped(!isFlipped)} className="absolute top-1.5 right-1.5 z-20" />
 
       <motion.div
         className="w-full h-full relative"
@@ -552,7 +661,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
           <div className="px-2 py-1 bg-white flex items-center gap-1 border-b border-stone-200">
-            <RarityGem rarity={play.rarity} />
+            <RarityGem rarity={play.rarity} size="sm" />
             <div className="flex-1 min-w-0 ml-1">
               <div className={`font-black uppercase leading-none tracking-tight text-stone-900 ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
                 {play.name}
@@ -571,7 +680,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
             <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
             
             <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
-                <BoardGraphic />
+                <PlayBoardGraphic cat={cat} />
             </div>
           </div>
 
@@ -600,7 +709,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
           <div className="px-2 py-1 bg-stone-800 flex items-center gap-1 border-b border-stone-700">
-            <RarityGem rarity={play.rarity} />
+            <RarityGem rarity={play.rarity} size="sm" />
             <div className="flex-1 min-w-0 ml-1">
               <div className={`font-black uppercase leading-none tracking-tight text-white ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
                 {play.name}

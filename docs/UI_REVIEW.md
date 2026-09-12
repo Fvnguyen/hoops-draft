@@ -174,6 +174,9 @@ Phase 3.
 Then a second pass for the medium items that touch several files: inspect panel in the
 draft, click-to-place in the deck builder, pick ticker.
 
-Decisions needed before starting: (a) show OVR on cards outside the draft grid, inside
-it, or both; (b) replace the back's raw stats with the ratings block or add the block
-above them; (c) drop zoning from the draft room.
+Decisions taken 2026-09-12 (owner): (a) never show OVR or ratings to users anywhere,
+not on cards and not as a team OVR; (b) therefore no ratings block on the card back;
+(c) keep zoning in the draft room, add a G/F/C "mana curve" summary and a bot pick
+ticker, no inspect panel; (d) rarity as a MtG-style gem/icon rather than a frame,
+splashier for Rare/Mythic; (e) no auto-fill in the deck builder; everything else as
+proposed.

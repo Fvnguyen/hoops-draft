@@ -4,6 +4,7 @@ import { FranchiseDashboard } from '../../components/FranchiseDashboard';
 import { GameView } from '../../components/GameView';
 import { PlayerCardData } from '../../components/PlayerCard';
 import { TeamInfo, GameTheater } from '../../engine/game';
+import { emptyModifiers } from '../../engine/synergies';
 
 const mockPlayer = (name: string, pos: string, ovr: number, id: string): PlayerCardData => ({
   type: 'Player',
@@ -75,19 +76,32 @@ const mockGameTheater: GameTheater = {
   seed: 0,
 };
 
+const mockDepthChart: Record<string, PlayerCardData[]> = {
+  PG: [mockTeamInfo.players[0]],
+  SG: [mockTeamInfo.players[1]],
+  SF: [mockTeamInfo.players[2]],
+  PF: [mockTeamInfo.players[3]],
+  C: [mockTeamInfo.players[4]],
+};
+
 export default function TestUI() {
   return (
     <div className="p-8 bg-stone-100 min-h-screen flex flex-col gap-8">
       <div id="kpi-band-test">
          <h1 className="mb-2 font-bold text-stone-400">Top KPI Band</h1>
          <div className="border border-stone-200">
-            <TopKPIBand 
+            <TopKPIBand
               identity={{ finishing: 85, midRange: 75, perimeter: 90, playmaking: 80, rebounding: 65, perDef: 70, postDef: 75 }}
               shotDiet={{ rim: 0.3, mid: 0.2, per: 0.5 }}
+              depthChart={mockDepthChart}
               bonuses={{
+                offenseMods: emptyModifiers(),
+                defenseMods: emptyModifiers(),
+                possessionSwing: 0,
                 activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
-                activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }]
-              }} 
+                activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
+                playstyle: [],
+              }}
             />
          </div>
       </div>

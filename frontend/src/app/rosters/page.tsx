@@ -46,13 +46,6 @@ export default function RostersPage() {
     return null;
   };
 
-  const getTeamOverall = (rosterData: SavedRoster) => {
-    const starters = ['PG', 'SG', 'SF', 'PF', 'C'].map(pos => getStarter(rosterData, pos)).filter(Boolean) as PlayerCardData[];
-    if (starters.length === 0) return 0;
-    const total = starters.reduce((acc, p) => acc + (p.ratings?.overall || 0), 0);
-    return Math.round(total / starters.length);
-  };
-
   return (
     <div className="min-h-screen p-8 pt-[70px] text-stone-800 overflow-y-auto">
       {!ready || !loaded ? (
@@ -69,7 +62,6 @@ export default function RostersPage() {
       ) : (
         <div className="space-y-8 pb-10">
           {rosters.map((rosterObj, i) => {
-            const teamOvr = getTeamOverall(rosterObj);
             const date = new Date(rosterObj.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
             
             return (
@@ -91,12 +83,7 @@ export default function RostersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="flex flex-col items-end mr-4">
-                      <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest">Team Overall</span>
-                      <span className="text-3xl font-black text-orange-500">{teamOvr}</span>
-                    </div>
-                    
-                    <Link 
+                    <Link
                       href={`/deckbuilder-test?rosterId=${rosterObj.id}`}
                       className="p-3 bg-white hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg transition-colors border border-stone-700"
                       title="Edit Roster"
