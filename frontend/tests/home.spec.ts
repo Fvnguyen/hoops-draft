@@ -23,6 +23,8 @@ test.describe('Home Page redesign', () => {
 
     // Verify Dev Tools
     await expect(page.getByText('Dev Tools')).toBeVisible();
+    // Dev links live inside a collapsed <details> disclosure now; open it first.
+    await page.getByText('Dev Tools').click();
     await expect(page.getByRole('link', { name: /Deckbuilder/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Test UI/i })).toBeVisible();
 
