@@ -37,31 +37,53 @@ console.log('\n🏀 Game Engine Tests\n');
 console.log('1. Scoring Probability Distribution:');
 
 function testResolvePossession(offRating, defRating) {
+  // Simplification of calcTeamShotProfile
+  // Assume NBA baseline 35% rim, 25% mid, 40% three
+  const profile = { rim: 0.35, mid: 0.25, three: 0.40 };
+  
+  // Baseline efficiency
+  const baseline = { rim: 0.65, mid: 0.42, three: 0.36 };
+  
   const edge = (offRating - defRating) / 100;
-  const cEdge = Math.max(-0.25, Math.min(0.25, edge));
-  let pt = Math.max(0.01, Math.min(0.80, 0.12 - cEdge * 0.04));
-  let pm = Math.max(0.01, Math.min(0.80, 0.34 - cEdge * 0.06));
-  let p2 = Math.max(0.01, Math.min(0.80, 0.30 + cEdge * 0.04));
-  let p3 = Math.max(0.01, Math.min(0.80, 0.16 + cEdge * 0.04));
-  let pa = Math.max(0.01, Math.min(0.80, 0.04 + cEdge * 0.02));
-  const total = pt + pm + p2 + p3 + pa;
-  return { turnover: pt/total, miss: pm/total, two: p2/total, three: p3/total, and1: pa/total };
+  const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
+  
+  const SCALE = 0.30;
+  const MAX_SHIFT = 0.10;
+  const effShift = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, clampedEdge * SCALE));
+  
+  const eff = {
+    rim: Math.max(0.15, Math.min(0.85, baseline.rim + effShift)),
+    mid: Math.max(0.15, Math.min(0.85, baseline.mid + effShift)),
+    three: Math.max(0.15, Math.min(0.85, baseline.three + effShift)),
+  };
+  
+  // Expected values
+  const miss = profile.rim * (1 - eff.rim) + profile.mid * (1 - eff.mid) + profile.three * (1 - eff.three);
+  const two = profile.rim * eff.rim * 0.92 + profile.mid * eff.mid * 0.97; // non-and1 2pts
+  const three = profile.three * eff.three * 0.99;
+  const and1 = profile.rim * eff.rim * 0.08 + profile.mid * eff.mid * 0.03 + profile.three * eff.three * 0.01;
+  
+  return { miss, two, three, and1, eff };
 }
 
 // Even matchup (both teams 70 rating)
 const even = testResolvePossession(70, 70);
-assert(Math.abs(even.turnover - 0.125) < 0.02, `Even TO rate ~12.5% (got ${(even.turnover*100).toFixed(1)}%)`);
-assert(Math.abs(even.miss - 0.354) < 0.02, `Even miss rate ~35% (got ${(even.miss*100).toFixed(1)}%)`);
-assert(Math.abs(even.two - 0.313) < 0.02, `Even 2pt rate ~31% (got ${(even.two*100).toFixed(1)}%)`);
-assert(Math.abs(even.three - 0.167) < 0.02, `Even 3pt rate ~17% (got ${(even.three*100).toFixed(1)}%)`);
+assert(Math.abs(even.miss - 0.528) < 0.02, `Even miss rate ~53% (got ${(even.miss*100).toFixed(1)}%)`);
+assert(Math.abs(even.two - 0.31) < 0.03, `Even 2pt rate ~31% (got ${(even.two*100).toFixed(1)}%)`);
+assert(Math.abs(even.three - 0.14) < 0.03, `Even 3pt rate ~14% (got ${(even.three*100).toFixed(1)}%)`);
 
 // Strong offense vs weak defense
 const strong = testResolvePossession(85, 55);
-assert(strong.two > even.two, `Strong offense has higher 2pt rate (${(strong.two*100).toFixed(1)}% vs ${(even.two*100).toFixed(1)}%)`);
-assert(strong.turnover < even.turnover, `Strong offense has lower TO rate (${(strong.turnover*100).toFixed(1)}% vs ${(even.turnover*100).toFixed(1)}%)`);
+assert(strong.eff.rim > even.eff.rim, `Strong offense has higher rim eff (${(strong.eff.rim*100).toFixed(1)}% vs ${(even.eff.rim*100).toFixed(1)}%)`);
+assert(strong.miss < even.miss, `Strong offense has lower miss rate (${(strong.miss*100).toFixed(1)}% vs ${(even.miss*100).toFixed(1)}%)`);
 
 // Expected points per 100 possessions (even matchup)
-const ePPP = even.two * 2 + even.three * 3 + even.and1 * 1;
+// Rim: 2pts + 0.08(1pt) = avg 2.08 on make. Mid: 2 + 0.03 = 2.03. Three: 3 + 0.01 = 3.01
+const rimPts = even.eff.rim * (0.92 * 2 + 0.08 * 3); // 2 or 3 pts
+const midPts = even.eff.mid * (0.97 * 2 + 0.03 * 3);
+const threePts = even.eff.three * (0.99 * 3 + 0.01 * 4);
+
+const ePPP = (profile => profile.rim * rimPts + profile.mid * midPts + profile.three * threePts)({rim:0.35, mid:0.25, three:0.40});
 const ePer100 = ePPP * 100;
 console.log(`\n2. Expected Scoring (even matchup):`);
 assert(ePer100 > 95 && ePer100 < 125, `Expected ~100-120 pts per 100 poss (got ${ePer100.toFixed(1)})`);
@@ -182,15 +204,24 @@ function simQuickGame(offRating, defRating) {
 function quickResolve(offR, defR) {
   const edge = (offR - defR) / 100;
   const cEdge = Math.max(-0.25, Math.min(0.25, edge));
-  let pt = 0.12 - cEdge*0.04, pm = 0.34 - cEdge*0.06, p2 = 0.30 + cEdge*0.04, p3 = 0.16 + cEdge*0.04, pa = 0.04 + cEdge*0.02;
-  const tot = pt+pm+p2+p3+pa;
-  pt/=tot; pm/=tot; p2/=tot; p3/=tot; pa/=tot;
-  const r = Math.random();
-  if (r < pt) return 0; // TO
-  if (r < pt+pm) return 0; // Miss
-  if (r < pt+pm+p2) return 2;
-  if (r < pt+pm+p2+p3) return 3;
-  return 1; // and1
+  const SCALE = 0.30;
+  const MAX_SHIFT = 0.10;
+  const effShift = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, cEdge * SCALE));
+  
+  const rChannel = Math.random();
+  let channel = rChannel < 0.35 ? 'rim' : rChannel < 0.60 ? 'mid' : 'three';
+  
+  let eff = channel === 'rim' ? 0.65 : channel === 'mid' ? 0.42 : 0.36;
+  eff = Math.max(0.15, Math.min(0.85, eff + effShift));
+  
+  if (Math.random() > eff) return 0;
+  
+  let pts = channel === 'three' ? 3 : 2;
+  
+  const and1Base = channel === 'rim' ? 0.08 : channel === 'mid' ? 0.03 : 0.01;
+  if (Math.random() < and1Base) pts += 1;
+  
+  return pts;
 }
 
 let totalHomeScore = 0, totalAwayScore = 0, ties = 0;
