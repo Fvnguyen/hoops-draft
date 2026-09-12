@@ -160,23 +160,37 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
     );
   }
 
-  return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 grid grid-cols-[3fr_2fr] gap-8 items-start">
+  const MAX_VISIBLE = 6;
+  const visibleSynergies = bonuses.activeSynergies.slice(0, MAX_VISIBLE);
+  const hiddenCount = bonuses.activeSynergies.length - visibleSynergies.length;
 
-      {/* Left 60%: the two charts, each a box with its title top-left */}
-      <div className="flex items-stretch gap-8 min-w-0">
-        {/* 1. Team identity radar */}
+  const collapseButton = (
+    <button
+      type="button"
+      onClick={toggleCollapsed}
+      aria-label="Collapse team report"
+      title="Collapse team report"
+      className="shrink-0 text-stone-400 hover:text-stone-600"
+    >
+      <ChevronIcon direction="up" />
+    </button>
+  );
+
+  return (
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 grid grid-cols-[3fr_2fr] gap-8 items-stretch">
+
+      {/* Left 60%: three boxes — identity, shot diet, next up — each titled top-left */}
+      <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-8 min-w-0">
         <div className="flex flex-col gap-1 min-w-0">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
-          <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={168} />
+          <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={176} />
         </div>
 
-        {/* 2. Expected shot diet */}
         <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 min-w-0">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
           <div className="flex-1 flex items-center">
             <DonutChart
-              size={112}
+              size={120}
               strokeWidth={22}
               data={[
                 { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
@@ -186,69 +200,81 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
             />
           </div>
         </div>
+
+        <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 min-w-0">
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Next up</h3>
+          {topTeasers.length === 0 ? (
+            <p className="text-[10px] text-stone-400 italic">Every stacking synergy is active.</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {topTeasers.map(teaser => {
+                const parts = teaser.text.split(' ');
+                const fraction = parts.pop();
+                const name = parts.join(' ');
+                return (
+                  <div key={teaser.text} title={teaser.text} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
+                    <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
+                    <div className="flex flex-col leading-tight min-w-0 flex-1">
+                      <span className="font-bold text-[10px] text-stone-600 truncate">{name}</span>
+                      <span className="flex items-center gap-1.5 mt-1">
+                        <span className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
+                          <span className="block h-full bg-emerald-400" style={{ width: `${teaser.progress * 100}%` }} />
+                        </span>
+                        <span className="text-[9px] font-bold text-stone-500 shrink-0">{fraction}</span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Right 40%: active synergies, same row style as the season page */}
-      <div className="min-w-0 pl-8 border-l border-stone-200 flex flex-col gap-1 self-stretch">
+      {/* Right 40%: active synergies — at most 6 rows, then "+N more" (no clipped rows) */}
+      <div className="min-w-0 pl-8 border-l border-stone-200 flex flex-col gap-1">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active synergies</h3>
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setPopoverOpen(o => !o)}
-              className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
-            >
-              All synergies
-            </button>
-            {popoverOpen && <SynergyPopover activeNames={activeNames} onClose={() => setPopoverOpen(false)} />}
+          <div className="flex items-center gap-2">
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setPopoverOpen(o => !o)}
+                className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
+              >
+                All synergies
+              </button>
+              {popoverOpen && <SynergyPopover activeNames={activeNames} onClose={() => setPopoverOpen(false)} />}
+            </div>
+            {collapseButton}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5 overflow-y-auto max-h-[168px] pr-1 custom-scrollbar">
-          {bonuses.activeSynergies.length === 0 && (
-            <p className="text-[10px] text-stone-400 italic">No active synergies yet</p>
-          )}
-          {bonuses.activeSynergies.map(s => (
-            <div key={s.name} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
-              <span className="text-emerald-500 text-[10px] mt-0.5 shrink-0">✦</span>
-              <div className="flex flex-col leading-tight min-w-0">
-                <span className="font-bold text-[10px] text-stone-700 truncate">{s.name}</span>
-                <span className="text-stone-500 text-[9px] leading-snug">{extractEffectText(s.description)}</span>
-              </div>
-            </div>
-          ))}
-          {topTeasers.map(teaser => {
-            const parts = teaser.text.split(' ');
-            const fraction = parts.pop();
-            const name = parts.join(' ');
-            return (
-              <div key={teaser.text} title={teaser.text} className="flex items-start gap-1.5 bg-white rounded px-2 py-1 border border-dashed border-stone-200 min-w-0">
-                <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
-                <div className="flex flex-col leading-tight min-w-0 flex-1">
-                  <span className="font-bold text-[10px] text-stone-400 truncate">Next up · {name}</span>
-                  <span className="flex items-center gap-1.5 mt-0.5">
-                    <span className="flex-1 h-1 bg-stone-100 rounded-full overflow-hidden">
-                      <span className="block h-full bg-stone-400" style={{ width: `${teaser.progress * 100}%` }} />
-                    </span>
-                    <span className="text-[9px] font-bold text-stone-400 shrink-0">{fraction}</span>
-                  </span>
+        {bonuses.activeSynergies.length === 0 ? (
+          <p className="text-[10px] text-stone-400 italic">No active synergies yet</p>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5">
+            {visibleSynergies.map(s => (
+              <div key={s.name} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
+                <span className="text-emerald-500 text-[10px] mt-0.5 shrink-0">✦</span>
+                <div className="flex flex-col leading-tight min-w-0">
+                  <span className="font-bold text-[10px] text-stone-700 truncate">{s.name}</span>
+                  <span className="text-stone-500 text-[9px] leading-snug">{extractEffectText(s.description)}</span>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setPopoverOpen(true)}
+            className="self-start text-[9px] font-bold uppercase tracking-wide text-emerald-600 hover:text-emerald-700 mt-0.5"
+          >
+            +{hiddenCount} more active
+          </button>
+        )}
       </div>
-
-      {/* Collapse toggle */}
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-label="Collapse team report"
-        title="Collapse team report"
-        className="shrink-0 self-start text-stone-400 hover:text-stone-600"
-      >
-        <ChevronIcon direction="up" />
-      </button>
     </div>
   );
 }
