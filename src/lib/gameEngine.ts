@@ -291,17 +291,17 @@ function calcPossessionSplit(
   homeBonuses: TeamBonuses,
   awayBonuses: TeamBonuses
 ): PossessionSplit {
-  // Each team rolls independent noise
-  const homeNoise = (Math.random() - 0.5) * 5; // -2.5 to +2.5
-  const awayNoise = (Math.random() - 0.5) * 5;
+  // Each team rolls independent noise (NBA pace ~100 poss per team)
+  const homeNoise = (Math.random() - 0.5) * 10; // -5 to +5
+  const awayNoise = (Math.random() - 0.5) * 10;
   
-  let homePoss = 50 + homeNoise;
-  let awayPoss = 50 + awayNoise;
+  let homePoss = 100 + homeNoise;
+  let awayPoss = 100 + awayNoise;
   
-  // Team strength differential shifts possessions (max ±3)
+  // Team strength differential shifts possessions (max ±5)
   const homeStrength = calcTeamStrength(homePlayers, homeShares);
   const awayStrength = calcTeamStrength(awayPlayers, awayShares);
-  const POSSESSION_SWING = 5;
+  const POSSESSION_SWING = 8;
   const strengthDelta = ((homeStrength - awayStrength) / 100) * POSSESSION_SWING;
   
   homePoss += strengthDelta;
@@ -316,8 +316,8 @@ function calcPossessionSplit(
   awayPoss -= homeBonuses.defenseMods.possessionSwing || 0;
   
   // Round and ensure minimums
-  homePoss = Math.max(42, Math.round(homePoss));
-  awayPoss = Math.max(42, Math.round(awayPoss));
+  homePoss = Math.max(85, Math.round(homePoss));
+  awayPoss = Math.max(85, Math.round(awayPoss));
   
   const totalPoss = homePoss + awayPoss;
   
@@ -367,11 +367,19 @@ function resolvePossession(
   const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
   
   // Base probabilities + edge modifiers + team bonuses + opponent's defensive bonuses
+  // NBA-realistic: ~38% FGA are 3s, ~62% are 2s. Base rates reflect this with TO as our
+  // possession-variance mechanic (not comparable to real NBA TO%).
   let pTurnover = 0.12 - clampedEdge * 0.04 + offenseMods.turnoverRate + defenseFromOpponent.turnoverRate;
-  let pMiss     = 0.38 - clampedEdge * 0.08 + offenseMods.missRate + defenseFromOpponent.missRate;
-  let p2pt      = 0.35 + clampedEdge * 0.06 + offenseMods.twoPointRate + defenseFromOpponent.twoPointRate;
-  let p3pt      = 0.11 + clampedEdge * 0.04 + offenseMods.threePointRate + defenseFromOpponent.threePointRate;
+  let pMiss     = 0.34 - clampedEdge * 0.06 + offenseMods.missRate + defenseFromOpponent.missRate;
+  let p2pt      = 0.30 + clampedEdge * 0.04 + offenseMods.twoPointRate + defenseFromOpponent.twoPointRate;
+  let p3pt      = 0.16 + clampedEdge * 0.04 + offenseMods.threePointRate + defenseFromOpponent.threePointRate;
   let pAnd1     = 0.04 + clampedEdge * 0.02 + offenseMods.andOneRate + defenseFromOpponent.andOneRate;
+  
+  // Factor in lineup 3pt ability: teams with better perimeter players shoot more 3s
+  const avgPerimeter = offenseLineup.reduce((s, p) => s + (p.ratings?.perimeter ?? 50), 0) / offenseLineup.length;
+  const perimeterShift = (avgPerimeter - 55) / 500; // ±0.03 shift based on lineup perimeter rating
+  p3pt += perimeterShift;
+  p2pt -= perimeterShift;
   
   // Clamp all probabilities to [0.01, 0.80]
   pTurnover = Math.max(0.01, Math.min(0.80, pTurnover));
@@ -621,8 +629,8 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
   }
   
   // 1. Calculate possession shares
-  const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players, 100);
-  const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players, 100);
+  const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players, 200);
+  const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players, 200);
   
   // 2. Calculate bonuses
   const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares);
@@ -729,7 +737,7 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
       // Update box score
       for (const id of offenseIds) {
         const bs = boxStats.get(id);
-        if (bs) { bs.possessions++; bs.minutes += 0.48; } // ~48 min / 100 poss
+        if (bs) { bs.possessions++; bs.minutes += 0.24; } // ~48 min / 200 poss
       }
       if (result.scorerId) {
         const bs = boxStats.get(result.scorerId);
@@ -910,8 +918,8 @@ function distributeQuarters(
     const homeNoise = q < 3 ? Math.round((Math.random() - 0.5) * 2) : 0;
     const awayNoise = q < 3 ? Math.round((Math.random() - 0.5) * 2) : 0;
     
-    const homeQ = q < 3 ? Math.max(10, homeBase + homeNoise) : homeRemaining;
-    const awayQ = q < 3 ? Math.max(10, awayBase + awayNoise) : awayRemaining;
+    const homeQ = q < 3 ? Math.max(20, homeBase + homeNoise) : homeRemaining;
+    const awayQ = q < 3 ? Math.max(20, awayBase + awayNoise) : awayRemaining;
     
     quarters.push({ home: homeQ, away: awayQ });
     homeRemaining -= homeQ;
