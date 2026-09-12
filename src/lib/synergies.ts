@@ -400,10 +400,16 @@ export function calcTeamBonuses(
       if (syn.id === 'lockdown-squad' || syn.id === 'rim-protection') {
         mergeModifiers(defenseMods, result);
         defenseMods.possessionSwing -= result.possessionSwing; // Opponent loses possessions
-      } else if (syn.id === 'two-way-terror' || syn.id === 'two-way-wings') {
-        // Two-way: offense part goes to self, defense part goes to opponent
-        // These are already mixed — apply efficiency bonuses to self, share bonuses to self
+      } else if (syn.id === 'two-way-terror') {
+        // +1% all eff (self), -1% opp all eff
         mergeModifiers(offenseMods, result);
+        defenseMods.rimEffBonus -= 0.01;
+        defenseMods.midEffBonus -= 0.01;
+        defenseMods.perEffBonus -= 0.01;
+      } else if (syn.id === 'two-way-wings') {
+        // +2% 3pt share (self), -1% opp 3pt eff
+        offenseMods.perShareBonus += result.perShareBonus || 0;
+        defenseMods.perEffBonus += result.perEffBonus || 0;
       } else {
         mergeModifiers(offenseMods, result);
       }

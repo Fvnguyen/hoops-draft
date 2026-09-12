@@ -436,6 +436,11 @@ export function calcTeamShotProfile(
   mid += offenseMods.midShareBonus - (defenseFromOpponent.midShareBonus || 0);
   per += offenseMods.perShareBonus - (defenseFromOpponent.perShareBonus || 0);
 
+  // Ensure no negative shares before normalizing
+  rim = Math.max(0, rim);
+  mid = Math.max(0, mid);
+  per = Math.max(0, per);
+  
   // Normalize to sum to 1.0
   const sum = rim + mid + per;
   if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
@@ -505,10 +510,19 @@ function resolvePossession(
 
   const efficiency = Math.max(0.15, Math.min(0.85, baseEff + effShift + channelEffBonus));
 
+  // Pick scorer/actor (weighted by channel-relevant rating)
+  const scorerWeights = offenseLineup.map(p => {
+    if (channel === 'three') return p.ratings?.perimeter ?? 50;
+    if (channel === 'mid') return p.ratings?.midRange ?? 50;
+    return p.ratings?.finishing ?? 50; // rim
+  });
+  const scorer = weightedRandom(offenseLineup, scorerWeights);
+  const scorerId = scorer?.id;
+
   const made = Math.random() < efficiency;
 
   if (!made) {
-    return { outcome: 'miss', points: 0, isAnd1: false, channel, narrativeHint: 'miss' };
+    return { outcome: 'miss', points: 0, isAnd1: false, channel, scorerId, narrativeHint: 'miss' };
   }
 
   // Step 4: Points + and-1 check
@@ -527,33 +541,27 @@ function resolvePossession(
     narrativeHint = 'three_make';
   }
 
-  // And-1 check (descending by distance)
-  const and1Base = AND1_BASE[channel];
-  const and1Chance = and1Base + offenseMods.and1Bonus;
-  const isAnd1 = Math.random() < and1Chance;
-  if (isAnd1) {
-    points += 1;
-    narrativeHint = 'and1';
+  // And-1 check (only possible on clean field goals, not free throw events)
+  let isAnd1 = false;
+  if (points >= 2) {
+    const and1Base = AND1_BASE[channel];
+    const and1Chance = and1Base + offenseMods.and1Bonus;
+    if (Math.random() < and1Chance) {
+      isAnd1 = true;
+      points += 1;
+      narrativeHint = 'and1';
+    }
   }
 
-  // Pick scorer (weighted by channel-relevant rating)
-  let scorerId: string | undefined;
+  // Assist: playmaking-weighted, excluding scorer, only on clean field goals
   let assistId: string | undefined;
-
-  const scorerWeights = offenseLineup.map(p => {
-    if (channel === 'three') return p.ratings?.perimeter ?? 50;
-    if (channel === 'mid') return p.ratings?.midRange ?? 50;
-    return p.ratings?.finishing ?? 50; // rim
-  });
-  const scorer = weightedRandom(offenseLineup, scorerWeights);
-  scorerId = scorer?.id;
-
-  // Assist: playmaking-weighted, excluding scorer
-  const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
-  if (assistCandidates.length > 0 && Math.random() < 0.65) {
-    const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
-    const assister = weightedRandom(assistCandidates, assistWeights);
-    assistId = assister?.id;
+  if (points >= 2) {
+    const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
+    if (assistCandidates.length > 0 && Math.random() < 0.65) {
+      const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
+      const assister = weightedRandom(assistCandidates, assistWeights);
+      assistId = assister?.id;
+    }
   }
 
   return { outcome: channel, points, isAnd1, channel, scorerId, assistId, narrativeHint };
@@ -883,8 +891,8 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
         const bs = boxStats.get(result.scorerId);
         if (bs) {
           bs.points += result.points;
-          if (result.channel === 'rim') bs.twoPointers++;
-          if (result.channel === 'mid') bs.twoPointers++;
+          if (result.channel === 'rim' && result.points >= 2) bs.twoPointers++;
+          if (result.channel === 'mid' && result.points >= 2) bs.twoPointers++;
           if (result.channel === 'three') bs.threePointers++;
           if (result.isAnd1) bs.andOnes++;
         }
@@ -977,8 +985,8 @@ export function simulateGame(homeTeam: TeamInfo, awayTeam: TeamInfo): GameTheate
         const bs = boxStats.get(result.scorerId);
         if (bs) {
           bs.points += result.points;
-          if (result.channel === 'rim') bs.twoPointers++;
-          if (result.channel === 'mid') bs.twoPointers++;
+          if (result.channel === 'rim' && result.points >= 2) bs.twoPointers++;
+          if (result.channel === 'mid' && result.points >= 2) bs.twoPointers++;
           if (result.channel === 'three') bs.threePointers++;
           if (result.isAnd1) bs.andOnes++;
         }
