@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCw, Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2 } from 'lucide-react';
+import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard } from '@/engine/types';
@@ -42,11 +42,11 @@ const badgeConfig: Record<string, { icon: LucideIcon; color: string; bg: string 
   'Playmaking Maestro':  { icon: Wand2,          color: '#14B8A6', bg: 'bg-teal-500/20' },
 };
 
-function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' }) {
+function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' | 'xs' }) {
   const cfg = badgeConfig[name] || { icon: Star, color: '#9CA3AF', bg: 'bg-stone-500/20' };
   const Icon = cfg.icon;
-  const iconSize = size === 'small' ? 12 : 16;
-  const containerSize = size === 'small' ? 'w-6 h-6' : 'w-8 h-8';
+  const iconSize = size === 'xs' ? 10 : size === 'small' ? 12 : 16;
+  const containerSize = size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : 'w-8 h-8';
 
   return (
     <div className="group/badge relative" title={`${name} (Lv.${level})`}>
@@ -182,7 +182,7 @@ export function RarityGem({ rarity, size = 'md' }: { rarity: 'Common' | 'Uncommo
 // [gem sm] [position pill] [headshot or play icon] [name] [badges or play
 // category] [trailing slot].
 export function CardListRow({ card, onClick, selected = false, trailing, className = '' }: { card: DraftCard; onClick?: () => void; selected?: boolean; trailing?: ReactNode; className?: string }) {
-  const rowClasses = `flex items-center gap-2 h-11 px-2 rounded-lg border transition-colors bg-white ${selected ? 'border-orange-500 ring-1 ring-orange-500 bg-orange-50/40' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
+  const rowClasses = `@container flex items-center gap-1.5 h-11 px-2 rounded-lg border transition-colors bg-white ${selected ? 'border-orange-500 ring-1 ring-orange-500 bg-orange-50/40' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
 
   if (card.type === 'Player') {
     const headshotUrl = `/headshots/${card.player.id}.png`;
@@ -196,10 +196,11 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
           className="w-7 h-7 rounded-full object-cover object-top border border-stone-200 shrink-0 bg-stone-100"
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
         />
-        <span className="flex-1 min-w-0 font-bold text-[12px] text-stone-800 uppercase truncate">{card.player.name}</span>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {card.traits.slice(0, 4).map((t, i) => (
-            <BadgeIcon key={i} name={t.name} level={t.level} size="small" />
+        <span className="flex-1 min-w-[56px] font-bold text-[12px] text-stone-800 uppercase truncate">{card.player.name}</span>
+        {/* Badges only when the row is wide enough for the name to stay readable */}
+        <div className="hidden @[230px]:flex items-center gap-0.5 shrink-0">
+          {card.traits.slice(0, 3).map((t, i) => (
+            <BadgeIcon key={i} name={t.name} level={t.level} size="xs" />
           ))}
         </div>
         {trailing && <div className="shrink-0 ml-1">{trailing}</div>}
@@ -242,22 +243,6 @@ const teamIds: Record<string, string> = {
   OKC: '1610612760', ORL: '1610612753', PHI: '1610612755', PHX: '1610612756', POR: '1610612757',
   SAC: '1610612758', SAS: '1610612759', TOR: '1610612761', UTA: '1610612762', WAS: '1610612764',
 };
-
-// Small semi-transparent flip control shared by PlayerCard/PlayCard.
-// stopPropagation so clicking it never also fires the card's onClick
-// (selection), per the "flip on click of a corner button" brief.
-function FlipButton({ onClick, className = '' }: { onClick: () => void; className?: string }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`w-[22px] h-[22px] rounded-full bg-black/35 hover:bg-black/55 backdrop-blur-sm flex items-center justify-center text-white transition-colors shrink-0 ${className}`}
-      aria-label="Flip card"
-    >
-      <RotateCw size={12} />
-    </button>
-  );
-}
 
 // One cell of the front card's stats row.
 function StatCell({ label, value, border = true, className = '' }: { label: string; value: string; border?: boolean; className?: string }) {
@@ -385,6 +370,9 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
       className={`group @container w-full select-none transition-transform duration-200 hover:-translate-y-1 ${onClick ? 'cursor-pointer' : ''}`}
       style={{ perspective: 1000, aspectRatio: '5 / 7' }}
       onClick={onClick}
+      onMouseEnter={() => setIsFlipped(true)}
+      onMouseLeave={() => setIsFlipped(false)}
+      onTouchStart={() => setIsFlipped(f => !f)}
     >
       <motion.div
         className="w-full h-full relative"
@@ -397,16 +385,14 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
           {/* Rarity top accent line — Rare/Mythic only; frame itself stays neutral */}
           {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: rarityAccentColor }} />}
 
-          {/* Top Bar — two lines: [gem + name], [position pill + team/age] */}
-          <div className="flex flex-col gap-1 px-3 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <RarityGem rarity={player.rarity} size="md" />
-              <span className={`font-black tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
+          {/* Top Bar — [gem] [name / team · age] [position pill]: gem and position frame the text */}
+          <div className="flex items-center gap-2 px-2.5 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
+            <RarityGem rarity={player.rarity} size="lg" />
+            <div className="flex-1 min-w-0 flex flex-col leading-tight">
+              <span className={`font-bold tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
+              <span className="text-[10px] font-semibold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
             </div>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <PositionIcon position={player.player.position} />
-              <span className="text-[9px] font-bold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
-            </div>
+            <PositionIcon position={player.player.position} />
           </div>
 
           {/* Main Visual */}
@@ -446,8 +432,6 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
               ))}
             </div>
 
-            {/* Flip control */}
-            <FlipButton onClick={() => setIsFlipped(true)} className="absolute top-1.5 right-1.5 z-20" />
           </div>
 
           {/* Stats Row — 4 cols under 180px container width (or size="sm"), 6 at/above */}
@@ -478,53 +462,14 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
             <span className={`text-[11px] font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
             <div className="flex-1" />
             <PositionIcon position={player.player.position} />
-            <FlipButton onClick={() => setIsFlipped(false)} />
           </div>
 
-          {/* Detailed Averages */}
-          <div className="px-3 pt-2 pb-1 flex-1 flex flex-col justify-center overflow-y-auto">
-            <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1.5 text-center">Season Averages</div>
-              <div className="grid grid-cols-2 gap-1 mb-1.5">
-                {[
-                  ['GP', String(player.stats.gp)],
-                  ['MPG', player.stats.mpg.toFixed(1)],
-                  ['PTS', player.stats.pts.toFixed(1)],
-                  ['FGA', (player.stats.fga || 0).toFixed(1)],
-                  ['TRB', player.stats.trb.toFixed(1)],
-                  ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
-                  ['AST', player.stats.ast.toFixed(1)],
-                  ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
-                  ['STL', player.stats.stl.toFixed(1)],
-                  ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
-                  ['BLK', player.stats.blk.toFixed(1)],
-                  ['3PA', (player.stats.fg3a || 0).toFixed(1)],
-                  ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
-                  ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex justify-between items-center px-2 py-[3px] bg-stone-800 rounded border border-stone-700">
-                    <span className="text-[9px] text-stone-400 font-bold uppercase">{label}</span>
-                    <span className="text-[12px] font-black text-white">{val}</span>
-                  </div>
-                ))}
-              </div>
-
-            {/* Awards */}
-            {player.awards && player.awards.length > 0 && (
-              <div className="mt-1">
-                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
-                <div className="flex flex-wrap justify-center gap-1">
-                  {player.awards.map((award, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[9px] font-black uppercase tracking-widest rounded border border-yellow-500/50">
-                      {award}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Badges */}
+          {/* Back body: badges first (game-relevant), then accolades, then season averages.
+              No justify-center: centred flex content overflows at BOTH ends and hides the
+              badges on small cards; top-aligned content only ever clips at the bottom. */}
+          <div className="px-2.5 pt-1.5 pb-1 flex-1 flex flex-col overflow-hidden min-h-0">
             {player.traits && player.traits.length > 0 && (
-              <div className="mt-1">
+              <div className="mb-1.5">
                 <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
                 <div className="flex flex-wrap justify-center gap-1">
                   {player.traits.map((trait, i) => {
@@ -539,9 +484,47 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                 </div>
               </div>
             )}
-            
-            {/* Bio */}
-            <div className="mt-2 text-center text-[8px] text-stone-500 font-bold tracking-widest uppercase">
+
+            {player.awards && player.awards.length > 0 && (
+              <div className="mb-1.5">
+                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
+                <div className="flex flex-wrap justify-center gap-1">
+                  {player.awards.map((award, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[9px] font-black uppercase tracking-widest rounded border border-yellow-500/50">
+                      {award}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
+            <div className="grid grid-cols-2 gap-x-1 gap-y-[2px]">
+              {[
+                ['GP', String(player.stats.gp)],
+                ['MPG', player.stats.mpg.toFixed(1)],
+                ['PTS', player.stats.pts.toFixed(1)],
+                ['FGA', (player.stats.fga || 0).toFixed(1)],
+                ['TRB', player.stats.trb.toFixed(1)],
+                ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
+                ['AST', player.stats.ast.toFixed(1)],
+                ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
+                ['STL', player.stats.stl.toFixed(1)],
+                ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
+                ['BLK', player.stats.blk.toFixed(1)],
+                ['3PA', (player.stats.fg3a || 0).toFixed(1)],
+                ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
+                ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
+              ].map(([label, val]) => (
+                <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-stone-800 rounded border border-stone-700">
+                  <span className="text-[8px] text-stone-400 font-bold uppercase">{label}</span>
+                  <span className="text-[11px] font-black text-white">{val}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Bio — only when there is room */}
+            <div className="mt-auto pt-1 text-center text-[8px] text-stone-500 font-bold tracking-widest uppercase hidden @[200px]:block">
                 {player.player.height} • {player.player.weight} LBS • {player.player.age}Y
             </div>
           </div>
@@ -642,9 +625,10 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
       className={`group relative w-full aspect-[5/7] cursor-pointer transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
-      onTouchStart={() => setIsFlipped(!isFlipped)}
+      onMouseEnter={() => setIsFlipped(true)}
+      onMouseLeave={() => setIsFlipped(false)}
+      onTouchStart={() => setIsFlipped(f => !f)}
     >
-      <FlipButton onClick={() => setIsFlipped(!isFlipped)} className="absolute top-1.5 right-1.5 z-20" />
 
       <motion.div
         className="w-full h-full relative"

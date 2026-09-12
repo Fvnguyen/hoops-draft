@@ -652,9 +652,15 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                                     column) — kept as its own box so the absolutely-positioned
                                     controls/tag and hover pop-up below (siblings, not children of
                                     this clipped box) are never cut off. */}
-                                <div className="overflow-hidden rounded-lg">
-                                  <CardListRow card={p} selected={isSelected} />
-                                </div>
+                                {isStarter ? (
+                                  /* Starters get the medium compact card (headshot, gem, pill,
+                                     badges, own hover pop-up); backups stay dense list rows. */
+                                  <PlayerCard player={p} compact popupDirection="down" isSelected={isSelected} />
+                                ) : (
+                                  <div className="overflow-hidden rounded-lg">
+                                    <CardListRow card={p} selected={isSelected} />
+                                  </div>
+                                )}
                                 {isSelected ? (
                                   <div
                                     className="absolute -top-2 -right-2 z-20 flex items-center gap-0.5"
@@ -686,12 +692,14 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                                     Starter
                                   </span>
                                 ) : null}
-                                {/* Hover pop-up: full card, retained from the compact-card convention */}
-                                <div className="hidden group-hover:block absolute z-50 pointer-events-none top-full left-1/2 -translate-x-1/2 mt-2 origin-top">
-                                  <div className="w-[160px] shadow-2xl">
-                                    <PlayerCard player={p} />
+                                {/* Hover pop-up for backups (the compact starter card has its own) */}
+                                {!isStarter && (
+                                  <div className="hidden group-hover:block absolute z-50 pointer-events-none top-full left-1/2 -translate-x-1/2 mt-2 origin-top">
+                                    <div className="w-[160px] shadow-2xl">
+                                      <PlayerCard player={p} />
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             </motion.div>
                           );

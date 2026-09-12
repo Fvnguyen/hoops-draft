@@ -28,7 +28,7 @@ function byNameSorted(cards: PlayerCardData[], rarity: PlayerCardData['rarity'],
 function pickHero(allCards: PlayerCardData[]): PlayerCardData | undefined {
   const named = findCardByName(allCards, 'Giannis Antetokounmpo');
   if (named) return named;
-  const rarityOrder: PlayerCardData['rarity'][] = ['Mythic', 'Rare', 'Uncommon', 'Common'];
+  const rarityOrder: PlayerCardData['rarity'][] = ['Mythic', 'Rare'];
   for (const rarity of rarityOrder) {
     const pool = byNameSorted(allCards, rarity, new Set());
     if (pool.length > 0) return pool[0];
@@ -46,9 +46,10 @@ function pickHero(allCards: PlayerCardData[]): PlayerCardData | undefined {
  */
 function pickPackPreview(allCards: PlayerCardData[], heroId: string | undefined): PlayerCardData[] {
   const tiers: Array<{ rarity: PlayerCardData['rarity']; count: number; preferred: string[] }> = [
+    // Only Mythic and Rare cards on the landing page (owner decision): the hero and
+    // the pack preview should show the exciting end of the pool.
     { rarity: 'Mythic', count: 2, preferred: ['Nikola Jokić', 'Stephen Curry'] },
-    { rarity: 'Rare', count: 1, preferred: ['Anthony Edwards'] },
-    { rarity: 'Uncommon', count: 1, preferred: ['Andrew Wiggins'] },
+    { rarity: 'Rare', count: 2, preferred: ['Anthony Edwards', 'Jalen Brunson'] },
   ];
 
   const usedIds = new Set<string>(heroId ? [heroId] : []);
@@ -151,7 +152,7 @@ export default function Home() {
               // that card above its neighbours so its name/stats are legible.
               // 7° per card around a pivot 3 card-heights below the fan keeps the whole
               // fan inside the 450px column (≈ 87px horizontal shift per card at 170px width).
-              const angle = (i - (packPlayers.length - 1) / 2) * 7;
+              const angle = (i - (packPlayers.length - 1) / 2) * 9;
 
               return (
                 <div

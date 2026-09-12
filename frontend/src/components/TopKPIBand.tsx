@@ -7,9 +7,8 @@ import type { PlayerCardData } from '../engine/types';
 import { DonutChart } from './DonutChart';
 
 // League-mean values for each identity axis, computed over the full card pool
-// (see data/game_logs/analysis_report.md). Used ONLY to draw a reference tick
-// on the identity bars — never rendered as a number (product rule: no ratings
-// or OVR shown to the player).
+// (see docs/ROADMAP.md P1-1). Used ONLY to draw a reference tick on the identity
+// bars — never rendered as a number (product rule: no ratings or OVR shown).
 const LEAGUE_AVG_IDENTITY: Record<keyof RosterIdentity, number> = {
   finishing: 55.5,
   midRange: 49.0,
@@ -20,9 +19,8 @@ const LEAGUE_AVG_IDENTITY: Record<keyof RosterIdentity, number> = {
   postDef: 46.4,
 };
 
-// Synergy ids whose "stacking" badge teaser (from getBadgeTally) can be shown
-// on an inactive chip, mapped to the badge-name prefix used in that teaser's
-// text (e.g. "Sharpshooter 3/4") — see getBadgeTally in engine/rosterStats.ts.
+// Synergy ids whose "stacking" badge teaser (from getBadgeTally) can be shown on an
+// inactive chip, mapped to the badge-name prefix used in that teaser's text.
 const STACKING_TEASER_PREFIX: Record<string, string> = {
   'shooting-gallery': 'Sharpshooter',
   'paint-dominance': 'Finisher',
@@ -32,23 +30,26 @@ const STACKING_TEASER_PREFIX: Record<string, string> = {
   'midrange-money': 'Mid-Range Maestro',
 };
 
-function Bar({ label, value, avg, color }: { label: string; value: number; avg: number; color: string }) {
+const IDENTITY_ROWS: Array<{ key: keyof RosterIdentity; label: string; color: string }> = [
+  { key: 'finishing', label: 'Finishing', color: 'bg-purple-500' },
+  { key: 'midRange', label: 'Mid-Range', color: 'bg-purple-500' },
+  { key: 'perimeter', label: '3PT', color: 'bg-purple-500' },
+  { key: 'playmaking', label: 'Playmaking', color: 'bg-pink-500' },
+  { key: 'rebounding', label: 'Rebounding', color: 'bg-pink-500' },
+  { key: 'perDef', label: 'Perimeter D', color: 'bg-teal-500' },
+  { key: 'postDef', label: 'Post D', color: 'bg-teal-500' },
+];
+
+function IdentityBar({ label, value, avg, color }: { label: string; value: number; avg: number; color: string }) {
   const pct = Math.min(100, Math.max(0, value));
   const avgPct = Math.min(100, Math.max(0, avg));
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[9px] font-bold uppercase text-stone-600 w-[55px] text-right leading-none">{label}</span>
-      <div className="relative flex-1 h-2 bg-stone-100 rounded-full border border-stone-300 overflow-visible">
-        <div className="h-full rounded-full overflow-hidden">
-          <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
-        </div>
-        <div
-          className="absolute -top-[3px] text-stone-500 text-[6px] leading-none -translate-x-1/2 pointer-events-none"
-          style={{ left: `${avgPct}%` }}
-          title={`League average`}
-        >
-          ▼
-        </div>
+    <div className="flex items-center gap-2 h-[14px]">
+      <span className="w-[76px] shrink-0 text-[9px] font-bold uppercase tracking-wide text-stone-500 text-right leading-none whitespace-nowrap">{label}</span>
+      <div className="relative flex-1 h-2 rounded-full bg-stone-100 border border-stone-200">
+        <div className={`absolute inset-y-0 left-0 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+        {/* League-average tick: a thin dark line, no number */}
+        <div className="absolute -top-[2px] h-[12px] w-px bg-stone-700/70" style={{ left: `${avgPct}%` }} title="League average" />
       </div>
     </div>
   );
@@ -68,113 +69,83 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
     const activeData = bonuses.activeSynergies.find(a => a.name === syn.name);
     const teaserPrefix = STACKING_TEASER_PREFIX[syn.id];
     const teaser = !active && teaserPrefix ? teasers.find(t => t.text.startsWith(teaserPrefix)) : undefined;
-    return {
-      id: syn.id,
-      name: syn.name,
-      description: activeData?.description ?? syn.description,
-      active,
-      teaser,
-    };
+    // Teaser text is "<Badge> 3/4" — keep only the fraction for the chip.
+    const fraction = teaser ? teaser.text.split(' ').pop() : undefined;
+    return { id: syn.id, name: syn.name, description: activeData?.description ?? syn.description, active, progress: teaser?.progress, fraction };
   }).sort((a, b) => Number(b.active) - Number(a.active));
 
   return (
-    <div className="bg-white border-b border-stone-200 px-4 py-3 shrink-0 flex items-stretch gap-6 shadow-sm z-10">
+    <div className="bg-white border-b border-stone-200 px-4 py-2.5 shrink-0 shadow-sm z-10 grid gap-x-6 gap-y-2 items-start grid-cols-1 lg:grid-cols-[minmax(280px,3fr)_auto_minmax(340px,5fr)]">
 
-      {/* 1. Identity Radar */}
-      <div className="flex-1 max-w-[450px] flex flex-col justify-center">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Team Identity</h3>
-        <div className="grid grid-cols-3 gap-x-4">
-          <div className="flex flex-col gap-1.5">
-            <Bar label="Finishing" value={identity.finishing} avg={LEAGUE_AVG_IDENTITY.finishing} color="bg-purple-500" />
-            <Bar label="Mid-Range" value={identity.midRange} avg={LEAGUE_AVG_IDENTITY.midRange} color="bg-purple-500" />
-            <Bar label="3PT" value={identity.perimeter} avg={LEAGUE_AVG_IDENTITY.perimeter} color="bg-purple-500" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Bar label="Perimeter D" value={identity.perDef} avg={LEAGUE_AVG_IDENTITY.perDef} color="bg-teal-500" />
-            <Bar label="Post Def" value={identity.postDef} avg={LEAGUE_AVG_IDENTITY.postDef} color="bg-teal-500" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Bar label="Playmaking" value={identity.playmaking} avg={LEAGUE_AVG_IDENTITY.playmaking} color="bg-pink-500" />
-            <Bar label="Rebounding" value={identity.rebounding} avg={LEAGUE_AVG_IDENTITY.rebounding} color="bg-pink-500" />
-          </div>
+      {/* 1. Team identity — one column of seven rows, labels never wrap */}
+      <div className="min-w-0">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Team Identity</h3>
+        <div className="flex flex-col gap-[3px]">
+          {IDENTITY_ROWS.map(r => (
+            <IdentityBar key={r.key} label={r.label} value={identity[r.key]} avg={LEAGUE_AVG_IDENTITY[r.key]} color={r.color} />
+          ))}
         </div>
-        <div className="text-[8px] text-stone-400 mt-1.5 flex items-center gap-1">
-          <span>▼</span><span>league avg</span>
-        </div>
+        <div className="text-[8px] text-stone-400 mt-1 pl-[84px]">| league avg</div>
       </div>
 
-      <div className="w-px bg-stone-200 my-1" />
-
-      {/* 2. Expected Shot Diet */}
-      <div className="flex-1 max-w-[220px] flex flex-col justify-center items-center">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5 w-full">Expected Shot Diet</h3>
-        <div className="flex-1 flex items-center justify-center -mt-2">
-          <DonutChart
-            size={70}
-            strokeWidth={14}
-            data={[
-              { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
-              { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
-              { label: '3PT', value: shotDiet.per, color: '#3b82f6' }
-            ]}
-          />
-        </div>
+      {/* 2. Expected shot diet */}
+      <div className="min-w-0 lg:px-4 lg:border-x lg:border-stone-200">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Shot Diet</h3>
+        <DonutChart
+          size={64}
+          strokeWidth={13}
+          data={[
+            { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
+            { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
+            { label: '3PT', value: shotDiet.per, color: '#3b82f6' },
+          ]}
+        />
       </div>
 
-      <div className="w-px bg-stone-200 my-1" />
-
-      {/* 3. Synergies & Plays (Engine Tracker) */}
-      <div className="flex-1 flex flex-col justify-center min-w-0">
+      {/* 3. Engine tracker — one line per chip, all chips visible, nothing cut mid-word */}
+      <div className="min-w-0">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1.5">Engine Tracker</h3>
-        <div className="flex flex-col gap-1 overflow-y-auto max-h-[64px] pr-2 custom-scrollbar">
-          <div className="flex flex-wrap gap-1.5">
-            {synergyChips.map(chip => chip.active ? (
-              <div key={chip.id} title={chip.description} className="flex items-center gap-1 px-2 py-0.5 rounded border border-emerald-500 bg-emerald-500 shadow-sm">
-                <span className="text-white text-[9px] font-black leading-none">✓</span>
-                <span className="text-[9px] font-bold text-white uppercase">{chip.name}</span>
-              </div>
-            ) : (
-              <div key={chip.id} title={chip.teaser ? `${chip.teaser.text} — ${chip.description}` : chip.description} className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-stone-200 bg-stone-50 opacity-70">
-                <span className="text-[9px] font-bold text-stone-400 uppercase">{chip.name}</span>
-                {chip.teaser && (
-                  <>
-                    <span className="text-[8px] font-bold text-stone-400 whitespace-nowrap">{chip.teaser.text}</span>
-                    <span className="w-6 h-1 bg-stone-200 rounded-full overflow-hidden shrink-0">
-                      <span className="block h-full bg-stone-400" style={{ width: `${chip.teaser.progress * 100}%` }} />
-                    </span>
-                  </>
-                )}
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-1">
+          {synergyChips.map(chip => chip.active ? (
+            <div key={chip.id} title={chip.description} className="flex items-center gap-1 h-5 px-2 rounded bg-emerald-500 text-white min-w-0">
+              <span className="text-[9px] font-black leading-none shrink-0">✓</span>
+              <span className="text-[9px] font-bold uppercase truncate">{chip.name}</span>
+            </div>
+          ) : (
+            <div key={chip.id} title={chip.fraction ? `${chip.name}: ${chip.fraction} — ${chip.description}` : chip.description} className="flex items-center gap-1.5 h-5 px-2 rounded border border-stone-200 bg-stone-50 text-stone-400 min-w-0">
+              <span className="text-[9px] font-bold uppercase truncate flex-1 min-w-0">{chip.name}</span>
+              {chip.progress !== undefined && (
+                <>
+                  <span className="w-5 h-1 bg-stone-200 rounded-full overflow-hidden shrink-0">
+                    <span className="block h-full bg-stone-400" style={{ width: `${chip.progress * 100}%` }} />
+                  </span>
+                  <span className="text-[8px] font-bold shrink-0">{chip.fraction}</span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {bonuses.activePlays.length > 0 && (
+          <div className="flex items-center gap-1 mt-1.5 min-w-0">
+            <span className="text-[8px] font-bold uppercase tracking-widest text-stone-400 shrink-0 mr-1">Plays</span>
+            {bonuses.activePlays.map((p, i) => (
+              <div
+                key={`${p.name}-${i}`}
+                title={p.description}
+                className={`flex items-center gap-1 h-5 px-2 rounded min-w-0 ${
+                  p.activated === 'full' ? 'bg-amber-500 text-white' :
+                  p.activated === 'partial' ? 'bg-amber-50 border border-amber-300 text-amber-700' :
+                  'bg-stone-50 border border-stone-200 text-stone-400'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${p.activated === 'full' ? 'bg-white' : p.activated === 'partial' ? 'bg-amber-400' : 'bg-stone-300'}`} />
+                <span className="text-[9px] font-bold uppercase truncate">{p.name}</span>
               </div>
             ))}
           </div>
-
-          {bonuses.activePlays.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {bonuses.activePlays.map((p, i) => (
-                <div
-                  key={`${p.name}-${i}`}
-                  title={p.description}
-                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded border ${
-                    p.activated === 'full' ? 'border-amber-500 bg-amber-500' :
-                    p.activated === 'partial' ? 'border-amber-300 bg-amber-50' :
-                    'border-stone-200 bg-stone-50 opacity-60'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    p.activated === 'full' ? 'bg-white' : p.activated === 'partial' ? 'bg-amber-400' : 'bg-stone-400'
-                  }`} />
-                  <span className={`text-[9px] font-bold uppercase ${p.activated === 'full' ? 'text-white' : 'text-stone-500'}`}>{p.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {synergyChips.every(c => !c.active) && bonuses.activePlays.length === 0 && (
-            <span className="text-[10px] text-stone-400 italic">No synergies or plays.</span>
-          )}
-        </div>
+        )}
       </div>
-
     </div>
   );
 }
