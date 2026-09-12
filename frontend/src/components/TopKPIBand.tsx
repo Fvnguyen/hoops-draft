@@ -161,29 +161,31 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
   }
 
   return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-4 py-2 flex items-center gap-6">
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 flex items-center gap-8">
 
-      {/* 1. Team identity radar */}
-      <div className="shrink-0 flex flex-col items-center gap-0.5">
-        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={100} />
+      {/* 1. Team identity radar — the two charts are the headline numbers; they keep
+          their size and the synergy list yields (flex-1 min-w-0) */}
+      <div className="shrink-0 flex flex-col items-center gap-1">
+        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={168} />
         <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 leading-none">Team identity</span>
       </div>
 
       {/* 2. Expected shot diet */}
-      <div className="shrink-0 pl-4 border-l border-stone-200">
+      <div className="shrink-0 pl-6 border-l border-stone-200 flex flex-col items-center gap-1">
         <DonutChart
-          size={64}
-          strokeWidth={13}
+          size={104}
+          strokeWidth={20}
           data={[
             { label: 'RIM', value: shotDiet.rim, color: '#ef4444' },
             { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
             { label: '3PT', value: shotDiet.per, color: '#3b82f6' },
           ]}
         />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 leading-none">Shot diet</span>
       </div>
 
-      {/* 3. Engine tracker — active synergies first, then closest-to-activating teasers */}
-      <div className="min-w-0 flex-1 pl-4 border-l border-stone-200 flex flex-col gap-1">
+      {/* 3. Engine tracker — same row style as the season page's "Active mechanics" */}
+      <div className="min-w-0 flex-1 pl-6 border-l border-stone-200 flex flex-col gap-1 self-stretch">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Active</h3>
           <div className="relative shrink-0">
@@ -198,49 +200,39 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
           </div>
         </div>
 
-        {bonuses.activeSynergies.length === 0 ? (
-          <p className="text-[10px] text-stone-400">No active synergies yet</p>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {bonuses.activeSynergies.map(s => (
-              <div
-                key={s.name}
-                title={`${s.name}: ${s.description}`}
-                className="flex items-center gap-1 h-5 px-2 rounded bg-emerald-500 text-white max-w-full min-w-0"
-              >
-                <span className="text-[10px] font-black leading-none shrink-0">✓</span>
-                <span className="text-[10px] font-bold uppercase shrink-0">{s.name}</span>
-                <span className="text-[10px] font-medium normal-case opacity-90 truncate">{extractEffectText(s.description)}</span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-1.5 overflow-y-auto max-h-[150px] pr-1 custom-scrollbar">
+          {bonuses.activeSynergies.length === 0 && (
+            <p className="text-[10px] text-stone-400 italic">No active synergies yet</p>
+          )}
+          {bonuses.activeSynergies.map(s => (
+            <div key={s.name} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
+              <span className="text-emerald-500 text-[10px] mt-0.5 shrink-0">✦</span>
+              <div className="flex flex-col leading-tight min-w-0">
+                <span className="font-bold text-[10px] text-stone-700 truncate">{s.name}</span>
+                <span className="text-stone-500 text-[9px] leading-snug">{extractEffectText(s.description)}</span>
               </div>
-            ))}
-          </div>
-        )}
-
-        {topTeasers.length > 0 && (
-          <>
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mt-0.5">Next up</h3>
-            <div className="flex flex-wrap gap-1">
-              {topTeasers.map(teaser => {
-                const parts = teaser.text.split(' ');
-                const fraction = parts.pop();
-                const name = parts.join(' ');
-                return (
-                  <div
-                    key={teaser.text}
-                    title={teaser.text}
-                    className="flex items-center gap-1.5 h-5 px-2 rounded border border-stone-200 bg-stone-50 text-stone-400 max-w-full min-w-0"
-                  >
-                    <span className="text-[10px] font-bold uppercase truncate">{name}</span>
-                    <span className="w-6 h-1 bg-stone-200 rounded-full overflow-hidden shrink-0">
+            </div>
+          ))}
+          {topTeasers.map(teaser => {
+            const parts = teaser.text.split(' ');
+            const fraction = parts.pop();
+            const name = parts.join(' ');
+            return (
+              <div key={teaser.text} title={teaser.text} className="flex items-start gap-1.5 bg-white rounded px-2 py-1 border border-dashed border-stone-200 min-w-0">
+                <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
+                <div className="flex flex-col leading-tight min-w-0 flex-1">
+                  <span className="font-bold text-[10px] text-stone-400 truncate">Next up · {name}</span>
+                  <span className="flex items-center gap-1.5 mt-0.5">
+                    <span className="flex-1 h-1 bg-stone-100 rounded-full overflow-hidden">
                       <span className="block h-full bg-stone-400" style={{ width: `${teaser.progress * 100}%` }} />
                     </span>
-                    <span className="text-[10px] font-bold shrink-0">{fraction}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
+                    <span className="text-[9px] font-bold text-stone-400 shrink-0">{fraction}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Collapse toggle */}

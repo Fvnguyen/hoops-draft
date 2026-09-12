@@ -559,7 +559,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                 are actually readable (was a 60px compact row). */}
             <div className="w-[170px] shrink-0 flex flex-col min-h-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Plays (Max 3)</h3>
-              <div className="flex flex-col gap-3 overflow-y-auto pr-1 pb-1">
+              <div className="flex flex-col gap-3 overflow-y-auto px-2 pb-1 items-center">
                 {[0, 1, 2].map(slotIndex => {
                   const play = activePlays[slotIndex];
                   const zoneId = `ActivePlay-${slotIndex}`;
@@ -569,7 +569,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                     return (
                       <div
                         key={slotIndex}
-                        className={`w-full aspect-[5/7] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                        className={`w-[140px] aspect-[5/7] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDropOnZone(e, zoneId)}
                       >
@@ -580,7 +580,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                   return (
                     <div
                       key={slotIndex}
-                      className="relative w-full"
+                      className="relative w-[140px]"
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropOnZone(e, zoneId)}
                     >
