@@ -466,7 +466,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
 
   return (
     <div
-      className={`relative w-full max-w-[200px] aspect-[2.5/3.5] cursor-pointer transition-transform ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.03] ${theme.hoverShadow}`}`}
+      className={`relative w-full aspect-[5/7] cursor-pointer transition-transform ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.03] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
