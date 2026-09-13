@@ -5,6 +5,8 @@ import { GameView } from '../../components/GameView';
 import { PlayerCardData } from '../../components/PlayerCard';
 import { TeamInfo, GameTheater } from '../../engine/game';
 import { emptyModifiers } from '../../engine/synergies';
+import { PLAY_BUDGET_OFFENSE, PLAY_BUDGET_DEFENSE } from '../../engine/balance';
+import type { PlaybookStatus } from '../../engine/playbook';
 
 const mockPlayer = (name: string, pos: string, ovr: number, id: string): PlayerCardData => ({
   type: 'Player',
@@ -61,6 +63,15 @@ const mockTeamInfo: TeamInfo = {
   plays: [],
 };
 
+const mockPlaybookStatus: PlaybookStatus = {
+  plays: [],
+  offenseAllocation: 0,
+  defenseAllocation: 0,
+  offenseBudget: PLAY_BUDGET_OFFENSE,
+  defenseBudget: PLAY_BUDGET_DEFENSE,
+  overBudget: false,
+};
+
 const mockGameTheater: GameTheater = {
   homeTeam: mockTeamInfo,
   awayTeam: { ...mockTeamInfo, name: 'Away Team', seatId: 'test2' },
@@ -74,6 +85,7 @@ const mockGameTheater: GameTheater = {
   awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: {} as any, defenseMods: {} as any, playstyle: [] },
   finalScore: [0, 0],
   seed: 0,
+  playbook: { home: mockPlaybookStatus, away: mockPlaybookStatus },
 };
 
 const mockDepthChart: Record<string, PlayerCardData[]> = {

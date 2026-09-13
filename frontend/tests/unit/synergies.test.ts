@@ -1,142 +1,132 @@
 /**
- * These tests target the INTENDED post-fix behaviour of the synergy/play
- * system (see docs/ROADMAP.md section 2, bugs P0-1 and P0-3). Another agent
- * is fixing synergies.ts / gameEngine.ts in parallel — until that lands,
- * (ii) and (iv) below are expected to fail. Do NOT weaken these assertions
- * and do NOT edit the engine from here.
+ * synergies.ts v3 (docs/plan_plays_and_synergies_2026-09-13.md): `calcTeamBonuses` no
+ * longer derives bonuses from badge-total synergy checks or from `activePlays` — Plays
+ * are resolved per-possession in game.ts against the assigned-player playbook
+ * (playbook.ts), and roster-wide bonuses now come only from the caller-selected
+ * archetype(s) (archetypes.ts) passed via `options.archetypes`. Chemistry synergies
+ * (Brotherhood, Veteran Core, Young Guns) are removed entirely.
+ *
+ * `evaluatePlay`/`getPlayRequirements`/`getPlayEffectId` are unchanged — they still
+ * describe a play card's badge requirements for the play-card UI (PlayerCard.tsx,
+ * DraftRoom.tsx) independently of calcTeamBonuses.
  */
 import { describe, it, expect } from 'vitest';
 import type { PlayerCardData } from '@/components/PlayerCard';
-import { calcTeamBonuses, evaluatePlay, getPlayRequirements } from '@/engine/synergies';
-import { simulateGame } from '@/engine/game';
-import { loadPlayers, PLAYS, buildTestTeam } from './helpers';
+import { calcTeamBonuses, evaluatePlay, getPlayRequirements, SYNERGIES } from '@/engine/synergies';
+import { MONO_THRESHOLDS } from '@/engine/archetypes';
+import { loadPlayers, PLAYS } from './helpers';
 
-/** Pick real players until the summed badge level for `badgeName` reaches `minTotal`. */
-function pickForBadgeTotal(players: PlayerCardData[], badgeName: string, minTotal: number): PlayerCardData[] {
-  const candidates = players
+/** The top `n` real carriers of `badgeName`, highest level first (best chance of also
+ *  clearing the points threshold at a fixed carrier count — see archetypes.test.ts). */
+function topCarriers(players: PlayerCardData[], badgeName: string, n: number): PlayerCardData[] {
+  return players
     .filter((p) => (p.traits || []).some((t) => t.name === badgeName))
     .sort((a, b) => {
       const la = a.traits.find((t) => t.name === badgeName)!.level;
       const lb = b.traits.find((t) => t.name === badgeName)!.level;
       return lb - la;
-    });
-
-  const picked: PlayerCardData[] = [];
-  let total = 0;
-  for (const c of candidates) {
-    picked.push(c);
-    total += c.traits.find((t) => t.name === badgeName)!.level;
-    if (total >= minTotal) break;
-  }
-  return picked;
+    })
+    .slice(0, n);
 }
 
-function dedupe(players: PlayerCardData[]): PlayerCardData[] {
-  const seen = new Set<string>();
-  const out: PlayerCardData[] = [];
-  for (const p of players) {
-    if (!seen.has(p.id)) {
-      seen.add(p.id);
-      out.push(p);
-    }
-  }
-  return out;
-}
-
-describe('synergies & plays (post-fix intent)', () => {
+describe('calcTeamBonuses (transition state — no archetype selected)', () => {
   const players = loadPlayers();
 
-  it('(i) High Pick & Roll activates fully for a roster meeting its badge requirements', () => {
-    const floorGenerals = pickForBadgeTotal(players, 'Floor General', 1);
-    const finishers = pickForBadgeTotal(players, 'Finisher', 1);
-    expect(floorGenerals.length).toBeGreaterThan(0);
-    expect(finishers.length).toBeGreaterThan(0);
-
-    const roster = dedupe([...floorGenerals, ...finishers]);
-    const highPnR = PLAYS.find((p) => p.id === 'play-std-1')!;
-
-    const bonuses = calcTeamBonuses(roster, [highPnR], new Map());
-    expect(bonuses.activePlays.length).toBe(1);
-    expect(bonuses.activePlays[0].activated).toBe('full');
-  });
-
-  it('(ii) Zone Defense (play-std-3): defenseMods.perEffBonus is negative, and it statistically lowers the opponent\'s measured 3pt make rate', () => {
-    const defenders = pickForBadgeTotal(players, 'Lockdown Defender', 1);
-    expect(defenders.length).toBeGreaterThan(0);
-    const defenseRosterPlayers = dedupe(defenders).slice(0, 12);
-
-    const zoneDefense = PLAYS.find((p) => p.id === 'play-std-2')!;
-
-    // Sanity: the play's own stored effect is a negative efficiency delta.
-    const bonusesWithPlay = calcTeamBonuses(defenseRosterPlayers, [zoneDefense], new Map());
-    expect(bonusesWithPlay.activePlays[0].activated).toBe('full');
-    expect(bonusesWithPlay.defenseMods.perEffBonus).toBeLessThan(0);
-
-    // Statistical check: with the play active, the opponent should make
-    // fewer 3s per possession than the identical matchup without it.
-    const offenseRosterPlayers = players.slice(200, 212);
-    const offenseTeam = buildTestTeam(offenseRosterPlayers, [], 'offense-team');
-    const defenseTeamWithPlay = buildTestTeam(defenseRosterPlayers, [zoneDefense], 'defense-with-play');
-    const defenseTeamNoPlay = buildTestTeam(defenseRosterPlayers, [], 'defense-no-play');
-
-    const N = 300;
-    let makesWith = 0, possWith = 0;
-    let makesWithout = 0, possWithout = 0;
-
-    for (let i = 0; i < N; i++) {
-      const gWith = simulateGame(offenseTeam, defenseTeamWithPlay);
-      const homeWith = gWith.possessions.filter((p) => p.team === 'home');
-      possWith += homeWith.length;
-      makesWith += homeWith.filter((p) => p.outcome === '3pt').length;
-
-      const gWithout = simulateGame(offenseTeam, defenseTeamNoPlay);
-      const homeWithout = gWithout.possessions.filter((p) => p.team === 'home');
-      possWithout += homeWithout.length;
-      makesWithout += homeWithout.filter((p) => p.outcome === '3pt').length;
-    }
-
-    const rateWith = makesWith / possWith;
-    const rateWithout = makesWithout / possWithout;
-
-    expect(rateWith).toBeLessThan(rateWithout);
-  });
-
-  it('(iii) Lockdown Squad and Rim Protection produce negative rim efficiency deltas in defenseMods', () => {
-    const lockdownDefenders = pickForBadgeTotal(players, 'Lockdown Defender', 4);
-    const paintProtectors = pickForBadgeTotal(players, 'Paint Protector', 2);
-    const glassCleaners = pickForBadgeTotal(players, 'Glass Cleaner', 2);
-
-    expect(lockdownDefenders.length).toBeGreaterThan(0);
-    expect(paintProtectors.length).toBeGreaterThan(0);
-    expect(glassCleaners.length).toBeGreaterThan(0);
-
-    const roster = dedupe([...lockdownDefenders, ...paintProtectors, ...glassCleaners]);
+  it('returns empty modifiers and no active synergies when options is omitted (existing callers)', () => {
+    const roster = players.slice(0, 12);
     const bonuses = calcTeamBonuses(roster, [], new Map());
-
-    const synergyNames = bonuses.activeSynergies.map((s) => s.name);
-    expect(synergyNames).toContain('Lockdown Squad');
-    expect(synergyNames).toContain('Rim Protection');
-    expect(bonuses.defenseMods.rimEffBonus).toBeLessThan(0);
+    expect(bonuses.offenseMods.rimShareBonus).toBe(0);
+    expect(bonuses.offenseMods.midShareBonus).toBe(0);
+    expect(bonuses.offenseMods.perShareBonus).toBe(0);
+    expect(bonuses.defenseMods.rimEffBonus).toBe(0);
+    expect(bonuses.possessionSwing).toBe(0);
+    expect(bonuses.activeSynergies).toEqual([]);
+    expect(bonuses.activePlays).toEqual([]);
   });
 
-  it('(iv) 7 Seconds or Less at full activation increases the team\'s top-level possessionSwing by exactly 1', () => {
-    const sharpshooters = pickForBadgeTotal(players, 'Sharpshooter', 3);
-    const floorGenerals = pickForBadgeTotal(players, 'Floor General', 1);
-    expect(sharpshooters.length).toBeGreaterThan(0);
-    expect(floorGenerals.length).toBeGreaterThan(0);
-
-    const roster = dedupe([...sharpshooters, ...floorGenerals]);
+  it('ignores activePlays entirely — a play that used to drive bonuses no longer does', () => {
+    const roster = players.slice(0, 12);
     const sevenSecondsOrLess = PLAYS.find((p) => p.id === 'play-sys-2')!;
-
-    const withoutPlay = calcTeamBonuses(roster, [], new Map());
     const withPlay = calcTeamBonuses(roster, [sevenSecondsOrLess], new Map());
+    const withoutPlay = calcTeamBonuses(roster, [], new Map());
+    expect(withPlay).toEqual(withoutPlay);
+    // And activePlays is always empty from this function now — game.ts fills its own copy.
+    expect(withPlay.activePlays).toEqual([]);
+  });
 
-    expect(withPlay.activePlays[0].activated).toBe('full');
-    expect(withPlay.possessionSwing - withoutPlay.possessionSwing).toBe(1);
+  it('still returns empty modifiers when an empty archetype selection is passed explicitly', () => {
+    const roster = players.slice(0, 12);
+    const bonuses = calcTeamBonuses(roster, [], new Map(), { starterIds: new Set(), archetypes: {} });
+    expect(bonuses.activeSynergies).toEqual([]);
+    expect(bonuses.offenseMods.perShareBonus).toBe(0);
   });
 });
 
-describe('evaluatePlay (wave 0 helper)', () => {
+describe('calcTeamBonuses (archetype selected)', () => {
+  const players = loadPlayers();
+
+  it('Shooting Gallery Online (Sharpshooter) lowers own mid share and raises 3pt share via offenseMods', () => {
+    const roster = topCarriers(players, 'Sharpshooter', MONO_THRESHOLDS.online.carriers);
+    expect(roster.length).toBe(MONO_THRESHOLDS.online.carriers);
+    const points = roster.reduce((s, p) => s + p.traits.find((t) => t.name === 'Sharpshooter')!.level, 0);
+    expect(points).toBeGreaterThanOrEqual(MONO_THRESHOLDS.online.points);
+    const starterIds = new Set(roster.slice(0, MONO_THRESHOLDS.online.starters).map((p) => p.id));
+
+    const bonuses = calcTeamBonuses(roster, [], new Map(), {
+      starterIds,
+      archetypes: { offense: 'shooting-gallery' },
+    });
+
+    expect(bonuses.offenseMods.midShareBonus).toBeLessThan(0);
+    expect(bonuses.offenseMods.perShareBonus).toBeGreaterThan(0);
+    expect(bonuses.activeSynergies.map((s) => s.name)).toEqual(['Shooting Gallery']);
+    // Plays never populate calcTeamBonuses's own list, regardless of selection.
+    expect(bonuses.activePlays).toEqual([]);
+  });
+
+  it('an archetype that fails to reach Online contributes nothing', () => {
+    // A single Sharpshooter carrier can never reach Online (needs 5 carriers/10 pts/2 starters).
+    const roster = topCarriers(players, 'Sharpshooter', 1);
+    const bonuses = calcTeamBonuses(roster, [], new Map(), {
+      starterIds: new Set(),
+      archetypes: { offense: 'shooting-gallery' },
+    });
+    expect(bonuses.activeSynergies).toEqual([]);
+    expect(bonuses.offenseMods.perShareBonus).toBe(0);
+  });
+
+  it('a defense-side archetype applies to defenseMods, not offenseMods', () => {
+    const roster = topCarriers(players, 'Lockdown Defender', MONO_THRESHOLDS.online.carriers);
+    const points = roster.reduce((s, p) => s + p.traits.find((t) => t.name === 'Lockdown Defender')!.level, 0);
+    expect(points).toBeGreaterThanOrEqual(MONO_THRESHOLDS.online.points);
+    const starterIds = new Set(roster.slice(0, MONO_THRESHOLDS.online.starters).map((p) => p.id));
+
+    const bonuses = calcTeamBonuses(roster, [], new Map(), {
+      starterIds,
+      archetypes: { defense: 'no-fly-zone' },
+    });
+
+    expect(bonuses.defenseMods.perEffBonus).toBeLessThan(0); // opponent 3pt efficiency hurt
+    expect(bonuses.offenseMods.perShareBonus).toBe(0);
+  });
+});
+
+describe('SYNERGIES (display view over ARCHETYPES; chemistry removed)', () => {
+  it('exposes id/name/category/description for the KPI popover, with no chemistry entries', () => {
+    expect(SYNERGIES.length).toBeGreaterThan(0);
+    for (const s of SYNERGIES) {
+      expect(typeof s.id).toBe('string');
+      expect(typeof s.name).toBe('string');
+      expect(['mono', 'two', 'gold']).toContain(s.category);
+      expect(typeof s.description).toBe('string');
+    }
+    expect(SYNERGIES.map((s) => s.name)).not.toContain('Brotherhood');
+    expect(SYNERGIES.map((s) => s.name)).not.toContain('Veteran Core');
+    expect(SYNERGIES.map((s) => s.name)).not.toContain('Young Guns');
+  });
+});
+
+describe('evaluatePlay (unchanged — badge-requirement UI helper, independent of calcTeamBonuses)', () => {
   it('reports per-requirement have/met counts and the activation tier', () => {
     const highPnR = PLAYS.find((p) => p.id === 'play-std-1')!;
     const none = evaluatePlay(highPnR, {});
@@ -168,16 +158,10 @@ describe('evaluatePlay (wave 0 helper)', () => {
     }
   });
 
-  it('defensive plays are flagged and land in defenseMods', () => {
+  it('defensive plays are flagged', () => {
     for (const id of ['play-sys-3', 'play-std-2', 'play-std-4']) {
       const play = PLAYS.find((p) => p.id === id)!;
       expect(evaluatePlay(play, {}).defensive, id).toBe(true);
     }
-    const press = PLAYS.find((p) => p.id === 'play-std-4')!;
-    const defenders = pickForBadgeTotal(loadPlayers(), 'Lockdown Defender', 1);
-    const bonuses = calcTeamBonuses(dedupe(defenders).slice(0, 12), [press], new Map());
-    expect(bonuses.activePlays[0].activated).toBe('full');
-    expect(bonuses.defenseMods.rimEffBonus).toBeLessThan(0);
-    expect(bonuses.possessionSwing).toBe(2);
   });
 });

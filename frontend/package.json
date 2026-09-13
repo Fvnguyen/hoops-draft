@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "balance": "tsx scripts/balance.ts",
-    "build:cards": "tsx scripts/build-cards.ts"
+    "build:cards": "tsx scripts/build-cards.ts",
+    "feasibility": "tsx scripts/archetype-feasibility.ts"
   },
   "dependencies": {
     "dexie": "^4.4.6",

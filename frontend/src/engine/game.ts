@@ -15,14 +15,20 @@
  */
 
 import { PlayerCardData, Play } from './types';
-import { DraftSessionSeat } from './deckbuilder';
+import { DraftSessionSeat, normalizeBuiltRoster } from './deckbuilder';
 import { calcTeamBonuses, TeamBonuses, GameModifiers } from './synergies';
+import {
+  PlayAssignment, PlayStatus, PlayCallModifiers, PlaybookStatus,
+  evaluatePlaybook, scaledPlayAllocations, playbookPossessionSwing,
+} from './playbook';
+import type { ArchetypeSelection } from './archetypes';
 import { Rng, createRng, randomSeed } from './rng';
 import {
   BASE_PACE, NOISE_PCT, STRENGTH_SWING_PCT,
   POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
   OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
   NBA_BASELINE, LEAGUE_AVG, AND1_BASE, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
+  PLAY_SCORER_BOOST, IDENTITY_CAPS,
 } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -60,6 +66,10 @@ export interface PossessionEvent {
   isPossessionWinEvent?: boolean;  // Steal, OREB, etc. that earned extra possession
   narrativeText: string;
   runningScore: [number, number]; // [home, away]
+  /** Assigned-player plays that applied to this possession (§7): an offense entry when
+   *  the offense team called one of its plays, a defense entry when the defending team's
+   *  coverage play also hit this possession. Both may be present on the same possession. */
+  calledPlays?: Array<{ playId: string; name: string; side: 'offense' | 'defense'; teamSide: 'home' | 'away' }>;
 }
 
 export interface QuarterSummary {
@@ -84,6 +94,8 @@ export interface GameTheater {
   overtimePeriods: number;
   /** RNG seed this game was simulated with — replay it via simulateGame(..., { rng: createRng(seed) }). */
   seed: number;
+  /** Playbook evaluation for each team, as computed at game start (see evaluatePlaybook). */
+  playbook: { home: PlaybookStatus; away: PlaybookStatus };
 }
 
 export interface TeamInfo {
@@ -93,6 +105,10 @@ export interface TeamInfo {
   starters: string[];        // 5 starter IDs (one per position)
   plays: Play[];             // 3 active plays
   depthChart: Record<string, string[]>; // Position → ordered player IDs
+  /** Assigned-player play roles (v2 roster shape) — see playbook.ts. */
+  playAssignments?: PlayAssignment[];
+  /** Chosen roster identity (v2 roster shape) — see archetypes.ts. */
+  archetypes?: ArchetypeSelection;
 }
 
 // ── Rotation Engine ────────────────────────────────────────────────────────
@@ -451,7 +467,10 @@ function resolvePossession(
   offenseMods: GameModifiers,
   defenseFromOpponent: GameModifiers,
   leagueAvg: Record<ShotChannel, { off: number; def: number }>,
-  rng: Rng
+  rng: Rng,
+  /** Playbook (§7): on a called offensive play, these assigned players' scorer weights
+   *  are multiplied by PLAY_SCORER_BOOST so they're favoured to take the shot. */
+  boostedIds?: Set<string>
 ): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
 
   // Step 1: Roll shot type from team distribution
@@ -504,11 +523,14 @@ function resolvePossession(
 
   const efficiency = Math.max(0.15, Math.min(0.85, baseEff + effShift + channelEffBonus));
 
-  // Pick scorer/actor (weighted by channel-relevant rating)
+  // Pick scorer/actor (weighted by channel-relevant rating). Playbook (§7): a called
+  // offensive play's assigned players get their weight boosted so they're favoured to
+  // take the shot on that possession, without ever fully excluding the rest of the lineup.
   const scorerWeights = offenseLineup.map(p => {
-    if (channel === 'three') return p.ratings?.perimeter ?? 50;
-    if (channel === 'mid') return p.ratings?.midRange ?? 50;
-    return p.ratings?.finishing ?? 50; // rim
+    const base = channel === 'three' ? (p.ratings?.perimeter ?? 50)
+      : channel === 'mid' ? (p.ratings?.midRange ?? 50)
+      : (p.ratings?.finishing ?? 50); // rim
+    return boostedIds?.has(p.id) ? base * PLAY_SCORER_BOOST : base;
   });
   const scorer = weightedRandom(offenseLineup, scorerWeights, rng);
   const scorerId = scorer?.id;
@@ -576,6 +598,80 @@ function weightedRandom<T>(items: T[], weights: number[], rng: Rng): T {
     if (roll <= 0) return items[i];
   }
   return items[items.length - 1];
+}
+
+// ── Playbook call resolution (§7) ───────────────────────────────────────────
+//
+// A team's evaluated playbook (evaluatePlaybook) is fixed for the whole game. On each
+// possession we roll independently for (a) the offense team's called play and (b) the
+// defending team's coverage play, using the SAME rng stream as everything else so a
+// seed reproduces an identical game. Both rolls are skipped entirely (no rng.next()
+// call) when the side has zero active plays, so a roster with no assigned plays draws
+// exactly as many random numbers as before this feature existed.
+
+function clampTo(v: number, cap: number): number {
+  return Math.max(-cap, Math.min(cap, v));
+}
+
+/** The depth-chart column (position) that lists this player, if any. */
+function findPlayerColumn(depthChart: Record<string, string[]>, playerId: string): string | undefined {
+  for (const [col, ids] of Object.entries(depthChart)) {
+    if (ids.includes(playerId)) return col;
+  }
+  return undefined;
+}
+
+/**
+ * Force every `playerIds` entry into its OWN depth-chart column of `lineupMap`
+ * (position → playerId), returning a NEW map (the rotation timeline is never mutated).
+ * Returns null — the play cannot be applied on this possession, caller should fall back
+ * to the unmodified lineup — when any player has no column, two players share a column,
+ * or the result would have fewer than 5 or duplicate players.
+ */
+function overrideLineupForPlay(
+  lineupMap: Map<string, string>,
+  depthChart: Record<string, string[]>,
+  playerIds: string[]
+): Map<string, string> | null {
+  const cols: string[] = [];
+  for (const pid of playerIds) {
+    const col = findPlayerColumn(depthChart, pid);
+    if (!col || cols.includes(col)) return null;
+    cols.push(col);
+  }
+  const next = new Map(lineupMap);
+  cols.forEach((col, i) => next.set(col, playerIds[i]));
+  const values = Array.from(next.values());
+  if (values.length < 5 || new Set(values).size !== values.length) return null;
+  return next;
+}
+
+/** Roll rng.next() and walk `scaled`'s cumulative allocations; returns the play whose
+ *  interval the roll landed in, or undefined (no call this possession). Skips the roll
+ *  entirely when there are no active plays on this side, to avoid perturbing the rng
+ *  stream for teams with an empty playbook. */
+function rollCalledPlay(rng: Rng, scaled: { status: PlayStatus; allocation: number }[]): PlayStatus | undefined {
+  if (scaled.length === 0) return undefined;
+  const roll = rng.next();
+  let cum = 0;
+  for (const sp of scaled) {
+    cum += sp.allocation;
+    if (roll < cum) return sp.status;
+  }
+  return undefined;
+}
+
+/** Called-offensive-play share deltas, applied to the team's baseline profile for this
+ *  possession only, then renormalized. Each channel's delta is clamped to
+ *  ±IDENTITY_CAPS.share before being applied. */
+function applyCalledShareShift(base: TeamShotProfile, mods: PlayCallModifiers): TeamShotProfile {
+  let rim = base.rim + clampTo(mods.rimShare ?? 0, IDENTITY_CAPS.share);
+  let mid = base.mid + clampTo(mods.midShare ?? 0, IDENTITY_CAPS.share);
+  let per = base.per + clampTo(mods.threeShare ?? 0, IDENTITY_CAPS.share);
+  rim = Math.max(0, rim); mid = Math.max(0, mid); per = Math.max(0, per);
+  const sum = rim + mid + per;
+  if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
+  return { rim, mid, per };
 }
 
 // ── Narrative Generator ────────────────────────────────────────────────────
@@ -758,6 +854,11 @@ export function buildTeamInfo(
     if (play) activePlays.push(play);
   }
 
+  // v2 roster shape: assigned-player play roles + chosen archetypes. Normalise here so
+  // pre-v2 saved rosters (no playAssignments/archetypes yet) still produce a valid,
+  // all-inactive playbook instead of throwing.
+  const normalized = normalizeBuiltRoster(roster, allCards);
+
   return {
     seatId: seat.id,
     name: isHuman ? 'You' : (seat.botProfile?.name || seat.id),
@@ -765,6 +866,8 @@ export function buildTeamInfo(
     starters,
     plays: activePlays,
     depthChart: roster.depthChart,
+    playAssignments: normalized.playAssignments,
+    archetypes: normalized.archetypes,
   };
 }
 
@@ -786,9 +889,33 @@ export function simulateGame(
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
   const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players);
 
-  // 2. Calculate bonuses (synergies + plays)
-  const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares);
-  const awayBonuses = calcTeamBonuses(awayTeam.players, awayTeam.plays, awayShares);
+  // 1b. Evaluate each team's playbook once for the whole game (§4/§7): which assigned
+  // plays are active, and each active play's (possibly budget-scaled) call allocation.
+  const homePlaybook = evaluatePlaybook(homeTeam.playAssignments ?? [], homeTeam.players);
+  const awayPlaybook = evaluatePlaybook(awayTeam.playAssignments ?? [], awayTeam.players);
+  const homeOffenseScaled = scaledPlayAllocations(homePlaybook, 'offense');
+  const awayOffenseScaled = scaledPlayAllocations(awayPlaybook, 'offense');
+  const homeDefenseScaled = scaledPlayAllocations(homePlaybook, 'defense');
+  const awayDefenseScaled = scaledPlayAllocations(awayPlaybook, 'defense');
+
+  // 2. Calculate bonuses (archetypes; plays are resolved possession-by-possession below)
+  const homeStarterIds = new Set(homeTeam.starters);
+  const awayStarterIds = new Set(awayTeam.starters);
+  const homeBonuses = calcTeamBonuses(homeTeam.players, homeTeam.plays, homeShares, { starterIds: homeStarterIds, archetypes: homeTeam.archetypes });
+  const awayBonuses = calcTeamBonuses(awayTeam.players, awayTeam.plays, awayShares, { starterIds: awayStarterIds, archetypes: awayTeam.archetypes });
+
+  // Playbook possession swing (§4: "Team-level possession swing per game while the play
+  // is active") folds into the SAME accumulator archetype possession effects use, then
+  // the combined total is clamped to ±IDENTITY_CAPS.possessions (P-caps are applied
+  // AFTER archetype + play effects are combined — see IDENTITY_CAPS in balance.ts).
+  homeBonuses.possessionSwing = clampTo(homeBonuses.possessionSwing + playbookPossessionSwing(homePlaybook), IDENTITY_CAPS.possessions);
+  awayBonuses.possessionSwing = clampTo(awayBonuses.possessionSwing + playbookPossessionSwing(awayPlaybook), IDENTITY_CAPS.possessions);
+
+  // Plays are no longer evaluated inside calcTeamBonuses (synergies.ts only returns
+  // archetype modifiers now) — fill TeamBonuses.activePlays here so existing UI
+  // (GameView etc.) that reads it keeps working unchanged.
+  homeBonuses.activePlays = homePlaybook.plays.map(p => ({ name: p.def.name, description: p.def.summary, activated: p.active ? 'full' as const : 'none' as const }));
+  awayBonuses.activePlays = awayPlaybook.plays.map(p => ({ name: p.def.name, description: p.def.summary, activated: p.active ? 'full' as const : 'none' as const }));
 
   // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
   // Minutes are credited per on-court possession (offense and defense), scaled to
@@ -877,13 +1004,43 @@ export function simulateGame(
 
       // Get current lineup from rotation
       const lineupMap = rotation[Math.min(rotIdx, rotation.length - 1)];
-      const offenseIds = Array.from(lineupMap.values());
+      let offenseIds = Array.from(lineupMap.values());
 
       // Get defense lineup (use the other team's rotation at their current index)
       const defRotation = isHome ? awayRotation : homeRotation;
       const defIdx = isHome ? awayIdx : homeIdx;
       const defLineupMap = defRotation[Math.min(defIdx, defRotation.length - 1)];
-      const defenseIds = Array.from(defLineupMap.values());
+      let defenseIds = Array.from(defLineupMap.values());
+
+      // Playbook (§7): roll independently for (a) the offense team's called play over
+      // its own possessions and (b) the defending team's coverage play over the
+      // opponent's possessions. Both rolls skip entirely (no rng draw) when that side
+      // has no active plays, so a playbook-less team reproduces the exact same game as
+      // before this feature existed. A roll that lands on a play whose assigned players
+      // can't form a legal lineup (overrideLineupForPlay returns null) falls back to the
+      // normal lineup and does not count as called.
+      const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
+      const coverageScaled = isHome ? awayDefenseScaled : homeDefenseScaled;
+
+      let calledOffense: PlayStatus | undefined;
+      const rolledOffense = rollCalledPlay(rng, offenseScaled);
+      if (rolledOffense) {
+        const overridden = overrideLineupForPlay(lineupMap, offenseTeam.depthChart, rolledOffense.playerIds);
+        if (overridden) {
+          offenseIds = Array.from(overridden.values());
+          calledOffense = rolledOffense;
+        }
+      }
+
+      let calledCoverage: PlayStatus | undefined;
+      const rolledCoverage = rollCalledPlay(rng, coverageScaled);
+      if (rolledCoverage) {
+        const overriddenDef = overrideLineupForPlay(defLineupMap, defenseTeam.depthChart, rolledCoverage.playerIds);
+        if (overriddenDef) {
+          defenseIds = Array.from(overriddenDef.values());
+          calledCoverage = rolledCoverage;
+        }
+      }
 
       // Resolve lineup to player objects
       const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
@@ -897,9 +1054,33 @@ export function simulateGame(
         isPossWin = true; awayExtraPoss--;
       }
 
+      // Playbook on-call modifiers (§7): a called offensive play shifts this
+      // possession's shot profile (renormalized) and adds to channel efficiency/and-1;
+      // a coverage play's (negative) eff deltas add to the opponent's channel efficiency
+      // for this possession only, same sign convention as defenseMods. The combined
+      // per-possession eff shift per channel is clamped to ±IDENTITY_CAPS.eff and share
+      // shifts to ±IDENTITY_CAPS.share (applyCalledShareShift does the share clamp).
+      const baseShotProfile = isHome ? homeShotProfile : awayShotProfile;
+      const shotProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
+
+      const rimEffDelta = clampTo((calledOffense?.def.mods.rimEff ?? 0) + (calledCoverage?.def.mods.rimEff ?? 0), IDENTITY_CAPS.eff);
+      const midEffDelta = clampTo((calledOffense?.def.mods.midEff ?? 0) + (calledCoverage?.def.mods.midEff ?? 0), IDENTITY_CAPS.eff);
+      const threeEffDelta = clampTo((calledOffense?.def.mods.threeEff ?? 0) + (calledCoverage?.def.mods.threeEff ?? 0), IDENTITY_CAPS.eff);
+      const and1Delta = clampTo(calledOffense?.def.mods.and1 ?? 0, IDENTITY_CAPS.and1);
+
+      const possessionOffenseMods: GameModifiers = (rimEffDelta || midEffDelta || threeEffDelta || and1Delta)
+        ? { ...offenseMods, rimEffBonus: offenseMods.rimEffBonus + rimEffDelta, midEffBonus: offenseMods.midEffBonus + midEffDelta, perEffBonus: offenseMods.perEffBonus + threeEffDelta, and1Bonus: offenseMods.and1Bonus + and1Delta }
+        : offenseMods;
+
+      const boostedIds = calledOffense ? new Set(calledOffense.playerIds) : undefined;
+
       // Resolve the possession (multi-channel: shot type → edge → efficiency)
-      const shotProfile = isHome ? homeShotProfile : awayShotProfile;
-      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, offenseMods, defFromOpp, leagueAvg, rng);
+      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, leagueAvg, rng, boostedIds);
+
+      // Playbook recording (§7): tag this possession with whichever calls applied.
+      const calledPlays: PossessionEvent['calledPlays'] = [];
+      if (calledOffense) calledPlays.push({ playId: calledOffense.def.playId, name: calledOffense.def.name, side: 'offense', teamSide: team });
+      if (calledCoverage) calledPlays.push({ playId: calledCoverage.def.playId, name: calledCoverage.def.name, side: 'defense', teamSide: isHome ? 'away' : 'home' });
 
       if (isHome) homeScore += result.points; else awayScore += result.points;
 
@@ -958,6 +1139,7 @@ export function simulateGame(
         isPossessionWinEvent: isPossWin,
         narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin),
         runningScore: [homeScore, awayScore],
+        calledPlays,
       });
 
       possIndex++;
@@ -1099,6 +1281,7 @@ export function simulateGame(
     isOvertime,
     overtimePeriods,
     seed: rng.seed,
+    playbook: { home: homePlaybook, away: awayPlaybook },
   };
 }
 

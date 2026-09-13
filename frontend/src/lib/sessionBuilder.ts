@@ -8,7 +8,7 @@
  */
 
 import { DraftSeat } from '../engine/draft';
-import { buildBotRoster, DraftSession, DraftSessionSeat, DraftPickRecord } from '../engine/deckbuilder';
+import { buildBotRoster, normalizeBuiltRoster, DraftSession, DraftSessionSeat, DraftPickRecord } from '../engine/deckbuilder';
 
 export function buildDraftSession(
   seats: DraftSeat[],
@@ -20,10 +20,10 @@ export function buildDraftSession(
     isBot: seat.isBot,
     botProfile: seat.botProfile,
     drafted: seat.drafted,
-    // Auto-build roster for bots; human gets empty roster (filled after deckbuilding)
+    // Auto-build roster for bots; human gets normalized empty roster
     builtRoster: seat.isBot
       ? buildBotRoster(seat.drafted, seat.botProfile)
-      : { depthChart: { PG: [], SG: [], SF: [], PF: [], C: [] }, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] },
+      : normalizeBuiltRoster({ depthChart: { PG: [], SG: [], SF: [], PF: [], C: [] }, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] }, seat.drafted),
   }));
 
   return {

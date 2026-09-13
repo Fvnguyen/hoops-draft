@@ -1,12 +1,22 @@
 /**
- * Synergy & Play Bonus System (v2 — Channel-Based)
+ * Synergy & Play Bonus System (v3 — Archetypes + assigned-player Plays)
  *
- * Three tiers:
- *   1. Badges — on player cards, no direct bonus, act as requirements
- *   2. Plays — actively chosen (3 slots), conditional bonuses if badge requirements met
- *   3. Synergies — passive/emergent from roster composition (like MtG tribal)
+ * docs/plan_plays_and_synergies_2026-09-13.md replaced the old "sum every badge across
+ * the 12-man roster, check ad-hoc thresholds" synergy system with two decoupled pieces:
  *
- * Badges are summed raw across the 12-man roster (not weighted by lineup).
+ *   1. Archetypes (archetypes.ts) — persistent roster identities the user selects at
+ *      roster lock (Offense/Defense Philosophy slots, or one Gold plan spanning both).
+ *      `calcTeamBonuses` below applies ONLY the selected archetype(s)' effect.
+ *   2. Plays (playbook.ts) — assigned-player tactical packages resolved per possession
+ *      by game.ts. They no longer feed team-wide bonuses through this file.
+ *
+ * Chemistry synergies (Brotherhood, Veteran Core, Young Guns) are removed; there are no
+ * mastery tiers. `SYNERGIES` below is now a read-only display view over `ARCHETYPES`,
+ * kept only because the KPI-band popover UI still renders it.
+ *
+ * `evaluatePlay`/`getPlayRequirements`/`getPlayEffectId`/`PLAY_EFFECTS` are UNCHANGED and
+ * still describe a play card's badge requirements for the play-card UI affordances
+ * (PlayerCard.tsx, DraftRoom.tsx) — they are no longer read by `calcTeamBonuses`.
  *
  * Bonuses target channel-specific modifiers:
  *   - Shot distribution: rimShareBonus, midShareBonus, perShareBonus
@@ -16,6 +26,7 @@
  */
 
 import { PlayerCardData, Play } from './types';
+import { ARCHETYPES, evaluateArchetypes, archetypeModifiers, type ArchetypeKind, type ArchetypeSelection } from './archetypes';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -59,19 +70,6 @@ export function emptyModifiers(): GameModifiers {
   };
 }
 
-/** Merge one modifier set into another (additive) */
-function mergeModifiers(target: GameModifiers, source: GameModifiers): void {
-  target.rimShareBonus += source.rimShareBonus;
-  target.midShareBonus += source.midShareBonus;
-  target.perShareBonus += source.perShareBonus;
-  target.rimEffBonus += source.rimEffBonus;
-  target.midEffBonus += source.midEffBonus;
-  target.perEffBonus += source.perEffBonus;
-  target.possessionSwing += source.possessionSwing;
-  target.and1Bonus += source.and1Bonus;
-  target.description.push(...source.description);
-}
-
 // ── Badge Counting ─────────────────────────────────────────────────────────
 
 export interface BadgeTotals {
@@ -89,194 +87,28 @@ export function countBadges(players: PlayerCardData[]): BadgeTotals {
   return totals;
 }
 
-// ── Synergy Definitions ────────────────────────────────────────────────────
+// ── Synergy display view (UI compatibility) ─────────────────────────────────
 
-interface SynergyDef {
+/**
+ * The KPI-band popover (TopKPIBand.tsx) renders `SYNERGIES` as a flat list of
+ * `{ id, name, category, description }`. Archetypes replaced the old ad-hoc synergy
+ * checks, so this is now a read-only derived view over `ARCHETYPES` — `category` carries
+ * the archetype's `kind` ('mono' | 'two' | 'gold') where the UI previously showed
+ * 'stacking' | 'combo' | 'chemistry'.
+ */
+export interface SynergyDisplay {
   id: string;
   name: string;
-  category: 'stacking' | 'combo' | 'chemistry';
+  category: ArchetypeKind;
   description: string;
-  /** Check if synergy is active and return the modifier */
-  check: (badges: BadgeTotals, players: PlayerCardData[]) => GameModifiers | null;
 }
 
-export const SYNERGIES: SynergyDef[] = [
-  // ── Category A: Badge Stacking (scales linearly) ────────────────────────
-  {
-    id: 'shooting-gallery',
-    name: 'Shooting Gallery',
-    category: 'stacking',
-    description: '+1% 3pt share and +0.5% 3pt eff per Sharpshooter level above 3',
-    check: (badges) => {
-      const lvl = badges['Sharpshooter'] || 0;
-      if (lvl < 4) return null;
-      const bonus = lvl - 3;
-      return { ...emptyModifiers(), perShareBonus: bonus * 0.01, perEffBonus: bonus * 0.005, description: [`Shooting Gallery (+${bonus}% 3pt share, +${(bonus*0.5).toFixed(1)}% 3pt eff)`] };
-    },
-  },
-  {
-    id: 'paint-dominance',
-    name: 'Paint Dominance',
-    category: 'stacking',
-    description: '+1% rim share and +0.5% rim eff per Finisher level above 3',
-    check: (badges) => {
-      const lvl = badges['Finisher'] || 0;
-      if (lvl < 4) return null;
-      const bonus = lvl - 3;
-      return { ...emptyModifiers(), rimShareBonus: bonus * 0.01, rimEffBonus: bonus * 0.005, description: [`Paint Dominance (+${bonus}% rim share, +${(bonus*0.5).toFixed(1)}% rim eff)`] };
-    },
-  },
-  {
-    id: 'lockdown-squad',
-    name: 'Lockdown Squad',
-    category: 'stacking',
-    description: '-0.5% opponent rim and mid eff per Lockdown Defender level above 3',
-    check: (badges) => {
-      const lvl = badges['Lockdown Defender'] || 0;
-      if (lvl < 4) return null;
-      const bonus = lvl - 3;
-      // Defensive: reduces opponent efficiency
-      return { ...emptyModifiers(), rimEffBonus: -bonus * 0.005, midEffBonus: -bonus * 0.005, description: [`Lockdown Squad (-${(bonus*0.5).toFixed(1)}% opp rim/mid eff)`] };
-    },
-  },
-  {
-    id: 'boards-brigade',
-    name: 'Boards Brigade',
-    category: 'stacking',
-    description: '+0.5 possession swing per Glass Cleaner level above 2',
-    check: (badges) => {
-      const lvl = badges['Glass Cleaner'] || 0;
-      if (lvl < 3) return null;
-      const bonus = (lvl - 2) * 0.5;
-      return { ...emptyModifiers(), possessionSwing: bonus, description: [`Boards Brigade (+${bonus} poss)`] };
-    },
-  },
-  {
-    id: 'court-vision',
-    name: 'Court Vision',
-    category: 'stacking',
-    description: '+0.5 possession swing per Floor General level above 2',
-    check: (badges) => {
-      const lvl = badges['Floor General'] || 0;
-      if (lvl < 3) return null;
-      const bonus = (lvl - 2) * 0.5;
-      return { ...emptyModifiers(), possessionSwing: bonus, description: [`Court Vision (+${bonus} poss)`] };
-    },
-  },
-  {
-    id: 'midrange-money',
-    name: 'Midrange Money',
-    category: 'stacking',
-    description: '+1% mid share and +0.5% mid eff per Mid-Range Maestro level above 3',
-    check: (badges) => {
-      const lvl = badges['Mid-Range Maestro'] || 0;
-      if (lvl < 4) return null;
-      const bonus = lvl - 3;
-      return { ...emptyModifiers(), midShareBonus: bonus * 0.01, midEffBonus: bonus * 0.005, description: [`Midrange Money (+${bonus}% mid share, +${(bonus*0.5).toFixed(1)}% mid eff)`] };
-    },
-  },
-
-  // ── Category B: Badge Combos (threshold on/off) ─────────────────────────
-  {
-    id: 'inside-out',
-    name: 'Inside-Out',
-    category: 'combo',
-    description: '2+ Finisher AND 2+ Sharpshooter → +2% rim eff, +2% 3pt eff',
-    check: (badges) => {
-      if ((badges['Finisher'] || 0) >= 2 && (badges['Sharpshooter'] || 0) >= 2) {
-        return { ...emptyModifiers(), rimEffBonus: 0.02, perEffBonus: 0.02, description: ['Inside-Out (+2% rim eff, +2% 3pt eff)'] };
-      }
-      return null;
-    },
-  },
-  {
-    id: 'two-way-terror',
-    name: 'Two-Way Terror',
-    category: 'combo',
-    description: '2+ Lockdown Defender AND 2+ Volume Scorer → +1% all eff, -1% opp all eff',
-    check: (badges) => {
-      if ((badges['Lockdown Defender'] || 0) >= 2 && (badges['Volume Scorer'] || 0) >= 2) {
-        return { ...emptyModifiers(), rimEffBonus: 0.01, midEffBonus: 0.01, perEffBonus: 0.01, description: ['Two-Way Terror (+1% all eff)'] };
-      }
-      return null;
-    },
-  },
-  {
-    id: 'point-god-system',
-    name: 'Point God System',
-    category: 'combo',
-    description: '2+ Floor General AND 2+ Mid-Range Maestro → +1 poss, +2% mid share, +2% mid eff',
-    check: (badges) => {
-      if ((badges['Floor General'] || 0) >= 2 && (badges['Mid-Range Maestro'] || 0) >= 2) {
-        return { ...emptyModifiers(), possessionSwing: 1, midShareBonus: 0.02, midEffBonus: 0.02, description: ['Point God System (+1 poss, +2% mid share/eff)'] };
-      }
-      return null;
-    },
-  },
-  {
-    id: 'rim-protection',
-    name: 'Rim Protection',
-    category: 'combo',
-    description: '2+ Paint Protector AND 2+ Glass Cleaner → +2 poss, -2% opp rim eff',
-    check: (badges) => {
-      if ((badges['Paint Protector'] || 0) >= 2 && (badges['Glass Cleaner'] || 0) >= 2) {
-        return { ...emptyModifiers(), possessionSwing: 2, rimEffBonus: -0.02, description: ['Rim Protection (+2 poss, -2% opp rim eff)'] };
-      }
-      return null;
-    },
-  },
-  {
-    id: 'two-way-wings',
-    name: 'Two-Way Wings',
-    category: 'combo',
-    description: '2+ Two-Way Disruptor AND 2+ Sharpshooter → +2% 3pt share, -1% opp 3pt eff',
-    check: (badges) => {
-      if ((badges['Two-Way Disruptor'] || 0) >= 2 && (badges['Sharpshooter'] || 0) >= 2) {
-        return { ...emptyModifiers(), perShareBonus: 0.02, perEffBonus: -0.01, description: ['Two-Way Wings (+2% 3pt share, -1% opp 3pt eff)'] };
-      }
-      return null;
-    },
-  },
-
-  // ── Category C: Team Chemistry (roster construction) ────────────────────
-  {
-    id: 'brotherhood',
-    name: 'Brotherhood',
-    category: 'chemistry',
-    description: '3+ players from same NBA team → +1% all eff per additional player',
-    check: (_badges, players) => {
-      const teamCounts: Record<string, number> = {};
-      for (const p of players) teamCounts[p.player.team] = (teamCounts[p.player.team] || 0) + 1;
-      const maxTeam = Math.max(...Object.values(teamCounts));
-      if (maxTeam < 3) return null;
-      const bonus = (maxTeam - 2) * 0.01;
-      const teamName = Object.entries(teamCounts).find(([, c]) => c === maxTeam)?.[0] || '';
-      return { ...emptyModifiers(), rimEffBonus: bonus, midEffBonus: bonus, perEffBonus: bonus, description: [`Brotherhood: ${teamName} (${maxTeam} players, +${(bonus*100).toFixed(0)}% all eff)`] };
-    },
-  },
-  {
-    id: 'veteran-core',
-    name: 'Veteran Core',
-    category: 'chemistry',
-    description: '3+ players age 30+ → +1 poss, +1% mid eff',
-    check: (_badges, players) => {
-      const vets = players.filter(p => p.player.age >= 30).length;
-      if (vets < 3) return null;
-      return { ...emptyModifiers(), possessionSwing: 1, midEffBonus: 0.01, description: [`Veteran Core (${vets} vets, +1 poss, +1% mid eff)`] };
-    },
-  },
-  {
-    id: 'young-guns',
-    name: 'Young Guns',
-    category: 'chemistry',
-    description: '3+ players age 24 or under → +2% rim share, +1% rim eff',
-    check: (_badges, players) => {
-      const young = players.filter(p => p.player.age <= 24).length;
-      if (young < 3) return null;
-      return { ...emptyModifiers(), rimShareBonus: 0.02, rimEffBonus: 0.01, description: [`Young Guns (${young} young players, +2% rim share, +1% rim eff)`] };
-    },
-  },
-];
+export const SYNERGIES: SynergyDisplay[] = ARCHETYPES.map(a => ({
+  id: a.id,
+  name: a.name,
+  category: a.kind,
+  description: a.description,
+}));
 
 // ── Play Activation ────────────────────────────────────────────────────────
 
@@ -424,16 +256,6 @@ export function evaluatePlay(play: Pick<Play, 'id' | 'playId' | 'name'>, badges:
   return { effectId, name: effect.name, summary: effect.summary, defensive: !!effect.defensive, requirements, metCount, total, activation };
 }
 
-/** Check a single play's activation against the team's badge totals */
-function checkPlayActivation(play: Play, badges: BadgeTotals): GameModifiers | null {
-  const evaluation = evaluatePlay(play, badges);
-  const effect = PLAY_EFFECTS[evaluation.effectId];
-  if (!effect) return null;
-  if (evaluation.activation === 'full') return effect.fullBonus;
-  if (evaluation.activation === 'partial') return effect.halfBonus;
-  return null;
-}
-
 // ── Main: Compute All Bonuses ──────────────────────────────────────────────
 
 export interface TeamBonuses {
@@ -443,111 +265,76 @@ export interface TeamBonuses {
    * Modifiers ADDED to the OPPONENT's offense (defensive bonuses) — never subtracted.
    * A defensive effect that should hurt the opponent must be stored as a negative
    * share/efficiency delta here (see the GameModifiers sign-convention comment above).
-   * `defenseMods.possessionSwing` is not read anywhere and is always reset to 0 by
-   * calcTeamBonuses (P0-3) — possession gains always flow through the top-level
-   * `possessionSwing` field below instead, applied exactly once as the owning team's
-   * own gain.
+   * `defenseMods.possessionSwing` is not read anywhere and is always 0 — possession
+   * gains always flow through the top-level `possessionSwing` field below instead,
+   * applied exactly once as the owning team's own gain.
    */
   defenseMods: GameModifiers;
-  /** Extra possessions this team gains from its own synergies/plays (P0-3: the single
+  /** Extra possessions this team gains from its own selected archetype(s) (the single
    *  place possession swings are counted — see calcTeamBonuses and calcPossessionSplit). */
   possessionSwing: number;
-  /** All active synergies and plays for display */
+  /** The active archetype(s) (Offense/Defense Philosophy, or one Gold plan), for display. */
   activeSynergies: { name: string; description: string }[];
+  /** Plays are resolved per-possession in game.ts (docs/plan_plays_and_synergies_2026-09-13.md
+   *  §4-7) — this is always empty from calcTeamBonuses; game.ts fills its own copy. */
   activePlays: { name: string; description: string; activated: 'full' | 'partial' | 'none' }[];
   /** Playstyle description */
   playstyle: string[];
 }
 
 /**
- * Calculate all bonuses for a team.
+ * Calculate a team's archetype-derived bonuses.
  *
- * @param rosterPlayers - All 12 players in the active roster
- * @param activePlays - The 3 active Play cards
- * @param possShares - Map of playerId → possession share (from rotation engine)
+ * v3 (2026-09-13): `activePlays`/`possShares` are accepted for call-signature stability
+ * (existing callers pass them) but are no longer read here — Plays are resolved
+ * per-possession in game.ts against the assigned-player playbook (playbook.ts), not as a
+ * roster-wide bonus. Only the caller-selected archetype(s) in `options.archetypes` are
+ * applied. This is a TRANSITION STATE: until the roster-builder UI lets a user choose
+ * Offense/Defense Philosophy (or a Gold plan), `options` is omitted by every caller and
+ * this function returns empty modifiers — no archetype silently auto-activates.
+ *
+ * @param rosterPlayers - All active players (used to evaluate archetype tallies)
+ * @param activePlays - Unused (kept for API stability; see above)
+ * @param possShares - Unused (kept for API stability; see above)
+ * @param options.starterIds - Depth-chart starters, used by archetype tier thresholds. Missing = no starters (tier is computed with starters=0, most plans land on 'none').
+ * @param options.archetypes - The user's chosen Offense/Defense Philosophy (or Gold plan). Missing/empty = no archetype applies.
  */
 export function calcTeamBonuses(
   rosterPlayers: PlayerCardData[],
+  // Kept for API stability; plays are resolved per-possession in game.ts against playbook.ts now.
   activePlays: Play[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- not currently read (kept for API stability / future rotation-weighted synergies)
-  possShares: Map<string, number>
+  // Kept for API stability; not read (archetypes replace roster-wide play/synergy bonuses).
+  possShares: Map<string, number>,
+  options?: { starterIds?: Set<string>; archetypes?: ArchetypeSelection },
 ): TeamBonuses {
-  const badges = countBadges(rosterPlayers);
-
-  const offenseMods = emptyModifiers();
-  const defenseMods = emptyModifiers();
-  let possessionSwing = 0;
-  const activeSynergies: { name: string; description: string }[] = [];
-  const activePlayResults: { name: string; description: string; activated: 'full' | 'partial' | 'none' }[] = [];
-
-  // 1. Synergies
-  //
-  // P0-3: every source's possessionSwing is accumulated exactly once, into this
-  // function's single top-level `possessionSwing` (always read as the OWNING team's
-  // own possession gain — see calcPossessionSplit in gameEngine.ts). It must NOT also
-  // be written into offenseMods.possessionSwing/defenseMods.possessionSwing as a
-  // separate, additionally-applied effect — that was the double-count bug (a
-  // defensive synergy's +N poss counted once for the owning team via this
-  // accumulator, and again via defenseMods being subtracted from the opponent).
-  for (const syn of SYNERGIES) {
-    const result = syn.check(badges, rosterPlayers);
-    if (result) {
-      // Defensive synergies apply their eff/share deltas to the opponent's offense
-      // (defenseMods); the possessionSwing they grant is still the owning team's own
-      // gain, accounted for once below via the shared `possessionSwing` accumulator.
-      if (syn.id === 'lockdown-squad' || syn.id === 'rim-protection') {
-        mergeModifiers(defenseMods, result);
-        defenseMods.possessionSwing = 0; // not a defensive effect — see comment above
-      } else if (syn.id === 'two-way-terror') {
-        // +1% all eff (self), -1% opp all eff
-        mergeModifiers(offenseMods, result);
-        defenseMods.rimEffBonus -= 0.01;
-        defenseMods.midEffBonus -= 0.01;
-        defenseMods.perEffBonus -= 0.01;
-      } else if (syn.id === 'two-way-wings') {
-        // +2% 3pt share (self), -1% opp 3pt eff
-        offenseMods.perShareBonus += result.perShareBonus || 0;
-        defenseMods.perEffBonus += result.perEffBonus || 0;
-      } else {
-        mergeModifiers(offenseMods, result);
-      }
-      possessionSwing += result.possessionSwing;
-      activeSynergies.push({ name: syn.name, description: syn.description });
-    }
+  const selection = options?.archetypes;
+  const hasSelection = !!selection && (!!selection.offense || !!selection.defense || !!selection.gold);
+  if (!hasSelection) {
+    return {
+      offenseMods: emptyModifiers(),
+      defenseMods: emptyModifiers(),
+      possessionSwing: 0,
+      activeSynergies: [],
+      activePlays: [],
+      playstyle: [],
+    };
   }
 
-  // 2. Plays
-  for (const play of activePlays) {
-    const result = checkPlayActivation(play, badges);
-    // Resolve the same stable effect id used inside checkPlayActivation (draftEngine
-    // suffixes `id` with `_pack{N}` for React keys — see P0-2 comment above).
-    const effectId = getPlayEffectId(play);
-    if (result) {
-      // Defensive plays apply their eff deltas to the opponent's offense (defenseMods);
-      // possessionSwing is still the owning team's own gain and is added to the shared
-      // accumulator below exactly once (P0-3). Which plays are defensive is a flag on
-      // the effect, so renaming/adding plays never needs an id list here.
-      if (PLAY_EFFECTS[effectId]?.defensive) {
-        mergeModifiers(defenseMods, result);
-        defenseMods.possessionSwing = 0; // not a defensive effect — see comment above
-      } else {
-        mergeModifiers(offenseMods, result);
-      }
-      possessionSwing += result.possessionSwing;
-      const effect = PLAY_EFFECTS[effectId];
-      const activation = result === effect?.fullBonus ? 'full' : 'partial';
-      activePlayResults.push({ name: play.name, description: result.description.join(', '), activated: activation });
-    } else {
-      activePlayResults.push({ name: play.name, description: 'Requirements not met', activated: 'none' });
-    }
-  }
+  const starterIds = options?.starterIds ?? new Set<string>();
+  const statuses = evaluateArchetypes(rosterPlayers, starterIds, selection);
+  const { offense, defense, possessionSwing, active } = archetypeModifiers(statuses, selection!);
+
+  const activeSynergies = active.map(({ def, tier }) => ({
+    name: def.name,
+    description: `${tier === 'dedicated' ? 'Dedicated' : 'Online'} — ${def.description}`,
+  }));
 
   return {
-    offenseMods,
-    defenseMods,
+    offenseMods: offense,
+    defenseMods: defense,
     possessionSwing,
     activeSynergies,
-    activePlays: activePlayResults,
+    activePlays: [],
     playstyle: [],
   };
 }

@@ -1,6 +1,7 @@
 import { PlayerCardData, Play } from './types';
 import { calcTeamShotProfile } from './game';
-import { countBadges, SYNERGIES, emptyModifiers, calcTeamBonuses } from './synergies';
+import { countBadges, emptyModifiers, calcTeamBonuses } from './synergies';
+import { evaluateArchetypes, MONO_THRESHOLDS, type ArchetypeSelection } from './archetypes';
 
 export interface RosterIdentity {
   finishing: number;
@@ -67,7 +68,20 @@ export function calcRosterIdentity(depthChart: Record<string, PlayerCardData[]>)
   return totals;
 }
 
-export function calcRosterShotDiet(depthChart: Record<string, PlayerCardData[]>, activePlays: Play[]) {
+/**
+ * v3 (2026-09-13): `activePlays` no longer feeds team bonuses (Plays are resolved
+ * per-possession in game.ts against playbook.ts) — kept as a parameter only so
+ * existing UI callers (FranchiseDashboard.tsx, DraftRoom.tsx, GameView.tsx) that still
+ * pass `team.plays` keep compiling. Pass `selection` to preview a chosen archetype's
+ * effect on the shot diet; omitted, the diet reflects no archetype (identical to the
+ * roster's raw depth-chart tendency).
+ */
+export function calcRosterShotDiet(
+  depthChart: Record<string, PlayerCardData[]>,
+  // Kept for call-signature compatibility with existing UI callers; plays no longer feed calcTeamBonuses.
+  activePlays: Play[],
+  selection?: ArchetypeSelection,
+) {
   const allPlayers: PlayerCardData[] = [];
   for (const pos in depthChart) {
     allPlayers.push(...depthChart[pos]);
@@ -75,7 +89,7 @@ export function calcRosterShotDiet(depthChart: Record<string, PlayerCardData[]>,
 
   // To show shot diet in vacuum, we calculate bonuses with no opponent defense
   const fakePossShares = new Map<string, number>();
-  const bonuses = calcTeamBonuses(allPlayers, activePlays, fakePossShares);
+  const bonuses = calcTeamBonuses(allPlayers, [], fakePossShares, selection ? { archetypes: selection } : undefined);
 
   // calcTeamShotProfile needs players array and depthChart
   const depthChartIds: Record<string, string[]> = {};
@@ -85,41 +99,31 @@ export function calcRosterShotDiet(depthChart: Record<string, PlayerCardData[]>,
   return calcTeamShotProfile(allPlayers, depthChartIds, bonuses.offenseMods, emptyModifiers());
 }
 
+/**
+ * Badge totals plus "teaser" progress toward each MONO archetype's Online tier (the
+ * roster-builder UI shows these while a plan is still out of reach — two-colour and
+ * Gold plans are more involved to preview inline, so they're left to the full
+ * archetype-selection screen). Starters are taken as each position's depth-chart index 0
+ * (mirrors calcRosterIdentity's own starter weighting).
+ */
 export function getBadgeTally(depthChart: Record<string, PlayerCardData[]>) {
   const allPlayers: PlayerCardData[] = [];
+  const starterIds = new Set<string>();
   for (const pos in depthChart) {
-    allPlayers.push(...depthChart[pos]);
+    const players = depthChart[pos];
+    allPlayers.push(...players);
+    if (players[0]) starterIds.add(players[0].id);
   }
   const badges = countBadges(allPlayers);
 
-  const teasers = [];
-  for (const syn of SYNERGIES) {
-    // For teasers, we look at synergies that require a single badge (stacking) or multiple (combo)
-    if (syn.id === 'shooting-gallery') {
-       const lvl = badges['Sharpshooter'] || 0;
-       if (lvl > 0 && lvl < 4) teasers.push({ text: `Sharpshooter ${lvl}/4`, progress: lvl/4 });
-    }
-    else if (syn.id === 'paint-dominance') {
-       const lvl = badges['Finisher'] || 0;
-       if (lvl > 0 && lvl < 4) teasers.push({ text: `Finisher ${lvl}/4`, progress: lvl/4 });
-    }
-    else if (syn.id === 'lockdown-squad') {
-       const lvl = badges['Lockdown Defender'] || 0;
-       if (lvl > 0 && lvl < 4) teasers.push({ text: `Lockdown Def ${lvl}/4`, progress: lvl/4 });
-    }
-    else if (syn.id === 'boards-brigade') {
-       const lvl = badges['Glass Cleaner'] || 0;
-       if (lvl > 0 && lvl < 3) teasers.push({ text: `Glass Cleaner ${lvl}/3`, progress: lvl/3 });
-    }
-    else if (syn.id === 'court-vision') {
-       const lvl = badges['Floor General'] || 0;
-       if (lvl > 0 && lvl < 3) teasers.push({ text: `Floor General ${lvl}/3`, progress: lvl/3 });
-    }
-    else if (syn.id === 'midrange-money') {
-       const lvl = badges['Mid-Range Maestro'] || 0;
-       if (lvl > 0 && lvl < 4) teasers.push({ text: `Mid-Range Maestro ${lvl}/4`, progress: lvl/4 });
-    }
-  }
+  const statuses = evaluateArchetypes(allPlayers, starterIds);
+  const teasers = statuses
+    .filter(s => s.def.kind === 'mono' && s.tier === 'none')
+    .map(s => {
+      const t = s.tally[s.def.colors.primary]!;
+      return { text: `${s.def.colors.primary} ${t.carriers}/${MONO_THRESHOLDS.online.carriers} carriers`, progress: s.progress };
+    })
+    .filter(t => t.progress > 0);
 
   return {
     badges,

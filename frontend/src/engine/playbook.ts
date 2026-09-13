@@ -12,7 +12,7 @@
  */
 
 import type { PlayerCardData } from './types';
-import { PLAY_BUDGET_DEFENSE, PLAY_BUDGET_OFFENSE } from './balance';
+import { IDENTITY_CAPS, PLAY_BUDGET_DEFENSE, PLAY_BUDGET_OFFENSE } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -247,4 +247,41 @@ export function evaluatePlaybook(assignments: PlayAssignment[], activePlayers: P
     defenseBudget: PLAY_BUDGET_DEFENSE,
     overBudget: offenseAllocation > PLAY_BUDGET_OFFENSE + 1e-9 || defenseAllocation > PLAY_BUDGET_DEFENSE + 1e-9,
   };
+}
+
+// ── Game-time call resolution helpers (wave 1: game.ts) ────────────────────
+
+/** One active play with its allocation scaled down to fit its side's budget. */
+export interface ScaledPlay {
+  status: PlayStatus;
+  /** Probability this play is called/covered on a given possession of the relevant
+   *  side (own possessions for offense, opponent's for defense) — already scaled down
+   *  proportionally when the side's raw allocations exceeded its budget, so the sum of
+   *  every ScaledPlay.allocation for a side never exceeds that side's budget. */
+  allocation: number;
+}
+
+/**
+ * Active plays for one side (`'offense'` or `'defense'`) of a playbook, with
+ * allocations proportionally scaled down so their sum never exceeds that side's
+ * budget (PLAY_BUDGET_OFFENSE / PLAY_BUDGET_DEFENSE). Used by the simulation to roll
+ * which play (if any) is called/covered on a given possession — see game.ts.
+ */
+export function scaledPlayAllocations(status: PlaybookStatus, side: PlaySide): ScaledPlay[] {
+  const active = status.plays.filter(p => p.active && p.def.side === side);
+  const rawTotal = side === 'offense' ? status.offenseAllocation : status.defenseAllocation;
+  const budget = side === 'offense' ? status.offenseBudget : status.defenseBudget;
+  const scale = rawTotal > budget && rawTotal > 0 ? budget / rawTotal : 1;
+  return active.map(p => ({ status: p, allocation: p.allocation * scale }));
+}
+
+/**
+ * Sum of every active play's team-level possession swing (§4: "Team-level possession
+ * swing per game while the play is active"), clamped to ±IDENTITY_CAPS.possessions.
+ * Computed once per team per game — not per possession — and added into the same
+ * possession-swing accumulator archetype effects use (see calcPossessionSplit).
+ */
+export function playbookPossessionSwing(status: PlaybookStatus): number {
+  const raw = status.plays.filter(p => p.active).reduce((s, p) => s + (p.def.mods.possessions ?? 0), 0);
+  return Math.max(-IDENTITY_CAPS.possessions, Math.min(IDENTITY_CAPS.possessions, raw));
 }

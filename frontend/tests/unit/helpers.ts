@@ -14,6 +14,7 @@ import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
 import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
 import { buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
+import { CUBE_PLAYER_CARDS_PER_PACK } from '@/engine/balance';
 import { createRng, randomSeed, type Rng } from '@/engine/rng';
 import { PLAYS } from './fixtures/plays';
 
@@ -55,7 +56,7 @@ function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
  */
 export function runHeadlessDraft(players: PlayerCardData[], plays: Play[] = PLAYS, seed?: number): DraftSessionSeat[] {
   const rng = createRng(seed ?? randomSeed());
-  const allPacks = generateCubePool(players, plays, rng); // 24 packs of 12 (8 seats x 3 rounds)
+  const allPacks = generateCubePool(players, plays, rng); // 24 packs (8 seats x 3 rounds), pack size from engine/balance
 
   const seats: DraftSeat[] = [];
   for (let i = 0; i < 8; i++) {
@@ -70,7 +71,7 @@ export function runHeadlessDraft(players: PlayerCardData[], plays: Play[] = PLAY
 
   let overallPick = 1;
   for (let packNumber = 1; packNumber <= 3; packNumber++) {
-    for (let pickNumber = 1; pickNumber <= 12; pickNumber++) {
+    for (let pickNumber = 1; pickNumber <= CUBE_PLAYER_CARDS_PER_PACK + 1; pickNumber++) {
       // Every seat picks from its own current pack.
       for (let i = 0; i < 8; i++) {
         const seat = seats[i];

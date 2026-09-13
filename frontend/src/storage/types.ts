@@ -13,6 +13,8 @@
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import type { DraftCard } from '@/engine/types';
+import type { PlayAssignment } from '@/engine/playbook';
+import type { ArchetypeSelection } from '@/engine/archetypes';
 
 export interface SavedRoster {
   id: string;
@@ -25,6 +27,12 @@ export interface SavedRoster {
   depthChartOrder: Record<string, string[]>;
   /** Up to 3 selected Play card ids. */
   activePlays: string[];
+  /** Role assignments for the active plays (v2). One entry per active play card. */
+  playAssignments?: PlayAssignment[];
+  /** Chosen roster identity (v2). */
+  archetypes?: ArchetypeSelection;
+  /** Roster shape version. 2 = playAssignments + archetypes. */
+  version?: number;
   /** The draft session this roster was built from, if any. */
   sessionId: string | null;
 }
