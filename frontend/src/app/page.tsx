@@ -133,6 +133,7 @@ export default function Home() {
             >
               <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 group-hover:bg-stone-300 transition-colors" />
               <span className="font-black text-lg tracking-wider text-blue-100 group-hover:text-white drop-shadow-md italic pr-2">QUICK DRAFT</span>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-blue-100/80 pr-2">No timer · quick animations</div>
             </Link>
 
             <Link href="/rosters" className="group relative px-6 py-3 bg-gradient-to-r from-stone-800/80 to-transparent border border-stone-600/50 rounded hover:from-stone-700 hover:border-stone-400 transition-all">
