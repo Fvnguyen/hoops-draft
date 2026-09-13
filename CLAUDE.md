@@ -5,8 +5,8 @@
 Read `AGENTS.md` first, then `docs/HANDOVER.md` (current state, open issues) and
 `docs/ARCHITECTURE.md` (how the pieces connect) before making non-trivial changes. Work
 larger than a bug fix follows a plan `docs/plans/plan_<topic>_<date>.md` (sequence in
-`docs/ROADMAP.md`; create with `/plan <topic>`); when a plan is done, `git mv` it to
-`docs/completed/` and update both (`/plan done <topic>`).
+`docs/ROADMAP.md`; create with `/roadmap new <topic>`); when a plan is done, `git mv` it to
+`docs/completed/` and update both (`/roadmap done <topic>`).
 
 **Document budgets** (compact by rewriting, never by appending; if a change pushes a file
 over budget, rewrite it down in the same commit):

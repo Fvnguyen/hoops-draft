@@ -35,4 +35,4 @@ Main driver (Anthropic / Google) and per-wave agent tiers, with one line on why.
 
 ## Verification / exit criteria
 
-Commands to run and the numbers/screens that must be true before `/plan done`.
+Commands to run and the numbers/screens that must be true before `/roadmap done`.
