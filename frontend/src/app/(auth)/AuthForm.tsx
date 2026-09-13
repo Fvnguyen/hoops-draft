@@ -8,6 +8,8 @@ type AuthFormProps = { mode: 'login' | 'signup' };
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
+  const [identifier, setIdentifier] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -21,10 +23,13 @@ export function AuthForm({ mode }: AuthFormProps) {
     setError('');
     setMessage('');
     const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
+    const body = mode === 'login'
+      ? { identifier, password, next: new URL(window.location.href).searchParams.get('next') }
+      : { email, password, displayName, username };
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, displayName, next: new URL(window.location.href).searchParams.get('next') }),
+      body: JSON.stringify(body),
     });
     const result = await response.json() as { error?: string; redirect?: string; autoApproved?: boolean };
     setBusy(false);
@@ -44,15 +49,37 @@ export function AuthForm({ mode }: AuthFormProps) {
   return (
     <form onSubmit={submit} className="space-y-4">
       {mode === 'signup' && (
+        <>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Display name</span>
+            <input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="auth-input" autoComplete="name" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Username</span>
+            <input
+              required
+              minLength={3}
+              maxLength={20}
+              pattern="[a-zA-Z0-9_]+"
+              title="3-20 letters, numbers, or underscores"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              className="auth-input"
+              autoComplete="username"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Email</span>
+            <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" autoComplete="email" />
+          </label>
+        </>
+      )}
+      {mode === 'login' && (
         <label className="block">
-          <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Display name</span>
-          <input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="auth-input" autoComplete="name" />
+          <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Username or email</span>
+          <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className="auth-input" autoComplete="username" />
         </label>
       )}
-      <label className="block">
-        <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Email</span>
-        <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" autoComplete="email" />
-      </label>
       <label className="block">
         <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Password</span>
         <input required minLength={10} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="auth-input" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />

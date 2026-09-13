@@ -1,6 +1,17 @@
 # Plan: vercel_deploy
 
-File: `docs/plans/plan_vercel_deploy_2026-09-13.md`. Status: planned. Sequence: 2b. Depends on: `plan_ui_draft_deckbuild_pack_2026-09-13.md`. Files owned: `vercel.json` (new, if required), root/frontend deployment docs, and any Vercel project configuration. Do not modify engine, storage, or draft UI files.
+File: `docs/plans/plan_vercel_deploy_2026-09-13.md`. Status: done 2026-09-13. Sequence: 2b. Depends on: `plan_ui_draft_deckbuild_pack_2026-09-13.md`. Files owned: `vercel.json` (new, if required), root/frontend deployment docs, and any Vercel project configuration. Do not modify engine, storage, or draft UI files.
+
+## Outcome
+
+Deployed via Vercel's Git integration (no `vercel.json` needed — dashboard Root Directory
+`frontend` covers it), Hobby plan. Live at
+[hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app). Verified via
+the Vercel API: production deployment READY, 0 runtime errors in 7 days,
+`/api/game-logs` 404s in production, `/api/cards` returns data, no deployment protection
+blocking access. Documented in root `README.md`. **Not verified from a session**: the
+spend alert / hard budget threshold (dashboard-only setting, no API) — confirm manually
+before scaling past personal use.
 
 ## Goal
 

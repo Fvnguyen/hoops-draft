@@ -73,6 +73,7 @@ export interface DraftSessionSeat {
 
 export interface DraftSession {
   id: string;
+  ownerId?: string;
   timestamp: string;
   seats: DraftSessionSeat[];  // seats[0] = human, seats[1..7] = bots
   pickLog: DraftPickRecord[]; // Full pick-by-pick history for replay/analytics

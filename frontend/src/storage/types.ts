@@ -38,6 +38,7 @@ export const CURRENT_CARD_SET_VERSION = '2025-26.1';
 
 export interface SavedRoster {
   id: string;
+  ownerId?: string;
   name: string;
   timestamp: string;
   draftedCards: DraftCard[];
@@ -61,6 +62,8 @@ export interface SavedRoster {
 }
 
 export interface GameStore {
+  setOwnerId(ownerId: string | null): Promise<void>;
+  claimLegacyData(): Promise<void>;
   listDraftSessions(): Promise<DraftSession[]>;
   getDraftSession(id: string): Promise<DraftSession | null>;
   saveDraftSession(s: DraftSession): Promise<void>; // upsert

@@ -77,6 +77,7 @@ export interface StandingsEntry {
 
 export interface Season {
   id: string;
+  ownerId?: string;
   sessionId: string;         // Draft session this season belongs to
   rosterId: string;           // Human roster ID
   timestamp: string;
@@ -93,10 +94,12 @@ export interface Season {
 export function createSeason(
   session: DraftSession,
   rosterId: string,
-  rng?: Rng
+  rng?: Rng,
+  /** Human team/standings label (account display name); defaults to 'You'. */
+  humanName: string = 'You'
 ): Season {
   const seasonRng = rng ?? createRng(randomSeed());
-  const humanTeam = buildTeamInfo(session.seats[0], true);
+  const humanTeam = buildTeamInfo(session.seats[0], true, humanName);
 
   // Calculate bot OVRs to sort them from weakest to strongest
   const botOvr = new Map<number, number>();
@@ -162,7 +165,7 @@ export function createSeason(
   // Initialize standings with all 8 seats
   const standings: StandingsEntry[] = session.seats.map((seat, idx) => ({
     seatId: seat.id,
-    name: idx === 0 ? 'You' : (seat.botProfile?.name || seat.id),
+    name: idx === 0 ? humanName : (seat.botProfile?.name || seat.id),
     wins: 0,
     losses: 0,
     pointsFor: 0,

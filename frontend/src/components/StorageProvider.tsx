@@ -13,6 +13,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { initStorage } from '@/storage';
+import { getGameStore } from '@/storage';
 
 const StorageReadyContext = createContext(false);
 
@@ -29,6 +30,16 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     initiated.current = true;
 
     initStorage()
+      .then(async () => {
+        const response = await fetch('/api/auth/me');
+        if (!response.ok) return;
+        const profile = await response.json() as { id?: string };
+        if (profile.id) {
+          const store = getGameStore();
+          await store.setOwnerId(profile.id);
+          await store.claimLegacyData();
+        }
+      })
       .catch((err) => {
         // Migration failing shouldn't block the app — the store falls back
         // to an in-memory/empty state and callers still get a usable

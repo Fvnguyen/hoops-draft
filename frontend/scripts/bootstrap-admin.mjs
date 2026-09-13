@@ -14,7 +14,7 @@ const { data, error } = await supabase.auth.admin.createUser({
   email,
   password,
   email_confirm: true,
-  user_metadata: { display_name: 'Fvnguyen' },
+  user_metadata: { display_name: 'Fvnguyen', username: 'fvnguyen' },
 });
 
 if (error && !error.message.toLowerCase().includes('already registered')) throw error;
@@ -26,7 +26,7 @@ if (!user) {
 }
 if (!user) throw new Error(`Could not find ${email} after creating or looking up the account.`);
 
-const { error: profileError } = await supabase.from('profiles').update({ display_name: 'Fvnguyen', status: 'APPROVED', role: 'ADMIN' }).eq('id', user.id);
+const { error: profileError } = await supabase.from('profiles').update({ display_name: 'Fvnguyen', username: 'fvnguyen', status: 'APPROVED', role: 'ADMIN' }).eq('id', user.id);
 if (profileError) throw profileError;
 
 console.log(`Admin account ready for ${email}.`);

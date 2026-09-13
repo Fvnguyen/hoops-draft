@@ -11,7 +11,7 @@ export async function GET() {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from('profiles')
-    .select('id, email, display_name, status, role, created_at')
+    .select('id, email, username, display_name, status, role, created_at')
     .order('created_at', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ users: data });

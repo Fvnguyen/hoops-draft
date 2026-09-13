@@ -41,6 +41,17 @@ scripts/     npm run analyze / npm run screenshot
 frontend/    The Next.js app — see frontend/README.md (npm test, npm run balance live here)
 ```
 
+## Deployment
+
+Live at [hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app)
+(Vercel project `hoops-draft`, Root Directory `frontend`, Node 22.x, deploys from `main`
+via Git integration). Vercel Hobby plan ($0/month) — see
+`docs/plans/plan_vercel_deploy_2026-09-13.md` for the cost/limits breakdown; confirm a
+spend alert is set in the Vercel dashboard before scaling past personal use. Required env
+vars (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`) are set in Vercel and local `frontend/.env.local` — see
+`frontend/supabase/README.md` for Supabase setup.
+
 ## Learn more
 
 - `docs/ARCHITECTURE.md` — how data flows from scraper to screen

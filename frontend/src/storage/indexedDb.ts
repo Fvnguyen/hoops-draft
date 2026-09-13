@@ -27,7 +27,7 @@ interface MetaRow {
  * with an `.upgrade()`) whenever the on-disk shape changes — see D3 in
  * `docs/plans/plan_data_storage_2026-09-13.md`.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export class MagicBallDB extends Dexie {
   draftSessions!: Table<DraftSession, string>;
@@ -99,6 +99,23 @@ export class MagicBallDB extends Dexie {
         });
       });
 
+    this.version(3)
+      .stores({
+        draftSessions: 'id, timestamp, ownerId',
+        rosters: 'id, sessionId, ownerId',
+        seasons: 'id, rosterId, sessionId, ownerId',
+        meta: 'key',
+        storageMeta: 'id',
+      })
+      .upgrade(async (tx) => {
+        const existing = await tx.table<StorageMeta, string>('storageMeta').get('meta');
+        await tx.table<StorageMeta, string>('storageMeta').put({
+          id: 'meta',
+          schemaVersion: SCHEMA_VERSION,
+          cardSetVersion: existing?.cardSetVersion ?? CURRENT_CARD_SET_VERSION,
+        });
+      });
+
     // Brand-new databases never run the `.upgrade()` step above (there is no
     // earlier version to upgrade from), so stamp the meta row here too.
     this.on('populate', (tx) => {
@@ -144,25 +161,44 @@ async function guardQuota<T>(fn: () => Promise<T>): Promise<T> {
 
 export class IndexedDbGameStore implements GameStore {
   private db: MagicBallDB;
+  private ownerId: string | null = null;
 
   constructor(db: MagicBallDB = new MagicBallDB()) {
     this.db = db;
   }
 
+  async setOwnerId(ownerId: string | null): Promise<void> {
+    this.ownerId = ownerId;
+  }
+
+  async claimLegacyData(): Promise<void> {
+    if (!this.ownerId) return;
+    await Promise.all([
+      this.db.draftSessions.toCollection().modify((row: DraftSession) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
+      this.db.rosters.toCollection().modify((row: SavedRoster) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
+      this.db.seasons.toCollection().modify((row: Season) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
+    ]);
+  }
+
+  private owned<T extends { ownerId?: string }>(rows: T[]): T[] {
+    return this.ownerId ? rows.filter((row) => row.ownerId === this.ownerId) : rows;
+  }
+
   async listDraftSessions(): Promise<DraftSession[]> {
-    const rows = await this.db.draftSessions.toArray();
+    const rows = this.owned(await this.db.draftSessions.toArray());
     return rows.map(safeParseDraftSession).filter((s): s is DraftSession => s !== null);
   }
 
   async getDraftSession(id: string): Promise<DraftSession | null> {
     const row = (await this.db.draftSessions.get(id)) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
     return row ? safeParseDraftSession(row) : null;
   }
 
   async saveDraftSession(s: DraftSession): Promise<void> {
     await guardQuota(async () => {
       // D4: stamp the card set a draft's cards came from, once, never overwritten.
-      await this.db.draftSessions.put({ ...s, cardSetVersion: s.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
+      await this.db.draftSessions.put({ ...s, ownerId: this.ownerId ?? s.ownerId, cardSetVersion: s.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
     });
   }
 
@@ -171,19 +207,20 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async listRosters(): Promise<SavedRoster[]> {
-    const rows = await this.db.rosters.toArray();
+    const rows = this.owned(await this.db.rosters.toArray());
     return rows.map(safeParseSavedRoster).filter((r): r is SavedRoster => r !== null);
   }
 
   async getRoster(id: string): Promise<SavedRoster | null> {
     const row = (await this.db.rosters.get(id)) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
     return row ? safeParseSavedRoster(row) : null;
   }
 
   async saveRoster(r: SavedRoster): Promise<void> {
     await guardQuota(async () => {
       // D4: stamp the card set a roster's cards came from, once, never overwritten.
-      await this.db.rosters.put({ ...r, cardSetVersion: r.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
+      await this.db.rosters.put({ ...r, ownerId: this.ownerId ?? r.ownerId, cardSetVersion: r.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
     });
   }
 
@@ -192,23 +229,25 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async listSeasons(): Promise<Season[]> {
-    const rows = await this.db.seasons.toArray();
+    const rows = this.owned(await this.db.seasons.toArray());
     return rows.map(safeParseSeason).filter((s): s is Season => s !== null);
   }
 
   async getSeason(id: string): Promise<Season | null> {
     const row = (await this.db.seasons.get(id)) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
     return row ? safeParseSeason(row) : null;
   }
 
   async getSeasonByRoster(rosterId: string): Promise<Season | null> {
     const row = (await this.db.seasons.where('rosterId').equals(rosterId).first()) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
     return row ? safeParseSeason(row) : null;
   }
 
   async saveSeason(s: Season): Promise<void> {
     await guardQuota(async () => {
-      await this.db.seasons.put(s);
+      await this.db.seasons.put({ ...s, ownerId: this.ownerId ?? s.ownerId });
     });
   }
 

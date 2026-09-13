@@ -1,7 +1,9 @@
 # Supabase auth setup
 
-1. Open the Supabase SQL editor for the project and run
-   `migrations/202609130001_auth_approval.sql`.
+1. Open the Supabase SQL editor for the project and run, in order,
+   `migrations/202609130001_auth_approval.sql` then
+   `migrations/202609130002_add_username.sql` (adds the `username` login handle;
+   backfills existing rows from their email's local part).
 2. Keep `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in local
    `frontend/.env.local` and in Vercel Development, Preview, and Production.
 3. Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Add it to Vercel as a Secret and

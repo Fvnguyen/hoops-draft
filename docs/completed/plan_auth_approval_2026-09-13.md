@@ -1,6 +1,19 @@
 # Plan: auth_approval
 
-File: `docs/plans/plan_auth_approval_2026-09-13.md`. Status: in progress. Sequence: 2c. Depends on: `plan_vercel_deploy_2026-09-13.md`. Files owned: `frontend/src/app/(auth)/` (new), `frontend/src/app/admin/` (new), auth server/client helpers, auth API/actions, Supabase migration/seed instructions, auth tests, auth deployment documentation. Do not modify engine files or the IndexedDB schema in this plan.
+File: `docs/plans/plan_auth_approval_2026-09-13.md`. Status: done 2026-09-13. Sequence: 2c. Depends on: `plan_vercel_deploy_2026-09-13.md`. Files owned: `frontend/src/app/(auth)/` (new), `frontend/src/app/admin/` (new), auth server/client helpers, auth API/actions, Supabase migration/seed instructions, auth tests, auth deployment documentation. Do not modify engine files or the IndexedDB schema in this plan.
+
+## Outcome
+
+Landed across two sessions (credit-limited handoff); see `docs/HANDOVER.md`'s
+"vercel_deploy & auth_approval" milestone for the full breakdown. Beyond the locked
+decisions above, the owner asked for (and this got): an admin tools menu, a top-right
+profile menu, a `username` login field/lookup (`/login` accepts username or email),
+per-user IndexedDB scoping (`ownerId`, Dexie v3), and the engine's human team label
+switched from hardcoded `'You'` to the account's display name. **Known gap against this
+plan's own Task 4**: no automated tests for the auth routes/role gates — this repo has no
+Supabase-client-mocking harness yet; add one if auth logic grows further. The Supabase
+migrations must be run in the SQL editor and the admin bootstrap script re-run once
+(`frontend/supabase/README.md`) before username login and the admin account are live.
 
 ## Goal
 

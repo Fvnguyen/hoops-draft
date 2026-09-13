@@ -1,10 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Home } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Home, LogOut, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
+import { useCurrentProfile } from './AuthProvider';
 
 export function TopNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const profile = useCurrentProfile();
   
   const handleHomeClick = (e: React.MouseEvent) => {
     if (pathname.includes('/draft') || pathname.includes('/deckbuilder')) {
@@ -24,7 +27,11 @@ export function TopNav() {
     return '';
   };
 
-  if (pathname === '/') return null;
+  async function signOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/login');
+    router.refresh();
+  }
 
   return (
     <div className="fixed top-0 left-0 w-full h-14 bg-[#F5F0EA]/90 backdrop-blur-md border-b border-stone-200 z-50 flex items-center px-4 shadow-sm">
@@ -41,6 +48,17 @@ export function TopNav() {
           {getPageTitle()}
         </h1>
       </div>
+      {profile && <details className="relative group">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full p-1.5 text-stone-600 hover:bg-white" title="Profile menu">
+          <UserCircle className="h-7 w-7" />
+          <span className="hidden max-w-32 truncate text-xs font-bold uppercase tracking-wider sm:block">{profile.display_name}</span>
+        </summary>
+        <div className="absolute right-0 top-12 w-64 border border-stone-200 bg-white p-2 text-stone-700 shadow-xl">
+          <div className="border-b border-stone-100 px-3 py-2"><p className="font-bold">{profile.display_name}</p><p className="truncate text-xs text-stone-400">{profile.email}</p></div>
+          {profile.role === 'ADMIN' && <div className="mt-1 border-b border-stone-100 pb-1"><p className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-yellow-600"><ShieldCheck className="mr-1 inline h-3 w-3" /> Admin tools</p><Link href="/admin/users" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><ShieldCheck className="h-4 w-4" /> Account approvals</Link><Link href="/debug" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Debug export</Link><Link href="/data" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Data viewer</Link></div>}
+          <button onClick={signOut} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"><LogOut className="h-4 w-4" /> Sign out</button>
+        </div>
+      </details>}
     </div>
   );
 }

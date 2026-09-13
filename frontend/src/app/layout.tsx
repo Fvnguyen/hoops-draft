@@ -3,6 +3,7 @@ import { Inter, Bebas_Neue, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNav } from '@/components/TopNav';
 import { StorageProvider } from '@/components/StorageProvider';
+import { AuthProvider } from '@/components/AuthProvider';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -32,10 +33,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${bebasNeue.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <StorageProvider>
-          <TopNav />
-          {children}
-        </StorageProvider>
+        <AuthProvider>
+          <StorageProvider>
+            <TopNav />
+            {children}
+          </StorageProvider>
+        </AuthProvider>
       </body>
     </html>
   );

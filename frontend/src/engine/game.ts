@@ -782,7 +782,10 @@ function generateNarrative(
 
 export function buildTeamInfo(
   seat: DraftSessionSeat,
-  isHuman: boolean
+  isHuman: boolean,
+  /** Human team label (account display name); defaults to 'You' for callers/tests
+   *  that don't have an identity to pass — the engine stays pure either way. */
+  humanName: string = 'You'
 ): TeamInfo {
   const roster = seat.builtRoster;
   const allCards = seat.drafted;
@@ -861,7 +864,7 @@ export function buildTeamInfo(
 
   return {
     seatId: seat.id,
-    name: isHuman ? 'You' : (seat.botProfile?.name || seat.id),
+    name: isHuman ? humanName : (seat.botProfile?.name || seat.id),
     players: activePlayers,
     starters,
     plays: activePlays,

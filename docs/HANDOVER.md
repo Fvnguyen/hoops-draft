@@ -51,7 +51,7 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   players by PER only.
 - **Phase 1 (engine isolation)** (done 2026-09-12): engine made pure/seeded
   (`engine/rng.ts`), cards became a build artifact (`cards.json`), persistence moved to
-  `src/storage/` (GameStore/IndexedDB). First Vercel preview deploy still not done.
+  `src/storage/` (GameStore/IndexedDB).
 - **Plays & archetypes milestone** (done 2026-09-13): archetype identities
   (`engine/archetypes.ts`) and assigned-player plays (`engine/playbook.ts`), roster v2
   (`playAssignments`, `archetypes`), deck builder `PlayPanel`. Design and full numbers in
@@ -61,40 +61,10 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   since reworked further by `ui_draft_deckbuild_pack`); live box score derived from
   possessions played so far (`deriveLiveBoxScore`); Mythic card-back bleed-through fixed
   (`isolation: isolate` instead of `mix-blend-mode`); legacy season/roster upgrade paths.
-
-## Stability pass milestone — done 2026-09-13
-
-Design: `docs/completed/plan_stability_pass_2026-09-13.md`. A cheap, pre-everything-else
-pass removing defects likely to bite later plans and adding the two safety nets the repo
-lacked: CI and a runtime error boundary.
-
-- **CI**: `.github/workflows/ci.yml` runs `tsc --noEmit`, lint, Vitest, and `next build` on
-  every push/PR (ubuntu, Node 22). Lint is now 0 errors (was 8): the 7 `no-explicit-any` in
-  `/test-ui` got real `PlayerBio`/`SeasonStat` mocks; `DraftRoom.tsx`'s
-  `set-state-in-effect` was replaced with `useSyncExternalStore` for the client-mount flag.
-- **Error boundary**: `app/error.tsx` + `app/global-error.tsx` share `ErrorRecovery.tsx` —
-  a recovery screen with the error message, "Try again" (`reset()`), a home link, and a
-  confirm-gated "Reset local data" button that calls `getGameStore().clearAll()`.
-- **Safe loads**: `src/storage/safeLoad.ts` shape-checks every record out of a `GameStore`
-  backend (`getDraftSession`/`getRoster`/`getSeason` + list variants in both `indexedDb.ts`
-  and `memory.ts`); a corrupt record is dropped (logged, returns `null`/filtered from
-  lists) instead of throwing, and legacy seasons/rosters still upgrade via
-  `normalizeSeason`/`normalizeBuiltRoster`. Covered by `tests/storage/safeLoad.test.ts`.
-- **Draft reproducibility**: bot `noiseSeed`/`favoredTrait` are now drawn from the draft's
-  seeded `Rng` (extracted as `createBotProfiles` in `useDraftEngine.ts`) instead of
-  `Math.random()`, so the same `draftSeed` reproduces the same bot picks. Covered by
-  `tests/unit/draft-reproducibility.test.ts`.
-- **Roster edit keeps its season**: `/rosters` passes `sessionId` in the edit link;
-  `deckbuilder-test` forwards it to `DeckBuilder` (falling back to the saved roster's own
-  `sessionId` if the query param is absent), so re-saving keeps the Play Season button.
-- **PackOpener hygiene**: the keydown effect now has a stable `[]` dependency array (reads
-  phase via a ref instead of re-subscribing every render); the deal-in stagger is gated by
-  `prefers-reduced-motion` too; the duplicated unmount timer-cleanup was removed.
-- **Smoke spec**: `frontend/tests/smoke.spec.ts` loads every real route and fails on any
-  `pageerror` or console error — the local gate to run before committing (see AGENTS.md).
-
-Verified: `npm test` (103 Vitest tests, up from 93), `npx tsc --noEmit`, `npm run lint` (0
-errors), `npm run build`, and `npx playwright test tests/smoke.spec.ts` (8/8) all pass.
+- **Stability pass** (done 2026-09-13, `docs/completed/plan_stability_pass_2026-09-13.md`):
+  CI (`.github/workflows/ci.yml`), a runtime error boundary (`ErrorRecovery.tsx`), safe
+  loads for corrupt storage records, seeded bot reproducibility, `smoke.spec.ts`, lint 0
+  errors (was 8).
 
 ## Analytics tooling & data storage milestone — done 2026-09-13
 
@@ -153,10 +123,40 @@ integration pass.
   clock-scale multiplier into `armIntroClock`, fixed `RoundSummary`'s off-by-one pack
   numbers, deduped `PickTimerRing`'s schedule against `lib/draftTimer.ts`, threaded mode
   into `buildDraftSession`. `tsc`/lint (0 errors)/`npm test` (184 tests)/`next build` all
-  clean; not verified live — the parallel `auth_approval` session's login gate now sits
-  in front of every draft/deckbuilder route.
+  clean; live verification was blocked by `auth_approval` landing a login gate in front of
+  every draft/deckbuilder route while this wave was in flight — pending a manual
+  click-through now that both plans have landed.
 
 Next: further polish/bugfixes as needed, then move the plan to `docs/completed/`.
+
+## vercel_deploy & auth_approval — done 2026-09-13
+
+Both plans (sequence 2b/2c) landed; moved to `docs/completed/`.
+
+- **Vercel**: live at
+  [hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app) (project
+  `hoops-draft`, Root `frontend`, Node 22.x, Git deploys from `main`, Hobby $0/month).
+  Verified via the Vercel API: production READY, 0 runtime errors in 7d, `/api/game-logs`
+  404s, `/api/cards` returns data. **Unverified from here**: a spend alert/hard budget is
+  set in the dashboard (no API for this) — confirm manually.
+- **Auth** (Supabase email/password, admin approval): `profiles` (`status`
+  PENDING/APPROVED/REJECTED, `role` USER/ADMIN, RLS-gated); `nguyen.teomads@gmail.com`
+  auto-approved; `/login`, `/signup`, `/pending`, `/admin/users`; proxy-based route
+  protection; a top-right profile menu (sign-out, admin tools for admins). Local IndexedDB
+  rows are stamped `ownerId` and filtered per logged-in user (Dexie v3,
+  `claimLegacyData()` adopts pre-login data into the first login) — still local, not synced.
+- **This session's follow-up** (username login + team name): added a `username` column
+  (migration `202609130002_add_username.sql`, unique, backfilled from email), separate from
+  `display_name`; `/login` accepts either (non-`@` input resolves to an email server-side
+  via the service-role client first). The engine's hardcoded `'You'` label is now an
+  optional `humanName` param (`buildTeamInfo`/`createSeason`, default `'You'`) threaded
+  from `SeasonView.tsx`'s `useCurrentProfile().display_name`.
+- **Known gaps**: no automated auth-route/role-gate tests (no Supabase-mocking harness
+  yet); the new migration must be run in the SQL editor before username login works
+  (`frontend/supabase/README.md`); re-run the bootstrap script once to backfill
+  `username: 'fvnguyen'` on the existing admin row.
+- Verified: `tsc`/lint (0 errors)/`npm test` (184)/`next build` clean; `/login`/`/signup`
+  checked visually. Not created: a real account — a human should run a signup/login/approve pass.
 
 ## How to run everything
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { useStorageReady } from './StorageProvider';
+import { useCurrentProfile } from './AuthProvider';
 import {
   Season, createSeason, playNextGame, normalizeSeason, humanMatchup,
   teamInfoForSeat, resolveMatchupReplay, StoredGameResult,
@@ -30,6 +31,7 @@ type ActiveGameView =
 export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const router = useRouter();
   const ready = useStorageReady();
+  const profile = useCurrentProfile();
   const [season, setSeason] = useState<Season | null>(null);
   const [session, setSession] = useState<DraftSession | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -68,7 +70,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         if (cancelled) return;
         setSeason(upgraded);
       } else {
-        const newSeason = createSeason(loadedSession, rosterId);
+        const newSeason = createSeason(loadedSession, rosterId, undefined, profile?.display_name);
         try {
           await store.saveSeason(newSeason);
         } catch (err) {
@@ -87,7 +89,10 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
     })();
 
     return () => { cancelled = true; };
-  }, [ready, rosterId, sessionId]);
+    // `profile` starts null and resolves async (AuthProvider); re-running once it
+    // loads (before any season has actually been created/saved) picks up the real
+    // display name instead of permanently persisting the 'You' fallback.
+  }, [ready, rosterId, sessionId, profile]);
 
   const handlePlayGame = async (gameIndex: number) => {
     try {
