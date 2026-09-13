@@ -1,18 +1,28 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
 import { motion } from 'framer-motion';
-import { Pencil, Swords, Trash2 } from 'lucide-react';
-import { getGameStore, SavedRoster } from '@/storage';
+import { Download, Pencil, Swords, Trash2, Upload } from 'lucide-react';
+import { getGameStore, SavedRoster, CURRENT_CARD_SET_VERSION } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
+import {
+  buildExportBundle,
+  isLikelyExportBundle,
+  mergeImportedData,
+  type MergeSummary,
+} from '@/storage/exportImport';
 
 export default function RostersPage() {
   const router = useRouter();
   const ready = useStorageReady();
   const [rosters, setRosters] = useState<SavedRoster[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSummary, setImportSummary] = useState<MergeSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     const store = getGameStore();
@@ -26,6 +36,71 @@ export default function RostersPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [ready, refresh]);
+
+  const handleExport = async () => {
+    setBusy(true);
+    try {
+      const store = getGameStore();
+      const bundle = await buildExportBundle(store);
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const date = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `magic-ball-backup-${date}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleImportClick = () => {
+    setImportError(null);
+    setImportSummary(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    setBusy(true);
+    setImportError(null);
+    setImportSummary(null);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        setImportError('That file is not valid JSON.');
+        return;
+      }
+      if (!isLikelyExportBundle(parsed)) {
+        setImportError("That doesn't look like a Magic Ball backup file (missing sessions/seasons/rosters).");
+        return;
+      }
+
+      const store = getGameStore();
+      const current = await store.exportAll();
+      const result = mergeImportedData(current, parsed);
+
+      await Promise.all([
+        ...result.sessions.map((s) => store.saveDraftSession(s)),
+        ...result.seasons.map((s) => store.saveSeason(s)),
+        ...result.rosters.map((r) => store.saveRoster(r)),
+      ]);
+
+      setImportSummary(result.summary);
+      await refresh();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleDelete = async (rosterId: string) => {
     if (!confirm('Delete this roster? This also removes any season played with it.')) return;
@@ -48,6 +123,45 @@ export default function RostersPage() {
 
   return (
     <div className="min-h-screen p-8 pt-[70px] text-stone-800 overflow-y-auto">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+      <div className="flex justify-end gap-3 mb-6">
+        <button
+          onClick={handleExport}
+          disabled={busy}
+          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-stone-50 text-stone-700 rounded-lg font-bold uppercase tracking-widest text-xs transition-colors border border-stone-300 disabled:opacity-50"
+        >
+          <Download className="w-4 h-4" /> Export my data
+        </button>
+        <button
+          onClick={handleImportClick}
+          disabled={busy}
+          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-stone-50 text-stone-700 rounded-lg font-bold uppercase tracking-widest text-xs transition-colors border border-stone-300 disabled:opacity-50"
+        >
+          <Upload className="w-4 h-4" /> Import
+        </button>
+      </div>
+
+      {importError && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          {importError}
+        </div>
+      )}
+      {importSummary && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+          Import complete — sessions: {importSummary.sessions.added} added, {importSummary.sessions.updated} updated,{' '}
+          {importSummary.sessions.skipped} skipped; rosters: {importSummary.rosters.added} added,{' '}
+          {importSummary.rosters.updated} updated, {importSummary.rosters.skipped} skipped; seasons:{' '}
+          {importSummary.seasons.added} added, {importSummary.seasons.updated} updated, {importSummary.seasons.skipped}{' '}
+          skipped.
+        </div>
+      )}
+
       {!ready || !loaded ? (
         <div className="flex flex-col items-center justify-center h-64 opacity-50">
           <div className="text-6xl mb-4">🏀</div>
@@ -78,8 +192,16 @@ export default function RostersPage() {
                       <span className="text-stone-500 text-sm font-normal">#{rosters.length - i}</span>
                       {rosterObj.name || 'Drafted Roster'}
                     </h2>
-                    <div className="text-xs font-bold text-stone-500 uppercase tracking-widest mt-1">
+                    <div className="text-xs font-bold text-stone-500 uppercase tracking-widest mt-1 flex items-center gap-2">
                       {date}
+                      {rosterObj.cardSetVersion && rosterObj.cardSetVersion !== CURRENT_CARD_SET_VERSION && (
+                        <span
+                          className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 normal-case tracking-normal font-semibold"
+                          title={`Built from an older card set (${rosterObj.cardSetVersion}); ratings may have changed since.`}
+                        >
+                          older card set
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">

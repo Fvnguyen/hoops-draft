@@ -14,27 +14,32 @@
  * and simulation) are generated every time for a given seed + game count.
  */
 
-import { loadPlayers, PLAYS, simulateMany, activationRates } from '../tests/unit/helpers';
+import { loadPlayers, PLAYS, simulateMany, activationRates, runHeadlessDraft, buildTeams } from '../tests/unit/helpers';
 import { randomSeed, createRng } from '../src/engine/rng';
-import { PLAYBOOK, isEligibleForRole, type PlayAssignment, type PlayRole } from '../src/engine/playbook';
+import { PLAYBOOK, isEligibleForRole, evaluatePlaybook, type PlayAssignment, type PlayRole } from '../src/engine/playbook';
 import { simulateGame, type TeamInfo, type GameTheater } from '../src/engine/game';
+import { evaluateArchetypes, type ArchetypeTier } from '../src/engine/archetypes';
 import type { PlayerCardData } from '../src/engine/types';
+import { pathToFileURL } from 'url';
 
-function parseArgs(argv: string[]): { games: number; seed: number } {
+function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean } {
   let games = 500;
   let seed: number | undefined;
+  let ab = false;
 
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--seed') {
       seed = parseInt(argv[++i], 10);
+    } else if (argv[i] === '--ab') {
+      ab = true;
     } else {
       positional.push(argv[i]);
     }
   }
   if (positional[0]) games = parseInt(positional[0], 10);
 
-  return { games, seed: seed ?? randomSeed() };
+  return { games, seed: seed ?? randomSeed(), ab };
 }
 
 function mean(arr: number[]): number {
@@ -173,8 +178,163 @@ function reportPlayImpact(players: PlayerCardData[], n: number, seed: number): v
   }
 }
 
+// ── Identities & plays A/B harness (--ab) ────────────────────────────────────
+//
+// Question: how much do a bot's identities (archetypes) and staffed plays
+// actually add to its margin/win rate? For N seeded drafts, build the 8-seat
+// pod as usual (treatment), then for every bot opponent of the human seat
+// build a "control" copy with archetypes stripped to {} and playAssignments
+// stripped to [] (all else — players, depth chart, starters — identical).
+// Simulate the SAME matchup (human vs that opponent) twice with the SAME
+// per-matchup seed, once per arm, so the only thing that can differ between
+// the two games is the opponent's archetypes/playAssignments treatment.
+// Deltas are reported from the OPPONENT's perspective (its own margin/win
+// with the treatment minus without) since the opponent is the side varied.
+
+const TIER_RANK: Record<ArchetypeTier, number> = { none: 0, online: 1, dedicated: 2 };
+
+/** The highest tier reached among a team's actually-selected archetype slot(s) ('none' if it picked none). */
+function identityTierOf(team: TeamInfo): ArchetypeTier {
+  const selection = team.archetypes;
+  const selectedIds = [selection?.offense, selection?.defense, selection?.gold].filter(
+    (id): id is string => !!id
+  );
+  if (selectedIds.length === 0) return 'none';
+  const statuses = evaluateArchetypes(team.players, new Set(team.starters), selection);
+  let best: ArchetypeTier = 'none';
+  for (const id of selectedIds) {
+    const s = statuses.find((st) => st.def.id === id);
+    if (s && TIER_RANK[s.tier] > TIER_RANK[best]) best = s.tier;
+  }
+  return best;
+}
+
+/** Number of the team's play assignments that are fully staffed (every role filled by an eligible active-roster player). */
+function staffedPlayCountOf(team: TeamInfo): number {
+  const status = evaluatePlaybook(team.playAssignments ?? [], team.players);
+  return status.plays.filter((p) => p.active).length;
+}
+
+/** A control copy of `team` with identities and play assignments stripped, everything else unchanged. */
+function stripIdentitiesAndPlays(team: TeamInfo): TeamInfo {
+  return { ...team, seatId: `${team.seatId}-control`, archetypes: {}, playAssignments: [] };
+}
+
+export interface ABPair {
+  identityTier: ArchetypeTier;   // opponent's tier, as built (treatment arm)
+  staffedPlays: number;          // opponent's staffed-play count, as built (treatment arm)
+  marginTreatment: number;       // opponent score - human score, treatment arm
+  marginControl: number;         // opponent score - human score, control arm
+  winTreatment: boolean;         // did the opponent win, treatment arm
+  winControl: boolean;           // did the opponent win, control arm
+  oppHome: boolean;              // was the opponent the home team (shared by both arms)
+}
+
+/**
+ * Build the paired treatment/control games. `buildControl` defaults to
+ * stripping the opponent's archetypes/playAssignments (the real --ab
+ * treatment); tests pass an identity function (control === treatment) to
+ * verify the harness itself reports a zero delta when there is no actual
+ * difference between arms.
+ */
+export function runAbPairs(
+  players: PlayerCardData[],
+  nDrafts: number,
+  seed: number,
+  buildControl: (opponent: TeamInfo) => TeamInfo = stripIdentitiesAndPlays,
+): ABPair[] {
+  const pairs: ABPair[] = [];
+  const draftRng = createRng(seed);
+  const flipRng = createRng(seed ^ 0x9e3779b9);
+
+  for (let d = 0; d < nDrafts; d++) {
+    const draftSeed = Math.floor(draftRng.next() * 4294967296);
+    const seats = runHeadlessDraft(players, PLAYS, draftSeed);
+    const teams = buildTeams(seats);
+    const human = teams[0];
+    const opponents = teams.slice(1);
+
+    opponents.forEach((opponentTreatment, oi) => {
+      const opponentControl = buildControl(opponentTreatment);
+      const oppHome = flipRng.next() < 0.5;
+      const gameSeed = draftSeed + oi * 104729 + 7;
+
+      const playTreatment = (opp: TeamInfo) =>
+        simulateGame(oppHome ? opp : human, oppHome ? human : opp, { rng: createRng(gameSeed) });
+
+      const gT = playTreatment(opponentTreatment);
+      const gC = playTreatment(opponentControl);
+
+      const oppScoreT = oppHome ? gT.finalScore[0] : gT.finalScore[1];
+      const humanScoreT = oppHome ? gT.finalScore[1] : gT.finalScore[0];
+      const oppScoreC = oppHome ? gC.finalScore[0] : gC.finalScore[1];
+      const humanScoreC = oppHome ? gC.finalScore[1] : gC.finalScore[0];
+
+      pairs.push({
+        identityTier: identityTierOf(opponentTreatment),
+        staffedPlays: staffedPlayCountOf(opponentTreatment),
+        marginTreatment: oppScoreT - humanScoreT,
+        marginControl: oppScoreC - humanScoreC,
+        winTreatment: oppScoreT > humanScoreT,
+        winControl: oppScoreC > humanScoreC,
+        oppHome,
+      });
+    });
+  }
+
+  return pairs;
+}
+
+function fmtDelta(n: number): string {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
+}
+
+function reportAb(pairs: ABPair[]): void {
+  console.log(`\n=== Identities & Plays A/B (--ab, ${pairs.length} paired opponent-games) ===`);
+
+  const marginDeltas = pairs.map((p) => p.marginTreatment - p.marginControl);
+  const winT = pairs.filter((p) => p.winTreatment).length;
+  const winC = pairs.filter((p) => p.winControl).length;
+  console.log(`Mean margin delta (treatment - control): ${fmtDelta(mean(marginDeltas))}`);
+  console.log(`Win-rate delta (treatment - control):    ${fmtDelta((100 * winT) / pairs.length - (100 * winC) / pairs.length)}pp  (treatment ${pct(winT, pairs.length)}, control ${pct(winC, pairs.length)})`);
+
+  console.log('\nBy identity tier (opponent, as built):');
+  for (const tier of ['none', 'online', 'dedicated'] as ArchetypeTier[]) {
+    const bucket = pairs.filter((p) => p.identityTier === tier);
+    if (bucket.length === 0) continue;
+    const bMargin = mean(bucket.map((p) => p.marginTreatment - p.marginControl));
+    const bWinT = bucket.filter((p) => p.winTreatment).length;
+    const bWinC = bucket.filter((p) => p.winControl).length;
+    console.log(
+      `  ${tier.padEnd(10)} n=${bucket.length.toString().padEnd(5)} margin delta ${fmtDelta(bMargin).padEnd(8)} ` +
+      `win-rate delta ${fmtDelta((100 * bWinT) / bucket.length - (100 * bWinC) / bucket.length)}pp`
+    );
+  }
+
+  console.log('\nBy staffed-play count (opponent, as built):');
+  const counts = Array.from(new Set(pairs.map((p) => p.staffedPlays))).sort((a, b) => a - b);
+  for (const count of counts) {
+    const bucket = pairs.filter((p) => p.staffedPlays === count);
+    const bMargin = mean(bucket.map((p) => p.marginTreatment - p.marginControl));
+    const bWinT = bucket.filter((p) => p.winTreatment).length;
+    const bWinC = bucket.filter((p) => p.winControl).length;
+    console.log(
+      `  ${count} staffed  n=${bucket.length.toString().padEnd(5)} margin delta ${fmtDelta(bMargin).padEnd(8)} ` +
+      `win-rate delta ${fmtDelta((100 * bWinT) / bucket.length - (100 * bWinC) / bucket.length)}pp`
+    );
+  }
+
+  // Home vs away margin (treatment arm, opponent's margin, split by whether the
+  // opponent was the home team for that matchup).
+  const homePairs = pairs.filter((p) => p.oppHome);
+  const awayPairs = pairs.filter((p) => !p.oppHome);
+  console.log('\nHome vs away margin (treatment arm, opponent-side margin):');
+  console.log(`  Opponent home: n=${homePairs.length}  mean margin ${fmtDelta(mean(homePairs.map((p) => p.marginTreatment)))}`);
+  console.log(`  Opponent away: n=${awayPairs.length}  mean margin ${fmtDelta(mean(awayPairs.map((p) => p.marginTreatment)))}`);
+}
+
 function main(): void {
-  const { games: n, seed } = parseArgs(process.argv.slice(2));
+  const { games: n, seed, ab } = parseArgs(process.argv.slice(2));
   console.log(`Seed: ${seed}`);
   const t0 = Date.now();
 
@@ -266,7 +426,25 @@ function main(): void {
 
   reportPlayImpact(players, n, seed);
 
+  if (ab) {
+    const pairs = runAbPairs(players, n, seed);
+    reportAb(pairs);
+  }
+
   console.log('');
 }
 
-main();
+// Only run when executed directly (`tsx scripts/balance.ts ...`), not when
+// imported as a module (e.g. by tests/unit/balance-ab.test.ts, which imports
+// `runAbPairs` and must not trigger a full CLI run as a side effect).
+const isDirectRun = (() => {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
+  main();
+}

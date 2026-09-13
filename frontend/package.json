@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "balance": "tsx scripts/balance.ts",
+    "analyze": "tsx scripts/analyze.ts",
     "build:cards": "tsx scripts/build-cards.ts",
     "feasibility": "tsx scripts/archetype-feasibility.ts"
   },

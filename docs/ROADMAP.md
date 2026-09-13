@@ -19,15 +19,14 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 1 | [analytics_tooling](plans/plan_analytics_tooling_2026-09-13.md) — measurement matches the current game | planned | — | `frontend/scripts/*`, `scripts/analyze_game_data.js`, `app/debug` | 0.5-1 day |
-| 2a | [ui_draft_deckbuild_pack](plans/plan_ui_draft_deckbuild_pack_2026-09-13.md) — quick/premier draft modes, timed picks, pack ceremony every round, click-first deck builder | in progress | — (lands before 3) | `components/{PackOpener,DraftRoom,DraftSidebar,DeckBuilder,PlayPanel,TopKPIBand,PlayerCard}.tsx`, `hooks/useDraftEngine.ts`, `app/{page,draft,roster,rosters}` | 1.5-2 days |
-| 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | 1 | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
-| 3 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | 1, 2a | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
+| 2a | [ui_draft_deckbuild_pack](plans/plan_ui_draft_deckbuild_pack_2026-09-13.md) — quick/premier draft modes, timed picks, pack ceremony every round, click-first deck builder | in progress (wave 0 paused) | — (lands before 3) | `components/{PackOpener,DraftRoom,DraftSidebar,DeckBuilder,PlayPanel,TopKPIBand,PlayerCard}.tsx`, `hooks/useDraftEngine.ts`, `app/{page,draft,roster,rosters}` | 1.5-2 days |
+| 2b | [vercel_deploy](plans/plan_vercel_deploy_2026-09-13.md) — online Vercel serving with preview/prod smoke checks and cost guardrails | planned | 2a | `vercel.json` (if needed), deployment docs, `README.md`, `docs/HANDOVER.md` | 0.5-1 day |
+| 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | — (unblocked) | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
+| 3 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | 2a | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
 | 4 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 3 | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
 | 5 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 6 | [data_storage](plans/plan_data_storage_2026-09-13.md) — seed-based game persistence, schema versioning, export/import | planned | — (can run in parallel with 1-5) | `src/storage/*`, `engine/season.ts` result shape, `app/rosters` | 1-2 days |
-| 7 | mobile_pwa | not yet planned | 2-6 | — | 1-2 weeks |
-| 8 | accounts_cloud_saves | not yet planned | 6, 7 | — | ~1 week |
+| 7 | mobile_pwa | not yet planned | 2-5 | — | 1-2 weeks |
+| 8 | accounts_cloud_saves | not yet planned | 7 | — | ~1 week |
 | 9 | android_twa | not yet planned | 8 | — | 2-3 days |
 
 Plans 7-9 keep the order agreed on 2026-09-12 (game design settles before the mobile UI is
@@ -39,9 +38,9 @@ plan 6 is done.
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [data_storage](completed/plan_data_storage_2026-09-13.md) | 2026-09-13 | Slim per-game `StoredGameResult` + re-simulate-on-view, Dexie schema v2, export/import, cardSetVersion tag |
+| [analytics_tooling](completed/plan_analytics_tooling_2026-09-13.md) | 2026-09-13 | `analyze.ts` replaces the old JS analyzer, `balance.ts --ab` identity/play-impact harness |
 | [stability_pass](completed/plan_stability_pass_2026-09-13.md) | 2026-09-13 | CI, error boundary, safe loads, seeded bots, lint clean (0 errors), smoke spec |
-| [pack_opening_animation](completed/plan_pack_opening_animation_2026-09-13.md) | 2026-09-13 | Reveal sequence before the first pick, presentation only (`ab04726`) |
-| [plays_and_synergies](completed/plan_plays_and_synergies_2026-09-13.md) | 2026-09-13 | Archetype identities + assigned-player plays, roster v2, deck builder play panel (`632a751`..`fa10e01`) |
 
 ## Model tiers used in plans
 

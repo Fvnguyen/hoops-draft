@@ -6,15 +6,56 @@
  */
 
 import { DraftSession } from './deckbuilder';
-import { simulateGame, buildTeamInfo, GameTheater, TeamInfo } from './game';
-import { Rng, createRng, randomSeed, shuffle } from './rng';
+import { simulateGame, buildTeamInfo, GameTheater, TeamInfo, PlayerBoxScore } from './game';
+import { Rng, createRng, randomSeed } from './rng';
+import { BALANCE_VERSION } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+/**
+ * Persisted shape of a completed game (plan_data_storage D1): a seed + the two seats'
+ * indices + the final box score, NOT the full `GameTheater` (possessions, substitutions,
+ * quarter summaries, bonuses). The theater is re-derived on demand with
+ * `simulateGame(homeTeamInfo, awayTeamInfo, { rng: createRng(seed) })` — see
+ * `resolveMatchupReplay` below.
+ *
+ * Structurally identical to `StoredGameResult` in `@/storage/types` (the wave-0 storage
+ * contract) but declared independently here rather than imported: `src/engine` must stay
+ * free of any dependency on `src/storage` (storage already imports `Season` from this
+ * file, so importing back would be circular and would also violate the engine-purity
+ * rule enforced by `tests/unit/engine-purity.test.ts`). If the two shapes ever drift,
+ * TypeScript's structural typing still accepts values that satisfy both — but they
+ * should be kept in sync by hand.
+ */
+export interface StoredGameResult {
+  /**
+   * Absent only when `legacyTheater` is set (D8): a pre-Phase-1 game had no persisted
+   * seed at all, so there's no real seed to fabricate for it. Always present otherwise
+   * (every game created after this plan, and every migrated game that did have a seed).
+   */
+  seed?: number;
+  /** engine/balance.ts BALANCE_VERSION at the time this game was simulated. Absent under
+   *  the same condition as `seed`. */
+  balanceVersion?: number;
+  homeSeatIndex: number;
+  awaySeatIndex: number;
+  finalScore: [number, number];
+  boxScore: { home: PlayerBoxScore[]; away: PlayerBoxScore[] };
+  isOvertime: boolean;
+  overtimePeriods: number;
+  /**
+   * D8: a game stored under the old shape (pre-Phase-1, no seed at all — the whole
+   * object WAS the `GameTheater`) keeps its full theater here, read-only, instead of
+   * being re-simulated. Absent on every game created after this plan. See
+   * `normalizeSeason`/`normalizeMatchupResult` for how old saves get wrapped.
+   */
+  legacyTheater?: unknown;
+}
 
 export interface SeasonMatchup {
   homeSeatIndex: number;
   awaySeatIndex: number;
-  result?: GameTheater;
+  result?: StoredGameResult;
   seed?: number;
 }
 
@@ -161,18 +202,34 @@ export function playNextGame(
 
     // Reuse seed if replaying
     const gameRng = rng ?? createRng(matchup.seed ?? randomSeed());
-    const result = simulateGame(homeTeam, awayTeam, { rng: gameRng });
+    const theater = simulateGame(homeTeam, awayTeam, { rng: gameRng });
 
-    matchup.result = result;
-    matchup.seed = result.seed;
+    // D1: persist the slim result, not the full theater — it's re-simulated on view.
+    // D6 (100 KB/season budget): a full round robin day plays 4 matchups, not just the
+    // human's one, and the box score (24 players' worth) is what dominates the stored
+    // size. Only the human's own matchup is ever replayed or its box score shown
+    // (SeasonView only calls resolveMatchupReplay on the human's game) — bot-vs-bot
+    // matchups keep the score/seed for standings and re-simulation but drop the box
+    // score, cutting a season from ~130 KB to well under the budget.
+    matchup.result = {
+      seed: theater.seed,
+      balanceVersion: BALANCE_VERSION,
+      homeSeatIndex: matchup.homeSeatIndex,
+      awaySeatIndex: matchup.awaySeatIndex,
+      finalScore: theater.finalScore,
+      boxScore: isHumanMatch ? theater.boxScore : { home: [], away: [] },
+      isOvertime: theater.isOvertime,
+      overtimePeriods: theater.overtimePeriods,
+    };
+    matchup.seed = theater.seed;
 
     if (isHumanMatch) {
-      humanGameResult = result;
+      humanGameResult = theater;
     }
 
     // Update Standings
-    const homeScore = result.finalScore[0];
-    const awayScore = result.finalScore[1];
+    const homeScore = theater.finalScore[0];
+    const awayScore = theater.finalScore[1];
     const homeWon = homeScore > awayScore;
 
     const homeStanding = season.standings.find(s => s.seatId === session.seats[matchup.homeSeatIndex].id);
@@ -218,35 +275,143 @@ interface LegacyScheduleEntry {
 }
 
 /**
- * Upgrade a season saved before round-robin game days to the current shape.
- * Legacy entries held a single human game (`opponentSeatIndex`, `result`); they
- * become a game day with one matchup. The human was home on even game indexes.
+ * D8: a matchup's `result` may still be a full pre-plan `GameTheater` (recognizable by
+ * its `possessions` array, which `StoredGameResult` never has) instead of the slim D1
+ * shape. The discriminant matches the Dexie upgrade step's own conversion
+ * (`convertMatchupResultToD1Shape` in `src/storage/indexedDb.ts`) so both code paths
+ * produce identical output and running one after the other is a no-op:
+ *  - a numeric `seed` on the old theater means it CAN be re-simulated — reduce it to
+ *    the slim shape, tagged with the CURRENT `BALANCE_VERSION` (there is no earlier
+ *    version to preserve; this is the first release that tracks one);
+ *  - no seed at all (truly pre-Phase-1) means there's nothing to re-simulate from —
+ *    keep the full theater read-only under `legacyTheater`, with `seed`/`balanceVersion`
+ *    left unset rather than fabricated.
+ * Returns unchanged when `raw` is already D1-shaped (or absent).
+ */
+function normalizeMatchupResult(
+  raw: StoredGameResult | GameTheater | undefined,
+  homeSeatIndex: number,
+  awaySeatIndex: number
+): { result: StoredGameResult | undefined; changed: boolean } {
+  if (!raw) return { result: undefined, changed: false };
+  if ('possessions' in raw) {
+    const theater = raw as GameTheater;
+    const hasSeed = typeof theater.seed === 'number';
+    return {
+      changed: true,
+      result: {
+        ...(hasSeed
+          ? { seed: theater.seed, balanceVersion: BALANCE_VERSION }
+          : { legacyTheater: theater }),
+        homeSeatIndex,
+        awaySeatIndex,
+        finalScore: theater.finalScore,
+        boxScore: theater.boxScore,
+        isOvertime: !!theater.isOvertime,
+        overtimePeriods: theater.overtimePeriods ?? 0,
+      },
+    };
+  }
+  return { result: raw as StoredGameResult, changed: false };
+}
+
+/**
+ * Upgrade a season to the current shape. Handles two eras of legacy data:
+ *  - schedule entries saved before round-robin game days (one human game per entry,
+ *    `opponentSeatIndex` + `result`) become a game day with one matchup;
+ *  - matchup results saved before this plan (D1) as a full `GameTheater` get wrapped
+ *    into `legacyTheater` (D8) rather than the slim `{ seed, balanceVersion, ... }` shape.
  * Returns the same object when nothing needed changing.
  */
 export function normalizeSeason(season: Season): { season: Season; changed: boolean } {
   let changed = false;
+
+  // A matchup's `result` may still be an un-normalized `GameTheater` at this point
+  // (D8) — normalized to `StoredGameResult` below before this function returns.
+  type RawMatchup = Omit<SeasonMatchup, 'result'> & { result?: StoredGameResult | GameTheater };
+
   const schedule = (season.schedule ?? []).map((raw): SeasonScheduleEntry => {
     const entry = raw as SeasonScheduleEntry | LegacyScheduleEntry;
-    if (Array.isArray(entry.matchups)) return entry as SeasonScheduleEntry;
-    changed = true;
-    const legacy = entry as LegacyScheduleEntry;
-    const humanHome = legacy.gameIndex % 2 === 0;
-    const opponent = legacy.opponentSeatIndex ?? 1;
-    return {
-      gameIndex: legacy.gameIndex,
-      played: !!legacy.played,
-      matchups: [{
+    let matchups: RawMatchup[];
+    let played: boolean;
+
+    if (Array.isArray(entry.matchups)) {
+      matchups = entry.matchups;
+      played = entry.played;
+    } else {
+      changed = true;
+      const legacy = entry as LegacyScheduleEntry;
+      const humanHome = legacy.gameIndex % 2 === 0;
+      const opponent = legacy.opponentSeatIndex ?? 1;
+      matchups = [{
         homeSeatIndex: humanHome ? 0 : opponent,
         awaySeatIndex: humanHome ? opponent : 0,
         result: legacy.result,
         seed: legacy.seed,
-      }],
-    };
+      }];
+      played = !!legacy.played;
+    }
+
+    const normalizedMatchups = matchups.map((m): SeasonMatchup => {
+      const { result, changed: resultChanged } = normalizeMatchupResult(
+        m.result,
+        m.homeSeatIndex,
+        m.awaySeatIndex
+      );
+      if (resultChanged) changed = true;
+      return { ...m, result };
+    });
+
+    return { gameIndex: entry.gameIndex, played, matchups: normalizedMatchups };
   });
+
   return changed ? { season: { ...season, schedule }, changed } : { season, changed };
 }
 
 /** The human's matchup on a game day, if any. */
 export function humanMatchup(entry: SeasonScheduleEntry): SeasonMatchup | undefined {
   return (entry.matchups ?? []).find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0);
+}
+
+// ── Replay (view-time re-simulation, D1/D8) ────────────────────────────────
+
+/**
+ * Full `TeamInfo` for a seat in a season, for re-simulating a past matchup. Only the
+ * human gets a persisted snapshot (`season.humanTeam`) — bots don't need one since
+ * their roster is deterministically rebuilt from the draft session (`session.seats`),
+ * which already embeds each player's card.
+ */
+export function teamInfoForSeat(season: Season, session: DraftSession, seatIndex: number): TeamInfo {
+  return seatIndex === 0 ? season.humanTeam : buildTeamInfo(session.seats[seatIndex], false);
+}
+
+export type MatchupReplay =
+  | { kind: 'theater'; theater: GameTheater }
+  | { kind: 'legacy'; theater: GameTheater }
+  | { kind: 'versionMismatch'; result: StoredGameResult };
+
+/**
+ * Reconstruct a played matchup for viewing (D1/D8):
+ *  - a pre-plan full theater (`legacyTheater`) is shown read-only as-is;
+ *  - a D1 result whose `balanceVersion` doesn't match the current `BALANCE_VERSION`
+ *    can't be safely re-simulated (engine rules changed under the same seed) — the
+ *    caller should show the box score with a notice instead;
+ *  - otherwise the theater is re-simulated fresh from the seed and the two TeamInfo
+ *    snapshots.
+ */
+export function resolveMatchupReplay(
+  result: StoredGameResult,
+  homeTeam: TeamInfo,
+  awayTeam: TeamInfo
+): MatchupReplay {
+  if (result.legacyTheater) {
+    return { kind: 'legacy', theater: result.legacyTheater as GameTheater };
+  }
+  // `seed` is only ever absent alongside `legacyTheater` (see StoredGameResult) — this
+  // check is defensive, not an expected path.
+  if (result.balanceVersion !== BALANCE_VERSION || result.seed === undefined) {
+    return { kind: 'versionMismatch', result };
+  }
+  const theater = simulateGame(homeTeam, awayTeam, { rng: createRng(result.seed) });
+  return { kind: 'theater', theater };
 }

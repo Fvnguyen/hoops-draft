@@ -10,9 +10,11 @@
 
 import Dexie, { type Table } from 'dexie';
 import type { DraftSession } from '@/engine/deckbuilder';
+import { normalizeBuiltRoster } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import type { GameStore, SavedRoster } from './types';
-import { StorageQuotaError } from './types';
+import { normalizeSeason } from '@/engine/season';
+import type { GameStore, SavedRoster, StorageMeta } from './types';
+import { StorageQuotaError, CURRENT_CARD_SET_VERSION } from './types';
 import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 interface MetaRow {
@@ -20,19 +22,91 @@ interface MetaRow {
   value: string;
 }
 
+/**
+ * Current Dexie schema version. Bump this (and add a new `.version(n)` step
+ * with an `.upgrade()`) whenever the on-disk shape changes — see D3 in
+ * `docs/plans/plan_data_storage_2026-09-13.md`.
+ */
+export const SCHEMA_VERSION = 2;
+
 export class MagicBallDB extends Dexie {
   draftSessions!: Table<DraftSession, string>;
   rosters!: Table<SavedRoster, string>;
   seasons!: Table<Season, string>;
+  /** Free-form key/value flags (e.g. the one-time localStorage migration marker). */
   meta!: Table<MetaRow, string>;
+  /** Singleton row (id 'meta') holding the typed schema/card-set version — see StorageMeta. */
+  storageMeta!: Table<StorageMeta, string>;
 
   constructor(name = 'MagicBallDB') {
     super(name);
+
     this.version(1).stores({
       draftSessions: 'id, timestamp',
       rosters: 'id, sessionId',
       seasons: 'id, rosterId, sessionId',
       meta: 'key',
+    });
+
+    // D3: `normalizeSeason`/`normalizeBuiltRoster` move from load-time calls
+    // (frontend/src/storage/safeLoad.ts, removed in this version) to a
+    // one-time upgrade step here. `normalizeSeason` (engine/season.ts) already
+    // does both the schedule-shape upgrade (legacy per-game entries ->
+    // game-day matchups) AND the D8 matchup-result conversion in one pass: a
+    // played game whose old `result` is still a full `GameTheater` (detected
+    // by its `possessions` array) is reduced to the slim D1 shape when it has
+    // a numeric `seed` (re-simulated on view), or kept read-only under
+    // `legacyTheater` when it doesn't (pre-Phase-1 data with no seed at all —
+    // there's nothing to fabricate). See `normalizeMatchupResult` there for
+    // the exact discriminant so this upgrade step and that engine function
+    // never disagree.
+    this.version(2)
+      .stores({
+        draftSessions: 'id, timestamp',
+        rosters: 'id, sessionId',
+        seasons: 'id, rosterId, sessionId',
+        meta: 'key',
+        storageMeta: 'id',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('draftSessions')
+          .toCollection()
+          .modify((session: DraftSession) => {
+            if (!Array.isArray(session.seats)) return;
+            session.seats = session.seats.map((seat) => ({
+              ...seat,
+              builtRoster: normalizeBuiltRoster(
+                seat.builtRoster ?? { depthChart: {}, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] },
+                seat.drafted ?? []
+              ),
+            }));
+          });
+
+        await tx
+          .table('seasons')
+          .toCollection()
+          .modify((season: Season) => {
+            const { season: normalized } = normalizeSeason(season);
+            Object.assign(season, normalized);
+          });
+
+        const existing = await tx.table<StorageMeta, string>('storageMeta').get('meta');
+        await tx.table<StorageMeta, string>('storageMeta').put({
+          id: 'meta',
+          schemaVersion: SCHEMA_VERSION,
+          cardSetVersion: existing?.cardSetVersion ?? CURRENT_CARD_SET_VERSION,
+        });
+      });
+
+    // Brand-new databases never run the `.upgrade()` step above (there is no
+    // earlier version to upgrade from), so stamp the meta row here too.
+    this.on('populate', (tx) => {
+      void tx.table<StorageMeta, string>('storageMeta').put({
+        id: 'meta',
+        schemaVersion: SCHEMA_VERSION,
+        cardSetVersion: CURRENT_CARD_SET_VERSION,
+      });
     });
   }
 }
@@ -87,7 +161,8 @@ export class IndexedDbGameStore implements GameStore {
 
   async saveDraftSession(s: DraftSession): Promise<void> {
     await guardQuota(async () => {
-      await this.db.draftSessions.put(s);
+      // D4: stamp the card set a draft's cards came from, once, never overwritten.
+      await this.db.draftSessions.put({ ...s, cardSetVersion: s.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
     });
   }
 
@@ -107,7 +182,8 @@ export class IndexedDbGameStore implements GameStore {
 
   async saveRoster(r: SavedRoster): Promise<void> {
     await guardQuota(async () => {
-      await this.db.rosters.put(r);
+      // D4: stamp the card set a roster's cards came from, once, never overwritten.
+      await this.db.rosters.put({ ...r, cardSetVersion: r.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
     });
   }
 
@@ -186,5 +262,20 @@ export class IndexedDbGameStore implements GameStore {
   async getMeta(key: string): Promise<string | null> {
     const row = await this.db.meta.get(key);
     return row?.value ?? null;
+  }
+
+  /** D3: the typed schema/card-set version row (singleton, id 'meta'). */
+  async getStorageMeta(): Promise<StorageMeta | null> {
+    return (await this.db.storageMeta.get('meta')) ?? null;
+  }
+
+  /** Used by T4's card-set stamping; never lowers schemaVersion. */
+  async setCardSetVersion(cardSetVersion: string): Promise<void> {
+    const existing = await this.db.storageMeta.get('meta');
+    await this.db.storageMeta.put({
+      id: 'meta',
+      schemaVersion: existing?.schemaVersion ?? SCHEMA_VERSION,
+      cardSetVersion,
+    });
   }
 }

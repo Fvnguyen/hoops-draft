@@ -8,7 +8,7 @@
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import type { GameStore, SavedRoster } from './types';
+import { CURRENT_CARD_SET_VERSION, type GameStore, type SavedRoster, type StorageMeta } from './types';
 import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 export class MemoryGameStore implements GameStore {
@@ -26,6 +26,12 @@ export class MemoryGameStore implements GameStore {
     this.meta.set(key, value);
   }
 
+  /** No Dexie-style migrations in memory storage (SSR/tests) — nothing has ever
+   *  written this row, so it's always absent. */
+  async getStorageMeta(): Promise<StorageMeta | null> {
+    return null;
+  }
+
   async listDraftSessions(): Promise<DraftSession[]> {
     return [...this.sessions.values()].map(safeParseDraftSession).filter((s): s is DraftSession => s !== null);
   }
@@ -36,7 +42,8 @@ export class MemoryGameStore implements GameStore {
   }
 
   async saveDraftSession(s: DraftSession): Promise<void> {
-    this.sessions.set(s.id, s);
+    // D4: stamp the card set a draft's cards came from, once, never overwritten.
+    this.sessions.set(s.id, { ...s, cardSetVersion: s.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
   }
 
   async deleteDraftSession(id: string): Promise<void> {
@@ -53,7 +60,8 @@ export class MemoryGameStore implements GameStore {
   }
 
   async saveRoster(r: SavedRoster): Promise<void> {
-    this.rosters.set(r.id, r);
+    // D4: stamp the card set a roster's cards came from, once, never overwritten.
+    this.rosters.set(r.id, { ...r, cardSetVersion: r.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
   }
 
   async deleteRoster(id: string): Promise<void> {

@@ -15,6 +15,26 @@ import type { Season } from '@/engine/season';
 import type { DraftCard } from '@/engine/types';
 import type { PlayAssignment } from '@/engine/playbook';
 import type { ArchetypeSelection } from '@/engine/archetypes';
+/**
+ * The D1 "completed game" shape (plan_data_storage) is declared in `engine/season.ts`
+ * as `StoredGameResult`, not here: `src/engine` must stay free of any dependency on
+ * `src/storage` (enforced by `tests/unit/engine-purity.test.ts`), and `Season` already
+ * flows the other direction (this file imports it below). Import it from
+ * `@/engine/season` at call sites instead of duplicating it here.
+ */
+
+/**
+ * D3: one row in the Dexie `meta` table (singleton, id `'meta'`). `schemaVersion` gates
+ * the upgrade steps below; `cardSetVersion` is the default stamped onto drafts/rosters
+ * that predate D4 (card_balance's per-card-set tagging).
+ */
+export interface StorageMeta {
+  id: 'meta';
+  schemaVersion: number;
+  cardSetVersion: string;
+}
+
+export const CURRENT_CARD_SET_VERSION = '2025-26.1';
 
 export interface SavedRoster {
   id: string;
@@ -35,6 +55,9 @@ export interface SavedRoster {
   version?: number;
   /** The draft session this roster was built from, if any. */
   sessionId: string | null;
+  /** plan_data_storage D4: which `src/data/cards.json` generation this roster's cards
+   *  came from. Stamped by the storage layer at save time if absent, never overwritten. */
+  cardSetVersion?: string;
 }
 
 export interface GameStore {
@@ -57,6 +80,10 @@ export interface GameStore {
   exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }>;
   clearAll(): Promise<void>;
   usage(): Promise<{ sessions: number; seasons: number; rosters: number; bytesEstimate: number }>;
+
+  /** D3: the typed schema/card-set version row. Null on a store with no meta row yet
+   *  (e.g. a brand-new MemoryGameStore, which does not do Dexie-style migrations). */
+  getStorageMeta(): Promise<StorageMeta | null>;
 }
 
 export class StorageQuotaError extends Error {

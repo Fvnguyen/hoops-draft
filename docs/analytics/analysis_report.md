@@ -1,3 +1,6 @@
+> **Stale**: measured before Phase 0 and the plays & identities milestone; regenerate
+> with `npm run analyze`.
+
 ```
 
 ══════════════════════════════════════════════════════════════════════

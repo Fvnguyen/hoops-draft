@@ -73,6 +73,9 @@ export interface DraftSession {
   seats: DraftSessionSeat[];  // seats[0] = human, seats[1..7] = bots
   pickLog: DraftPickRecord[]; // Full pick-by-pick history for replay/analytics
   seed?: number;              // The cube-pool seed this draft was generated from
+  /** plan_data_storage D4: which `src/data/cards.json` generation this draft's cards
+   *  came from. Stamped by the storage layer at save time if absent, never overwritten. */
+  cardSetVersion?: string;
 }
 
 // ── Position Eligibility (mirrors DeckBuilder logic) ───────────────────────

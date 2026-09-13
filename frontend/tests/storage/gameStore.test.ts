@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryGameStore } from '@/storage/memory';
 import { IndexedDbGameStore, MagicBallDB } from '@/storage/indexedDb';
 import type { GameStore } from '@/storage/types';
+import { CURRENT_CARD_SET_VERSION } from '@/storage/types';
 import { makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
 
 let dbCounter = 0;
@@ -26,11 +27,13 @@ describe.each(implementations)('$name', ({ make }) => {
     const session = makeDraftSession();
     await store.saveDraftSession(session);
 
-    expect(await store.getDraftSession(session.id)).toEqual(session);
-    expect(await store.listDraftSessions()).toEqual([session]);
+    // D4: the store stamps cardSetVersion once, on the way in.
+    const stamped = { ...session, cardSetVersion: CURRENT_CARD_SET_VERSION };
+    expect(await store.getDraftSession(session.id)).toEqual(stamped);
+    expect(await store.listDraftSessions()).toEqual([stamped]);
     expect(await store.getDraftSession('missing')).toBeNull();
 
-    const updated = { ...session, seed: 99 };
+    const updated = { ...stamped, seed: 99 };
     await store.saveDraftSession(updated); // upsert, not a duplicate
     expect(await store.getDraftSession(session.id)).toEqual(updated);
     expect(await store.listDraftSessions()).toHaveLength(1);
@@ -44,11 +47,13 @@ describe.each(implementations)('$name', ({ make }) => {
     const roster = makeSavedRoster();
     await store.saveRoster(roster);
 
-    expect(await store.getRoster(roster.id)).toEqual(roster);
-    expect(await store.listRosters()).toEqual([roster]);
+    // D4: the store stamps cardSetVersion once, on the way in.
+    const stamped = { ...roster, cardSetVersion: CURRENT_CARD_SET_VERSION };
+    expect(await store.getRoster(roster.id)).toEqual(stamped);
+    expect(await store.listRosters()).toEqual([stamped]);
     expect(await store.getRoster('missing')).toBeNull();
 
-    const renamed = { ...roster, name: 'Renamed Roster' };
+    const renamed = { ...stamped, name: 'Renamed Roster' };
     await store.saveRoster(renamed);
     expect(await store.getRoster(roster.id)).toEqual(renamed);
     expect(await store.listRosters()).toHaveLength(1);
@@ -86,8 +91,8 @@ describe.each(implementations)('$name', ({ make }) => {
     await store.saveSeason(season);
 
     const all = await store.exportAll();
-    expect(all.sessions).toEqual([session]);
-    expect(all.rosters).toEqual([roster]);
+    expect(all.sessions).toEqual([{ ...session, cardSetVersion: CURRENT_CARD_SET_VERSION }]);
+    expect(all.rosters).toEqual([{ ...roster, cardSetVersion: CURRENT_CARD_SET_VERSION }]);
     expect(all.seasons).toEqual([season]);
   });
 

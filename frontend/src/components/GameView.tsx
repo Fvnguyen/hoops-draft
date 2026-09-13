@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { GameTheater, TeamInfo, PlayerBoxScore } from '../engine/game';
+import type { StoredGameResult } from '../engine/season';
 import { Play as PlayIcon, FastForward, Pause, SkipForward } from 'lucide-react';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
 import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
@@ -185,6 +186,77 @@ function deriveLiveBoxScore(game: GameTheater, throughIndex: number): { home: Pl
     home: rows.filter(b => teamOf.get(b.playerId) === 'home').sort(byPoints),
     away: rows.filter(b => teamOf.get(b.playerId) === 'away').sort(byPoints),
   };
+}
+
+/** Shared box-score table markup, used by GameView's Box Score tab and BoxScoreOnly. */
+function BoxScoreTable({ teamName, box, showTurnovers }: { teamName: string; box: PlayerBoxScore[]; showTurnovers: boolean }) {
+  return (
+    <div className="mb-4">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{teamName}</h3>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-stone-400 font-bold uppercase border-b border-stone-100">
+            <th className="text-left py-1 pr-2">Player</th>
+            <th className="text-center py-1 w-8">MIN</th>
+            <th className="text-center py-1 w-8">PTS</th>
+            <th className="text-center py-1 w-8">2FG</th>
+            <th className="text-center py-1 w-8">3FG</th>
+            <th className="text-center py-1 w-8">FT</th>
+            <th className="text-center py-1 w-8">AST</th>
+            <th className="text-center py-1 w-8">TO</th>
+          </tr>
+        </thead>
+        <tbody>
+          {box.filter(b => b.possessions > 0).map(b => (
+            <tr key={b.playerId} className="border-b border-stone-50 text-stone-600">
+              <td className="text-left py-1 pr-2 font-bold text-stone-800 truncate max-w-[120px]">{b.playerName}</td>
+              <td className="text-center py-1">{b.minutes.toFixed(0)}</td>
+              <td className="text-center py-1 font-bold">{b.points}</td>
+              <td className="text-center py-1">{b.twoPointers}</td>
+              <td className="text-center py-1">{b.threePointers}</td>
+              <td className="text-center py-1">{b.andOnes}</td>
+              <td className="text-center py-1">{b.assists}</td>
+              <td className="text-center py-1">{showTurnovers ? b.turnovers : '–'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * D1: a completed game whose `balanceVersion` no longer matches the current engine
+ * (`BALANCE_VERSION` in engine/balance.ts) can't be safely re-simulated from its seed —
+ * the rules it was played under are gone. Shows the persisted box score with a notice
+ * instead of a (potentially different) replayed game.
+ */
+export function BoxScoreOnly({ result, homeTeamName, awayTeamName }: {
+  result: StoredGameResult;
+  homeTeamName: string;
+  awayTeamName: string;
+}) {
+  return (
+    <div className="flex flex-col h-full gap-3">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
+        <div className="text-sm font-bold text-amber-700">Play-by-play unavailable</div>
+        <div className="text-xs text-amber-600 mt-1">Game rules changed since this game was played — showing the final box score only.</div>
+      </div>
+      <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-4 text-center">
+        <div className="text-2xl font-black uppercase tracking-wider text-stone-800" style={{ fontFamily: 'var(--font-bebas)' }}>
+          Final: {homeTeamName} {result.finalScore[0]} — {result.finalScore[1]} {awayTeamName}
+        </div>
+        <div className="text-xs text-stone-400 mt-1">
+          {result.finalScore[0] > result.finalScore[1] ? homeTeamName : awayTeamName} wins!
+          {result.isOvertime && ` (${result.overtimePeriods}OT)`}
+        </div>
+      </div>
+      <div className="flex-1 bg-white rounded-xl border border-stone-200 shadow-sm overflow-y-auto p-3 min-h-0">
+        <BoxScoreTable teamName={awayTeamName} box={result.boxScore.away} showTurnovers />
+        <BoxScoreTable teamName={homeTeamName} box={result.boxScore.home} showTurnovers />
+      </div>
+    </div>
+  );
 }
 
 export function GameView({ game, onComplete }: GameViewProps) {

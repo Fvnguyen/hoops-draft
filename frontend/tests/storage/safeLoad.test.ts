@@ -49,7 +49,13 @@ describe.each(implementations)('$name safe loads', ({ make }) => {
     await expect(store.listSeasons()).resolves.toEqual([]);
   });
 
-  it('upgrades a legacy per-game season schedule instead of dropping it', async () => {
+  it('does not auto-upgrade a legacy per-game season schedule on load (upgrade now runs once, at DB open — see storage-migration.test.ts)', async () => {
+    // Per D3, `normalizeSeason` moved from a load-time call in safeLoad.ts to
+    // a one-time Dexie `.upgrade()` step run when the store is opened. A
+    // legacy-shaped season written directly via `saveSeason` (bypassing that
+    // upgrade step, which only runs once at DB open) is no longer rewritten
+    // on read — it round-trips as-is, since the shape check here only
+    // validates the top-level Season fields, not the schedule entries.
     const legacySeason = {
       id: 'legacy-season',
       sessionId: 'sess-1',
@@ -65,7 +71,7 @@ describe.each(implementations)('$name safe loads', ({ make }) => {
 
     const loaded = await store.getSeason('legacy-season');
     expect(loaded).not.toBeNull();
-    expect(Array.isArray(loaded!.schedule[0].matchups)).toBe(true);
-    expect(loaded!.schedule[0].matchups[0]).toMatchObject({ homeSeatIndex: 0, awaySeatIndex: 1 });
+    expect(loaded!.schedule[0]).toMatchObject({ gameIndex: 0, opponentSeatIndex: 1, played: true });
+    expect((loaded!.schedule[0] as unknown as { matchups?: unknown }).matchups).toBeUndefined();
   });
 });

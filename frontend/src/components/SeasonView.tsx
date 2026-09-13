@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { useStorageReady } from './StorageProvider';
-import { Season, createSeason, playNextGame, normalizeSeason, humanMatchup } from '../engine/season';
+import {
+  Season, createSeason, playNextGame, normalizeSeason, humanMatchup,
+  teamInfoForSeat, resolveMatchupReplay, StoredGameResult,
+} from '../engine/season';
 import type { DraftSession } from '../engine/deckbuilder';
-import { GameTheater } from '../engine/game';
-import { GameView } from './GameView';
+import { GameTheater, TeamInfo } from '../engine/game';
+import { GameView, BoxScoreOnly } from './GameView';
 import { Trophy, Swords, ChevronLeft, ArrowRight } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
 
@@ -17,13 +20,20 @@ interface SeasonViewProps {
   sessionId: string;
 }
 
+/** What's shown when a game day is open: a freshly (re)simulated theater to play back,
+ *  or — when the persisted result predates the current engine (D1 balanceVersion
+ *  mismatch) — just the box score. */
+type ActiveGameView =
+  | { kind: 'theater'; theater: GameTheater }
+  | { kind: 'boxOnly'; result: StoredGameResult; homeTeam: TeamInfo; awayTeam: TeamInfo };
+
 export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const router = useRouter();
   const ready = useStorageReady();
   const [season, setSeason] = useState<Season | null>(null);
   const [session, setSession] = useState<DraftSession | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
-  const [activeGame, setActiveGame] = useState<GameTheater | null>(null);
+  const [activeGame, setActiveGame] = useState<ActiveGameView | null>(null);
   const [activeGameIndex, setActiveGameIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -87,8 +97,16 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       const entry = season.schedule[gameIndex];
       const humanMatch = humanMatchup(entry);
       if (entry.played && humanMatch?.result) {
-        // Already played — show replay
-        setActiveGame(humanMatch.result);
+        // Already played — re-simulate for replay (or fall back to box-score-only /
+        // legacy read-only playback per D1/D8; see resolveMatchupReplay).
+        const homeTeam = teamInfoForSeat(season, session, humanMatch.homeSeatIndex);
+        const awayTeam = teamInfoForSeat(season, session, humanMatch.awaySeatIndex);
+        const replay = resolveMatchupReplay(humanMatch.result, homeTeam, awayTeam);
+        setActiveGame(
+          replay.kind === 'versionMismatch'
+            ? { kind: 'boxOnly', result: replay.result, homeTeam, awayTeam }
+            : { kind: 'theater', theater: replay.theater }
+        );
         setActiveGameIndex(gameIndex);
         return;
       }
@@ -101,7 +119,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
       setSeason({ ...result.season });
       await getGameStore().saveSeason(result.season);
-      setActiveGame(result.gameResult);
+      setActiveGame({ kind: 'theater', theater: result.gameResult });
       setActiveGameIndex(gameIndex);
     } catch (err) {
       if (err instanceof StorageQuotaError) {
@@ -157,7 +175,9 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
           </span>
         </div>
         <div className="flex-1 min-h-0">
-          <GameView game={activeGame} onComplete={handleGameComplete} />
+          {activeGame.kind === 'theater'
+            ? <GameView game={activeGame.theater} onComplete={handleGameComplete} />
+            : <BoxScoreOnly result={activeGame.result} homeTeamName={activeGame.homeTeam.name} awayTeamName={activeGame.awayTeam.name} />}
         </div>
       </div>
     );

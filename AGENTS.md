@@ -14,7 +14,7 @@ data/            Scraper + stats pipeline (Python + Playwright). See data/README
 docs/            ROADMAP.md = which plans in which order; plans/plan_<topic>_<date>.md = one locked
                  plan per piece of work (TEMPLATE.md); completed/ = finished plans and reviews (the "why");
                  HANDOVER.md, ARCHITECTURE.md, game_mechanics.md, card_schema.md, analytics/
-scripts/         Node dev scripts: analyze_game_data.js, check_card_counts.js, screenshot.js
+scripts/         Node dev scripts: check_card_counts.js, screenshot.js
 frontend/        The Next.js app (see frontend/README.md)
   src/engine/    PURE game engine (no react/next/fs): types, rng, balance (all tuning
                  constants), ratings (computeCards), cards (static JSON), draft,
@@ -49,7 +49,7 @@ Root (from repo root):
 - `npm run test:e2e` — Playwright specs in `frontend/tests/` (needs `npm run dev` running
   in another terminal first — baseURL is `http://localhost:3000`); `tests/smoke.spec.ts`
   loads every real route and fails on any console/page error — run before committing.
-- `npm run analyze` — runs `scripts/analyze_game_data.js` against the latest
+- `npm run analyze` — runs `frontend/scripts/analyze.ts` (tsx) against the latest
   `data/game_logs/full_dump_*.json` and prints a balance report
 - `npm run screenshot` — `node scripts/screenshot.js [route] [outfile] [--full]` (needs the
   dev server running)
@@ -129,13 +129,13 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   effect is stored as a negative number; per-channel edges are centred on the league
   means in `LEAGUE_AVG` (gameEngine.ts) — regenerate those from the balance script's
   header if the card pool or rating formulas change.
-- `scripts/analyze_game_data.js` (`npm run analyze`) reads the newest
+- `frontend/scripts/analyze.ts` (`npm run analyze`) reads the newest
   `data/game_logs/full_dump_*.json` and reports draft cube integrity, rarity distribution,
-  OVR-vs-win-rate correlation, synergy/play activation rates, and score-range sanity.
-- The `/debug` page in the running app (`frontend/src/app/debug/page.tsx`) reads current
-  `localStorage` state and POSTs it to `/api/game-logs`, which writes the JSON that
-  `analyze_game_data.js` consumes. Play a few drafts/seasons, hit export on `/debug`, then
-  run `npm run analyze`.
+  per-roster identity tiers/staffed plays, per-game play calls, score/margin bands, and
+  win rate by identity tier and staffed-play count.
+- The `/debug` page (`frontend/src/app/debug/page.tsx`) reads current `localStorage` state
+  and POSTs it to `/api/game-logs`, which writes the JSON `analyze.ts` consumes. Play a
+  few drafts/seasons, hit export on `/debug`, then run `npm run analyze`.
 - Next work: `docs/ROADMAP.md` then `docs/plans/plan_<topic>_<date>.md`; open issues in
   `docs/HANDOVER.md`; `docs/analytics/*` reports predate the current engine.
 

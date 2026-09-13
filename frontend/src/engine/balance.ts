@@ -8,6 +8,14 @@
 
 import type { Rarity } from './types';
 
+/**
+ * Bumped whenever a change to this file or game.ts/playbook.ts/archetypes.ts would
+ * change a previously-simulated game's outcome. Stored on saved games (see
+ * `storage/types.ts` `StoredGameResult.balanceVersion`) so the season view can tell a
+ * stale theater from a fresh one instead of silently re-narrating a different game.
+ */
+export const BALANCE_VERSION = 1;
+
 // ── game.ts (from gameEngine.ts) ────────────────────────────────────────────
 
 /** NBA pace baseline — all noise and swings are relative to this. */

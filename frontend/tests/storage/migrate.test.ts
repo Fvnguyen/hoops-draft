@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryGameStore } from '@/storage/memory';
 import { migrateFromLocalStorage } from '@/storage/migrate';
+import { CURRENT_CARD_SET_VERSION } from '@/storage/types';
 import { makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
 
 /** Tiny in-memory shim so these tests don't depend on a DOM/jsdom environment. */
@@ -55,9 +56,10 @@ describe('migrateFromLocalStorage', () => {
     const store = new MemoryGameStore();
     await migrateFromLocalStorage(store);
 
-    expect(await store.getDraftSession(session.id)).toEqual(session);
+    // D4: the store stamps cardSetVersion once, on the way in.
+    expect(await store.getDraftSession(session.id)).toEqual({ ...session, cardSetVersion: CURRENT_CARD_SET_VERSION });
     expect(await store.getSeason(season.id)).toEqual(season);
-    expect(await store.getRoster(roster.id)).toEqual(roster);
+    expect(await store.getRoster(roster.id)).toEqual({ ...roster, cardSetVersion: CURRENT_CARD_SET_VERSION });
 
     // Old keys are gone...
     expect(localStorage.getItem('hoops-draft-sessions')).toBeNull();
@@ -89,7 +91,7 @@ describe('migrateFromLocalStorage', () => {
     await migrateFromLocalStorage(store);
 
     expect(await store.listDraftSessions()).toEqual([]);
-    expect(await store.getRoster(roster.id)).toEqual(roster);
+    expect(await store.getRoster(roster.id)).toEqual({ ...roster, cardSetVersion: CURRENT_CARD_SET_VERSION });
   });
 
   it('is idempotent: a second run with nothing new is a no-op, and late-arriving legacy data is still imported', async () => {
@@ -103,7 +105,7 @@ describe('migrateFromLocalStorage', () => {
 
     // Second run: the legacy key was renamed, so there is nothing to import.
     await migrateFromLocalStorage(store);
-    expect(await store.listDraftSessions()).toEqual([session]);
+    expect(await store.listDraftSessions()).toEqual([{ ...session, cardSetVersion: CURRENT_CARD_SET_VERSION }]);
     expect(await store.getMeta('migratedFromLocalStorage')).toBe(flagAfterFirstRun);
 
     // Legacy data that appears later (an old tab still writing, a restored backup)

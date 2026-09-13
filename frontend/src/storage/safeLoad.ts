@@ -1,18 +1,21 @@
 /**
  * Shape checks applied to every record coming out of a GameStore backend.
  *
- * Saved records predate schema changes (BuiltRoster v2, round-robin season
- * schedules) or can simply be corrupted (a botched IndexedDB write, manual
+ * Saved records can simply be corrupted (a botched IndexedDB write, manual
  * edits in DevTools). Rather than let a bad record throw deep inside a page
  * component, each getter/list method below runs the record through here:
  * a record that fails its shape check is dropped (logged once, returns
  * null) instead of propagating an exception.
+ *
+ * Shape *upgrades* (BuiltRoster v2, round-robin season schedules, D1 game
+ * results) are NOT done here anymore (D3): they run once as a Dexie
+ * `.upgrade()` step at DB open (see `indexedDb.ts`, `MagicBallDB` version 2),
+ * so every record read through a GameStore is already current shape. This
+ * file only validates.
  */
 
-import type { DraftSession, DraftSessionSeat } from '@/engine/deckbuilder';
-import { normalizeBuiltRoster } from '@/engine/deckbuilder';
+import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import { normalizeSeason } from '@/engine/season';
 import type { SavedRoster } from './types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -26,16 +29,7 @@ export function safeParseDraftSession(raw: unknown): DraftSession | null {
     console.error('[storage] Corrupt draft session record skipped:', raw);
     return null;
   }
-  try {
-    const seats: DraftSessionSeat[] = session.seats.map((seat) => ({
-      ...seat,
-      builtRoster: normalizeBuiltRoster(seat.builtRoster, seat.drafted),
-    }));
-    return { ...session, seats };
-  } catch (error) {
-    console.error('[storage] Failed to normalize draft session, skipped:', session.id, error);
-    return null;
-  }
+  return session;
 }
 
 export function safeParseSavedRoster(raw: unknown): SavedRoster | null {
@@ -70,10 +64,5 @@ export function safeParseSeason(raw: unknown): Season | null {
     console.error('[storage] Corrupt season record skipped:', raw);
     return null;
   }
-  try {
-    return normalizeSeason(season).season;
-  } catch (error) {
-    console.error('[storage] Failed to normalize season, skipped:', season.id, error);
-    return null;
-  }
+  return season;
 }

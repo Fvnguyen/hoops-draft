@@ -7,8 +7,9 @@ animation on the first pack) -> deck builder (depth chart, play assignments, ide
 selection) -> single game or round-robin season -> in-app analytics export. The engine is
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
 archetype identities and assigned-player plays; persistence is IndexedDB behind
-`GameStore`. 103 Vitest tests pass, type-check is clean, `npm run lint` is 0 errors / 14
-warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
+`GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
+than the full play-by-play. 122 Vitest tests pass, type-check is clean, `npm run lint` is
+0 errors / 13 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`, `app/global-error.tsx`, shared `ErrorRecovery.tsx`) shows
 a recovery screen instead of a blank page; `frontend/tests/smoke.spec.ts` loads every real
@@ -56,43 +57,11 @@ Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
   players by PER only.
 - **Phase 1 (engine isolation)** (done 2026-09-12): engine made pure/seeded
   (`engine/rng.ts`), cards became a build artifact (`cards.json`), persistence moved to
-  `src/storage/` (GameStore/IndexedDB). Still open: seasons persist the full `GameTheater`
-  per game instead of box score + reseed; first Vercel preview deploy not done.
-
-## Plays & archetypes milestone — done 2026-09-13
-
-Design: `docs/completed/plan_plays_and_synergies_2026-09-13.md` with the reduced scope agreed with the
-owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans hidden.
-
-- **Engine**: `engine/archetypes.ts` (16 plans, tiers Online/Dedicated, caps, bot
-  `bestSelection`), `engine/playbook.ts` (11 plays with roles and fixed allocations,
-  `evaluatePlaybook`), `engine/game.ts` (per-possession call/coverage, lineup override
-  into the assigned players' own columns, scorer boost, on-call modifiers, budgets).
-  `calcTeamBonuses` returns archetype modifiers only. Bots staff roles and pick plans.
-- **Thresholds** tuned with `npm run feasibility` (mono 4/8/2 → 5/10/3; defensive colours
-  3/6/1 → 4/8/2; two-colour/gold stricter): a colour-chasing drafter reaches Online in
-  43-71% of drafts and Dedicated in 19-34%; bots reach Online 7-16%. Rosters unlock ~1.5
-  plans on average; `shortlistArchetypes` caps the offer at 4 (best of each lane kept),
-  and bots choose from the same shortlist.
-- **UI**: deck builder plays column is a `PlayPanel` per play (no hover flip, 40px role
-  rows, assign via popover / depth-chart click / drag onto the row, role tags on cards,
-  budget header); the team report's Identity section lists ONLY unlocked plans grouped
-  by lane — Offense, Defense, Gold always rendered, empty lanes say so — with the
-  selected one highlighted (click to switch; gold takes both slots);
-  selections that drop below Online are pruned on save. Rosters are v2
-  (`playAssignments`, `archetypes`); older rosters load with empty assignments.
-- **Measured** (`npm run balance -- 300 --seed 42`, play impact section): Box-and-One
-  +4.7% win for a fixed roster; offensive plays are small in isolation because their
-  modifiers apply on 9-12% of possessions — the visible effect is the assigned players'
-  presence and scorer boost. Tuning candidates: allocations, PLAY_SCORER_BOOST, on-call
-  deltas.
-
-Open after this milestone:
-- Play impact is modest; decide whether allocations/effects should grow.
-- Overtime possessions do not roll for plays (scope cut).
-- Defensive identities are rarer than offensive ones; the defensive colour thresholds in
-  `MONO_THRESHOLDS_BY_COLOR` are the knob.
-- Home page / draft room still show the 5:7 play card with neutral roles (fine).
+  `src/storage/` (GameStore/IndexedDB). First Vercel preview deploy still not done.
+- **Plays & archetypes milestone** (done 2026-09-13): archetype identities
+  (`engine/archetypes.ts`) and assigned-player plays (`engine/playbook.ts`), roster v2
+  (`playAssignments`, `archetypes`), deck builder `PlayPanel`. Design and full numbers in
+  `docs/completed/plan_plays_and_synergies_2026-09-13.md`.
 
 ## Post-milestone fixes — 2026-09-13
 
@@ -151,6 +120,39 @@ lacked: CI and a runtime error boundary.
 Verified: `npm test` (103 Vitest tests, up from 93), `npx tsc --noEmit`, `npm run lint` (0
 errors), `npm run build`, and `npx playwright test tests/smoke.spec.ts` (8/8) all pass.
 
+## Analytics tooling & data storage milestone — done 2026-09-13
+
+Design: `docs/completed/plan_analytics_tooling_2026-09-13.md`,
+`docs/completed/plan_data_storage_2026-09-13.md`. Both had no unmet dependencies and
+disjoint files, so they ran together; six wave-1 tasks landed as parallel agents plus
+driver wave-0/wave-2 work.
+
+- **Analytics**: `scripts/analyze_game_data.js` replaced by `frontend/scripts/analyze.ts`
+  (imports the real engine like `balance.ts`); reports identity tier per lane, staffed
+  plays, per-game play calls, and win rate by tier/staffing instead of the old
+  synergy/`PLAY_EFFECTS` sections (those systems no longer exist). `balance.ts --ab` adds
+  a paired treatment-vs-archetypes-off harness: at n=700 opponent-games, dedicated-tier
+  identities are +5.71 margin / +16.3pp win rate over no identity, and 2 staffed plays are
+  +14.0pp over 0 — see `docs/analytics/report_2026-09.md`. Root `package.json`'s
+  `balance`/`analyze` scripts now forward `--` args (they silently didn't before).
+- **Storage**: seasons persist `StoredGameResult` (seed + box score, not the full
+  `GameTheater`) per game; the theater re-simulates on view via
+  `resolveMatchupReplay`/`teamInfoForSeat` (`engine/season.ts`), falling back to a
+  box-score-only view if `balanceVersion` has changed, or a read-only `legacyTheater` for
+  pre-Phase-1 saves with no seed. Only the human's own matchup keeps its full box score;
+  bot-vs-bot matchups (3 of 4 per game day) drop theirs — nothing ever reads them and it's
+  what kept a season over the 100 KB target (measured 132 KB before, now under). Dexie
+  schema bumped to v2 with a one-time upgrade (`storageMeta` table, `normalizeSeason`/
+  `normalizeBuiltRoster` no longer run on every load). Rosters page has Export/Import
+  (merge by id, newer `timestamp` wins) and an "older card set" tag from the new
+  `cardSetVersion` field, stamped by the storage layer at save time.
+- **Verified**: `npm test` (122 Vitest tests, up from 103), `npx tsc --noEmit`, `npm run
+  lint` (0 errors), `npm run build` all pass.
+
+Open after this milestone: no fresh `/debug` export exists yet with the plays/archetypes
+fields populated (the on-disk dumps predate that milestone) — `docs/analytics/report_2026-09.md`'s
+identity/play-call sections are empty until someone plays a draft + season and exports.
+
 ## How to run everything
 
 ```bash
@@ -171,17 +173,19 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; next up is `docs/plans/plan_analytics_tooling_2026-09-13.md`).
+What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is now unblocked, and
+`ui_draft_deckbuild_pack` is paused mid-wave-0 waiting on the owner).
 The 2026-09-12 code review that produced Phases 0-1 is archived as
 `docs/completed/review_code_and_architecture_2026-09-12.md`. The list below predates it.
 
 Findings below are from `docs/analytics/analysis_report.md` and
-`docs/analytics/analytics_summary.md` (auto-generated by `scripts/analyze_game_data.js`
-against 5 draft sessions / 5 seasons / 35 games, curated by the user). Quoted "User Note"
-lines are the user's own hypotheses, not verified conclusions. Items 1, 3 and 4 predate
-the Phase 0 fixes and the plays & archetypes milestone (PPP is now ≈ 1.08; the old
-synergy list and `PLAY_EFFECTS` no longer exist) — re-run `npm run analyze` on a fresh
-export before acting on them.
+`docs/analytics/analytics_summary.md` (both now banner-marked stale; generated by the
+retired `scripts/analyze_game_data.js` against 5 draft sessions / 5 seasons / 35 games,
+curated by the user). Quoted "User Note" lines are the user's own hypotheses, not
+verified conclusions. Items 1, 3 and 4 predate the Phase 0 fixes and the plays &
+archetypes milestone (PPP is now ≈ 1.08; the old synergy list and `PLAY_EFFECTS` no
+longer exist) — `docs/analytics/report_2026-09.md` is the current tool's output, but has
+no fresh draft/season data yet; re-run `npm run analyze` after playing a session.
 
 1. **Offense is too powerful.** Points-per-possession measured at 1.290 (NBA average
    ~1.15); only 36% of logged game scores fell in a realistic 90-130 range. User's
@@ -237,5 +241,5 @@ export before acting on them.
 | What to work on next | `docs/ROADMAP.md`, then `docs/plans/plan_<topic>_<date>.md` |
 | Original code review (2026-09-12) | `docs/completed/review_code_and_architecture_2026-09-12.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
-| How to regenerate a balance report | `npm run balance` (headless) or `scripts/analyze_game_data.js` (`npm run analyze`, from app exports) |
+| How to regenerate a balance report | `npm run balance` (headless, `--ab` for identity/play impact) or `frontend/scripts/analyze.ts` (`npm run analyze`, from a `/debug` export) |
 | Screenshotting a route | `scripts/screenshot.js` (`npm run screenshot`) |

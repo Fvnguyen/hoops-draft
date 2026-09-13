@@ -5,6 +5,7 @@ import { getGameStore, SavedRoster } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
 import type { DraftSession, DraftPickRecord } from '@/engine/deckbuilder';
 import type { Season, SeasonScheduleEntry } from '@/engine/season';
+import { teamInfoForSeat, resolveMatchupReplay } from '@/engine/season';
 import type { GameTheater, PossessionEvent, TeamInfo } from '@/engine/game';
 import type { TeamBonuses } from '@/engine/synergies';
 import type { DraftCard, PlayerCardData } from '@/engine/types';
@@ -48,13 +49,30 @@ function analyzeData(data: GameLogData): string[] {
   log('═'.repeat(65));
   log(`Draft Sessions: ${sessions.length} | Seasons: ${seasons.length}`);
 
+  // plan_data_storage (D1) persists a slim { seed, balanceVersion, boxScore, ... } per
+  // matchup, not the full theater — re-simulate it here so this report can still read
+  // possessions/homeBonuses/etc. A version-mismatched game (rules changed since it was
+  // played) is skipped rather than reported as a replayed-but-different game.
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
   const allGames: { gameIndex: number; result: GameTheater }[] = [];
   seasons.forEach((season: Season) => {
+    const session = sessionById.get(season.sessionId);
     (season.schedule || []).forEach((entry: SeasonScheduleEntry, gIdx: number) => {
       if (!entry.played) return;
       // A game day holds several matchups (round robin); count every played one.
       for (const matchup of entry.matchups ?? []) {
-        if (matchup.result) allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: matchup.result });
+        if (!matchup.result) continue;
+        if (matchup.result.legacyTheater) {
+          allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: matchup.result.legacyTheater as GameTheater });
+          continue;
+        }
+        if (!session) continue; // can't rebuild bot TeamInfo without the draft session
+        const homeTeam = teamInfoForSeat(season, session, matchup.homeSeatIndex);
+        const awayTeam = teamInfoForSeat(season, session, matchup.awaySeatIndex);
+        const replay = resolveMatchupReplay(matchup.result, homeTeam, awayTeam);
+        if (replay.kind !== 'versionMismatch') {
+          allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: replay.theater });
+        }
       }
     });
   });

@@ -1,5 +1,8 @@
 # Game Data Analytics Report & User Notes
 
+> **Stale**: measured before Phase 0 and the plays & identities milestone; regenerate
+> with `npm run analyze`.
+
 I've successfully run the `analyze_game_data.js` script on your recent draft and season logs. We've gathered data from **5 Draft Sessions, 5 Seasons, and 35 Games**. 
 
 Here is the breakdown of the most important findings from the analysis, alongside your architectural notes:

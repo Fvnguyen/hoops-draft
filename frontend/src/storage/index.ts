@@ -7,8 +7,8 @@ import { MemoryGameStore } from './memory';
 import { migrateFromLocalStorage } from './migrate';
 import type { GameStore } from './types';
 
-export type { GameStore, SavedRoster } from './types';
-export { StorageQuotaError } from './types';
+export type { GameStore, SavedRoster, StorageMeta } from './types';
+export { StorageQuotaError, CURRENT_CARD_SET_VERSION } from './types';
 export { MemoryGameStore } from './memory';
 export { IndexedDbGameStore, MagicBallDB } from './indexedDb';
 export { migrateFromLocalStorage } from './migrate';
