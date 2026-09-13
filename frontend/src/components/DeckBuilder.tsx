@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
+import type { RosterIdentity } from '../engine/rosterStats';
 import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
@@ -32,7 +33,7 @@ const sortGLeaguePlayers = (a: PlayerCardData, b: PlayerCardData) => {
 
 type PosFilter = 'All' | 'G' | 'F' | 'C';
 
-export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, sessionId }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], sessionId?: string }) {
+export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, sessionId, podAverageIdentity }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], sessionId?: string, podAverageIdentity?: RosterIdentity }) {
   const router = useRouter();
 
   // Adjacency map: one position over is allowed (with OVR penalty in game sim)
@@ -506,7 +507,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
   return (
     <div className="h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50" onClick={clearSelection}>
-      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} />
+      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} />
       {saveError && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-3">
           <p className="text-sm text-red-700 font-semibold">{saveError}</p>

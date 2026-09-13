@@ -10,6 +10,10 @@ import { DraftSidebar } from './DraftSidebar';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { buildDraftSession } from '../lib/sessionBuilder';
+import { buildBotRoster } from '../engine/deckbuilder';
+import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
+import type { RosterIdentity } from '../engine/rosterStats';
+import type { PlayerCardData } from '../engine/types';
 import type { DraftSeat } from '../engine/draft';
 import type { DraftPickRecord } from '../engine/deckbuilder';
 
@@ -81,6 +85,23 @@ function SaveErrorBanner({ message }: { message: string | null }) {
   );
 }
 
+function averageRosterIdentities(identities: RosterIdentity[]): RosterIdentity | undefined {
+  if (identities.length === 0) return undefined;
+
+  const average = (key: keyof RosterIdentity) =>
+    identities.reduce((sum, identity) => sum + identity[key], 0) / identities.length;
+
+  return {
+    finishing: average('finishing'),
+    midRange: average('midRange'),
+    perimeter: average('perimeter'),
+    playmaking: average('playmaking'),
+    rebounding: average('rebounding'),
+    perDef: average('perDef'),
+    postDef: average('postDef'),
+  };
+}
+
 export function DraftRoom() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
@@ -98,6 +119,18 @@ export function DraftRoom() {
   const savingSessionRef = useRef(false);
 
   const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
+
+  const podAverageIdentity = averageRosterIdentities(
+    seats
+      .filter(seat => seat.isBot)
+      .map(seat => {
+        const players = seat.drafted.filter(
+          (card): card is PlayerCardData => card.type === 'Player'
+        );
+        const botRoster = buildBotRoster(seat.drafted, seat.botProfile);
+        return calcRosterIdentity(resolveDepthChart(players, botRoster.depthChart));
+      })
+  );
 
   // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {
@@ -170,7 +203,7 @@ export function DraftRoom() {
     return (
       <>
         <SaveErrorBanner message={saveError} />
-        <DeckBuilder draftedCards={humanSeat.drafted} initialZones={humanZones} sessionId={sessionId ?? undefined} />
+        <DeckBuilder draftedCards={humanSeat.drafted} initialZones={humanZones} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} />
       </>
     );
   }

@@ -106,11 +106,12 @@ function SynergyPopover({ activeNames, onClose }: { activeNames: Set<string>; on
   );
 }
 
-export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
+export function TopKPIBand({ identity, shotDiet, bonuses, depthChart, average }: {
   identity: RosterIdentity;
   shotDiet: TeamShotProfile;
   bonuses: TeamBonuses;
   depthChart: Record<string, PlayerCardData[]>;
+  average?: RosterIdentity;
 }) {
   // Default expanded on every render (including SSR); synced from localStorage
   // after mount so server and first client render always agree.
@@ -140,6 +141,7 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
   const rimPct = Math.round(shotDiet.rim * 100);
   const midPct = Math.round(shotDiet.mid * 100);
   const perPct = Math.round(shotDiet.per * 100);
+  const referenceIdentity = average ?? LEAGUE_AVG_IDENTITY;
 
   if (collapsed) {
     return (
@@ -182,7 +184,7 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart }: {
       {/* 1. Team identity */}
       <div className="flex flex-col gap-1 shrink-0">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
-        <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={176} />
+        <RadarChart data={identity} average={referenceIdentity} size={176} />
       </div>
 
       {/* 2. Shot diet */}
