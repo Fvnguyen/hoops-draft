@@ -11,6 +11,7 @@ import { useStorageReady } from '@/components/StorageProvider';
 function DeckbuilderTestInner() {
   const searchParams = useSearchParams();
   const rosterId = searchParams.get('rosterId');
+  const sessionIdParam = searchParams.get('sessionId');
   const ready = useStorageReady();
 
   const [cards, setCards] = useState<DraftCard[]>([]);
@@ -20,6 +21,7 @@ function DeckbuilderTestInner() {
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
   const [initialPlayAssignments, setInitialPlayAssignments] = useState<PlayAssignment[] | undefined>();
   const [initialArchetypes, setInitialArchetypes] = useState<ArchetypeSelection | undefined>();
+  const [sessionId, setSessionId] = useState<string | undefined>(sessionIdParam ?? undefined);
 
   useEffect(() => {
     if (!ready) return;
@@ -40,6 +42,7 @@ function DeckbuilderTestInner() {
           setInitialPlaysOrder(savedRoster.activePlays);
           setInitialPlayAssignments(savedRoster.playAssignments);
           setInitialArchetypes(savedRoster.archetypes);
+          if (!sessionIdParam && savedRoster.sessionId) setSessionId(savedRoster.sessionId);
           return;
         }
       }
@@ -80,7 +83,7 @@ function DeckbuilderTestInner() {
     return () => {
       cancelled = true;
     };
-  }, [ready, rosterId]);
+  }, [ready, rosterId, sessionIdParam]);
 
   if (!ready || cards.length === 0) return <div className="p-8 text-white">Loading Deckbuilder...</div>;
 
@@ -95,6 +98,7 @@ function DeckbuilderTestInner() {
         initialPlaysOrder={initialPlaysOrder}
         initialPlayAssignments={initialPlayAssignments}
         initialArchetypes={initialArchetypes}
+        sessionId={sessionId}
       />
     </div>
   );

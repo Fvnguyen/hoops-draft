@@ -84,7 +84,7 @@ export default function RostersPage() {
                   </div>
                   <div className="flex items-center gap-4">
                     <Link
-                      href={`/deckbuilder-test?rosterId=${rosterObj.id}`}
+                      href={`/deckbuilder-test?rosterId=${rosterObj.id}${rosterObj.sessionId ? `&sessionId=${rosterObj.sessionId}` : ''}`}
                       className="p-3 bg-white hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg transition-colors border border-stone-700"
                       title="Edit Roster"
                     >
