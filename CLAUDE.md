@@ -3,7 +3,9 @@
 ## Claude Code notes
 
 Read `AGENTS.md` first, then `docs/HANDOVER.md` (current state, open issues) and
-`docs/ARCHITECTURE.md` (how the pieces connect) before making non-trivial changes.
+`docs/ARCHITECTURE.md` (how the pieces connect) before making non-trivial changes. Work
+larger than a bug fix follows a plan in `docs/plans/` (sequence in `docs/ROADMAP.md`);
+when a plan is done, move it to `docs/completed/<slug>_<date>.md` and update both.
 
 **Verification expectations:**
 - Run `npm test` (root) after touching anything in `frontend/src/engine/` or `src/storage/` — Vitest tests in

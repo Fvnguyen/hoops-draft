@@ -46,6 +46,7 @@ frontend/    The Next.js app — see frontend/README.md (npm test, npm run balan
 - `docs/ARCHITECTURE.md` — how data flows from scraper to screen
 - `docs/game_mechanics.md` — the shot/possession model in prose
 - `docs/HANDOVER.md` — current state, open balance issues, where to look next
-- `docs/ROADMAP.md` — code review findings and the PWA / database / Vercel plan
-- `docs/completed/` — finished implementation plans (plays & identities, pack opening)
+- `docs/ROADMAP.md` — which plans to tackle in which order (latest three completed listed)
+- `docs/plans/` — one locked plan per piece of work, written from `TEMPLATE.md`
+- `docs/completed/` — finished plans and reviews
 - `AGENTS.md` — conventions and commands for anyone (human or agent) working in this repo
