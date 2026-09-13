@@ -5,13 +5,6 @@ import { DraftCard, CardListRow, RarityGem } from './PlayerCard';
 import { countBadges } from '../engine/synergies';
 import type { PlayerCardData, Rarity } from './PlayerCard';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
-import {
-  evaluateArchetypes,
-  MONO_THRESHOLDS,
-  TWO_COLOR_THRESHOLDS,
-  GOLD_THRESHOLDS,
-  type ArchetypeStatus,
-} from '../engine/archetypes';
 
 const TOTAL_PICKS = CUBE_PACKS * (CUBE_PLAYER_CARDS_PER_PACK + 1);
 
@@ -53,52 +46,7 @@ function topBadges(drafted: DraftCard[], count: number) {
     .slice(0, count);
 }
 
-/** Primary-colour carrier count against the next tier's threshold (mirrors TopKPIBand's
- *  identical helper — kept local since these are separate, unrelated UI surfaces). */
-function primaryCarrierFraction(status: ArchetypeStatus): { have: number; need: number } {
-  const target = status.tier === 'none' ? 'online' : 'dedicated';
-  const have = status.tally[status.def.colors.primary]?.carriers ?? 0;
-  if (status.def.kind === 'mono') return { have, need: MONO_THRESHOLDS[target].carriers };
-  if (status.def.kind === 'two') return { have, need: TWO_COLOR_THRESHOLDS[target].primary.carriers };
-  return { have, need: GOLD_THRESHOLDS[target].primary.carriers };
-}
 
-/**
- * Top 3 archetypes by progress over the drafted PLAYER cards. Starters are not known
- * yet during the draft, so every plan is evaluated with an empty starter set — tiers
- * will only ever show as far as the non-starter thresholds allow; this is intentionally
- * a coarse teaser, not the full roster-lock evaluation (see ArchetypePicker for that).
- */
-function IdentityProgress({ drafted }: { drafted: DraftCard[] }) {
-  const players = drafted.filter((c): c is PlayerCardData => c.type === 'Player');
-  const statuses = evaluateArchetypes(players, new Set<string>());
-  const topPlans = [...statuses]
-    .filter(s => s.progress > 0)
-    .sort((a, b) => b.progress - a.progress)
-    .slice(0, 3);
-
-  if (topPlans.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-1.5 pt-2 mt-1 border-t border-stone-200">
-      <h4 className="text-[9px] font-bold uppercase tracking-widest text-stone-400">Identity progress</h4>
-      {topPlans.map(status => {
-        const { have, need } = primaryCarrierFraction(status);
-        return (
-          <div key={status.def.id} className="flex flex-col gap-0.5">
-            <div className="flex items-center justify-between gap-2 text-[10px]">
-              <span className="font-bold text-stone-600 truncate">{status.def.name}</span>
-              <span className="text-stone-400 font-bold shrink-0">{have}/{need} carriers</span>
-            </div>
-            <div className="h-1.5 bg-stone-200 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-400" style={{ width: `${Math.round(status.progress * 100)}%` }} />
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function PositionBar({ label, value, max, tooltip }: { label: string; value: number; max: number; tooltip?: string }) {
   const pct = max > 0 ? Math.max(6, (value / max) * 100) : 6;
@@ -145,8 +93,6 @@ function DraftSummary({ drafted }: { drafted: DraftCard[] }) {
           ))}
         </div>
       )}
-
-      <IdentityProgress drafted={drafted} />
     </div>
   );
 }

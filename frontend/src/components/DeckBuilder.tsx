@@ -1,13 +1,16 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData, getPosColors } from './PlayerCard';
+import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData, getPosColors, RoleTag } from './PlayerCard';
+import { PlayPanel } from './PlayPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
 import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
+import { PLAYBOOK, evaluatePlaybook, getPlaybookId, isEligibleForRole, type PlayAssignment, type PlayStatus, type PlaySide } from '../engine/playbook';
+import { evaluateArchetypes, type ArchetypeSelection } from '../engine/archetypes';
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
@@ -33,7 +36,7 @@ const sortGLeaguePlayers = (a: PlayerCardData, b: PlayerCardData) => {
 
 type PosFilter = 'All' | 'G' | 'F' | 'C';
 
-export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, sessionId, podAverageIdentity }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], sessionId?: string, podAverageIdentity?: RosterIdentity }) {
+export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], initialPlayAssignments?: PlayAssignment[], initialArchetypes?: ArchetypeSelection, sessionId?: string, podAverageIdentity?: RosterIdentity }) {
   const router = useRouter();
 
   // Adjacency map: one position over is allowed (with OVR penalty in game sim)
@@ -108,6 +111,20 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const [posFilter, setPosFilter] = useState<PosFilter>('All');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // Play-role assignment state: cardId -> assignment (roleId -> playerId). Kept in
+  // sync with activePlays by the effect below. `assigning` is the role currently
+  // being filled (selected via a role row click); mutually exclusive with the
+  // player placement selection above.
+  const [playAssignments, setPlayAssignments] = useState<Record<string, PlayAssignment>>(() => {
+    const map: Record<string, PlayAssignment> = {};
+    (initialPlayAssignments ?? []).forEach(a => { map[a.cardId] = a; });
+    return map;
+  });
+  // Chosen roster identity (offense/defense or gold). Selections that fall below Online
+  // when the roster changes are dropped automatically (locked plans are never shown).
+  const [archetypes, setArchetypes] = useState<ArchetypeSelection>(initialArchetypes ?? {});
+  const [assigning, setAssigning] = useState<{ cardId: string; roleId: string } | null>(null);
+
   const [isPlaysOpen, setIsPlaysOpen] = useState(true);
   const [isPlayersOpen, setIsPlayersOpen] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -180,14 +197,39 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     setDepthChart(initDepth);
     setGLeaguePlayers(initGPlayers);
     setGLeaguePlays(initGPlays);
-  }, [draftedCards, initialZones, initialDepthOrder, initialPlaysOrder]);
 
-  // Escape clears whatever is selected (bench player or placed player)
+    const initAssignments: Record<string, PlayAssignment> = {};
+    (initialPlayAssignments ?? []).forEach(a => { initAssignments[a.cardId] = a; });
+    setPlayAssignments(initAssignments);
+  }, [draftedCards, initialZones, initialDepthOrder, initialPlaysOrder, initialPlayAssignments]);
+
+  // Keep playAssignments in sync with activePlays: a play entering a slot gets a
+  // fresh (or its previous) assignment; a play leaving a slot drops its assignment
+  // entirely (covers both "swap play" and "return play to G-League").
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlayAssignments(prev => {
+      const next: Record<string, PlayAssignment> = {};
+      let changed = false;
+      activePlays.forEach(play => {
+        if (!play) return;
+        const existing = prev[play.id];
+        next[play.id] = existing ?? { cardId: play.id, playId: getPlaybookId(play), roles: {} };
+        if (!existing) changed = true;
+      });
+      if (Object.keys(next).length !== Object.keys(prev).length) changed = true;
+      return changed ? next : prev;
+    });
+  }, [activePlays]);
+
+  // Escape clears whatever is selected (bench player, placed player, or a role
+  // being assigned — all three are mutually exclusive selection modes).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedGLeaguePlayer(null);
         setSelectedPlacedPlayer(null);
+        setAssigning(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -197,6 +239,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const clearSelection = () => {
     setSelectedGLeaguePlayer(null);
     setSelectedPlacedPlayer(null);
+    setAssigning(null);
   };
 
   const handleDragStart = (e: React.DragEvent, card: DraftCard, sourceZone: string, sourceIndex?: number) => {
@@ -274,6 +317,12 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
     // CASE 2: Source is depth chart, target is G-League → atomic: remove from depth + add to G-League
     if (sourceIsDepth && targetZone === 'GLeaguePlayers') {
+      const heldRoles = rolesByPlayer.get(card.id);
+      if (heldRoles && heldRoles.length > 0) {
+        const ok = confirm(`${(card as PlayerCardData).player.name} holds ${heldRoles.length} play role${heldRoles.length > 1 ? 's' : ''} (${heldRoles.map(r => `${r.playName}: ${r.roleName}`).join(', ')}). Sending them to the G-League clears those roles. Continue?`);
+        if (!ok) { setDraggedItem(null); return; }
+        removePlayerRoles(card.id);
+      }
       setDepthChart(prev => ({ ...prev, [sourceZone]: prev[sourceZone].filter(p => p.id !== card.id) }));
       setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort(sortGLeaguePlayers));
       setDraggedItem(null);
@@ -336,6 +385,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
    *  it back to the G-League. (Only Player click behaviour changes to the new
    *  select → highlight → place model below.) */
   const handlePlayClick = (play: Play, currentZone: string) => {
+    setAssigning(null);
     if (currentZone.startsWith('ActivePlay')) {
       removeCardFromSource(play.id, currentZone);
       if (!play.id.startsWith('basic-')) {
@@ -358,12 +408,90 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
   const handleGLeaguePlayerClick = (player: PlayerCardData) => {
     setSelectedPlacedPlayer(null);
+    setAssigning(null);
     setSelectedGLeaguePlayer(prev => (prev?.id === player.id ? null : player));
   };
 
   const handlePlacedPlayerClick = (player: PlayerCardData, col: string) => {
+    if (assigning) {
+      tryAssignRole(player);
+      return;
+    }
     setSelectedGLeaguePlayer(null);
     setSelectedPlacedPlayer(prev => (prev?.id === player.id ? null : { id: player.id, col }));
+  };
+
+  // ── Play-role assignment ──────────────────────────────────────────────────
+
+  const handleRoleClick = (cardId: string, roleId: string) => {
+    setSelectedGLeaguePlayer(null);
+    setSelectedPlacedPlayer(null);
+    setAssigning(prev => (prev?.cardId === cardId && prev.roleId === roleId ? null : { cardId, roleId }));
+  };
+
+  const handleRoleClear = (cardId: string, roleId: string) => {
+    setPlayAssignments(prev => {
+      const a = prev[cardId];
+      if (!a || !(roleId in a.roles)) return prev;
+      const roles = { ...a.roles };
+      delete roles[roleId];
+      return { ...prev, [cardId]: { ...a, roles } };
+    });
+    setAssigning(null);
+  };
+
+  /** Removes every role assignment held by this player, across every active play. */
+  const removePlayerRoles = (playerId: string) => {
+    setPlayAssignments(prev => {
+      let anyChanged = false;
+      const next: Record<string, PlayAssignment> = {};
+      for (const [cardId, a] of Object.entries(prev)) {
+        if (!Object.values(a.roles).includes(playerId)) { next[cardId] = a; continue; }
+        const roles = { ...a.roles };
+        for (const rid of Object.keys(roles)) {
+          if (roles[rid] === playerId) delete roles[rid];
+        }
+        next[cardId] = { ...a, roles };
+        anyChanged = true;
+      }
+      return anyChanged ? next : prev;
+    });
+  };
+
+  /** Attempt to place `player` into the role currently being assigned (`assigning`).
+   *  No-ops silently when the player is ineligible or already holds a different
+   *  role in the same play — those cards are dimmed/non-clickable in the UI, but
+   *  this guards drag-and-drop and any other entry point too. */
+  /** Assign `player` to a role of a play if eligible and not already holding another role in it. Returns true on success. */
+  const assignRole = (cardId: string, roleId: string, player: PlayerCardData): boolean => {
+    const play = activePlays.find(p => p?.id === cardId);
+    const def = play ? PLAYBOOK[getPlaybookId(play)] : undefined;
+    const role = def?.roles.find(r => r.id === roleId);
+    if (!def || !role) return false;
+    if (!isEligibleForRole(player, role)) return false;
+    const currentRoles = playAssignments[cardId]?.roles ?? {};
+    const holdsOtherRole = Object.entries(currentRoles).some(([rid, pid]) => rid !== roleId && pid === player.id);
+    if (holdsOtherRole) return false;
+    setPlayAssignments(prev => ({
+      ...prev,
+      [cardId]: { cardId, playId: def.playId, roles: { ...currentRoles, [roleId]: player.id } },
+    }));
+    return true;
+  };
+
+  const tryAssignRole = (player: PlayerCardData) => {
+    if (!assigning) return;
+    const { cardId, roleId } = assigning;
+    const play = activePlays.find(p => p?.id === cardId);
+    if (!play) { setAssigning(null); return; }
+    if (assignRole(cardId, roleId, player)) setAssigning(null);
+  };
+
+  /** Drop of a depth-chart card (dataTransfer text = card id) onto a play's role row. */
+  const handleRoleDrop = (cardId: string, roleId: string, droppedId: string) => {
+    const player = allPlayers.find(p => p.id === droppedId);
+    if (player) assignRole(cardId, roleId, player);
+    setAssigning(null);
   };
 
   const placeSelectedInColumn = (col: string) => {
@@ -399,6 +527,12 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   };
 
   const sendPlacedToGLeague = (player: PlayerCardData, col: string) => {
+    const heldRoles = rolesByPlayer.get(player.id);
+    if (heldRoles && heldRoles.length > 0) {
+      const ok = confirm(`${player.player.name} holds ${heldRoles.length} play role${heldRoles.length > 1 ? 's' : ''} (${heldRoles.map(r => `${r.playName}: ${r.roleName}`).join(', ')}). Sending them to the G-League clears those roles. Continue?`);
+      if (!ok) return;
+      removePlayerRoles(player.id);
+    }
     setDepthChart(prev => ({ ...prev, [col]: prev[col].filter(p => p.id !== player.id) }));
     setGLeaguePlayers(prev => [...prev, player].sort(sortGLeaguePlayers));
     setSelectedPlacedPlayer(null);
@@ -413,6 +547,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     setActivePlays([null, null, null]);
     setSelectedGLeaguePlayer(null);
     setSelectedPlacedPlayer(null);
+    setAssigning(null);
     setShowClearConfirm(false);
   };
 
@@ -430,6 +565,123 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const bonuses = calcTeamBonuses(allPlayers, validActivePlays, new Map());
   const missingPos = ['PG', 'SG', 'SF', 'PF', 'C'].find(pos => depthChart[pos].length === 0);
 
+  // Play-role assignment: evaluate every equipped play's roles against the active
+  // 12-man roster (playAssignments/evaluatePlaybook — docs/plan_plays_and_synergies
+  // §4). Only depth-chart players are eligible; roles referencing anyone else read
+  // as unfilled with a reason.
+  const playbookAssignments = useMemo(() => Object.values(playAssignments), [playAssignments]);
+  const starterIds = useMemo(() => new Set(Object.values(depthChart).map(col => col[0]?.id).filter((id): id is string => !!id)), [depthChart]);
+  const archetypeStatuses = useMemo(() => evaluateArchetypes(Object.values(depthChart).flat(), starterIds, archetypes), [depthChart, starterIds, archetypes]);
+  // Only unlocked plans may stay selected; anything that dropped below Online is pruned.
+  const validArchetypes = useMemo<ArchetypeSelection>(() => {
+    const unlocked = new Set(archetypeStatuses.filter(st => st.tier !== 'none').map(st => st.def.id));
+    const keep = (id?: string) => (id && unlocked.has(id) ? id : undefined);
+    return archetypes.gold ? { gold: keep(archetypes.gold) } : { offense: keep(archetypes.offense), defense: keep(archetypes.defense) };
+  }, [archetypes, archetypeStatuses]);
+  const playbookStatus = useMemo(
+    () => evaluatePlaybook(playbookAssignments, Object.values(depthChart).flat()),
+    [playbookAssignments, depthChart]
+  );
+  const playStatusByCardId = useMemo(() => {
+    const map = new Map<string, PlayStatus>();
+    playbookStatus.plays.forEach(s => map.set(s.assignment.cardId, s));
+    return map;
+  }, [playbookStatus]);
+
+  // playerId -> every role they currently hold, across every equipped play — feeds
+  // the RoleTag overlay on depth-chart cards.
+  const roleEntries = useMemo(() => {
+    const entries: { playerId: string; playName: string; roleName: string; side: PlaySide }[] = [];
+    for (const a of playbookAssignments) {
+      const def = PLAYBOOK[a.playId];
+      if (!def) continue;
+      for (const [roleId, playerId] of Object.entries(a.roles)) {
+        const role = def.roles.find(r => r.id === roleId);
+        if (!role) continue;
+        entries.push({ playerId, playName: def.name, roleName: role.name, side: def.side });
+      }
+    }
+    return entries;
+  }, [playbookAssignments]);
+
+  // Not wrapped in useMemo: grouping a Map of arrays defeats the React Compiler's
+  // ability to preserve manual memoization (verified — every mutation style tried
+  // still failed `react-hooks/preserve-manual-memoization`). roleEntries above is
+  // already memoized, and this grouping pass over at most a few dozen entries is
+  // cheap enough to redo every render.
+  const rolesByPlayer = new Map<string, { playName: string; roleName: string; side: PlaySide }[]>();
+  for (const entry of roleEntries) {
+    rolesByPlayer.set(entry.playerId, [...(rolesByPlayer.get(entry.playerId) ?? []), entry]);
+  }
+
+  // Save is blocked on a dangling/ineligible role (a role holding a playerId that
+  // no longer resolves to an eligible active-roster player) — an unassigned role is
+  // fine, it just leaves the play inactive. Report the first offender for the
+  // disabled button's title.
+  const invalidAssignmentReason = useMemo(() => {
+    for (const status of playbookStatus.plays) {
+      for (const r of status.roles) {
+        if (r.playerId && !r.filled) {
+          return `${status.def.name} — ${r.role.name}: ${r.reason}`;
+        }
+      }
+    }
+    return null;
+  }, [playbookStatus]);
+
+  // Assigning a role? Precompute which role/def is targeted so every depth-chart
+  // card can be scored for eligibility in the same render pass.
+  const assigningRole = useMemo(() => {
+    if (!assigning) return undefined;
+    const play = activePlays.find(p => p?.id === assigning.cardId);
+    const def = play ? PLAYBOOK[getPlaybookId(play)] : undefined;
+    return def?.roles.find(r => r.id === assigning.roleId);
+  }, [assigning, activePlays]);
+
+  const isAssignEligible = (player: PlayerCardData): boolean => {
+    if (!assigning || !assigningRole) return false;
+    if (!isEligibleForRole(player, assigningRole)) return false;
+    const currentRoles = playAssignments[assigning.cardId]?.roles ?? {};
+    return !Object.entries(currentRoles).some(([rid, pid]) => rid !== assigning.roleId && pid === player.id);
+  };
+
+  /** Eligibility check for a given (play, role, player) triple — used by PlayPanel to
+   *  highlight a role row green/red while a depth-chart player is being dragged over it. */
+  const isRoleEligible = (cardId: string, roleId: string, playerId: string): boolean => {
+    const play = activePlays.find(p => p?.id === cardId);
+    const def = play ? PLAYBOOK[getPlaybookId(play)] : undefined;
+    const role = def?.roles.find(r => r.id === roleId);
+    const player = allPlayers.find(p => p.id === playerId);
+    if (!def || !role || !player) return false;
+    if (!isEligibleForRole(player, role)) return false;
+    const currentRoles = playAssignments[cardId]?.roles ?? {};
+    return !Object.entries(currentRoles).some(([rid, pid]) => rid !== roleId && pid === playerId);
+  };
+
+  // Eligible active-roster candidates for the role currently being assigned, sorted by
+  // badge level desc — feeds the PlayPanel "Assign" popover (a second path to the same
+  // assignRole() call the depth-chart click-to-place flow already uses).
+  const pickerCandidates = !assigning || !assigningRole ? undefined : allPlayers
+    .filter(isAssignEligible)
+    .sort((a, b) => {
+      const levelOf = (p: PlayerCardData) => {
+        if (!assigningRole.badge) return 0;
+        const main = p.traits?.find(t => t.name === assigningRole.badge)?.level ?? 0;
+        const alt = assigningRole.altBadge ? (p.traits?.find(t => t.name === assigningRole.altBadge)?.level ?? 0) : 0;
+        return Math.max(main, alt);
+      };
+      return levelOf(b) - levelOf(a);
+    });
+
+  const handlePick = (playerId: string) => {
+    const player = allPlayers.find(p => p.id === playerId);
+    if (player) tryAssignRole(player);
+  };
+
+  // Player currently mid-drag, for the PlayPanel role-row drag-eligibility highlight
+  // (best-effort — dataTransfer payload isn't readable during dragover in all browsers).
+  const draggingPlayerId = draggedItem?.card.type === 'Player' ? draggedItem.card.id : undefined;
+
   const isComplete = playersInRoster === 12 && !missingPos && activePlaysCount === 3;
 
   let statusText = 'Roster is valid';
@@ -437,13 +689,6 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   else if (playersInRoster > 12) statusText = `Drop ${playersInRoster - 12} Player(s)`;
   else if (missingPos) statusText = `Need a ${missingPos} Starter`;
   else if (activePlaysCount < 3) statusText = `Need ${3 - activePlaysCount} more Play(s)`;
-
-  // Map each filled play slot to its full/partial/none activation, in slot order.
-  const activePlayStatus = new Map<string, 'full' | 'partial' | 'none'>();
-  validActivePlays.forEach((p, i) => {
-    const result = bonuses.activePlays[i];
-    if (result) activePlayStatus.set(p.id, result.activated);
-  });
 
   const filteredGLeaguePlayers = gLeaguePlayers.filter(p => matchesPosFilter(p.player.position, posFilter));
 
@@ -468,6 +713,9 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         zones: finalZones,
         depthChartOrder,
         activePlays: activePlayIds,
+        playAssignments: playbookAssignments,
+        archetypes: validArchetypes,
+        version: 2,
         sessionId: sessionId ?? null,
       };
 
@@ -486,8 +734,11 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         const session = await store.getDraftSession(sessionId);
         if (session) {
           session.seats[0].builtRoster = {
+            version: 2,
             depthChart: depthChartOrder,
             activePlays: activePlayIds,
+            playAssignments: playbookAssignments,
+            archetypes: validArchetypes,
             gLeaguePlayers: gLeaguePlayerIds,
             gLeaguePlays: gLeaguePlayIds,
           };
@@ -507,7 +758,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
   return (
     <div className="h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50" onClick={clearSelection}>
-      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} />
+      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} />
       {saveError && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-3">
           <p className="text-sm text-red-700 font-semibold">{saveError}</p>
@@ -542,10 +793,10 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); setShowSaveModal(true); }}
-                disabled={!isComplete}
-                title={!isComplete ? statusText : undefined}
+                disabled={!isComplete || !!invalidAssignmentReason}
+                title={!isComplete ? statusText : invalidAssignmentReason ?? undefined}
                 className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
-                  isComplete
+                  isComplete && !invalidAssignmentReason
                   ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] shadow-emerald-500/30'
                   : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
                 }`}
@@ -558,30 +809,35 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
           <div className="flex flex-row gap-3 flex-1 min-h-0">
             {/* Left Column: Active Plays — full-size cards so requirements/mechanics
                 are actually readable (was a 60px compact row). */}
-            <div className="w-[170px] shrink-0 flex flex-col min-h-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Plays (Max 3)</h3>
-              <div className="flex flex-col gap-3 overflow-y-auto px-2 pb-1 items-center">
+            <div className="w-[300px] shrink-0 flex flex-col min-h-0">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-1 shrink-0">Plays (Max 3)</h3>
+              <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-amber-600' : 'text-stone-400'}`}>
+                Offense {Math.round(playbookStatus.offenseAllocation * 100)}% / {Math.round(playbookStatus.offenseBudget * 100)}%
+                {' · '}
+                Defense {Math.round(playbookStatus.defenseAllocation * 100)}% / {Math.round(playbookStatus.defenseBudget * 100)}%
+              </div>
+              <div className="flex flex-col gap-3 overflow-y-auto px-1 pb-1">
                 {[0, 1, 2].map(slotIndex => {
                   const play = activePlays[slotIndex];
                   const zoneId = `ActivePlay-${slotIndex}`;
-                  const status = play ? activePlayStatus.get(play.id) : undefined;
-                  const evaluation = play ? evaluatePlay(play, badgeTotals) : undefined;
-                  if (!play) {
+                  const roleStatus = play ? playStatusByCardId.get(play.id) : undefined;
+                  const selectedRoleId = play && assigning?.cardId === play.id ? assigning.roleId : undefined;
+                  if (!play || !roleStatus) {
                     return (
                       <div
                         key={slotIndex}
-                        className={`w-[140px] aspect-[5/7] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                        className={`w-full h-[90px] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDropOnZone(e, zoneId)}
                       >
-                        <span className="text-stone-500 font-bold uppercase text-[10px] pointer-events-none text-center px-2">Empty play slot</span>
+                        <span className="text-stone-500 font-bold uppercase text-[10px] pointer-events-none text-center px-2">Empty play slot — drag a play here</span>
                       </div>
                     );
                   }
                   return (
                     <div
                       key={slotIndex}
-                      className="relative w-[140px]"
+                      className="relative w-full"
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropOnZone(e, zoneId)}
                     >
@@ -595,18 +851,22 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                         // native HTML5 DragEvent this handler actually needs — `any` bridges that.
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
-                        onClick={(e) => { e.stopPropagation(); handlePlayClick(play, zoneId); }}
                       >
-                        <PlayCard play={play} evaluation={evaluation} />
-                      </motion.div>
-                      {status && (
-                        <span
-                          title={status === 'full' ? 'Fully activated' : status === 'partial' ? 'Partially activated' : 'Not activated'}
-                          className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full border-2 border-white z-30 pointer-events-none ${
-                            status === 'full' ? 'bg-emerald-500' : status === 'partial' ? 'bg-amber-500' : 'bg-stone-400'
-                          }`}
+                        <PlayPanel
+                          play={play}
+                          status={roleStatus}
+                          players={allPlayers}
+                          selectedRoleId={selectedRoleId}
+                          draggingPlayerId={draggingPlayerId}
+                          isEligible={(roleId, playerId) => isRoleEligible(play.id, roleId, playerId)}
+                          onRoleClick={(roleId) => { handleRoleClick(play.id, roleId); }}
+                          onRoleClear={(roleId) => { handleRoleClear(play.id, roleId); }}
+                          onRoleDrop={(roleId, droppedId) => { handleRoleDrop(play.id, roleId, droppedId); }}
+                          onRemove={() => handlePlayClick(play, zoneId)}
+                          pickerCandidates={selectedRoleId ? pickerCandidates : undefined}
+                          onPick={handlePick}
                         />
-                      )}
+                      </motion.div>
                     </div>
                   );
                 })}
@@ -648,6 +908,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                         {players.map((p, idx) => {
                           const isStarter = idx === 0;
                           const isSelected = selectedPlacedPlayer?.id === p.id;
+                          const playerRoleTags = rolesByPlayer.get(p.id) ?? [];
                           return (
                             <motion.div
                               key={p.id} layout initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }}
@@ -668,9 +929,25 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                                 </div>
                               )}
                               <div
-                                className="group relative w-full cursor-grab active:cursor-grabbing"
+                                className={`group relative w-full cursor-grab active:cursor-grabbing transition-opacity ${
+                                  assigning
+                                    ? (isAssignEligible(p) ? 'ring-2 ring-emerald-400 rounded-lg' : 'opacity-30 grayscale')
+                                    : ''
+                                }`}
                                 onClick={(e) => { e.stopPropagation(); handlePlacedPlayerClick(p, pos); }}
                               >
+                                {playerRoleTags.length > 0 && (
+                                  <div className="absolute top-1 left-1 z-20 flex flex-col gap-0.5 pointer-events-none">
+                                    {playerRoleTags.slice(0, 2).map((r, i) => (
+                                      <RoleTag key={i} playName={r.playName} roleName={r.roleName} side={r.side} />
+                                    ))}
+                                    {playerRoleTags.length > 2 && (
+                                      <span className="text-[8px] font-black bg-stone-900 text-white rounded px-1 py-0.5 w-fit leading-none">
+                                        +{playerRoleTags.length - 2}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 {isStarter ? (
                                   /* Starter = the full 5:7 card, sized by the column width. */
                                   <PlayerCard player={p} isSelected={isSelected} />

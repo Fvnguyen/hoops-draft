@@ -1,4 +1,6 @@
 'use client';
+import type { PlayAssignment } from '@/engine/playbook';
+import type { ArchetypeSelection } from '@/engine/archetypes';
 import { useEffect, useState, Suspense } from 'react';
 import { DraftCard } from '@/components/PlayerCard';
 import { DeckBuilder } from '@/components/DeckBuilder';
@@ -16,6 +18,8 @@ function DeckbuilderTestInner() {
   const [rosterName, setRosterName] = useState<string>('');
   const [initialDepthOrder, setInitialDepthOrder] = useState<Record<string, string[]> | undefined>();
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
+  const [initialPlayAssignments, setInitialPlayAssignments] = useState<PlayAssignment[] | undefined>();
+  const [initialArchetypes, setInitialArchetypes] = useState<ArchetypeSelection | undefined>();
 
   useEffect(() => {
     if (!ready) return;
@@ -34,6 +38,8 @@ function DeckbuilderTestInner() {
           setRosterName(savedRoster.name);
           setInitialDepthOrder(savedRoster.depthChartOrder);
           setInitialPlaysOrder(savedRoster.activePlays);
+          setInitialPlayAssignments(savedRoster.playAssignments);
+          setInitialArchetypes(savedRoster.archetypes);
           return;
         }
       }
@@ -87,6 +93,8 @@ function DeckbuilderTestInner() {
         rosterId={rosterId || undefined}
         initialDepthOrder={initialDepthOrder}
         initialPlaysOrder={initialPlaysOrder}
+        initialPlayAssignments={initialPlayAssignments}
+        initialArchetypes={initialArchetypes}
       />
     </div>
   );

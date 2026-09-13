@@ -1,39 +1,20 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RosterIdentity, LEAGUE_AVG_IDENTITY } from '../engine/rosterStats';
 import type { TeamBonuses } from '../engine/synergies';
 import type { TeamShotProfile } from '../engine/game';
 import type { PlayerCardData } from '../engine/types';
 import {
   evaluateArchetypes,
-  MONO_THRESHOLDS,
-  TWO_COLOR_THRESHOLDS,
-  GOLD_THRESHOLDS,
   type ArchetypeStatus,
   type ArchetypeSelection,
   type ArchetypeTier,
 } from '../engine/archetypes';
 import { DonutChart } from './DonutChart';
 import { RadarChart } from './RadarChart';
-import { ArchetypePicker } from './ArchetypePicker';
 
-const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
-const TIER_CLASS: Record<ArchetypeTier, string> = {
-  none: 'bg-stone-100 text-stone-400',
-  online: 'bg-emerald-100 text-emerald-700',
-  dedicated: 'bg-amber-100 text-amber-700',
-};
-
-/** "Sharpshooter" primary-colour carrier count against the next tier's threshold —
- *  used for both the identity chips and the "Next up" teaser text. */
-function primaryCarrierFraction(status: ArchetypeStatus): { have: number; need: number } {
-  const target = status.tier === 'none' ? 'online' : 'dedicated';
-  const have = status.tally[status.def.colors.primary]?.carriers ?? 0;
-  if (status.def.kind === 'mono') return { have, need: MONO_THRESHOLDS[target].carriers };
-  if (status.def.kind === 'two') return { have, need: TWO_COLOR_THRESHOLDS[target].primary.carriers };
-  return { have, need: GOLD_THRESHOLDS[target].primary.carriers };
-}
+const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
 
 const COLLAPSE_STORAGE_KEY = 'deckbuilder.reportCollapsed';
 
@@ -49,107 +30,64 @@ function writeStoredCollapsed(collapsed: boolean): void {
   try {
     window.localStorage.setItem(COLLAPSE_STORAGE_KEY, collapsed ? '1' : '0');
   } catch {
-    // best-effort persistence only — localStorage may be unavailable (private mode, SSR, etc.)
+    // best-effort persistence only
   }
 }
 
 function ChevronIcon({ direction }: { direction: 'up' | 'down' }) {
   return (
-    <svg
-      width={14}
-      height={14}
-      viewBox="0 0 20 20"
-      fill="none"
-      className={direction === 'down' ? 'rotate-180' : undefined}
-      aria-hidden="true"
-    >
+    <svg width={14} height={14} viewBox="0 0 20 20" fill="none" className={direction === 'down' ? 'rotate-180' : undefined} aria-hidden="true">
       <path d="M5 12l5-5 5 5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-/** Popover listing every catalog archetype with its currently-evaluated tier — replaces
- *  the old flat SYNERGIES list now that archetypes carry tiers instead of on/off state. */
-function AllPlansPopover({ statuses, selectedIds, onClose }: { statuses: ArchetypeStatus[]; selectedIds: Set<string>; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handlePointerDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      ref={ref}
-      className="absolute right-0 top-full mt-1 w-80 max-h-80 overflow-y-auto rounded-md border border-stone-200 bg-white shadow-lg z-50 p-2"
-    >
-      <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 px-1 mb-1">All plans</h4>
-      <div className="flex flex-col gap-1">
-        {statuses.map(status => {
-          const selected = selectedIds.has(status.def.id);
-          return (
-            <div key={status.def.id} className={`rounded px-2 py-1 ${selected ? 'bg-emerald-50' : 'bg-stone-50'}`}>
-              <div className="flex items-center gap-1.5 min-w-0">
-                {selected && <span className="text-[9px] font-black text-emerald-600 shrink-0">✓</span>}
-                <span className="text-[10px] font-bold text-stone-700 truncate">{status.def.name}</span>
-                <span className={`text-[8px] font-black uppercase tracking-wide shrink-0 ml-auto px-1 py-0.5 rounded ${TIER_CLASS[status.tier]}`}>
-                  {TIER_LABEL[status.tier]}
-                </span>
-              </div>
-              <p className="text-[9px] text-stone-500 leading-snug mt-0.5">{status.def.description}</p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+/** Which philosophy slot a plan belongs to. */
+type Slot = 'offense' | 'defense' | 'gold';
+function slotOf(s: ArchetypeStatus): Slot {
+  if (s.def.kind === 'gold') return 'gold';
+  return s.def.side === 'defense' ? 'defense' : 'offense';
 }
 
-export function TopKPIBand({ identity, shotDiet, bonuses, depthChart, average, starterIds, archetypes, onArchetypesChange }: {
+/** Toggle a plan in the selection. Gold replaces both slots; offense/defense clear gold. */
+export function toggleArchetype(selection: ArchetypeSelection, slot: Slot, id: string): ArchetypeSelection {
+  if (slot === 'gold') return selection.gold === id ? {} : { gold: id };
+  const next: ArchetypeSelection = { offense: selection.offense, defense: selection.defense };
+  next[slot] = next[slot] === id ? undefined : id;
+  return next;
+}
+
+/**
+ * Selected plan ids for a selection, honouring the product rule that only UNLOCKED plans
+ * (tier online/dedicated) count: a plan that dropped below Online is treated as not selected.
+ */
+export function selectedUnlockedIds(selection: ArchetypeSelection, statuses: ArchetypeStatus[]): Set<string> {
+  const unlocked = new Set(statuses.filter(s => s.tier !== 'none').map(s => s.def.id));
+  const ids = [selection.gold, selection.offense, selection.defense].filter((id): id is string => !!id && unlocked.has(id));
+  return new Set(ids);
+}
+
+export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds, archetypes, onArchetypesChange }: {
   identity: RosterIdentity;
   shotDiet: TeamShotProfile;
-  bonuses: TeamBonuses;
+  /** Kept for API compatibility with callers; the band derives everything from depthChart. */
+  bonuses?: TeamBonuses;
   depthChart: Record<string, PlayerCardData[]>;
   average?: RosterIdentity;
-  /** Depth-chart index-0 players, used for archetype tier thresholds. Defaults to the
-   *  index-0 player of each depth-chart column when omitted. */
+  /** Depth-chart index-0 players, used for archetype tier thresholds. Defaults to each column's first player. */
   starterIds?: Set<string>;
-  /** The user's chosen Offense/Defense Philosophy (or Gold plan). Omitted = no identity yet. */
+  /** The user's chosen Offense/Defense plan (or Gold plan). */
   archetypes?: ArchetypeSelection;
-  /** Present only when the band is editable — its absence makes the band read-only
-   *  (no "Choose identity" button). */
+  /** Present only when the band is editable; absent = read-only. */
   onArchetypesChange?: (sel: ArchetypeSelection) => void;
 }) {
-  // Default expanded on every render (including SSR); synced from localStorage
-  // after mount so server and first client render always agree.
   const [collapsed, setCollapsed] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  // One-time sync from localStorage after mount: keeps SSR and the first client
-  // render identical (collapsed=false, no hydration mismatch) while still
-  // restoring the user's remembered preference once we're on the client.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(readStoredCollapsed());
   }, []);
-
   function toggleCollapsed() {
-    setCollapsed(prev => {
-      const next = !prev;
-      writeStoredCollapsed(next);
-      return next;
-    });
+    setCollapsed(prev => { const next = !prev; writeStoredCollapsed(next); return next; });
   }
 
   const activePlayers = Object.values(depthChart).flat();
@@ -158,42 +96,24 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart, average, s
   const effectiveStarterIds = starterIds ?? defaultStarterIds;
   const selection = archetypes ?? {};
   const statuses = evaluateArchetypes(activePlayers, effectiveStarterIds, selection);
-  const byId = new Map(statuses.map(s => [s.def.id, s]));
 
-  const selectedStatuses: ArchetypeStatus[] = [];
-  if (selection.gold) {
-    const s = byId.get(selection.gold);
-    if (s) selectedStatuses.push(s);
-  } else {
-    if (selection.offense) { const s = byId.get(selection.offense); if (s) selectedStatuses.push(s); }
-    if (selection.defense) { const s = byId.get(selection.defense); if (s) selectedStatuses.push(s); }
-  }
-  const selectedIds = new Set(selectedStatuses.map(s => s.def.id));
+  // Product rule: locked plans stay hidden. Only unlocked plans are ever listed.
+  const unlocked = statuses.filter(s => s.tier !== 'none');
+  const selectedIds = selectedUnlockedIds(selection, statuses);
+  const groups: Array<{ slot: Slot; label: string; plans: ArchetypeStatus[] }> = [
+    { slot: 'offense' as Slot, label: 'Offense', plans: unlocked.filter(s => slotOf(s) === 'offense') },
+    { slot: 'defense' as Slot, label: 'Defense', plans: unlocked.filter(s => slotOf(s) === 'defense') },
+    { slot: 'gold' as Slot, label: 'Gold', plans: unlocked.filter(s => slotOf(s) === 'gold') },
+  ].filter(g => g.plans.length > 0);
 
-  // "Next up" — plans not yet Online, closest first (progress is always measured
-  // toward Online — see archetypes.ts's ArchetypeStatus.progress doc comment).
-  const nextUp = statuses
-    .filter(s => s.tier === 'none' && s.progress > 0)
-    .sort((a, b) => b.progress - a.progress)
-    .slice(0, 3);
+  const identityLabel = selectedIds.size > 0
+    ? statuses.filter(s => selectedIds.has(s.def.id)).map(s => s.def.name).join(' + ')
+    : 'No identity selected';
 
   const rimPct = Math.round(shotDiet.rim * 100);
   const midPct = Math.round(shotDiet.mid * 100);
   const perPct = Math.round(shotDiet.per * 100);
   const referenceIdentity = average ?? LEAGUE_AVG_IDENTITY;
-
-  const identityLabel = selectedStatuses.length > 0
-    ? selectedStatuses.map(s => s.def.name).join(' + ')
-    : 'No identity selected';
-
-  const picker = pickerOpen && onArchetypesChange && (
-    <ArchetypePicker
-      statuses={statuses}
-      selection={selection}
-      onChange={onArchetypesChange}
-      onClose={() => setPickerOpen(false)}
-    />
-  );
 
   if (collapsed) {
     return (
@@ -201,36 +121,17 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart, average, s
         <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 truncate">
           Team report · {identityLabel} · RIM {rimPct}% MID {midPct}% 3PT {perPct}%
         </span>
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-label="Expand team report"
-          title="Expand team report"
-          className="shrink-0 text-stone-400 hover:text-stone-600"
-        >
+        <button type="button" onClick={toggleCollapsed} aria-label="Expand team report" title="Expand team report" className="shrink-0 text-stone-400 hover:text-stone-600">
           <ChevronIcon direction="down" />
         </button>
-        {picker}
       </div>
     );
   }
 
-  const collapseButton = (
-    <button
-      type="button"
-      onClick={toggleCollapsed}
-      aria-label="Collapse team report"
-      title="Collapse team report"
-      className="shrink-0 text-stone-400 hover:text-stone-600"
-    >
-      <ChevronIcon direction="up" />
-    </button>
-  );
-
   return (
     <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 flex items-stretch gap-8">
 
-      {/* 1. Team identity */}
+      {/* 1. Team identity radar */}
       <div className="flex flex-col gap-1 shrink-0">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
         <RadarChart data={identity} average={referenceIdentity} size={176} />
@@ -252,83 +153,57 @@ export function TopKPIBand({ identity, shotDiet, bonuses, depthChart, average, s
         </div>
       </div>
 
-      {/* 3. Identity — selected archetype(s), or a prompt to choose one */}
-      <div className="min-w-0 flex-1 pl-8 border-l border-stone-200 flex flex-col gap-1">
+      {/* 3. Identity — only UNLOCKED plans are shown; the selected one is highlighted and
+             any other unlocked plan can be selected with a click. Locked plans stay hidden. */}
+      <div className="min-w-0 flex-1 pl-8 border-l border-stone-200 flex flex-col gap-1.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Identity</h3>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {onArchetypesChange && (
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 hover:text-emerald-800 border border-emerald-200 bg-emerald-50 rounded px-1.5 py-0.5"
-              >
-                Choose identity
-              </button>
-            )}
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setPopoverOpen(o => !o)}
-                className="text-[9px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600 border border-stone-200 rounded px-1.5 py-0.5"
-              >
-                All plans
-              </button>
-              {popoverOpen && <AllPlansPopover statuses={statuses} selectedIds={selectedIds} onClose={() => setPopoverOpen(false)} />}
-            </div>
-          </div>
+          <button type="button" onClick={toggleCollapsed} aria-label="Collapse team report" title="Collapse team report" className="shrink-0 text-stone-400 hover:text-stone-600">
+            <ChevronIcon direction="up" />
+          </button>
         </div>
 
-        {selectedStatuses.length === 0 ? (
-          <p className="text-[10px] text-stone-400 italic">No identity selected</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {selectedStatuses.map(s => (
-              <div key={s.def.id} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
-                <span className="text-emerald-500 text-[10px] mt-0.5 shrink-0">✦</span>
-                <div className="flex flex-col leading-tight min-w-0">
-                  <span className="font-bold text-[10px] text-stone-700 truncate">{s.def.name}</span>
-                  <span className={`text-[8px] font-black uppercase tracking-wide w-fit px-1 py-0.5 rounded mt-0.5 ${TIER_CLASS[s.tier]}`}>
-                    {TIER_LABEL[s.tier]}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Next up — last in the row */}
-      <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 w-[250px] shrink-0 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Next up</h3>
-          {collapseButton}
-        </div>
-        {nextUp.length === 0 ? (
-          <p className="text-[10px] text-stone-400 italic">No plans within reach yet.</p>
+        {groups.length === 0 ? (
+          <p className="text-[10px] text-stone-400 italic">No identity unlocked yet. Draft and start more players who share a badge.</p>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {nextUp.map(status => {
-              const { have, need } = primaryCarrierFraction(status);
-              return (
-                <div key={status.def.id} title={`${status.def.colors.primary} ${have}/${need} carriers`} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100 min-w-0">
-                  <span className="text-stone-300 text-[10px] mt-0.5 shrink-0">✦</span>
-                  <div className="flex flex-col leading-tight min-w-0 flex-1">
-                    <span className="font-bold text-[10px] text-stone-600 truncate">{status.def.name}</span>
-                    <span className="flex items-center gap-1.5 mt-1">
-                      <span className="flex-1 h-1.5 bg-stone-200 rounded-full overflow-hidden">
-                        <span className="block h-full bg-emerald-400" style={{ width: `${status.progress * 100}%` }} />
+            {groups.map(group => (
+              <div key={group.slot} className="flex items-center gap-1.5 flex-wrap min-w-0">
+                <span className="text-[8px] font-bold uppercase tracking-widest text-stone-400 w-12 shrink-0">{group.label}</span>
+                {group.plans.map(s => {
+                  const selected = selectedIds.has(s.def.id);
+                  const editable = !!onArchetypesChange;
+                  return (
+                    <button
+                      key={s.def.id}
+                      type="button"
+                      disabled={!editable}
+                      onClick={() => onArchetypesChange?.(toggleArchetype(selection, group.slot, s.def.id))}
+                      title={`${s.def.name} — ${s.def.description}`}
+                      className={`flex items-center gap-1.5 h-6 px-2 rounded border text-[10px] font-bold uppercase tracking-wide transition-colors min-w-0 ${
+                        selected
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : editable
+                            ? 'bg-white border-stone-300 text-stone-600 hover:border-emerald-400 hover:text-emerald-700'
+                            : 'bg-stone-50 border-stone-200 text-stone-500'
+                      }`}
+                    >
+                      {selected && <span className="text-[10px] leading-none">✓</span>}
+                      <span className="truncate">{s.def.name}</span>
+                      <span className={`text-[8px] font-black rounded px-1 ${selected ? 'bg-white/20' : s.tier === 'dedicated' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {TIER_LABEL[s.tier]}
                       </span>
-                      <span className="text-[9px] font-bold text-stone-500 shrink-0">{have}/{need} carriers</span>
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {onArchetypesChange && selectedIds.size === 0 && (
+              <p className="text-[9px] text-stone-400">Click a plan to make it your team&apos;s identity. A Gold plan takes both slots.</p>
+            )}
           </div>
         )}
       </div>
-      {picker}
     </div>
   );
 }

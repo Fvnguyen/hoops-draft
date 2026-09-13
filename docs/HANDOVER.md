@@ -99,6 +99,38 @@ Follow-ups noticed during Phase 1:
   with seeds stored, Phase 2 can drop that to box score + seed and re-simulate on demand.
 - Remaining lint errors are all UI-side (`any` in dashboards, `react-hooks/static-components`).
 
+## Plays & archetypes milestone — done 2026-09-13
+
+Design: docs/plan_plays_and_synergies_2026-09-13.md with the reduced scope agreed with the
+owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans hidden.
+
+- **Engine**: `engine/archetypes.ts` (16 plans, tiers Online/Dedicated, caps, bot
+  `bestSelection`), `engine/playbook.ts` (11 plays with roles and fixed allocations,
+  `evaluatePlaybook`), `engine/game.ts` (per-possession call/coverage, lineup override
+  into the assigned players' own columns, scorer boost, on-call modifiers, budgets).
+  `calcTeamBonuses` returns archetype modifiers only. Bots staff roles and pick plans.
+- **Thresholds** tuned with `npm run feasibility` (mono 3/6/1 → 5/9/2; defensive colours
+  3/5/1 → 4/8/2): a colour-chasing drafter reaches Online in 63-94% of drafts and
+  Dedicated in 22-61%; bots reach Online 13-34%, Dedicated 2-7%.
+- **UI**: deck builder plays column is a `PlayPanel` per play (no hover flip, 40px role
+  rows, assign via popover / depth-chart click / drag onto the row, role tags on cards,
+  budget header); the team report's Identity section lists ONLY unlocked plans grouped
+  by slot with the selected one highlighted (click to switch; gold takes both slots);
+  selections that drop below Online are pruned on save. Rosters are v2
+  (`playAssignments`, `archetypes`); older rosters load with empty assignments.
+- **Measured** (`npm run balance -- 300 --seed 42`, play impact section): Box-and-One
+  +4.7% win for a fixed roster; offensive plays are small in isolation because their
+  modifiers apply on 9-12% of possessions — the visible effect is the assigned players'
+  presence and scorer boost. Tuning candidates: allocations, PLAY_SCORER_BOOST, on-call
+  deltas.
+
+Open after this milestone:
+- Play impact is modest; decide whether allocations/effects should grow.
+- An elite roster unlocks many plans at once (the test roster unlocks 9 offensive
+  plans); consider whether Dedicated thresholds should be stricter for two-colour plans.
+- Overtime possessions do not roll for plays (scope cut).
+- Home page / draft room still show the 5:7 play card with neutral roles (fine).
+
 ## How to run everything
 
 ```bash
@@ -106,7 +138,8 @@ npm install && npm --prefix frontend install
 npm run dev            # app at http://localhost:3000
 npm test               # Vitest: frontend/tests/unit (real engine) + tests/storage
 npm run build:cards    # regenerate frontend/src/data/cards.json from frontend/game.db
-npm run balance -- 500 # headless balance report (PPP, scores, synergy/play activation)
+npm run balance -- 500 # headless balance report (PPP, scores, play impact)
+npm run feasibility -- 100 # archetype reachability for focused drafters vs bots
 npm run test:e2e       # Playwright specs, needs `npm run dev` running separately
 npm run analyze        # balance report from the latest data/game_logs/full_dump_*.json
 npm run screenshot -- /draft draft.png --full
