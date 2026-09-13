@@ -29,6 +29,10 @@ export function PackOpener({ pack, onComplete, backdrop = false }: PackOpenerPro
   const [snapshot] = useState<readonly DraftCard[]>(() => [...pack]);
   const openButtonRef = useRef<HTMLButtonElement>(null);
   const skipButtonRef = useRef<HTMLButtonElement>(null);
+  const phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  });
 
   const schedule = (callback: () => void, delay: number) => {
     const timer = window.setTimeout(callback, delay);
@@ -47,7 +51,7 @@ export function PackOpener({ pack, onComplete, backdrop = false }: PackOpenerPro
   }, [onComplete]);
 
   const beginOpening = () => {
-    if (phase !== 'sealed') return;
+    if (phaseRef.current !== 'sealed') return;
     setFocusedSkip(true);
     setPhase('opening');
     if (reducedMotion) {
@@ -61,7 +65,7 @@ export function PackOpener({ pack, onComplete, backdrop = false }: PackOpenerPro
   };
 
   const skip = () => {
-    if (phase === 'handoff') return;
+    if (phaseRef.current === 'handoff') return;
     clearTimers();
     setPhase('handoff');
   };
@@ -84,21 +88,24 @@ export function PackOpener({ pack, onComplete, backdrop = false }: PackOpenerPro
       if (event.key === 'Escape') {
         event.preventDefault();
         skip();
-      } else if ((event.key === 'Enter' || event.key === ' ') && phase === 'sealed') {
+      } else if ((event.key === 'Enter' || event.key === ' ') && phaseRef.current === 'sealed') {
         event.preventDefault();
         beginOpening();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+    // beginOpening/skip read current phase via phaseRef, so they don't need to be
+    // deps — re-subscribing this listener every render would just churn it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (phase !== 'handoff') return;
     schedule(complete, HANDOFF_MS);
-    return clearTimers;
   }, [phase, complete]);
 
+  // Single cleanup point: clears any still-pending timers on unmount.
   useEffect(() => clearTimers, []);
 
   const revealIndex = phase === 'revealing' || phase === 'handoff' ? snapshot.length : 0;
@@ -150,7 +157,7 @@ export function PackOpener({ pack, onComplete, backdrop = false }: PackOpenerPro
                   key={card.id}
                   initial={{ opacity: 0, y: 24, scale: 0.85 }}
                   animate={{ opacity: cardsVisible ? 1 : 0, y: 0, scale: 1 }}
-                  transition={{ delay: Math.min(index * 0.08, 0.56), duration: 0.35 }}
+                  transition={{ delay: reducedMotion ? 0 : Math.min(index * 0.08, 0.56), duration: 0.35 }}
                   className="[perspective:900px]"
                 >
                   <motion.div
