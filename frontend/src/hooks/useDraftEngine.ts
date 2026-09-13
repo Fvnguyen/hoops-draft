@@ -1,12 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
-import { DraftSeat, generateCubePool, getBotPick } from '../engine/draft';
+import { DraftSeat, generateCubePool, getBotPick, type BotProfile } from '../engine/draft';
 import { DraftPickRecord } from '../engine/deckbuilder';
-import { createRng, randomSeed } from '../engine/rng';
+import { createRng, pick, randomSeed, type Rng } from '../engine/rng';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
+
+/**
+ * Draws the 7 bot profiles from `rng` (in seat order), so the same draft
+ * seed reproduces the same bot noise/trait leanings across replays.
+ */
+export function createBotProfiles(rng: Rng): BotProfile[] {
+  return BOT_NAMES.map((name, idx) => ({
+    id: `bot-${idx + 1}`,
+    name,
+    noiseSeed: Math.floor(rng.next() * 1000000),
+    favoredTrait: pick(rng, TRAITS_POOL),
+  }));
+}
 
 export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
   const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'deckbuilding'>('loading');
@@ -25,10 +38,12 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     // Generate ALL 24 packs upfront (cube-style: each player at most once), from a
     // fresh seed so the draft is reproducible/replayable from `draftSeed` alone.
     const seed = randomSeed();
-    const allPacks = generateCubePool(allPlayers, playsDB, createRng(seed));
+    const rng = createRng(seed);
+    const allPacks = generateCubePool(allPlayers, playsDB, rng);
     cubePacksRef.current = allPacks;
     setDraftSeed(seed);
 
+    const botProfiles = createBotProfiles(rng);
     const initialSeats: DraftSeat[] = [];
 
     // Round 1: packs 0-7
@@ -45,12 +60,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
       initialSeats.push({
         id: `bot-${i}`,
         isBot: true,
-        botProfile: {
-          id: `bot-${i}`,
-          name: BOT_NAMES[i - 1],
-          noiseSeed: Math.floor(Math.random() * 1000000),
-          favoredTrait: TRAITS_POOL[Math.floor(Math.random() * TRAITS_POOL.length)],
-        },
+        botProfile: botProfiles[i - 1],
         drafted: [],
         currentPack: allPacks[i] || [],
       });
