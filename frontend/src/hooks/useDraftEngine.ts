@@ -3,6 +3,7 @@ import { DraftCard, Player, Play } from '../components/PlayerCard';
 import { DraftSeat, generateCubePool, getBotPick } from '../engine/draft';
 import { DraftPickRecord } from '../engine/deckbuilder';
 import { createRng, randomSeed } from '../engine/rng';
+import { CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
@@ -141,7 +142,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     let nextPackNum = currentPackNumber;
     const nextOverall = overallPick + 1;
 
-    if (nextPickNum > 12) {
+    if (nextPickNum > CUBE_PLAYER_CARDS_PER_PACK + 1) {
       nextPickNum = 1;
       nextPackNum += 1;
       

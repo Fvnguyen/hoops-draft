@@ -8,15 +8,15 @@ import { loadPlayers, PLAYS, runHeadlessDraft, buildTeams } from './helpers';
 describe('draftEngine.generateCubePool', () => {
   const players = loadPlayers();
 
-  it('yields 24 packs of 12 cards each', () => {
+  it('yields 24 packs of 8 cards each', () => {
     const packs = generateCubePool(players, PLAYS, createRng(1));
     expect(packs.length).toBe(24);
     for (const pack of packs) {
-      expect(pack.length).toBe(12);
+      expect(pack.length).toBe(8);
     }
   });
 
-  it('has exactly 264 player cards total, all unique by id, one play per pack', () => {
+  it('has exactly 168 player cards total, all unique by id, one play per pack', () => {
     const packs = generateCubePool(players, PLAYS, createRng(1));
     const playerIds = new Set<string>();
     let totalPlayerCards = 0;
@@ -25,13 +25,13 @@ describe('draftEngine.generateCubePool', () => {
       const playCards = pack.filter((c) => c.type === 'Play');
       const playerCards = pack.filter((c) => c.type === 'Player');
       expect(playCards.length).toBe(1);
-      expect(playerCards.length).toBe(11);
+      expect(playerCards.length).toBe(7);
       totalPlayerCards += playerCards.length;
       for (const pc of playerCards) playerIds.add(pc.id);
     }
 
-    expect(totalPlayerCards).toBe(264);
-    expect(playerIds.size).toBe(264);
+    expect(totalPlayerCards).toBe(168);
+    expect(playerIds.size).toBe(168);
   });
 
   it('each pack\'s play card resolves to one of the 9 known play-effect ids', () => {
@@ -49,11 +49,11 @@ describe('draftEngine.generateCubePool', () => {
 describe('headless draft (mirrors useDraftEngine.ts)', () => {
   const players = loadPlayers();
 
-  it('every seat ends with 36 drafted cards', () => {
+  it('every seat ends with 24 drafted cards', () => {
     const seats = runHeadlessDraft(players, PLAYS);
     expect(seats.length).toBe(8);
     for (const seat of seats) {
-      expect(seat.drafted.length).toBe(36);
+      expect(seat.drafted.length).toBe(24);
     }
   });
 

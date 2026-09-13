@@ -31,14 +31,6 @@ function pseudoRandom(seed: number, stringSeed: string) {
 
 // ── Cube-Style Draft Pool ──────────────────────────────────────────────────
 
-/**
- * Generate a complete cube draft pool upfront:
- * 8 seats × 3 packs × 12 cards = 288 cards needed.
- * Each player card appears AT MOST ONCE across the entire draft.
- * Play cards can repeat (they're from a shared pool).
- *
- * Returns 24 packs of 12 cards (8 seats × 3 packs).
- */
 export function generateCubePool(allPlayers: Player[], playsDB: Play[], rng: Rng): DraftCard[][] {
   if (allPlayers.length === 0) return [];
 
@@ -46,65 +38,100 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[], rng: Rng
   const PACKS = CUBE_PACKS;
   const TOTAL_PACKS = SEATS * PACKS;
   const PLAYER_CARDS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK;
-  const TOTAL_PLAYERS_NEEDED = TOTAL_PACKS * PLAYER_CARDS_PER_PACK; // 264
+  const TARGET_PACK_SIZE = PLAYER_CARDS_PER_PACK + 1; // 7 players + 1 play = 8
 
-  // Shuffle the entire player pool
-  const shuffledPlayers = shuffle(allPlayers, rng);
+  // 1. Segregate pools
+  const rarePlusPool: DraftCard[] = [];
+  const uncommonPlayers: Player[] = [];
+  const commonPlayers: Player[] = [];
+  const commonUncommonPlays: Play[] = [];
 
-  // If we don't have enough unique players, cycle through with unique IDs
-  const playerPool: Player[] = [];
-  let copyIdx = 0;
-  while (playerPool.length < TOTAL_PLAYERS_NEEDED) {
-    const base = shuffledPlayers[copyIdx % shuffledPlayers.length];
-    if (copyIdx < shuffledPlayers.length) {
-      // First pass: use original cards
-      playerPool.push(base);
-    } else {
-      // Need more cards: create copies with unique IDs (rare — only if < 264 players)
-      playerPool.push({ ...base, id: `${base.id}_copy${Math.floor(copyIdx / shuffledPlayers.length)}` });
-    }
-    copyIdx++;
+  for (const p of allPlayers) {
+    if (p.rarity === 'Mythic' || p.rarity === 'Rare') rarePlusPool.push(p);
+    else if (p.rarity === 'Uncommon') uncommonPlayers.push(p);
+    else commonPlayers.push(p);
   }
 
-  // Re-shuffle the full pool
-  const shuffledPool = shuffle(playerPool, rng);
+  for (const play of playsDB) {
+    const playWithId = { ...play, playId: play.playId || play.id };
+    if (play.rarity === 'Mythic' || play.rarity === 'Rare') rarePlusPool.push(playWithId);
+    else commonUncommonPlays.push(playWithId);
+  }
 
-  // Build packs
+  // 2. Shuffle pools
+  const shuffledRarePlus = shuffle(rarePlusPool, rng);
+  const shuffledUncommon = shuffle(uncommonPlayers, rng);
+  const shuffledCommon = shuffle(commonPlayers, rng);
+  const shuffledPlays = shuffle(commonUncommonPlays, rng);
+
+  // Helper to safely pop from a pool, cycling with unique IDs if empty
+  function popPool<T extends DraftCard>(pool: T[], idxRef: { current: number }): T {
+    if (pool.length === 0) throw new Error("Empty pool");
+    const item = pool[idxRef.current % pool.length];
+    if (idxRef.current >= pool.length) {
+      const copyNum = Math.floor(idxRef.current / pool.length);
+      idxRef.current++;
+      return { ...item, id: `${item.id}_copy${copyNum}` };
+    }
+    idxRef.current++;
+    return item;
+  }
+
+  const rareRef = { current: 0 };
+  const uncRef = { current: 0 };
+  const comRef = { current: 0 };
+  const playRef = { current: 0 };
+
   const packs: DraftCard[][] = [];
-  let poolIdx = 0;
 
+  // 3. Build packs
   for (let p = 0; p < TOTAL_PACKS; p++) {
     const packCards: DraftCard[] = [];
+    
+    // Rares: 85% chance for 1 Rare+, 15% chance for 2 Rare+
+    const isDoubleRare = rng.next() > 0.85;
+    const rareCount = isDoubleRare ? 2 : 1;
+    let playAllocated = false;
 
-    // Take 11 players from the pool (guaranteed unique across all packs)
-    for (let c = 0; c < PLAYER_CARDS_PER_PACK; c++) {
-      packCards.push(shuffledPool[poolIdx++]);
+    for (let i = 0; i < rareCount; i++) {
+      const rareCard = popPool(shuffledRarePlus, rareRef);
+      if (rareCard.type === 'Play') {
+        packCards.push({ ...rareCard, id: `${rareCard.id}_pack${p}`, playId: rareCard.playId || rareCard.id });
+        playAllocated = true; // The pack got its play slot filled by a rare play
+      } else {
+        packCards.push(rareCard);
+      }
     }
 
-    // Add 1 play card (plays can repeat — give each a unique ID for React keys).
-    // `playId` keeps the base effect id so synergies.ts can look up PLAY_EFFECTS
-    // even though `id` carries the `_pack{N}` suffix (P0-2 fix).
-    const randomPlay = playsDB[Math.floor(rng.next() * playsDB.length)];
-    packCards.push({ ...randomPlay, id: `${randomPlay.id}_pack${p}`, playId: randomPlay.id });
+    // Uncommons: 2 per pack
+    for (let i = 0; i < 2; i++) {
+      packCards.push(popPool(shuffledUncommon, uncRef));
+    }
 
-    // Sort: rare/mythic first, commons last, plays at the end
+    // Play slot: if not already filled by a rare play
+    if (!playAllocated) {
+      const playCard = popPool(shuffledPlays, playRef) as Play;
+      packCards.push({ ...playCard, id: `${playCard.id}_pack${p}`, playId: playCard.playId || playCard.id });
+    }
+
+    // Commons: fill remaining slots up to TARGET_PACK_SIZE
+    while (packCards.length < TARGET_PACK_SIZE) {
+      packCards.push(popPool(shuffledCommon, comRef));
+    }
+
+    // 4. Sort: Mythic > Rare > Uncommon > Common > Play (always last)
     const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
     packCards.sort((a, b) => {
-      const aIsRarePlay = a.type === 'Play' && (a.rarity === 'Rare' || a.rarity === 'Mythic');
-      const bIsRarePlay = b.type === 'Play' && (b.rarity === 'Rare' || b.rarity === 'Mythic');
-      if (aIsRarePlay && !bIsRarePlay) return -1;
-      if (bIsRarePlay && !aIsRarePlay) return 1;
-
-      const aIsNormPlay = a.type === 'Play' && (a.rarity === 'Common' || a.rarity === 'Uncommon');
-      const bIsNormPlay = b.type === 'Play' && (b.rarity === 'Common' || b.rarity === 'Uncommon');
-      if (aIsNormPlay && !bIsNormPlay) return 1;
-      if (bIsNormPlay && !aIsNormPlay) return -1;
+      if (a.type === 'Play' && b.type !== 'Play') return 1;
+      if (b.type === 'Play' && a.type !== 'Play') return -1;
+      if (a.type === 'Play' && b.type === 'Play') return 0; // should only be 1 play anyway
 
       const rvA = rarityValue[a.rarity] || 1;
       const rvB = rarityValue[b.rarity] || 1;
       if (rvA !== rvB) return rvB - rvA;
-      if (a.type !== b.type) return a.type === 'Player' ? -1 : 1;
-      return 0;
+      
+      // Secondary sort to keep deterministic ordering for same rarities
+      return a.id.localeCompare(b.id);
     });
 
     packs.push(packCards);

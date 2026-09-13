@@ -143,7 +143,7 @@ export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
 
 export const CUBE_SEATS = 8;
 export const CUBE_PACKS = 3;
-export const CUBE_PLAYER_CARDS_PER_PACK = 11; // 11 players + 1 play per pack
+export const CUBE_PLAYER_CARDS_PER_PACK = 7; // 7 players + 1 play per pack (8 cards total)
 
 /** Bot pick noise: score *= 0.85 .. 1.15 (±15%). */
 export const BOT_NOISE_PCT = 0.15;
