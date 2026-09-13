@@ -8,12 +8,11 @@ selection) -> single game or round-robin season -> in-app analytics export. The 
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
 archetype identities and assigned-player plays; persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
-than the full play-by-play. 122 Vitest tests pass, type-check is clean, `npm run lint` is
+than the full play-by-play. 184 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / 13 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
-error boundary (`app/error.tsx`, `app/global-error.tsx`, shared `ErrorRecovery.tsx`) shows
-a recovery screen instead of a blank page; `frontend/tests/smoke.spec.ts` loads every real
-route headlessly and fails on any console/page error.
+error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
+screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
 
 Finished design docs live in `docs/completed/`; a plan still being worked on stays in
 `docs/plans/` and moves there when its milestone lands.
@@ -34,8 +33,7 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   `frontend/src/lib/engine.ts` (edit it directly now), plus `data/analyze_*.py`,
   `data/check_*.py`, `data/fix_merge.py`, `data/update_fetch.py` one-off patchers of
   `fetch_players.py`. History is preserved in git if you need to see what they did.
-- `tests/analyze_game_data.js` moved to `scripts/analyze_game_data.js` (it's a dev tool,
-  not a test).
+- `tests/analyze_game_data.js` moved to `scripts/analyze_game_data.js` (it's a dev tool).
 - Root `package.json` gained `dev`/`build`/`test`/`test:e2e`/`analyze`/`screenshot`
   scripts so the whole project can be driven from the repo root.
 - Removed unused npm dependencies `@prisma/client` and `unidecode` from `frontend/` and
@@ -131,36 +129,34 @@ Open after this milestone: no fresh `/debug` export exists yet with the plays/ar
 fields populated (the on-disk dumps predate that milestone) — `docs/analytics/report_2026-09.md`'s
 identity/play-call sections are empty until someone plays a draft + season and exports.
 
-## ui_draft_deckbuild_pack wave 0 (T0) — done 2026-09-13
+## ui_draft_deckbuild_pack waves 0-1 — done 2026-09-13
 
-Design: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan **2a**, wave 1 next).
-T0 is contracts-only: everything below compiles, but most new behaviour is a no-op stub.
+Design: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan **2a**). Wave 0 (T0,
+driver) landed contracts/stubs; wave 1 ran T1-T6 as six parallel agents, then a driver T7
+integration pass.
 
-- New pure modules: `engine/depthChart.ts` (D12 fixed-slot helpers, built on
-  `engine/positions.ts`), `lib/draftTimer.ts`, `lib/packReveal.ts` — none imported into
-  the UI yet (`DeckBuilder.tsx` still has its own eligibility copy); wave 1 wires them in.
-- New components: `Toast.tsx` (`ToastProvider`/`useToast`, not mounted anywhere yet),
-  `audio/sfx.ts` (no-op interface, real Web Audio synthesis is T2), `RosterDistribution.tsx`
-  and `AssignPopover.tsx` — both extracted out of `DraftSidebar.tsx`/`PlayPanel.tsx` with
-  their original callers rewired, so this half is a real (tested) refactor, not a stub.
-- Widened contracts, all backward compatible: optional `DraftSession.mode`,
-  `DraftPickRecord.autoPicked`; `useDraftEngine` gained a `mode` param, a `round-summary`
-  state, `pickDeadline`/`passSeq`, and no-op `pickFromIntro`/`startNextRound`/
-  `expirePick`/`armIntroClock`; `PackOpener` gained unused `mode`/`pickDeadline` props;
-  `DraftRoom` gained a `mode` prop (default `'premier'`, not URL-driven yet).
-- Verified: `tsc --noEmit`, lint (0 errors), `npm test` (122 tests, unchanged), `next
-  build` all clean. Not verified live in-browser: the other session's in-progress
-  `auth_approval` middleware (`frontend/src/proxy.ts`) currently redirects `/draft` to a
-  `/login` page that doesn't exist yet — unrelated to this change; `next build`'s static
-  prerender of `/draft` exercises the same component tree and succeeded.
+- **Draft flow**: two home CTAs (`/draft?mode=quick|premier`); Premier shows a rarity-
+  ordered pack opener (Rare/Mythic hold+glow+shake, real Web Audio SFX) before every
+  pack with pick-from-the-spread, a `round-summary` pause after packs 1-2
+  (`RosterDistribution` side by side), a pick clock (`PickTimerRing`, timeout auto-picks
+  via a neutral bot profile), and a `PackPassStage` pass animation; Quick skips all of it
+  after pack 1's opener.
+- **Deck builder**: fixed 5x4-slot depth chart (`engine/depthChart.ts`) backed by a
+  single position-eligibility source (`engine/positions.ts`, bots stay natural-only);
+  `Toast`+Undo replaced every `alert`/`confirm`; a visible `RosterChecklist` replaces
+  tooltip-only Save blockers; container-query fluid layout.
+- **Presentation**: `TopKPIBand` why-locked hints, viewBox-fluid `RadarChart`/`DonutChart`,
+  `PlayerCard`/`PlayPanel` readability fixes, new `/roster/[id]` edit route
+  (`deckbuilder-test?rosterId=` redirects there).
+- **T7 integration** (driver): wired the opener's `onPick` into `pickFromIntro` (D7's
+  pick-from-spread was inert without this — no card was ever recorded), passed the real
+  clock-scale multiplier into `armIntroClock`, fixed `RoundSummary`'s off-by-one pack
+  numbers, deduped `PickTimerRing`'s schedule against `lib/draftTimer.ts`, threaded mode
+  into `buildDraftSession`. `tsc`/lint (0 errors)/`npm test` (184 tests)/`next build` all
+  clean; not verified live — the parallel `auth_approval` session's login gate now sits
+  in front of every draft/deckbuilder route.
 
-Next: wave 1 (T1-T6) can run in parallel now that the tree compiles against the final
-hook/component API — see the plan's Tasks table.
-
-## ui_draft_deckbuild_pack wave 1 (T6) — routes and redirects — done 2026-09-13
-
-New `/roster/[id]` edit route loads and edits existing rosters; `/deckbuilder-test?rosterId=`
-redirects there; `/rosters` links updated. Router, storage, and component contracts unchanged.
+Next: further polish/bugfixes as needed, then move the plan to `docs/completed/`.
 
 ## How to run everything
 
@@ -183,9 +179,9 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is unblocked, and
-`ui_draft_deckbuild_pack` has wave 0 done — wave 1 (T1-T6) can run next).
+`ui_draft_deckbuild_pack` has waves 0-1 done — see that plan's Progress for what's left).
 The 2026-09-12 code review that produced Phases 0-1 is archived as
-`docs/completed/review_code_and_architecture_2026-09-12.md`. The list below predates it.
+`docs/completed/review_code_and_architecture_2026-09-12.md`; the list below predates it.
 
 Findings below are from `docs/analytics/analysis_report.md` and
 `docs/analytics/analytics_summary.md` (both now banner-marked stale; generated by the

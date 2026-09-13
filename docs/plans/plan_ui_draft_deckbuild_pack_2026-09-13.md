@@ -1,6 +1,6 @@
 # Plan: ui_draft_deckbuild_pack
 
-File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress; wave 0 (T0) done 2026-09-13, wave 1 (T1-T6) next (see Progress).
+File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress; waves 0-1 done 2026-09-13, remaining T7 items next (see Progress).
 Sequence: **2a**, before `game_engine` and `draft_ai` (both edit `hooks/useDraftEngine.ts`;
 this plan lands first, never touches `engine/draft.ts`). Depends on nothing.
 Files owned: `frontend/src/components/{PackOpener,PackRevealCard,DraftRoom,DraftSidebar,
@@ -90,15 +90,20 @@ Deck builder v2
 
 ## Progress
 
-- 2026-09-13: wave 0 (T0) done and committed — `tsc`/lint/`npm test`/`next build` all
-  clean. Delivered: `lib/{draftTimer,packReveal}.ts`, `engine/{positions,depthChart}.ts`
-  (D12/D13), `Toast.tsx`, `audio/sfx.ts` (no-op, real synth is T2), `RosterDistribution`
-  + `AssignPopover` (extracted from `DraftSidebar`/`PlayPanel`, callers rewired), optional
-  `DraftSession.mode`/`DraftPickRecord.autoPicked`, `useDraftEngine` widened (`mode`,
-  `round-summary` state, `pickDeadline`, `passSeq`, plus no-op `pickFromIntro`/
-  `startNextRound`/`expirePick`/`armIntroClock` stubs for T1), `PackOpener`
-  `mode`/`pickDeadline` props (unused until T2), `DraftRoom` `mode` prop (default
-  `'premier'`, not URL-driven until T3). Wave 1 (T1-T6) can start.
+- 2026-09-13: wave 0 (T0, driver) done — contracts/stubs for D1-D19 landed and compiled
+  (`lib/draftTimer.ts`, `engine/{positions,depthChart}.ts`, `Toast.tsx`, `audio/sfx.ts`
+  stub, `RosterDistribution`/`AssignPopover` extractions, widened `useDraftEngine`/
+  `PackOpener`/`DraftRoom` APIs). Commit `cfa1858`.
+- 2026-09-13: wave 1 (T1-T6, six parallel agents) done, followed by a driver T7
+  integration pass — real hook behaviour (round-summary, pick clock, timeout auto-pick),
+  reworked opener (D6-D9), draft room v2 (D10-D11 + home CTAs), deck builder v2 (D12-D15,
+  D17, D19), presentation polish (D16, D18), `/roster/[id]` route. T7 fixed cross-agent
+  integration gaps: opener's `onPick` wasn't wired to `pickFromIntro` (picks were never
+  recorded), clock scale wasn't passed to `armIntroClock`, `RoundSummary`'s pack numbers
+  were off by one, `PickTimerRing` duplicated the timer schedule. `tsc`/lint (0 errors)/
+  `npm test` (184 tests)/`next build` all clean; live verification blocked by the
+  parallel `auth_approval` session's login gate. Commit `1bdc599`. Remaining: Playwright
+  specs beyond `home.spec.ts`, screenshots, and a manual click-through once auth allows it.
 
 ## Out of scope
 
@@ -107,23 +112,12 @@ portrait (mobile_pwa), audio files/music, resuming a draft after a page reload.
 
 ## Tasks
 
-- T0 Contracts (driver): done — see Progress. Tier: top.
-- T1 Hook (mid): `useDraftEngine.ts`, `lib/draftTimer.ts`, `lib/sessionBuilder.ts`;
-  Vitest for the schedule.
-- T2 Opener (top): `PackOpener.tsx`, `PackRevealCard.tsx`, `lib/packReveal.ts`,
-  `audio/sfx.ts`, preview page (`?pack=2&timed=1`, Rare+Mythic fixture); Vitest.
-- T3 Draft room (mid): `DraftRoom.tsx`, `DraftSidebar.tsx`, `PackPassStage.tsx`,
-  `PickTimerRing.tsx`, `RoundSummary.tsx`, `app/draft/page.tsx`, home CTAs,
-  `tests/home.spec.ts`.
-- T4 Builder (top, longest pole): `DeckBuilder.tsx`, `DepthSlotColumn.tsx`,
-  `RosterChecklist.tsx`, `Toast.tsx` body, `engine/{depthChart,positions,deckbuilder}.ts`
-  eligibility swap, `lib/rosterChecklist.ts`; Vitest for the three pure modules.
-- T5 Presentation (mid): `TopKPIBand.tsx`, `RadarChart.tsx`, `DonutChart.tsx` (viewBox),
-  `PlayerCard.tsx` (badge caps), `PlayPanel.tsx` (readability).
-- T6 Routes/docs (low): `app/roster/[id]/page.tsx`, `deckbuilder-test` redirect,
-  `rosters` links, AGENTS.md rule line, HANDOVER milestone.
-- T7 Integration (driver, top): opener in the real room, picked-card layout handoff,
-  Playwright specs, screenshots, type-check/lint/tests, commits.
+- T0 Contracts (driver): done — see Progress.
+- T1 Hook (mid): done. T2 Opener (top): done. T3 Draft room (mid): done. T4 Builder
+  (top, longest pole): done. T5 Presentation (mid): done. T6 Routes/docs (low): done.
+  All six — see Progress for what shipped and file names.
+- T7 Integration (driver, top): cross-agent wiring fixes done (see Progress); remaining —
+  Playwright specs beyond `home.spec.ts`, screenshots, type-check/lint/tests, commits.
 
 ## Parallelization
 
