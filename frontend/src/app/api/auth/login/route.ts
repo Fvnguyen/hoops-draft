@@ -19,9 +19,10 @@ export async function POST(request: Request) {
   if (!email.includes('@')) {
     const admin = createSupabaseAdminClient();
     const { data: profile, error: lookupError } = await admin.from('profiles').select('email').eq('username', email).maybeSingle();
-    // TEMP diagnostic — no secrets, just which branch fired. Remove once the
-    // username-login bug report is resolved.
-    console.error('[login] username lookup', { username: email, found: !!profile, errorCode: lookupError?.code, errorMessage: lookupError?.message });
+    // A real failure here (bad service-role key, network, etc.) looks identical
+    // to "no such username" to the user — log it so a misconfigured key doesn't
+    // silently masquerade as everyone mistyping their username.
+    if (lookupError) console.error('[login] username lookup failed', { code: lookupError.code, message: lookupError.message });
     if (!profile) return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     email = profile.email;
   }
