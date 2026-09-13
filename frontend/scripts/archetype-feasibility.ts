@@ -11,7 +11,7 @@ import { generateCubePool, getBotPick, type DraftSeat } from '../src/engine/draf
 import { createRng } from '../src/engine/rng';
 import { getAllCards } from '../src/engine/cards';
 import { buildBotRoster } from '../src/engine/deckbuilder';
-import { evaluateArchetypes, MONO_THRESHOLDS, COLORS, type Color } from '../src/engine/archetypes';
+import { evaluateArchetypes, shortlistArchetypes, MONO_THRESHOLDS, COLORS, type Color } from '../src/engine/archetypes';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '../src/engine/balance';
 import { PLAYS } from '../tests/unit/fixtures/plays';
 import type { DraftCard, PlayerCardData } from '../src/engine/types';
@@ -105,4 +105,27 @@ for (const color of COLORS) {
   }
   const line = Object.entries(reached).map(([n, c]) => `${n} ${((100 * c) / N).toFixed(0)}%`).join(', ') || '(none)';
   console.log(color.padEnd(20), line);
+}
+
+// How many plans does a roster unlock in total (before / after the shortlist cap)?
+console.log('=== unlocked plans per roster (mean / max) ===');
+{
+  let fU = 0, fS = 0, fMax = 0, bU = 0, bS = 0, bMax = 0, fN = 0, bN = 0;
+  for (let d = 0; d < N; d++) {
+    const color = COLORS[d % COLORS.length];
+    const seats = runDraft(3000 + d, color);
+    for (let i = 0; i < 8; i++) {
+      const roster = buildBotRoster(seats[i].drafted, seats[i].botProfile);
+      const byId = new Map(seats[i].drafted.map(c => [c.id, c]));
+      const active = Object.values(roster.depthChart).flat().map(id => byId.get(id)).filter((c): c is PlayerCardData => !!c && c.type === 'Player');
+      const starters = new Set(Object.values(roster.depthChart).map(ids => ids[0]).filter(Boolean));
+      const st = evaluateArchetypes(active, starters);
+      const unlocked = st.filter(x => x.tier !== 'none').length;
+      const shortlisted = shortlistArchetypes(st).length;
+      if (i === 0) { fU += unlocked; fS += shortlisted; fMax = Math.max(fMax, unlocked); fN++; }
+      else { bU += unlocked; bS += shortlisted; bMax = Math.max(bMax, unlocked); bN++; }
+    }
+  }
+  console.log(`focused drafter: unlocked mean ${(fU / fN).toFixed(2)} (max ${fMax}), shown mean ${(fS / fN).toFixed(2)}`);
+  console.log(`bots:            unlocked mean ${(bU / bN).toFixed(2)} (max ${bMax}), shown mean ${(bS / bN).toFixed(2)}`);
 }

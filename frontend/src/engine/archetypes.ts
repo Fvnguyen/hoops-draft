@@ -91,33 +91,66 @@ export interface ArchetypeThresholds {
 }
 
 /**
- * Thresholds. Plan §2 started at mono 5/10/2 → 6/12/3, which a colour-chasing drafter
- * reached only 5-50% of the time in the 168-player cube (scripts sweep, 2026-09-13).
- * Tuned so a FOCUSED drafter reaches Online ~85-95% and Dedicated ~40-60% of drafts on
- * the offensive colours, while PER-drafting bots reach Online ~25-35% and Dedicated
- * ~5%. The two defensive colours carry ~3x fewer badges and get a looser override.
+ * Thresholds (tuned 2026-09-13 with `npm run feasibility`). Owner's target: a roster
+ * unlocks at most 3-4 plans. With these values a colour-chasing drafter reaches a mono
+ * identity Online in 43-71% of drafts (Dedicated 19-34%), PER-drafting bots 7-16%, and
+ * rosters unlock ~1.5 plans on average; `shortlistArchetypes` caps what is offered at
+ * MAX_UNLOCKED_ARCHETYPES for the rare stacked roster. The two defensive colours carry
+ * ~3x fewer badges and get a looser override.
  */
 export const MONO_THRESHOLDS: ArchetypeThresholds = {
-  online: { carriers: 3, points: 6, starters: 1 },
-  dedicated: { carriers: 5, points: 9, starters: 2 },
+  online: { carriers: 4, points: 8, starters: 2 },
+  dedicated: { carriers: 5, points: 10, starters: 3 },
 };
 /** Per-colour overrides for rarer badges (see note above). */
 export const MONO_THRESHOLDS_BY_COLOR: Partial<Record<Color, ArchetypeThresholds>> = {
-  'Lockdown Defender': { online: { carriers: 3, points: 5, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
-  'Paint Protector': { online: { carriers: 3, points: 5, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
+  'Lockdown Defender': { online: { carriers: 3, points: 6, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
+  'Paint Protector': { online: { carriers: 3, points: 6, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
 };
 export function monoThresholdsFor(color: Color): ArchetypeThresholds {
   return MONO_THRESHOLDS_BY_COLOR[color] ?? MONO_THRESHOLDS;
 }
-/** Scaled from the plan's 5/10 mono baseline by the same ~0.6-0.7 factor as MONO_THRESHOLDS. */
+/** Two-colour and gold plans are meant to be rarer than mono plans. */
 export const TWO_COLOR_THRESHOLDS = {
-  online: { primary: { carriers: 3, points: 6 }, support: { carriers: 2, points: 3 }, distinct: 4, primaryStarters: 1 },
-  dedicated: { primary: { carriers: 4, points: 8 }, support: { carriers: 2, points: 5 }, distinct: 5, primaryStarters: 2 },
+  online: { primary: { carriers: 4, points: 8 }, support: { carriers: 2, points: 4 }, distinct: 5, primaryStarters: 2 },
+  dedicated: { primary: { carriers: 5, points: 10 }, support: { carriers: 3, points: 6 }, distinct: 6, primaryStarters: 3 },
 };
 export const GOLD_THRESHOLDS = {
-  online: { primary: { carriers: 3, points: 6 }, secondary: { carriers: 2, points: 3 }, tertiary: { carriers: 1, points: 2 }, distinct: 5, relevantStarters: 2 },
-  dedicated: { primary: { carriers: 4, points: 8 }, secondary: { carriers: 2, points: 5 }, tertiary: { carriers: 2, points: 4 }, distinct: 6, relevantStarters: 3 },
+  online: { primary: { carriers: 4, points: 8 }, secondary: { carriers: 2, points: 4 }, tertiary: { carriers: 2, points: 3 }, distinct: 6, relevantStarters: 3 },
+  dedicated: { primary: { carriers: 5, points: 10 }, secondary: { carriers: 3, points: 6 }, tertiary: { carriers: 2, points: 5 }, distinct: 7, relevantStarters: 4 },
 };
+
+/** At most this many plans are ever offered to a roster (product rule: 3-4 unlocked max). */
+export const MAX_UNLOCKED_ARCHETYPES = 4;
+
+/** Strength of an unlocked plan for ranking: tier first, then how far the primary colour's points exceed the Online requirement. */
+function planStrength(s: ArchetypeStatus): number {
+  const tierScore = s.tier === 'dedicated' ? 1000 : s.tier === 'online' ? 500 : 0;
+  const primary = s.tally[s.def.colors.primary];
+  const points = primary?.points ?? 0;
+  const carriers = primary?.carriers ?? 0;
+  return tierScore + points * 3 + carriers;
+}
+
+/**
+ * The plans a roster is offered: unlocked plans only, ranked by strength, capped at
+ * MAX_UNLOCKED_ARCHETYPES, but the best plan of each lane (offense, defense, gold) is
+ * kept first so a lane is never empty when the roster unlocked something for it.
+ */
+export function shortlistArchetypes(statuses: ArchetypeStatus[], max: number = MAX_UNLOCKED_ARCHETYPES): ArchetypeStatus[] {
+  const unlocked = statuses.filter(s => s.tier !== 'none').sort((a, b) => planStrength(b) - planStrength(a));
+  const laneOf = (s: ArchetypeStatus) => (s.def.kind === 'gold' ? 'gold' : s.def.side === 'defense' ? 'defense' : 'offense');
+  const picked: ArchetypeStatus[] = [];
+  for (const lane of ['offense', 'defense', 'gold'] as const) {
+    const best = unlocked.find(s => laneOf(s) === lane);
+    if (best) picked.push(best);
+  }
+  for (const s of unlocked) {
+    if (picked.length >= max) break;
+    if (!picked.includes(s)) picked.push(s);
+  }
+  return picked.slice(0, max);
+}
 
 /** Tally badge carriers / points / starters per colour over the active roster. */
 export function tallyColors(activePlayers: PlayerCardData[], starterIds: Set<string>): Record<Color, ColorTally> {
@@ -561,7 +594,9 @@ function bestOfSide(statuses: ArchetypeStatus[], side: ArchetypeSide): string | 
  * progress), else the best eligible offense plan + best eligible defense plan
  * (each independently, by tier then progress).
  */
-export function bestSelection(statuses: ArchetypeStatus[]): ArchetypeSelection {
+export function bestSelection(allStatuses: ArchetypeStatus[]): ArchetypeSelection {
+  // Bots and humans choose from the same shortlist (MAX_UNLOCKED_ARCHETYPES).
+  const statuses = shortlistArchetypes(allStatuses);
   const eligibleGold = statuses.filter(s => s.def.kind === 'gold' && s.tier !== 'none');
   eligibleGold.sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier] || b.progress - a.progress);
   if (eligibleGold.length > 0) {

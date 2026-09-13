@@ -7,6 +7,7 @@ import type { TeamShotProfile } from '../engine/game';
 import type { PlayerCardData } from '../engine/types';
 import {
   evaluateArchetypes,
+  shortlistArchetypes,
   type ArchetypeStatus,
   type ArchetypeSelection,
   type ArchetypeTier,
@@ -62,7 +63,7 @@ export function toggleArchetype(selection: ArchetypeSelection, slot: Slot, id: s
  * (tier online/dedicated) count: a plan that dropped below Online is treated as not selected.
  */
 export function selectedUnlockedIds(selection: ArchetypeSelection, statuses: ArchetypeStatus[]): Set<string> {
-  const unlocked = new Set(statuses.filter(s => s.tier !== 'none').map(s => s.def.id));
+  const unlocked = new Set(shortlistArchetypes(statuses).map(s => s.def.id));
   const ids = [selection.gold, selection.offense, selection.defense].filter((id): id is string => !!id && unlocked.has(id));
   return new Set(ids);
 }
@@ -97,14 +98,15 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
   const selection = archetypes ?? {};
   const statuses = evaluateArchetypes(activePlayers, effectiveStarterIds, selection);
 
-  // Product rule: locked plans stay hidden. Only unlocked plans are ever listed.
-  const unlocked = statuses.filter(s => s.tier !== 'none');
+  // Product rule: locked plans stay hidden and a roster is offered at most 4 plans
+  // (shortlistArchetypes keeps the best plan of each lane first). Lanes always render.
+  const unlocked = shortlistArchetypes(statuses);
   const selectedIds = selectedUnlockedIds(selection, statuses);
   const groups: Array<{ slot: Slot; label: string; plans: ArchetypeStatus[] }> = [
     { slot: 'offense' as Slot, label: 'Offense', plans: unlocked.filter(s => slotOf(s) === 'offense') },
     { slot: 'defense' as Slot, label: 'Defense', plans: unlocked.filter(s => slotOf(s) === 'defense') },
     { slot: 'gold' as Slot, label: 'Gold', plans: unlocked.filter(s => slotOf(s) === 'gold') },
-  ].filter(g => g.plans.length > 0);
+  ];
 
   const identityLabel = selectedIds.size > 0
     ? statuses.filter(s => selectedIds.has(s.def.id)).map(s => s.def.name).join(' + ')
@@ -163,13 +165,13 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
           </button>
         </div>
 
-        {groups.length === 0 ? (
-          <p className="text-[10px] text-stone-400 italic">No identity unlocked yet. Draft and start more players who share a badge.</p>
-        ) : (
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5">
             {groups.map(group => (
-              <div key={group.slot} className="flex items-center gap-1.5 flex-wrap min-w-0">
-                <span className="text-[8px] font-bold uppercase tracking-widest text-stone-400 w-12 shrink-0">{group.label}</span>
+              <div key={group.slot} className={`flex items-center gap-2 flex-wrap min-w-0 rounded-md border px-2 py-1.5 ${group.plans.length > 0 ? 'border-stone-200 bg-stone-50/60' : 'border-dashed border-stone-200'}`}>
+                <span className={`text-[9px] font-black uppercase tracking-widest w-14 shrink-0 ${group.slot === 'gold' ? 'text-amber-600' : group.slot === 'defense' ? 'text-sky-700' : 'text-rose-600'}`}>{group.label}</span>
+                {group.plans.length === 0 && (
+                  <span className="text-[9px] text-stone-400 italic">No plan unlocked</span>
+                )}
                 {group.plans.map(s => {
                   const selected = selectedIds.has(s.def.id);
                   const editable = !!onArchetypesChange;
@@ -198,11 +200,10 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
                 })}
               </div>
             ))}
-            {onArchetypesChange && selectedIds.size === 0 && (
+            {onArchetypesChange && selectedIds.size === 0 && unlocked.length > 0 && (
               <p className="text-[9px] text-stone-400">Click a plan to make it your team&apos;s identity. A Gold plan takes both slots.</p>
             )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

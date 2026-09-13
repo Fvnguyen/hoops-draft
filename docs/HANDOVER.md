@@ -109,13 +109,16 @@ owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans
   `evaluatePlaybook`), `engine/game.ts` (per-possession call/coverage, lineup override
   into the assigned players' own columns, scorer boost, on-call modifiers, budgets).
   `calcTeamBonuses` returns archetype modifiers only. Bots staff roles and pick plans.
-- **Thresholds** tuned with `npm run feasibility` (mono 3/6/1 → 5/9/2; defensive colours
-  3/5/1 → 4/8/2): a colour-chasing drafter reaches Online in 63-94% of drafts and
-  Dedicated in 22-61%; bots reach Online 13-34%, Dedicated 2-7%.
+- **Thresholds** tuned with `npm run feasibility` (mono 4/8/2 → 5/10/3; defensive colours
+  3/6/1 → 4/8/2; two-colour/gold stricter): a colour-chasing drafter reaches Online in
+  43-71% of drafts and Dedicated in 19-34%; bots reach Online 7-16%. Rosters unlock ~1.5
+  plans on average; `shortlistArchetypes` caps the offer at 4 (best of each lane kept),
+  and bots choose from the same shortlist.
 - **UI**: deck builder plays column is a `PlayPanel` per play (no hover flip, 40px role
   rows, assign via popover / depth-chart click / drag onto the row, role tags on cards,
   budget header); the team report's Identity section lists ONLY unlocked plans grouped
-  by slot with the selected one highlighted (click to switch; gold takes both slots);
+  by lane — Offense, Defense, Gold always rendered, empty lanes say so — with the
+  selected one highlighted (click to switch; gold takes both slots);
   selections that drop below Online are pruned on save. Rosters are v2
   (`playAssignments`, `archetypes`); older rosters load with empty assignments.
 - **Measured** (`npm run balance -- 300 --seed 42`, play impact section): Box-and-One
@@ -126,8 +129,6 @@ owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans
 
 Open after this milestone:
 - Play impact is modest; decide whether allocations/effects should grow.
-- An elite roster unlocks many plans at once (the test roster unlocks 9 offensive
-  plans); consider whether Dedicated thresholds should be stricter for two-colour plans.
 - Overtime possessions do not roll for plays (scope cut).
 - Home page / draft room still show the 5:7 play card with neutral roles (fine).
 

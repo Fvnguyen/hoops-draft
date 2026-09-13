@@ -10,7 +10,7 @@ import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
 import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
 import { PLAYBOOK, evaluatePlaybook, getPlaybookId, isEligibleForRole, type PlayAssignment, type PlayStatus, type PlaySide } from '../engine/playbook';
-import { evaluateArchetypes, type ArchetypeSelection } from '../engine/archetypes';
+import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from '../engine/archetypes';
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
@@ -574,7 +574,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const archetypeStatuses = useMemo(() => evaluateArchetypes(Object.values(depthChart).flat(), starterIds, archetypes), [depthChart, starterIds, archetypes]);
   // Only unlocked plans may stay selected; anything that dropped below Online is pruned.
   const validArchetypes = useMemo<ArchetypeSelection>(() => {
-    const unlocked = new Set(archetypeStatuses.filter(st => st.tier !== 'none').map(st => st.def.id));
+    const unlocked = new Set(shortlistArchetypes(archetypeStatuses).map(st => st.def.id));
     const keep = (id?: string) => (id && unlocked.has(id) ? id : undefined);
     return archetypes.gold ? { gold: keep(archetypes.gold) } : { offense: keep(archetypes.offense), defense: keep(archetypes.defense) };
   }, [archetypes, archetypeStatuses]);

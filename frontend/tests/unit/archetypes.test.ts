@@ -121,26 +121,24 @@ describe('Shooting Gallery (mono) reaches Online then Dedicated on real cards', 
 
 describe('two-colour distinct-player requirement', () => {
   it('a player carrying both colours counts once toward "distinct", not twice', () => {
-    // Inside-Out online (TWO_COLOR_THRESHOLDS): Finisher primary 3 carriers / 6 pts,
-    // Sharpshooter support 2 carriers / 3 pts, 4 DISTINCT players, 1 primary starter.
+    // Build a roster that satisfies Inside-Out's primary (Finisher) and support
+    // (Sharpshooter) tallies with the FEWEST distinct players: the first
+    // `support.carriers` Finisher carriers also carry Sharpshooter, so the distinct count
+    // equals primary.carriers — one short of the online distinct requirement.
     const on = TWO_COLOR_THRESHOLDS.online;
-    const pA = makePlayer([trait('Finisher', 3)]);
-    const pB = makePlayer([trait('Finisher', 3), trait('Sharpshooter', 2)]); // dual carrier
-    const pC = makePlayer([trait('Finisher', 1), trait('Sharpshooter', 2)]); // dual carrier
-    const roster = [pA, pB, pC];
-    const starterIds = new Set([pA.id]);
+    expect(on.distinct).toBe(on.primary.carriers + 1);
+    const roster = Array.from({ length: on.primary.carriers }, (_, i) =>
+      makePlayer(i < on.support.carriers ? [trait('Finisher', 3), trait('Sharpshooter', 2)] : [trait('Finisher', 3)]),
+    );
+    const starterIds = new Set(roster.slice(0, on.primaryStarters).map(p => p.id));
 
-    // Primary (3 carriers / 7 pts) and support (2 carriers / 4 pts) are both individually
-    // satisfied, but only 3 DISTINCT players are involved (pB and pC each carry both
-    // colours) — one short of the online distinct requirement.
-    expect(on.distinct).toBe(roster.length + 1);
     const before = evaluateArchetypes(roster, starterIds).find(s => s.def.id === 'inside-out')!;
     expect(before.tier).toBe('none');
     expect(before.missing.some(m => m.startsWith('Distinct players'))).toBe(true);
 
     // A genuinely new distinct carrier (of either colour) tips it over.
-    const pD = makePlayer([trait('Sharpshooter', 1)]);
-    const after = evaluateArchetypes([...roster, pD], starterIds).find(s => s.def.id === 'inside-out')!;
+    const extra = makePlayer([trait('Sharpshooter', 1)]);
+    const after = evaluateArchetypes([...roster, extra], starterIds).find(s => s.def.id === 'inside-out')!;
     expect(after.tier).toBe('online');
   });
 });
