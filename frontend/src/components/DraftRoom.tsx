@@ -143,7 +143,13 @@ function subscribeNever() {
   return () => {};
 }
 
-export function DraftRoom() {
+export interface DraftRoomProps {
+  /** Draft mode (plan ui_draft_deckbuild_pack, D1). Read server-side from
+   *  `?mode=` by `app/draft/page.tsx` (T3); missing/unknown defaults to Premier. */
+  mode?: 'quick' | 'premier';
+}
+
+export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
@@ -159,7 +165,7 @@ export function DraftRoom() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
 
-  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, setDraftState, draftSeed } = useDraftEngine(allPlayers, playsDB);
+  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, setDraftState, draftSeed } = useDraftEngine(allPlayers, playsDB, mode);
 
   const podAverageIdentity = averageRosterIdentities(
     seats

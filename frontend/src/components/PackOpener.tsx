@@ -12,6 +12,13 @@ type PackOpenerProps = {
   pack: DraftCard[];
   onComplete: () => void;
   backdrop?: boolean;
+  /** Draft mode this opener is running in (plan ui_draft_deckbuild_pack, D1-D2).
+   *  Unused until T2's pick-from-spread rework (D7); Quick and Premier render
+   *  identically until then. */
+  mode?: 'quick' | 'premier';
+  /** Epoch ms the human's pick expires at, when running inside a timed Premier
+   *  pack (D4). Unused until T2 draws the `PickTimerRing`. */
+  pickDeadline?: number | null;
 };
 
 const OPEN_MS = 650;

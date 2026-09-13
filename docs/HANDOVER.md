@@ -15,12 +15,8 @@ error boundary (`app/error.tsx`, `app/global-error.tsx`, shared `ErrorRecovery.t
 a recovery screen instead of a blank page; `frontend/tests/smoke.spec.ts` loads every real
 route headlessly and fails on any console/page error.
 
-Finished design docs live in `docs/completed/` (plays & synergies, pack opening, stability
-pass). A plan that is still being worked on stays in `docs/` and moves there when its
-milestone lands.
-
-Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
-`ab04726` (pack opener), `fa10e01` (stricter archetype unlocking).
+Finished design docs live in `docs/completed/`; a plan still being worked on stays in
+`docs/plans/` and moves there when its milestone lands.
 
 ## What this cleanup changed
 
@@ -62,29 +58,11 @@ Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
   (`engine/archetypes.ts`) and assigned-player plays (`engine/playbook.ts`), roster v2
   (`playAssignments`, `archetypes`), deck builder `PlayPanel`. Design and full numbers in
   `docs/completed/plan_plays_and_synergies_2026-09-13.md`.
-
-## Post-milestone fixes — 2026-09-13
-
-- **Pack opener** (`ab04726`, another session; design in
-  `docs/completed/plan_pack_opening_animation_2026-09-13.md`): the first pack of a new
-  draft plays a reveal sequence with dedicated static reveal cards, Skip control and
-  keyboard support; presentation only, the draft state is unchanged.
-- **Live box score** (`cc32edf`): `GameView.tsx` derives the box score from the
-  possessions played so far (`deriveLiveBoxScore`) instead of showing the precomputed
-  final numbers mid-game. Header reads "Through Q# · live", turnovers show "–" until the
-  game is complete, then the engine's final box is used. Verified: live points equal the
-  scoreboard.
-- **Mythic card back bleed-through** (`cc32edf`): the Mythic foil overlay no longer uses
-  `mix-blend-mode` (blended layers ignore `backface-visibility`, Firefox especially) and
-  every card face has `isolation: isolate`. Not reproducible in Chromium; if a user
-  still sees the front through the back, test in Firefox first.
-- **Legacy data**: seasons saved before round-robin game days are upgraded on load
-  (`normalizeSeason`, `humanMatchup`); rosters drafted with duplicate play ids render
-  with index-suffixed keys. Rosters saved before v2 load with empty play assignments.
-- Screenshots under `frontend/*.png` are gitignored.
-
-Not done / waiting on the owner: first Vercel preview deploy; Phase 3 (mobile/PWA) after
-game improvements.
+- **Post-milestone fixes** (done 2026-09-13, `cc32edf`/`ab04726`/`fa10e01`): pack opener
+  reveal sequence (design in `docs/completed/plan_pack_opening_animation_2026-09-13.md`,
+  since reworked further by `ui_draft_deckbuild_pack`); live box score derived from
+  possessions played so far (`deriveLiveBoxScore`); Mythic card-back bleed-through fixed
+  (`isolation: isolate` instead of `mix-blend-mode`); legacy season/roster upgrade paths.
 
 ## Stability pass milestone — done 2026-09-13
 
@@ -153,6 +131,32 @@ Open after this milestone: no fresh `/debug` export exists yet with the plays/ar
 fields populated (the on-disk dumps predate that milestone) — `docs/analytics/report_2026-09.md`'s
 identity/play-call sections are empty until someone plays a draft + season and exports.
 
+## ui_draft_deckbuild_pack wave 0 (T0) — done 2026-09-13
+
+Design: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan **2a**, wave 1 next).
+T0 is contracts-only: everything below compiles, but most new behaviour is a no-op stub.
+
+- New pure modules: `engine/depthChart.ts` (D12 fixed-slot helpers, built on
+  `engine/positions.ts`), `lib/draftTimer.ts`, `lib/packReveal.ts` — none imported into
+  the UI yet (`DeckBuilder.tsx` still has its own eligibility copy); wave 1 wires them in.
+- New components: `Toast.tsx` (`ToastProvider`/`useToast`, not mounted anywhere yet),
+  `audio/sfx.ts` (no-op interface, real Web Audio synthesis is T2), `RosterDistribution.tsx`
+  and `AssignPopover.tsx` — both extracted out of `DraftSidebar.tsx`/`PlayPanel.tsx` with
+  their original callers rewired, so this half is a real (tested) refactor, not a stub.
+- Widened contracts, all backward compatible: optional `DraftSession.mode`,
+  `DraftPickRecord.autoPicked`; `useDraftEngine` gained a `mode` param, a `round-summary`
+  state, `pickDeadline`/`passSeq`, and no-op `pickFromIntro`/`startNextRound`/
+  `expirePick`/`armIntroClock`; `PackOpener` gained unused `mode`/`pickDeadline` props;
+  `DraftRoom` gained a `mode` prop (default `'premier'`, not URL-driven yet).
+- Verified: `tsc --noEmit`, lint (0 errors), `npm test` (122 tests, unchanged), `next
+  build` all clean. Not verified live in-browser: the other session's in-progress
+  `auth_approval` middleware (`frontend/src/proxy.ts`) currently redirects `/draft` to a
+  `/login` page that doesn't exist yet — unrelated to this change; `next build`'s static
+  prerender of `/draft` exercises the same component tree and succeeded.
+
+Next: wave 1 (T1-T6) can run in parallel now that the tree compiles against the final
+hook/component API — see the plan's Tasks table.
+
 ## How to run everything
 
 ```bash
@@ -173,8 +177,8 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is now unblocked, and
-`ui_draft_deckbuild_pack` is paused mid-wave-0 waiting on the owner).
+What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is unblocked, and
+`ui_draft_deckbuild_pack` has wave 0 done — wave 1 (T1-T6) can run next).
 The 2026-09-12 code review that produced Phases 0-1 is archived as
 `docs/completed/review_code_and_architecture_2026-09-12.md`. The list below predates it.
 

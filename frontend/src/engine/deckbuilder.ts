@@ -57,6 +57,9 @@ export interface DraftPickRecord {
   packContents: string[];       // Card IDs visible to this seat BEFORE picking
   pickedCardId: string;         // The card ID that was picked
   zone?: 'Roster' | 'GLeague'; // Only for human picks
+  /** Set when the Premier pick clock expired and `expirePick` picked for the
+   *  human (plan ui_draft_deckbuild_pack, D5). Absent for every other pick. */
+  autoPicked?: boolean;
 }
 
 export interface DraftSessionSeat {
@@ -76,6 +79,9 @@ export interface DraftSession {
   /** plan_data_storage D4: which `src/data/cards.json` generation this draft's cards
    *  came from. Stamped by the storage layer at save time if absent, never overwritten. */
   cardSetVersion?: string;
+  /** plan ui_draft_deckbuild_pack D1: which draft mode produced this session.
+   *  Missing = 'premier' (old sessions predate the mode split). */
+  mode?: 'quick' | 'premier';
 }
 
 // ── Position Eligibility (mirrors DeckBuilder logic) ───────────────────────

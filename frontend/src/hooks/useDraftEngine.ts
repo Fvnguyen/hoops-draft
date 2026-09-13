@@ -21,14 +21,26 @@ export function createBotProfiles(rng: Rng): BotProfile[] {
   }));
 }
 
-export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
-  const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'deckbuilding'>('loading');
+/** Draft mode (plan ui_draft_deckbuild_pack, D1). Quick skips the timer and the
+ *  round-summary pause; Premier gets both. */
+export type DraftMode = 'quick' | 'premier';
+
+export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: DraftMode = 'premier') {
+  // 'round-summary' (D3, Premier only) pauses the draft after packs 1 and 2.
+  const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'round-summary' | 'deckbuilding'>('loading');
   const [seats, setSeats] = useState<DraftSeat[]>([]);
   const [currentPackNumber, setCurrentPackNumber] = useState(1); // 1, 2, 3
   const [currentPickNumber, setCurrentPickNumber] = useState(1); // 1 to 12
   const [overallPick, setOverallPick] = useState(1); // 1 to 36
   const [pickLog, setPickLog] = useState<DraftPickRecord[]>([]);
   const [draftSeed, setDraftSeed] = useState<number | undefined>(undefined);
+  // D4: epoch ms the current pick expires at; null outside a timed Premier pick.
+  // Armed by `armIntroClock` (T1) once a pack is actually in place — the timer
+  // never runs during the intro opener, round summaries, or in Quick mode.
+  const [pickDeadline, setPickDeadline] = useState<number | null>(null);
+  // Bumped once per pass so `PackPassStage` (T3) can key its animation off a
+  // value that changes even when pack contents coincidentally look the same.
+  const [passSeq, setPassSeq] = useState(0);
 
   // Store pre-generated cube packs: 24 packs (8 seats × 3 rounds)
   const cubePacksRef = useRef<DraftCard[][]>([]);
@@ -175,8 +187,35 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     setCurrentPickNumber(nextPickNum);
     setCurrentPackNumber(nextPackNum);
     setOverallPick(nextOverall);
-    
+    setPassSeq(prev => prev + 1);
+
   }, [draftState, seats, currentPackNumber, currentPickNumber, overallPick]);
+
+  // ── T1 stubs (D3-D5): kept here only so callers compile against the final
+  // hook API during T0; real behaviour (round-summary pause, the pick clock,
+  // timeout auto-pick) lands in T1. ──────────────────────────────────────────
+
+  /** Pick straight from the intro/premier opener spread (D7) instead of via the
+   *  post-reveal grid. No-op until T1. */
+  const pickFromIntro = useCallback((cardId: string, zone: 'Roster' | 'GLeague') => {
+    void cardId; void zone;
+  }, []);
+
+  /** Leaves `round-summary` and deals the next pack's opener (D3). No-op until T1. */
+  const startNextRound = useCallback(() => {}, []);
+
+  /** Clock ran out on `overallPick`: auto-picks for the human via a neutral bot
+   *  profile (D5). No-op until T1. */
+  const expirePick = useCallback((overallPickAtExpiry: number) => {
+    void overallPickAtExpiry;
+  }, []);
+
+  /** Arms `pickDeadline` for the pack now in place (D4). No-op until T1 — Quick
+   *  mode never calls this; the setter is only referenced here so it isn't
+   *  flagged as dead state before T1 starts using it. */
+  const armIntroClock = useCallback(() => {
+    setPickDeadline(prev => prev);
+  }, []);
 
   const packDirection = currentPackNumber === 2 ? 1 : -1;
   const passingToSeat = seats.length > 0 ? seats[packDirection === 1 ? 1 : 7] : undefined;
@@ -195,5 +234,12 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     processPickAndPass,
     setDraftState,
     draftSeed,
+    mode,
+    pickDeadline,
+    passSeq,
+    pickFromIntro,
+    startNextRound,
+    expirePick,
+    armIntroClock,
   };
 }

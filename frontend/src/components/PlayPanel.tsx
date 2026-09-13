@@ -6,6 +6,7 @@ import type { Play, PlayerCardData } from './PlayerCard';
 import { RarityGem, PositionIcon } from './PlayerCard';
 import type { PlayStatus, PlayRole } from '../engine/playbook';
 import { describeRoleRequirement } from '../engine/playbook';
+import { AssignPopover } from './AssignPopover';
 
 // Small local badge-icon substitute — `BadgeIcon` in PlayerCard.tsx is not exported
 // (and that file is owned by another workstream), so this renders a coloured
@@ -158,40 +159,14 @@ function RoleRow({
       )}
 
       {isSelected && pickerCandidates && (
-        <div
-          className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-stone-300 rounded-lg shadow-xl max-h-[220px] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {pickerCandidates.length === 0 && (
-            <div className="px-2 py-2 text-[9px] text-stone-500 italic text-center">No eligible players in the active roster.</div>
-          )}
-          {pickerCandidates.map(p => {
-            const level = role.badge
-              ? Math.max(
-                  p.traits?.find(t => t.name === role.badge)?.level ?? 0,
-                  role.altBadge ? (p.traits?.find(t => t.name === role.altBadge)?.level ?? 0) : 0
-                )
-              : 0;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onPick?.(p.id); }}
-                className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-emerald-50 text-left border-b border-stone-100 last:border-b-0"
-              >
-                <img
-                  src={`/headshots/${p.id}.png`}
-                  alt=""
-                  className="w-6 h-6 rounded-full object-cover object-top border border-stone-200 bg-stone-100 shrink-0"
-                  onError={(e2) => { (e2.target as HTMLImageElement).style.visibility = 'hidden'; }}
-                />
-                <span className="flex-1 min-w-0 text-[10px] font-bold text-stone-800 truncate">{p.player.name}</span>
-                <PositionIcon position={p.player.position} className="min-w-[22px] h-[15px] px-1 text-[8px] shrink-0" />
-                {role.badge && <span className="text-[8px] font-bold text-stone-500 shrink-0">Lv {level}</span>}
-              </button>
-            );
-          })}
-        </div>
+        <AssignPopover
+          candidates={pickerCandidates}
+          levelFor={role.badge ? (p) => Math.max(
+            p.traits?.find(t => t.name === role.badge)?.level ?? 0,
+            role.altBadge ? (p.traits?.find(t => t.name === role.altBadge)?.level ?? 0) : 0
+          ) : undefined}
+          onPick={(playerId) => onPick?.(playerId)}
+        />
       )}
     </div>
   );
