@@ -2,11 +2,10 @@
 
 Magic Ball is an NBA card game. Real players scraped from basketball-reference and the
 NBA Stats API become rated cards (OVR, per-skill ratings, rarity, badges). Players draft
-a fixed cube (8 seats x 3 packs x 11 players + 1 play card), build a 12-man roster with a
-deck builder, and play out games through an auto-battler engine (possession battle,
-multi-channel shot model, synergies/plays) either one-off or across a 7-game season.
-Next.js 16 + React 19 + Tailwind 4, reading player data from a read-only SQLite file via
-better-sqlite3.
+a fixed cube (8 seats x 3 packs x 7 players + 1 play card), build a 12-man roster with
+play assignments and an identity, and play out games through a pure, seeded auto-battler
+engine, one-off or across a round-robin season. Next.js 16 + React 19 + Tailwind 4; the
+app ships a static `cards.json`, no database at runtime.
 
 ## Repo map
 
@@ -136,9 +135,8 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   `localStorage` state and POSTs it to `/api/game-logs`, which writes the JSON that
   `analyze_game_data.js` consumes. Play a few drafts/seasons, hit export on `/debug`, then
   run `npm run analyze`.
-- The plan sequence is `docs/ROADMAP.md`, each plan is `docs/plans/plan_<topic>_<date>.md`; open balance issues
-  are tracked in `docs/HANDOVER.md`; the underlying findings are
-  in `docs/analytics/analysis_report.md` and `docs/analytics/analytics_summary.md`.
+- Next work: `docs/ROADMAP.md` then `docs/plans/plan_<topic>_<date>.md`; open issues in
+  `docs/HANDOVER.md`; `docs/analytics/*` reports predate the current engine.
 
 ## Gotchas discovered in the code
 - `scripts/build-cards.ts` resolves `game.db` relative to `frontend/`; run it via the npm
@@ -147,7 +145,6 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   relative to cwd and is disabled in production builds.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
   player cards when the player pool has at least 264 players; the pool has 448.
-
 - Not junk: `/test-ui` (fixture page consumed by `frontend/tests/visual.spec.ts`
   screenshot tests), `/debug` (analytics export), `/deckbuilder-test`, `/data`, `/rosters`,
   `/draft`, `/season` are all real, linked-from-home-page pages — see
