@@ -7,16 +7,45 @@
  */
 
 import { DraftCard, PlayerCardData, Play } from './types';
+import { getPlaybookId, type PlayAssignment } from './playbook';
+import type { ArchetypeSelection } from './archetypes';
 import { BotProfile } from './draft';
 import { TARGET_ROSTER } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface BuiltRoster {
+  /** Shape version. 2 = playAssignments + archetypes (2026-09-13). Missing = 1. */
+  version?: number;
   depthChart: Record<string, string[]>;   // Position -> ordered card IDs (index 0 = starter)
-  activePlays: string[];                  // Up to 3 play card IDs
+  activePlays: string[];                  // Up to 3 play card IDs (kept in sync with playAssignments' cardIds)
+  /** Role assignments for the active plays (v2). One entry per active play card. */
+  playAssignments?: PlayAssignment[];
+  /** Chosen roster identity (v2). */
+  archetypes?: ArchetypeSelection;
   gLeaguePlayers: string[];               // Bench player card IDs
   gLeaguePlays: string[];                 // Bench play card IDs
+}
+
+export const BUILT_ROSTER_VERSION = 2;
+
+/**
+ * Upgrade a roster saved before playbook/archetypes: every active play gets an
+ * assignment with empty roles (so it is inactive until the user assigns players) and an
+ * empty archetype selection. Returns the same object when already current.
+ */
+export function normalizeBuiltRoster(roster: BuiltRoster, cards: DraftCard[] = []): BuiltRoster {
+  if (roster.version === BUILT_ROSTER_VERSION && roster.playAssignments && roster.archetypes) return roster;
+  const byId = new Map(cards.map(c => [c.id, c]));
+  const existing = new Map((roster.playAssignments ?? []).map(a => [a.cardId, a]));
+  const playAssignments: PlayAssignment[] = (roster.activePlays ?? []).map(cardId => {
+    const prev = existing.get(cardId);
+    if (prev) return prev;
+    const card = byId.get(cardId);
+    const playId = card && card.type === 'Play' ? getPlaybookId(card) : getPlaybookId({ id: cardId });
+    return { cardId, playId, roles: {} };
+  });
+  return { ...roster, version: BUILT_ROSTER_VERSION, playAssignments, archetypes: roster.archetypes ?? {} };
 }
 
 /** A single pick record for draft replay / analytics */

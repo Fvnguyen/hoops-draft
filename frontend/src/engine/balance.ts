@@ -154,3 +154,20 @@ export const HATE_DRAFT_FLOOR = 250;
 // ── deckbuilder.ts (from botDeckBuilder.ts) ─────────────────────────────────
 
 export const TARGET_ROSTER = 12;
+
+// ── Playbook & archetypes (docs/plan_plays_and_synergies_2026-09-13.md) ──────
+/** Max share of OWN possessions that active offensive plays may claim in total. */
+export const PLAY_BUDGET_OFFENSE = 0.30;
+/** Max share of OPPONENT possessions that active defensive plays may cover in total. */
+export const PLAY_BUDGET_DEFENSE = 0.25;
+/** Scorer-weight multiplier for the assigned players on a called possession. */
+export const PLAY_SCORER_BOOST = 2.0;
+/** Online archetypes deliver this fraction of the Dedicated effect. */
+export const ARCHETYPE_ONLINE_SCALE = 0.7;
+/** Caps applied AFTER archetype + play effects are combined (per team, per game). */
+export const IDENTITY_CAPS = {
+  share: 0.15,        // net shot-share shift per channel, ±
+  eff: 0.05,          // net channel-efficiency shift, ±
+  possessions: 5,     // net possession swing, ±
+  and1: 0.04,         // net and-1 shift, ±
+};
