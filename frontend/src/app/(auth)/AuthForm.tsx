@@ -31,14 +31,14 @@ export function AuthForm({ mode }: AuthFormProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const result = await response.json() as { error?: string; redirect?: string; autoApproved?: boolean };
+    const result = await response.json() as { error?: string; redirect?: string };
     setBusy(false);
     if (!response.ok) {
       setError(result.error ?? 'Something went wrong.');
       return;
     }
     if (mode === 'signup') {
-      setMessage(result.autoApproved ? 'Your account is ready. You can log in now.' : 'Account created. An admin must approve it before you can play.');
+      setMessage('Account created. An admin must approve it before you can play.');
       setPassword('');
       return;
     }

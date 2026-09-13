@@ -43,3 +43,6 @@ screenshots/
 frontend/*.png
 
 .vercel
+
+# supabase CLI scratch dir
+frontend/supabase/.temp/

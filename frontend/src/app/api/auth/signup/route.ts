@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (existing) return NextResponse.json({ error: 'That username is taken.' }, { status: 409 });
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: { data: { display_name: displayName, username } },
@@ -40,5 +40,15 @@ export async function POST(request: Request) {
       : error.message;
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  return NextResponse.json({ ok: true, autoApproved: email === 'nguyen.teomads@gmail.com' });
+
+  // Supabase returns ok:true with a stub user (identities: []) instead of an
+  // error when the email already exists, to avoid leaking account existence.
+  // Without this check that silently no-ops: no auth.users row is inserted,
+  // the handle_new_user trigger never fires, and no profiles row is created —
+  // so the account is neither approved nor visible on the admin page.
+  if (data.user && data.user.identities?.length === 0) {
+    return NextResponse.json({ error: 'An account with that email already exists.' }, { status: 409 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
