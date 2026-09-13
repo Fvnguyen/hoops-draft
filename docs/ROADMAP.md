@@ -32,7 +32,7 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 Plans 7-9 keep the order agreed on 2026-09-12 (game design settles before the mobile UI is
 built once). Their scope sketch is proposals D, E, F, G in
 `docs/completed/review_code_and_architecture_2026-09-12.md`; write their plan docs when
-plan 6 is done.
+plans 2-5 are done.
 
 ## Recently completed (latest three)
 
