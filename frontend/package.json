@@ -13,9 +13,12 @@
     "balance": "tsx scripts/balance.ts",
     "analyze": "tsx scripts/analyze.ts",
     "build:cards": "tsx scripts/build-cards.ts",
-    "feasibility": "tsx scripts/archetype-feasibility.ts"
+    "feasibility": "tsx scripts/archetype-feasibility.ts",
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "dexie": "^4.4.6",
     "framer-motion": "^13.2.0",
     "lucide-react": "^1.44.0",

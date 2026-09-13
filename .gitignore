@@ -39,3 +39,6 @@ screenshots/
 
 # ad-hoc verification screenshots dropped in the app folder by agents
 frontend/*.png
+
+.vercel
+.env*
