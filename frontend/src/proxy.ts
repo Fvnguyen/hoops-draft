@@ -5,6 +5,10 @@ const PUBLIC_PATHS = new Set(['/login', '/signup', '/pending']);
 const PROTECTED_PREFIXES = ['/draft', '/rosters', '/season', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview'];
 
 function isProtected(pathname: string) {
+  // The home page is gated too — an unauthenticated visitor should always
+  // land on /login, never see the app shell first and only get bounced once
+  // they click something.
+  if (pathname === '/') return true;
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
