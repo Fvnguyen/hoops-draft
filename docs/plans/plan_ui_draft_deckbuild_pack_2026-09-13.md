@@ -1,6 +1,6 @@
 # Plan: ui_draft_deckbuild_pack
 
-File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress (2026-09-13).
+File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: planned; wave 0 started 2026-09-13 (see Progress).
 Sequence: **2a**, before `game_engine` and before `draft_ai` (both this plan and draft_ai edit
 `hooks/useDraftEngine.ts`; this plan lands first and never touches `engine/draft.ts`). Depends
 on: nothing; a second session can run `analytics_tooling` or `data_storage` in parallel.
@@ -113,6 +113,18 @@ Deck builder v2
 
 Product rules restated: no OVR/ratings to users; rarity as gem never a frame; Roster /
 G-League zoning stays; no inspect panel; no roster auto-fill.
+
+## Progress
+
+- 2026-09-13: wave 0 started, then paused by the owner. Written and untested, not yet
+  imported anywhere: `frontend/src/lib/draftTimer.ts` (D4 schedule, `pickTimeMs`,
+  `deadlineFor`, `clockScaleFromQuery`), `frontend/src/lib/packReveal.ts` (D6
+  `orderForReveal`, `buildRevealTimeline`, hold constants),
+  `frontend/src/engine/positions.ts` (D13 `naturalPositions`, `positionFit`,
+  `canPlaceAt`, `defaultColumn`). Remaining T0 items: `engine/depthChart.ts`,
+  `Toast.tsx`, `audio/sfx.ts`, `RosterDistribution` and `AssignPopover` extractions,
+  session fields, hook and opener API widening, `DraftRoom` mode prop. This file is over
+  the 150-line budget; trim the Tasks section when T0 resumes.
 
 ## Out of scope
 
