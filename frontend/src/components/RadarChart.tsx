@@ -42,10 +42,18 @@ interface RadarChartProps {
   data: RosterIdentity;
   /** Reference values (e.g. league average) drawn as a faint dashed polygon. */
   average: RosterIdentity;
+  /** Base size (px) used only to derive the viewBox's internal proportions —
+   *  the rendered SVG has no fixed width/height and instead fills its container
+   *  fluidly (see D17: builder body must resize 1024-1920px without clipping). */
   size?: number;
 }
 
-/** Pure presentational SVG heptagon radar. No state, no numbers rendered anywhere. */
+/**
+ * Pure presentational SVG heptagon radar. No state, no numbers rendered anywhere.
+ * viewBox-scaled: no width/height attributes, so it fills whatever box the caller
+ * gives it (e.g. `<div style={{width: '11rem'}}>`) instead of clipping or staying
+ * a fixed pixel size.
+ */
 export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   const center = size / 2;
   const labelPad = Math.max(14, size * 0.14);
@@ -63,9 +71,8 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   return (
     <svg
       viewBox={`${-hPad} 0 ${size + 2 * hPad} ${size}`}
-      width={size + 2 * hPad}
-      height={size}
-      className="overflow-visible"
+      className="w-full h-auto max-w-[240px]"
+      preserveAspectRatio="xMidYMid meet"
       role="img"
       aria-label="Team identity radar"
     >

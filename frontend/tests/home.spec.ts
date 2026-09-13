@@ -1,34 +1,21 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Home Page redesign', () => {
-  test('has correct navigation links and visual sections', async ({ page }) => {
-    // Test against the actual home route
+/**
+ * D1: the home page's two draft CTAs route to the right `?mode=`. Premier is
+ * the primary/emphasized CTA, Quick the secondary one — this only checks
+ * routing, not visual emphasis (that's a manual/screenshot check, see
+ * docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md).
+ */
+test.describe('Home page draft CTAs', () => {
+  test('Premier CTA routes to /draft?mode=premier', async ({ page }) => {
     await page.goto('/');
+    await page.getByTestId('cta-premier').click();
+    await expect(page).toHaveURL(/\/draft\?mode=premier/);
+  });
 
-    // Wait for the font to load so visual tests are stable
-    await page.evaluate(() => document.fonts.ready);
-
-    // Verify main title
-    await expect(page.getByRole('heading', { name: /HOOPS DRAFT/i })).toBeVisible();
-    await expect(page.getByText('ALL-STARS')).toBeVisible();
-
-    // Verify main game links
-    const startDraftLink = page.getByRole('link', { name: /START DRAFT/i });
-    await expect(startDraftLink).toBeVisible();
-    await expect(startDraftLink).toHaveAttribute('href', '/draft');
-
-    const myRostersLink = page.getByRole('link', { name: /MY ROSTERS/i });
-    await expect(myRostersLink).toBeVisible();
-    await expect(myRostersLink).toHaveAttribute('href', '/rosters');
-
-    // Verify Dev Tools
-    await expect(page.getByText('Dev Tools')).toBeVisible();
-    // Dev links live inside a collapsed <details> disclosure now; open it first.
-    await page.getByText('Dev Tools').click();
-    await expect(page.getByRole('link', { name: /Deckbuilder/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Test UI/i })).toBeVisible();
-
-    // Verify right column "DRAFT PACK" exists
-    await expect(page.getByRole('heading', { name: /DRAFT PACK/i })).toBeVisible();
+  test('Quick CTA routes to /draft?mode=quick', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('cta-quick').click();
+    await expect(page).toHaveURL(/\/draft\?mode=quick/);
   });
 });

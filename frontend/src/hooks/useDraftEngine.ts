@@ -4,6 +4,7 @@ import { DraftSeat, generateCubePool, getBotPick, type BotProfile } from '../eng
 import { DraftPickRecord } from '../engine/deckbuilder';
 import { createRng, pick, randomSeed, type Rng } from '../engine/rng';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { deadlineFor } from '../lib/draftTimer';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
@@ -20,6 +21,16 @@ export function createBotProfiles(rng: Rng): BotProfile[] {
     favoredTrait: pick(rng, TRAITS_POOL),
   }));
 }
+
+/** D5: the profile handed to `getBotPick` when the clock expires on the human
+ *  seat. `favoredTrait: ''` never matches a real badge, so it scores every
+ *  card on its base value with no trait bias — "neutral", not "optimal". */
+const CLOCK_EXPIRY_PROFILE: BotProfile = {
+  id: 'clock-expiry',
+  name: 'The Clock',
+  noiseSeed: 424242,
+  favoredTrait: '',
+};
 
 /** Draft mode (plan ui_draft_deckbuild_pack, D1). Quick skips the timer and the
  *  round-summary pause; Premier gets both. */
@@ -82,6 +93,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     setCurrentPackNumber(1);
     setCurrentPickNumber(1);
     setOverallPick(1);
+    setPickDeadline(null);
     setDraftState('pack-intro');
   }, [allPlayers, playsDB]);
 
@@ -95,29 +107,33 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     }
   }, [allPlayers, startNewDraft]);
 
-  const processPickAndPass = useCallback((humanPickId: string, zone: 'Roster' | 'GLeague') => {
-    if (draftState !== 'drafting') return;
+  // Shared core of processPickAndPass/pickFromIntro/expirePick (D5's timeout
+  // auto-pick and D7's pick-from-the-opener-spread both need the exact same
+  // pick/pass mechanics — only how `cardId` was chosen differs).
+  const applyPick = useCallback((cardId: string, zone: 'Roster' | 'GLeague', autoPicked: boolean) => {
+    const humanSeatSnapshot = seats[0];
+    if (!humanSeatSnapshot) return;
+    const pickedCardIndex = humanSeatSnapshot.currentPack.findIndex(c => c.id === cardId);
+    if (pickedCardIndex === -1) return; // stale/invalid id — no-op rather than passing packs without a human pick
 
     const newSeats = [...seats.map(s => ({ ...s, drafted: [...s.drafted], currentPack: [...s.currentPack] }))];
     const pickRecords: DraftPickRecord[] = [];
-    
+
     // 1. Record Human Pick
     const humanSeat = newSeats[0];
     const humanPackSnapshot = humanSeat.currentPack.map(c => c.id); // Snapshot BEFORE picking
-    const pickedCardIndex = humanSeat.currentPack.findIndex(c => c.id === humanPickId);
-    if (pickedCardIndex !== -1) {
-      const pickedCard = humanSeat.currentPack.splice(pickedCardIndex, 1)[0];
-      humanSeat.drafted.push(pickedCard);
-      pickRecords.push({
-        packNumber: currentPackNumber,
-        pickNumber: currentPickNumber,
-        overallPick,
-        seatId: humanSeat.id,
-        packContents: humanPackSnapshot,
-        pickedCardId: humanPickId,
-        zone,
-      });
-    }
+    const pickedCard = humanSeat.currentPack.splice(pickedCardIndex, 1)[0];
+    humanSeat.drafted.push(pickedCard);
+    pickRecords.push({
+      packNumber: currentPackNumber,
+      pickNumber: currentPickNumber,
+      overallPick,
+      seatId: humanSeat.id,
+      packContents: humanPackSnapshot,
+      pickedCardId: cardId,
+      zone,
+      ...(autoPicked ? { autoPicked: true } : {}),
+    });
 
     // 2. Record Bot Picks
     for (let i = 1; i < 8; i++) {
@@ -127,8 +143,8 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
         const botPickId = getBotPick(botSeat, overallPick);
         const botPickIndex = botSeat.currentPack.findIndex(c => c.id === botPickId);
         if (botPickIndex !== -1) {
-          const pickedCard = botSeat.currentPack.splice(botPickIndex, 1)[0];
-          botSeat.drafted.push(pickedCard);
+          const botPickedCard = botSeat.currentPack.splice(botPickIndex, 1)[0];
+          botSeat.drafted.push(botPickedCard);
           pickRecords.push({
             packNumber: currentPackNumber,
             pickNumber: currentPickNumber,
@@ -167,19 +183,39 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     if (nextPickNum > CUBE_PLAYER_CARDS_PER_PACK + 1) {
       nextPickNum = 1;
       nextPackNum += 1;
-      
+
       if (nextPackNum > 3) {
-        // Draft Complete
+        // Draft complete — pack 3 always goes straight to the builder (D3),
+        // in both modes.
         setSeats(newSeats);
+        setCurrentPickNumber(nextPickNum);
+        setCurrentPackNumber(nextPackNum);
+        setOverallPick(nextOverall);
+        setPickDeadline(null);
         setDraftState('deckbuilding');
         return;
-      } else {
-        // Deal pre-generated packs for the next round from cube pool
-        // Round 2: packs 8-15, Round 3: packs 16-23
-        const packOffset = (nextPackNum - 1) * 8;
-        for (let i = 0; i < 8; i++) {
-          newSeats[i].currentPack = cubePacksRef.current[packOffset + i] || [];
-        }
+      }
+
+      if (mode === 'premier') {
+        // D3: pause after the last pick of packs 1 and 2 instead of dealing
+        // the next pack immediately. `currentPackNumber` moves to the pack
+        // that's coming up so the summary/header can already reflect it;
+        // the actual cards are dealt lazily by `startNextRound`.
+        setSeats(newSeats);
+        setCurrentPickNumber(nextPickNum);
+        setCurrentPackNumber(nextPackNum);
+        setOverallPick(nextOverall);
+        setPassSeq(prev => prev + 1);
+        setPickDeadline(null);
+        setDraftState('round-summary');
+        return;
+      }
+
+      // Quick mode (D2): never pauses — deal the next pack and keep drafting,
+      // with no repeat intro.
+      const packOffset = (nextPackNum - 1) * 8;
+      for (let i = 0; i < 8; i++) {
+        newSeats[i].currentPack = cubePacksRef.current[packOffset + i] || [];
       }
     }
 
@@ -188,34 +224,71 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     setCurrentPackNumber(nextPackNum);
     setOverallPick(nextOverall);
     setPassSeq(prev => prev + 1);
+    // A new pick within the same pack still needs a no-op-safe deadline reset;
+    // real arming happens via the caller's explicit `armIntroClock()` call so
+    // the countdown only starts once the pass animation has actually settled.
+    setPickDeadline(null);
+  }, [seats, currentPackNumber, currentPickNumber, overallPick, mode]);
 
-  }, [draftState, seats, currentPackNumber, currentPickNumber, overallPick]);
-
-  // ── T1 stubs (D3-D5): kept here only so callers compile against the final
-  // hook API during T0; real behaviour (round-summary pause, the pick clock,
-  // timeout auto-pick) lands in T1. ──────────────────────────────────────────
+  const processPickAndPass = useCallback((humanPickId: string, zone: 'Roster' | 'GLeague') => {
+    if (draftState !== 'drafting') return;
+    applyPick(humanPickId, zone, false);
+  }, [draftState, applyPick]);
 
   /** Pick straight from the intro/premier opener spread (D7) instead of via the
-   *  post-reveal grid. No-op until T1. */
+   *  post-reveal grid. Same pick/pass mechanics as `processPickAndPass`, just
+   *  valid while the draft is still showing the opener. */
   const pickFromIntro = useCallback((cardId: string, zone: 'Roster' | 'GLeague') => {
-    void cardId; void zone;
-  }, []);
+    if (draftState !== 'pack-intro') return;
+    applyPick(cardId, zone, false);
+  }, [draftState, applyPick]);
 
-  /** Leaves `round-summary` and deals the next pack's opener (D3). No-op until T1. */
-  const startNextRound = useCallback(() => {}, []);
+  /** Leaves `round-summary` and deals the next pack's opener (D3). */
+  const startNextRound = useCallback(() => {
+    if (draftState !== 'round-summary') return;
+    const packOffset = (currentPackNumber - 1) * 8;
+    const newSeats = seats.map((s, i) => ({
+      ...s,
+      currentPack: [...(cubePacksRef.current[packOffset + i] || [])],
+    }));
+    setSeats(newSeats);
+    setPickDeadline(null);
+    setDraftState('pack-intro');
+  }, [draftState, currentPackNumber, seats]);
 
   /** Clock ran out on `overallPick`: auto-picks for the human via a neutral bot
-   *  profile (D5). No-op until T1. */
+   *  profile (D5). Guarded by `overallPickAtExpiry` so a stale timer firing
+   *  after the human already picked (or the pack already advanced) is a no-op. */
   const expirePick = useCallback((overallPickAtExpiry: number) => {
-    void overallPickAtExpiry;
-  }, []);
+    if (mode !== 'premier') return;
+    if (draftState !== 'drafting') return;
+    if (overallPickAtExpiry !== overallPick) return;
 
-  /** Arms `pickDeadline` for the pack now in place (D4). No-op until T1 — Quick
-   *  mode never calls this; the setter is only referenced here so it isn't
-   *  flagged as dead state before T1 starts using it. */
-  const armIntroClock = useCallback(() => {
-    setPickDeadline(prev => prev);
-  }, []);
+    const humanSeat = seats[0];
+    if (!humanSeat || humanSeat.currentPack.length === 0) return;
+
+    const neutralSeat: DraftSeat = { ...humanSeat, isBot: true, botProfile: CLOCK_EXPIRY_PROFILE };
+    const cardId = getBotPick(neutralSeat, overallPickAtExpiry);
+    if (!cardId) return;
+
+    applyPick(cardId, 'Roster', true);
+  }, [mode, draftState, overallPick, seats, applyPick]);
+
+  /** Arms `pickDeadline` for whichever pick is now current (D4), Premier mode
+   *  only, once a pack is actually in place (`draftState === 'drafting'`) —
+   *  null during openers/summaries/deckbuilding/Quick mode. `scale` is the
+   *  caller's clock-scale multiplier (see `lib/draftTimer.ts`'s
+   *  `clockScaleFromQuery`); T3's `DraftRoom` reads `?clock=` from the URL
+   *  and passes the resulting number straight through here — the hook takes
+   *  no URL/query dependency of its own. Defaults to 1 (real-time) when the
+   *  caller doesn't pass one. */
+  const armIntroClock = useCallback((scale: number = 1) => {
+    if (mode !== 'premier' || draftState !== 'drafting') {
+      setPickDeadline(null);
+      return;
+    }
+    setPickDeadline(deadlineFor(currentPickNumber, Date.now(), scale));
+  }, [mode, draftState, currentPickNumber]);
 
   const packDirection = currentPackNumber === 2 ? 1 : -1;
   const passingToSeat = seats.length > 0 ? seats[packDirection === 1 ? 1 : 7] : undefined;

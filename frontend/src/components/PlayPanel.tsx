@@ -120,19 +120,23 @@ function RoleRow({
         <RoleBadgeIcon role={role} />
 
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-bold uppercase text-stone-800 truncate leading-tight">{role.name}</div>
-          <div className="text-[8px] text-stone-500 truncate leading-tight">{describeRoleRequirement(role)}</div>
+          <div className="text-[11px] font-bold uppercase text-stone-800 truncate leading-tight">{role.name}</div>
+          <div className="text-[10px] text-stone-500 truncate leading-tight">{describeRoleRequirement(role)}</div>
         </div>
 
         {filled && playerFromRoster ? (
-          <div className="flex items-center gap-1 shrink-0 max-w-[130px]">
+          // min-w-0 so the row can shrink below its children's natural width; the
+          // player name is the only flexible child (flex-1 min-w-0 truncate) so it's
+          // the one that gives way — the position pill (shrink-0) always stays fully
+          // visible instead of being squeezed off (D18).
+          <div className="flex items-center gap-1 shrink-0 min-w-0 max-w-[130px]">
             <img
               src={`/headshots/${playerFromRoster.id}.png`}
               alt=""
               className="w-[26px] h-[26px] rounded-full object-cover object-top border border-stone-300 bg-stone-100 shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
             />
-            <span className="text-[10px] font-bold text-stone-800 truncate">{playerFromRoster.player.name}</span>
+            <span className="flex-1 min-w-0 text-[11px] font-bold text-stone-800 truncate">{playerFromRoster.player.name}</span>
             <PositionIcon position={playerFromRoster.player.position} className="min-w-[22px] h-[15px] px-1 text-[8px] shrink-0" />
             <button
               type="button"

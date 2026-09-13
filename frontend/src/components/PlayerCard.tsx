@@ -69,6 +69,22 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
   );
 }
 
+// Overflow indicator for a badge row that had to cap how many BadgeIcons it shows
+// (D18: readability — small cards show 2 + "+N", list rows show 3 + "+N"). `names`
+// carries the hidden badges' names for the tooltip.
+function BadgeOverflowIndicator({ count, names, size = 'small' }: { count: number; names: string[]; size?: 'normal' | 'small' | 'xs' }) {
+  if (count <= 0) return null;
+  const containerSize = size === 'xs' ? 'w-[18px] h-[18px] text-[7px]' : size === 'small' ? 'w-6 h-6 text-[9px]' : 'w-8 h-8 text-[10px]';
+  return (
+    <div
+      className={`${containerSize} shrink-0 rounded-full bg-stone-700 border-2 border-stone-500/60 flex items-center justify-center font-black text-stone-200`}
+      title={names.join(', ')}
+    >
+      +{count}
+    </div>
+  );
+}
+
 // A play's requirement can be shown "neutral" (plain PlayRequirement — no roster to
 // compare against, e.g. draft room / home page) or "evaluated" against a roster's
 // badge totals (PlayRequirementStatus — carries `have`/`met`). This tells the two apart.
@@ -249,11 +265,13 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
         />
         <span className="flex-1 min-w-[56px] font-bold text-[12px] text-stone-800 uppercase truncate">{card.player.name}</span>
-        {/* Badges only when the row is wide enough for the name to stay readable */}
+        {/* Badges only when the row is wide enough for the name to stay readable.
+            D18: list-row variant caps at 3 badges + "+N" overflow. */}
         <div className="hidden @[230px]:flex items-center gap-0.5 shrink-0">
           {card.traits.slice(0, 3).map((t, i) => (
             <BadgeIcon key={i} name={t.name} level={t.level} size="xs" />
           ))}
+          <BadgeOverflowIndicator count={Math.max(0, card.traits.length - 3)} names={card.traits.slice(3).map(t => t.name)} size="xs" />
         </div>
         {trailing && <div className="shrink-0 ml-1">{trailing}</div>}
       </div>
@@ -468,9 +486,11 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
            <div className="flex items-center gap-1">
              <RarityGem rarity={player.rarity} size="sm" />
-             {player.traits.slice(0, 3).map(t => (
+             {/* D18: small card variant caps at 2 badges + "+N" overflow */}
+             {player.traits.slice(0, 2).map(t => (
                <BadgeIcon key={t.name} name={t.name} level={t.level} size="small" />
              ))}
+             <BadgeOverflowIndicator count={Math.max(0, player.traits.length - 2)} names={player.traits.slice(2).map(t => t.name)} size="small" />
            </div>
         </div>
 

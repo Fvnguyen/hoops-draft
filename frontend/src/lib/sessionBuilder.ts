@@ -13,7 +13,8 @@ import { buildBotRoster, normalizeBuiltRoster, DraftSession, DraftSessionSeat, D
 export function buildDraftSession(
   seats: DraftSeat[],
   pickLog: DraftPickRecord[] = [],
-  seed?: number
+  seed?: number,
+  mode?: 'quick' | 'premier'
 ): DraftSession {
   const sessionSeats: DraftSessionSeat[] = seats.map((seat) => ({
     id: seat.id,
@@ -32,5 +33,6 @@ export function buildDraftSession(
     seats: sessionSeats,
     pickLog,
     seed,
+    ...(mode ? { mode } : {}),
   };
 }

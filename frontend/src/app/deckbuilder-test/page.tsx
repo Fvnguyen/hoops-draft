@@ -4,15 +4,24 @@ import type { ArchetypeSelection } from '@/engine/archetypes';
 import { useEffect, useState, Suspense } from 'react';
 import { DraftCard } from '@/components/PlayerCard';
 import { DeckBuilder } from '@/components/DeckBuilder';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
 
 function DeckbuilderTestInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const rosterId = searchParams.get('rosterId');
   const sessionIdParam = searchParams.get('sessionId');
   const ready = useStorageReady();
+
+  // Redirect to the new /roster/[id] route if rosterId is present
+  useEffect(() => {
+    if (rosterId) {
+      const redirectUrl = `/roster/${rosterId}${sessionIdParam ? `?sessionId=${sessionIdParam}` : ''}`;
+      router.replace(redirectUrl);
+    }
+  }, [rosterId, sessionIdParam, router]);
 
   const [cards, setCards] = useState<DraftCard[]>([]);
   const [initialZones, setInitialZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});

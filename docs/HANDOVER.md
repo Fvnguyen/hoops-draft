@@ -157,6 +157,11 @@ T0 is contracts-only: everything below compiles, but most new behaviour is a no-
 Next: wave 1 (T1-T6) can run in parallel now that the tree compiles against the final
 hook/component API — see the plan's Tasks table.
 
+## ui_draft_deckbuild_pack wave 1 (T6) — routes and redirects — done 2026-09-13
+
+New `/roster/[id]` edit route loads and edits existing rosters; `/deckbuilder-test?rosterId=`
+redirects there; `/rosters` links updated. Router, storage, and component contracts unchanged.
+
 ## How to run everything
 
 ```bash

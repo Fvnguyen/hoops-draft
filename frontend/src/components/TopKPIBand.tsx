@@ -98,14 +98,22 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
   const selection = archetypes ?? {};
   const statuses = evaluateArchetypes(activePlayers, effectiveStarterIds, selection);
 
-  // Product rule: locked plans stay hidden and a roster is offered at most 4 plans
-  // (shortlistArchetypes keeps the best plan of each lane first). Lanes always render.
+  // Product rule: a roster is offered at most 4 unlocked plans (shortlistArchetypes
+  // keeps the best plan of each lane first). Lanes always render. A locked plan is
+  // never selectable, but the single highest-progress locked plan per lane gets a
+  // muted "why locked" hint below the unlocked plans (amends the old "locked plans
+  // hidden" rule — see AGENTS.md).
   const unlocked = shortlistArchetypes(statuses);
   const selectedIds = selectedUnlockedIds(selection, statuses);
-  const groups: Array<{ slot: Slot; label: string; plans: ArchetypeStatus[] }> = [
-    { slot: 'offense' as Slot, label: 'Offense', plans: unlocked.filter(s => slotOf(s) === 'offense') },
-    { slot: 'defense' as Slot, label: 'Defense', plans: unlocked.filter(s => slotOf(s) === 'defense') },
-    { slot: 'gold' as Slot, label: 'Gold', plans: unlocked.filter(s => slotOf(s) === 'gold') },
+  function bestLockedHint(slot: Slot): ArchetypeStatus | undefined {
+    const locked = statuses.filter(s => s.tier === 'none' && slotOf(s) === slot);
+    if (locked.length === 0) return undefined;
+    return locked.reduce((best, s) => (s.progress > best.progress ? s : best));
+  }
+  const groups: Array<{ slot: Slot; label: string; plans: ArchetypeStatus[]; lockedHint?: ArchetypeStatus }> = [
+    { slot: 'offense' as Slot, label: 'Offense', plans: unlocked.filter(s => slotOf(s) === 'offense'), lockedHint: bestLockedHint('offense') },
+    { slot: 'defense' as Slot, label: 'Defense', plans: unlocked.filter(s => slotOf(s) === 'defense'), lockedHint: bestLockedHint('defense') },
+    { slot: 'gold' as Slot, label: 'Gold', plans: unlocked.filter(s => slotOf(s) === 'gold'), lockedHint: bestLockedHint('gold') },
   ];
 
   const identityLabel = selectedIds.size > 0
@@ -198,6 +206,17 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
                     </button>
                   );
                 })}
+                {group.lockedHint && (
+                  <span
+                    title={`${group.lockedHint.def.name} — locked`}
+                    className="text-[9px] text-stone-400 italic truncate min-w-0"
+                  >
+                    {group.lockedHint.def.name} locked
+                    {group.lockedHint.missing.length > 0 && (
+                      <> — {group.lockedHint.missing.slice(0, 2).join('; ')}</>
+                    )}
+                  </span>
+                )}
               </div>
             ))}
             {onArchetypesChange && selectedIds.size === 0 && unlocked.length > 0 && (

@@ -116,9 +116,23 @@ export default function Home() {
 
           {/* Main Links */}
           <div className="flex flex-col gap-3">
-            <Link href="/draft" className="group relative px-6 py-3 bg-gradient-to-r from-blue-900/80 to-blue-800/20 border border-blue-500/50 rounded hover:from-yellow-500/90 hover:to-orange-500/40 hover:border-yellow-400 transition-all">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 group-hover:bg-yellow-400 transition-colors" />
-              <span className="font-black text-xl tracking-wider text-blue-100 group-hover:text-white drop-shadow-md italic pr-2">START DRAFT</span>
+            <Link
+              href="/draft?mode=premier"
+              data-testid="cta-premier"
+              className="group relative px-6 py-3.5 bg-gradient-to-r from-yellow-500/90 to-orange-600/70 border border-yellow-400/60 rounded hover:from-yellow-400 hover:to-orange-500 transition-all shadow-[0_0_25px_rgba(234,179,8,0.25)]"
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-300" />
+              <span className="font-black text-xl tracking-wider text-white drop-shadow-md italic pr-2">PREMIER DRAFT</span>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-50/90 pr-2">Timed picks · round summaries</div>
+            </Link>
+
+            <Link
+              href="/draft?mode=quick"
+              data-testid="cta-quick"
+              className="group relative px-6 py-3 bg-gradient-to-r from-blue-900/80 to-blue-800/20 border border-blue-500/50 rounded hover:from-stone-700 hover:border-stone-400 transition-all"
+            >
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 group-hover:bg-stone-300 transition-colors" />
+              <span className="font-black text-lg tracking-wider text-blue-100 group-hover:text-white drop-shadow-md italic pr-2">QUICK DRAFT</span>
             </Link>
 
             <Link href="/rosters" className="group relative px-6 py-3 bg-gradient-to-r from-stone-800/80 to-transparent border border-stone-600/50 rounded hover:from-stone-700 hover:border-stone-400 transition-all">

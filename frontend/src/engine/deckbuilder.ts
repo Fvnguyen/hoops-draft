@@ -11,6 +11,7 @@ import { getPlaybookId, getPlayDef, isEligibleForRole, type PlayAssignment } fro
 import { evaluateArchetypes, bestSelection, type ArchetypeSelection } from './archetypes';
 import { BotProfile } from './draft';
 import { TARGET_ROSTER } from './balance';
+import { DEPTH_COLUMNS, canPlaceAt } from './positions';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -84,24 +85,17 @@ export interface DraftSession {
   mode?: 'quick' | 'premier';
 }
 
-// ── Position Eligibility (mirrors DeckBuilder logic) ───────────────────────
+// ── Position Eligibility ───────────────────────────────────────────────────
+// Single source of truth: `engine/positions.ts` (plan ui_draft_deckbuild_pack, D13).
+// Bots stay natural-only (`canPlaceAt(..., allowAdjacent = false)`); the `['SF']`
+// fallback keeps a player with an unparseable position placeable rather than
+// undraftable, exactly as the old private copy did.
 
-const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'] as const;
+const POSITIONS = DEPTH_COLUMNS;
 
 function getEligiblePositions(rawPos: string): string[] {
-  const eligible: string[] = [];
-  const p = rawPos.replace('-', '/');
-
-  for (const pos of POSITIONS) {
-    if (p.includes(pos)) { eligible.push(pos); continue; }
-    if (p === 'G' && (pos === 'PG' || pos === 'SG')) { eligible.push(pos); continue; }
-    if (p === 'F' && (pos === 'SF' || pos === 'PF')) { eligible.push(pos); continue; }
-    const parts = p.split('/');
-    if (parts.includes('G') && (pos === 'PG' || pos === 'SG')) { eligible.push(pos); continue; }
-    if (parts.includes('F') && (pos === 'SF' || pos === 'PF')) { eligible.push(pos); continue; }
-  }
-
-  return eligible.length > 0 ? eligible : ['SF']; // Fallback
+  const natural = DEPTH_COLUMNS.filter(col => canPlaceAt(rawPos, col, false));
+  return natural.length > 0 ? natural : ['SF'];
 }
 
 // ── Play role assignment ──────────────────────────────────────────────────

@@ -72,16 +72,15 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
   modifiers). **Every tuning number lives in `frontend/src/engine/balance.ts`.**
 - **Identities and plays**: `engine/archetypes.ts` (colour thresholds, 16-plan catalog,
   tiers, caps, `bestSelection` for bots) and `engine/playbook.ts` (play roles, fixed
-  allocations, `evaluatePlaybook`); called possessions are resolved in `engine/game.ts`.
-  Tune thresholds with `npm run feasibility`. No mastery tiers, no chemistry synergies.
+  allocations, `evaluatePlaybook`); possessions resolved in `engine/game.ts`. Tune
+  thresholds with `npm run feasibility`. No mastery tiers, no chemistry synergies.
 - **Randomness**: engine code never calls `Math.random()`; it takes an `Rng`
   (`engine/rng.ts`, mulberry32). Drafts, seasons and games store their seed, so any
   result can be reproduced. Pass `--seed N` to `npm run balance` for a deterministic run.
 - **Persistence**: UI code talks only to `getGameStore()` (`src/storage`), never to
-  `localStorage` directly. The store is IndexedDB in the browser and in-memory during
-  SSR/tests. `initStorage()` (called once by `StorageProvider`) migrates the old
-  localStorage keys. `docs/game_mechanics.md` describes the model in prose — cross-check it
-  against the code before trusting a specific number; the code is authoritative.
+  `localStorage` directly — IndexedDB in the browser, in-memory during SSR/tests.
+  `initStorage()` (called once by `StorageProvider`) migrates the old localStorage keys.
+  `docs/game_mechanics.md` describes the model in prose; the code is authoritative.
 - **Do not commit generated/runtime output**: `data/game_logs/*.json` (draft/season/roster
   exports from `/debug`), screenshots, `.next/`, `tsbuildinfo`. All gitignored — regenerate
   instead of hand-editing.
@@ -89,13 +88,15 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 ## Product rules (from the owner — do not "improve" these away)
 
 - **Never show a player's OVR or the seven engine ratings to users** — not on cards, lists,
-  rosters, or as a team OVR. They exist only for the engine and the dev-only `/data` page.
-  Season averages (PPG, RPG, …) are fine to show.
+  or rosters; they exist only for the engine and the dev-only `/data` page. Season
+  averages (PPG, RPG, …) are fine to show.
 - **Rarity is a MtG-style gem/icon, never a coloured frame** (frames fight with position
   and team colours). Rare and Mythic should feel splashy.
 - **Draft zoning stays**: drafted cards are sorted into Roster / G-League during the draft
   (MTG Arena style pre-building). No card "inspect" panel; bot pick ticker is wanted.
 - No auto-fill in the deck builder; the human builds the lineup.
+- Locked identity plans are not selectable; one nearest-progress hint per lane (muted,
+  non-clickable) explains what's missing — replaces the old "locked plans hidden" rule.
 
 ## Conventions
 
@@ -116,11 +117,10 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 ## Data pipeline
 
 Lives in `data/`, run from `data/`. Full script order, inputs/outputs, and table schema
-are documented in `data/README.md` — read that instead of duplicating it here. Short
-version: `download_bref.js` scrapes HTML -> `fetch_players.py` (+ `fetch_bio.py`) builds
-`frontend/game.db` and `players.json` -> `download_images.py` / `download_logos.py` pull
-media into `frontend/public` -> `npm run build:cards` (from the repo root or `frontend/`)
-turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships.
+are in `data/README.md` — don't duplicate it here. Short version: `download_bref.js`
+scrapes HTML -> `fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` and
+`players.json` -> `download_images.py`/`download_logos.py` pull media into
+`frontend/public` -> `npm run build:cards` turns `game.db` into `src/data/cards.json`.
 
 ## Verifying game balance
 
@@ -140,9 +140,9 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   `docs/HANDOVER.md`; `docs/analytics/*` reports predate the current engine.
 
 ## Gotchas discovered in the code
-- `scripts/build-cards.ts` resolves `game.db` relative to `frontend/`; run it via the npm script.
-- `/api/game-logs` (dev-only export used by `/debug`) writes to `../data/game_logs`
-  relative to cwd and is disabled in production builds.
+- `scripts/build-cards.ts` resolves `game.db` relative to `frontend/`; run it via the npm
+  script. `/api/game-logs` (dev-only, used by `/debug`) writes to `../data/game_logs`
+  relative to cwd; disabled in production builds.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
   player cards when the player pool has at least 264 players; the pool has 448.
 - Not junk: `/test-ui` (fixture page for `visual.spec.ts`/`smoke.spec.ts`), `/debug`

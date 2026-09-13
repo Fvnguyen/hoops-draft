@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData, getPosColors, RoleTag } from './PlayerCard';
+import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData } from './PlayerCard';
 import { PlayPanel } from './PlayPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
@@ -14,6 +14,19 @@ import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
+import { DEPTH_COLUMNS, canPlaceAt, defaultColumn, positionFit, type DepthColumn } from '@/engine/positions';
+import {
+  MAX_ROSTER,
+  countPlayers,
+  moveWithinChart,
+  placeFromBench,
+  removeFromChart,
+  type DenseDepthChart,
+} from '@/engine/depthChart';
+import { DepthSlotColumn } from './DepthSlotColumn';
+import { RosterChecklist } from './RosterChecklist';
+import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
+import { ToastProvider, useToast } from './Toast';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -36,65 +49,48 @@ const sortGLeaguePlayers = (a: PlayerCardData, b: PlayerCardData) => {
 
 type PosFilter = 'All' | 'G' | 'F' | 'C';
 
-export function DeckBuilder({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: { draftedCards: DraftCard[], initialZones: Record<string, 'Roster' | 'GLeague'>, existingRosterName?: string, rosterId?: string, initialDepthOrder?: Record<string, string[]>, initialPlaysOrder?: string[], initialPlayAssignments?: PlayAssignment[], initialArchetypes?: ArchetypeSelection, sessionId?: string, podAverageIdentity?: RosterIdentity }) {
+export interface DeckBuilderProps {
+  draftedCards: DraftCard[];
+  initialZones: Record<string, 'Roster' | 'GLeague'>;
+  existingRosterName?: string;
+  rosterId?: string;
+  initialDepthOrder?: Record<string, string[]>;
+  initialPlaysOrder?: string[];
+  initialPlayAssignments?: PlayAssignment[];
+  initialArchetypes?: ArchetypeSelection;
+  /** Draft session this roster belongs to. Enables "Save & play season" (D19). */
+  sessionId?: string;
+  podAverageIdentity?: RosterIdentity;
+}
+
+/** Mounts the toast layer the builder body needs (D15) around the real builder. */
+export function DeckBuilder(props: DeckBuilderProps) {
+  return (
+    <ToastProvider>
+      <DeckBuilderBody {...props} />
+    </ToastProvider>
+  );
+}
+
+/** Snapshot restored by a toast's Undo action (D15). */
+interface BuilderSnapshot {
+  depthChart: Record<string, PlayerCardData[]>;
+  gLeaguePlayers: PlayerCardData[];
+  playAssignments: Record<string, PlayAssignment>;
+  activePlays: (Play | null)[];
+  gLeaguePlays: Play[];
+}
+
+function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: DeckBuilderProps) {
   const router = useRouter();
+  const toast = useToast();
 
-  // Adjacency map: one position over is allowed (with OVR penalty in game sim)
-  const ADJACENT_POSITIONS: Record<string, string[]> = {
-    PG: ['SG'], SG: ['PG', 'SF'], SF: ['SG', 'PF'], PF: ['SF', 'C'], C: ['PF'],
-  };
-
-  const isEligible = (rawPos: string, targetCol: string): boolean => {
-    if (rawPos === 'ALL') return true;
-    if (rawPos === 'G' && (targetCol === 'PG' || targetCol === 'SG')) return true;
-    if (rawPos === 'F' && (targetCol === 'SF' || targetCol === 'PF')) return true;
-    if ((rawPos === 'G-F' || rawPos === 'F-G') && (targetCol === 'PG' || targetCol === 'SG' || targetCol === 'SF' || targetCol === 'PF')) return true;
-    if (rawPos.includes(targetCol)) return true;
-
-    const parts = rawPos.split(/[-/]/);
-    if (parts.includes(targetCol)) return true;
-    if (parts.includes('G') && (targetCol === 'PG' || targetCol === 'SG')) return true;
-    if (parts.includes('F') && (targetCol === 'SF' || targetCol === 'PF')) return true;
-
-    return false;
-  };
-
-  /** Check if a player can play out of position (one position over) */
-  const isAdjacentEligible = (rawPos: string, targetCol: string): boolean => {
-    if (isEligible(rawPos, targetCol)) return false; // Already naturally eligible
-    const parts = rawPos.split(/[-/]/);
-    // Check if any natural position is adjacent to the target
-    for (const naturalPos of parts) {
-      const mapped = naturalPos === 'G' ? ['PG', 'SG'] : naturalPos === 'F' ? ['SF', 'PF'] : [naturalPos];
-      for (const mp of mapped) {
-        if (ADJACENT_POSITIONS[mp]?.includes(targetCol)) return true;
-      }
-    }
-    return false;
-  };
-
-  /** Can this player be placed in this position (naturally OR adjacent)? */
-  const canPlace = (rawPos: string, targetCol: string): boolean => {
-    return isEligible(rawPos, targetCol) || isAdjacentEligible(rawPos, targetCol);
-  };
-
-  /** Position filter chips (All / G / F / C) above the G-League list */
+  /** Position filter chips (All / G / F / C) above the G-League list. Natural fit only. */
   const matchesPosFilter = (rawPos: string, filter: PosFilter): boolean => {
     if (filter === 'All') return true;
-    if (filter === 'G') return isEligible(rawPos, 'PG') || isEligible(rawPos, 'SG');
-    if (filter === 'F') return isEligible(rawPos, 'SF') || isEligible(rawPos, 'PF');
-    return isEligible(rawPos, 'C');
-  };
-
-  const getDefaultCol = (pos: string) => {
-    if (pos.includes('PG')) return 'PG';
-    if (pos.includes('C')) return 'C';
-    if (pos.includes('PF')) return 'PF';
-    if (pos.includes('SG')) return 'SG';
-    if (pos === 'G') return 'PG';
-    if (pos === 'F') return 'SF';
-    if (pos === 'G-F' || pos === 'F-G') return 'SG';
-    return 'SF';
+    if (filter === 'G') return canPlaceAt(rawPos, 'PG', false) || canPlaceAt(rawPos, 'SG', false);
+    if (filter === 'F') return canPlaceAt(rawPos, 'SF', false) || canPlaceAt(rawPos, 'PF', false);
+    return canPlaceAt(rawPos, 'C', false);
   };
 
   const [depthChart, setDepthChart] = useState<Record<string, PlayerCardData[]>>({
@@ -110,6 +106,8 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const [selectedPlacedPlayer, setSelectedPlacedPlayer] = useState<{ id: string; col: string } | null>(null);
   const [posFilter, setPosFilter] = useState<PosFilter>('All');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Empty depth slot whose AssignPopover is open (D14). Cleared by any selection.
+  const [openSlotPopover, setOpenSlotPopover] = useState<{ column: DepthColumn; slot: number } | null>(null);
 
   // Play-role assignment state: cardId -> assignment (roleId -> playerId). Kept in
   // sync with activePlays by the effect below. `assigning` is the role currently
@@ -128,6 +126,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const [isPlaysOpen, setIsPlaysOpen] = useState(true);
   const [isPlayersOpen, setIsPlayersOpen] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -146,7 +145,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         const player = card as PlayerCardData;
         if (zone === 'Roster') {
           if (!initialDepthOrder) {
-            initDepth[getDefaultCol(player.player.position)].push(player);
+            initDepth[defaultColumn(player.player.position)].push(player);
           }
         } else {
           initGPlayers.push(player);
@@ -171,7 +170,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
       }
       draftedCards.forEach(c => {
         if (c.type === 'Player' && initialZones[c.id] === 'Roster' && !assignedIds.has(c.id)) {
-          initDepth[getDefaultCol((c as PlayerCardData).player.position)].push(c as PlayerCardData);
+          initDepth[defaultColumn((c as PlayerCardData).player.position)].push(c as PlayerCardData);
         }
       });
     } else {
@@ -230,6 +229,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         setSelectedGLeaguePlayer(null);
         setSelectedPlacedPlayer(null);
         setAssigning(null);
+        setOpenSlotPopover(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -240,6 +240,72 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     setSelectedGLeaguePlayer(null);
     setSelectedPlacedPlayer(null);
     setAssigning(null);
+    setOpenSlotPopover(null);
+  };
+
+  // ── Depth chart mutations (D12: every placement rule lives in engine/depthChart) ──
+
+  const cardById = useMemo(() => {
+    const map = new Map<string, PlayerCardData>();
+    draftedCards.forEach(c => { if (c.type === 'Player') map.set(c.id, c as PlayerCardData); });
+    return map;
+  }, [draftedCards]);
+
+  /** PlayerCardData chart → the dense id chart the engine helpers operate on. */
+  const toIdChart = (chart: Record<string, PlayerCardData[]>): DenseDepthChart =>
+    Object.fromEntries(DEPTH_COLUMNS.map(col => [col, (chart[col] ?? []).map(p => p.id)]));
+
+  const fromIdChart = (dense: DenseDepthChart): Record<string, PlayerCardData[]> =>
+    Object.fromEntries(DEPTH_COLUMNS.map(col => [
+      col,
+      (dense[col] ?? []).map(id => cardById.get(id)).filter((p): p is PlayerCardData => !!p),
+    ]));
+
+  const takeSnapshot = (): BuilderSnapshot => ({
+    depthChart, gLeaguePlayers, playAssignments, activePlays, gLeaguePlays,
+  });
+
+  const restoreSnapshot = (snap: BuilderSnapshot) => {
+    setDepthChart(snap.depthChart);
+    setGLeaguePlayers(snap.gLeaguePlayers);
+    setActivePlays(snap.activePlays);
+    setGLeaguePlays(snap.gLeaguePlays);
+    setPlayAssignments(snap.playAssignments);
+    clearSelection();
+  };
+
+  /** The move already happened — the toast just offers 5s of regret (D15). */
+  const toastUndo = (message: string, snap: BuilderSnapshot) => {
+    toast.show(message, { actionLabel: 'Undo', durationMs: 5000, onAction: () => restoreSnapshot(snap) });
+  };
+
+  /** Move a G-League player onto the chart. Engine refusals become error toasts. */
+  const placeFromGLeague = (player: PlayerCardData, column: DepthColumn) => {
+    const snap = takeSnapshot();
+    const result = placeFromBench(toIdChart(depthChart), player.id, player.player.position, column);
+    if (!result.ok) {
+      toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
+      return;
+    }
+    setDepthChart(fromIdChart(result.chart));
+    setGLeaguePlayers(prev => prev.filter(p => p.id !== player.id));
+    setSelectedGLeaguePlayer(null);
+    setOpenSlotPopover(null);
+    toastUndo(`${player.player.name} → ${column}`, snap);
+  };
+
+  /** Move a player already on the chart to another column / slot. */
+  const moveOnChart = (player: PlayerCardData, column: DepthColumn, slotIndex?: number, opts: { silent?: boolean } = {}) => {
+    const snap = takeSnapshot();
+    const result = moveWithinChart(toIdChart(depthChart), player.id, player.player.position, column, slotIndex);
+    if (!result.ok) {
+      toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
+      return;
+    }
+    setDepthChart(fromIdChart(result.chart));
+    setSelectedPlacedPlayer(null);
+    setOpenSlotPopover(null);
+    if (!opts.silent) toastUndo(`${player.player.name} → ${column}`, snap);
   };
 
   const handleDragStart = (e: React.DragEvent, card: DraftCard, sourceZone: string, sourceIndex?: number) => {
@@ -273,79 +339,25 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     }
   };
 
-  const handleDropOnZone = (e: React.DragEvent, targetZone: string, targetIndex?: number) => {
+  /** Drop onto a NON-depth-chart zone (play slots, G-League lanes). Depth-chart
+   *  drops go through `handleDropOnSlot` so they share the engine's rules. */
+  const handleDropOnZone = (e: React.DragEvent, targetZone: string) => {
     e.preventDefault();
     if (!draggedItem) return;
 
-    const { card, sourceZone, sourceIndex: srcIdx } = draggedItem;
+    const { card, sourceZone } = draggedItem;
 
-    if (card.type === 'Play' && !targetZone.includes('Play')) return;
-    if (card.type === 'Player' && targetZone.includes('Play')) return;
-    if (targetZone === sourceZone && targetIndex === srcIdx) {
-      setDraggedItem(null);
-      return;
-    }
-    if (['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone)) {
-      if (!canPlace((card as PlayerCardData).player.position, targetZone)) {
-        setDraggedItem(null);
-        return;
-      }
-    }
+    if (card.type === 'Play' && !targetZone.includes('Play')) { setDraggedItem(null); return; }
+    if (card.type === 'Player' && targetZone.includes('Play')) { setDraggedItem(null); return; }
+    if (targetZone === sourceZone) { setDraggedItem(null); return; }
 
-    const sourceIsDepth = ['PG', 'SG', 'SF', 'PF', 'C'].includes(sourceZone);
-    const targetIsDepth = ['PG', 'SG', 'SF', 'PF', 'C'].includes(targetZone);
-
-    // CASE 1: Both source and target are depth chart columns → single atomic update
-    if (sourceIsDepth && targetIsDepth) {
-      setDepthChart(prev => {
-        const updated = { ...prev };
-        // Remove from source column
-        updated[sourceZone] = prev[sourceZone].filter(p => p.id !== card.id);
-        // Add to target column
-        const targetCol = [...updated[targetZone]];
-        if (targetIndex !== undefined) {
-          targetCol.splice(targetIndex, 0, card as PlayerCardData);
-        } else {
-          targetCol.push(card as PlayerCardData);
-        }
-        updated[targetZone] = targetCol;
-        return updated;
-      });
+    // Depth chart → G-League: the engine removes, held roles are cleared with it.
+    if (DEPTH_COLUMNS.includes(sourceZone as DepthColumn) && targetZone === 'GLeaguePlayers') {
+      sendPlacedToGLeague(card as PlayerCardData);
       setDraggedItem(null);
       return;
     }
 
-    // CASE 2: Source is depth chart, target is G-League → atomic: remove from depth + add to G-League
-    if (sourceIsDepth && targetZone === 'GLeaguePlayers') {
-      const heldRoles = rolesByPlayer.get(card.id);
-      if (heldRoles && heldRoles.length > 0) {
-        const ok = confirm(`${(card as PlayerCardData).player.name} holds ${heldRoles.length} play role${heldRoles.length > 1 ? 's' : ''} (${heldRoles.map(r => `${r.playName}: ${r.roleName}`).join(', ')}). Sending them to the G-League clears those roles. Continue?`);
-        if (!ok) { setDraggedItem(null); return; }
-        removePlayerRoles(card.id);
-      }
-      setDepthChart(prev => ({ ...prev, [sourceZone]: prev[sourceZone].filter(p => p.id !== card.id) }));
-      setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort(sortGLeaguePlayers));
-      setDraggedItem(null);
-      return;
-    }
-
-    // CASE 3: Source is G-League, target is depth chart
-    if (sourceZone === 'GLeaguePlayers' && targetIsDepth) {
-      setGLeaguePlayers(prev => prev.filter(p => p.id !== card.id));
-      setDepthChart(prev => {
-        const col = [...prev[targetZone]];
-        if (targetIndex !== undefined) {
-          col.splice(targetIndex, 0, card as PlayerCardData);
-        } else {
-          col.push(card as PlayerCardData);
-        }
-        return { ...prev, [targetZone]: col };
-      });
-      setDraggedItem(null);
-      return;
-    }
-
-    // CASE 4: All other cases (plays, etc.)
     removeCardFromSource(card.id, sourceZone);
 
     if (targetZone === 'GLeaguePlayers') {
@@ -365,19 +377,23 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         next[idx] = card as Play;
         return next;
       });
-    } else if (targetIsDepth) {
-      setDepthChart(prev => {
-        const col = [...prev[targetZone]];
-        if (targetIndex !== undefined) {
-          col.splice(targetIndex, 0, card as PlayerCardData);
-        } else {
-          col.push(card as PlayerCardData);
-        }
-        return { ...prev, [targetZone]: col };
-      });
     }
 
     setDraggedItem(null);
+  };
+
+  /** Native HTML5 drop onto one depth-chart slot (D14 keeps drag for pointer devices). */
+  const handleDropOnSlot = (e: React.DragEvent, column: DepthColumn, slotIndex: number) => {
+    e.preventDefault();
+    const item = draggedItem;
+    setDraggedItem(null);
+    if (!item || item.card.type !== 'Player') return;
+    const player = item.card as PlayerCardData;
+    if (item.sourceZone === 'GLeaguePlayers') {
+      placeFromGLeague(player, column);
+    } else if (DEPTH_COLUMNS.includes(item.sourceZone as DepthColumn)) {
+      moveOnChart(player, column, slotIndex);
+    }
   };
 
   /** Click handling for Play cards keeps its old immediate behaviour: click a
@@ -401,7 +417,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
           return next;
         });
       } else {
-        alert("Maximum 3 Active Plays allowed! Drag to swap.");
+        toast.show('Maximum 3 active plays — remove one first.', { tone: 'error' });
       }
     }
   };
@@ -409,6 +425,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   const handleGLeaguePlayerClick = (player: PlayerCardData) => {
     setSelectedPlacedPlayer(null);
     setAssigning(null);
+    setOpenSlotPopover(null);
     setSelectedGLeaguePlayer(prev => (prev?.id === player.id ? null : player));
   };
 
@@ -418,6 +435,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
       return;
     }
     setSelectedGLeaguePlayer(null);
+    setOpenSlotPopover(null);
     setSelectedPlacedPlayer(prev => (prev?.id === player.id ? null : { id: player.id, col }));
   };
 
@@ -494,51 +512,62 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     setAssigning(null);
   };
 
-  const placeSelectedInColumn = (col: string) => {
-    if (!selectedGLeaguePlayer) return;
-    if (!canPlace(selectedGLeaguePlayer.player.position, col)) return;
-    const player = selectedGLeaguePlayer;
-    setGLeaguePlayers(prev => prev.filter(p => p.id !== player.id));
-    setDepthChart(prev => ({ ...prev, [col]: [...prev[col], player] }));
-    setSelectedGLeaguePlayer(null);
-  };
-
-  const promotePlayer = (col: string, idx: number) => {
-    if (idx <= 0) return;
-    setDepthChart(prev => {
-      const arr = [...prev[col]];
-      const tmp = arr[idx - 1];
-      arr[idx - 1] = arr[idx];
-      arr[idx] = tmp;
-      return { ...prev, [col]: arr };
-    });
-  };
-
-  const demotePlayer = (col: string, idx: number) => {
-    setDepthChart(prev => {
-      const arr = prev[col];
-      if (idx >= arr.length - 1) return prev;
-      const next = [...arr];
-      const tmp = next[idx + 1];
-      next[idx + 1] = next[idx];
-      next[idx] = tmp;
-      return { ...prev, [col]: next };
-    });
-  };
-
-  const sendPlacedToGLeague = (player: PlayerCardData, col: string) => {
-    const heldRoles = rolesByPlayer.get(player.id);
-    if (heldRoles && heldRoles.length > 0) {
-      const ok = confirm(`${player.player.name} holds ${heldRoles.length} play role${heldRoles.length > 1 ? 's' : ''} (${heldRoles.map(r => `${r.playName}: ${r.roleName}`).join(', ')}). Sending them to the G-League clears those roles. Continue?`);
-      if (!ok) return;
-      removePlayerRoles(player.id);
+  /** Click on an empty slot (D14): place the pending selection, or open the popover. */
+  const handleEmptySlotClick = (column: DepthColumn, slotIndex: number) => {
+    setAssigning(null);
+    if (selectedGLeaguePlayer) {
+      placeFromGLeague(selectedGLeaguePlayer, column);
+      return;
     }
-    setDepthChart(prev => ({ ...prev, [col]: prev[col].filter(p => p.id !== player.id) }));
+    if (selectedPlacedPlayer) {
+      const player = cardById.get(selectedPlacedPlayer.id);
+      if (player) moveOnChart(player, column, slotIndex);
+      return;
+    }
+    setOpenSlotPopover(prev =>
+      prev && prev.column === column && prev.slot === slotIndex ? null : { column, slot: slotIndex },
+    );
+  };
+
+  /** Pick from an empty slot's AssignPopover — the same component a play role uses. */
+  const handleSlotPopoverPick = (column: DepthColumn, playerId: string) => {
+    const player = gLeaguePlayers.find(p => p.id === playerId);
+    if (player) placeFromGLeague(player, column);
+  };
+
+  const promotePlayer = (col: DepthColumn, idx: number) => {
+    if (idx <= 0) return;
+    const player = depthChart[col]?.[idx];
+    if (player) moveOnChart(player, col, idx - 1, { silent: true });
+  };
+
+  const demotePlayer = (col: DepthColumn, idx: number) => {
+    const column = depthChart[col] ?? [];
+    if (idx >= column.length - 1) return;
+    const player = column[idx];
+    if (player) moveOnChart(player, col, idx + 1, { silent: true });
+  };
+
+  /** Send a placed player back to the G-League. Roles they held are cleared with
+   *  them — no `confirm`, the toast's Undo puts everything back (D15). */
+  const sendPlacedToGLeague = (player: PlayerCardData) => {
+    const snap = takeSnapshot();
+    const heldRoles = rolesByPlayer.get(player.id) ?? [];
+    if (heldRoles.length > 0) removePlayerRoles(player.id);
+    setDepthChart(fromIdChart(removeFromChart(toIdChart(depthChart), player.id)));
     setGLeaguePlayers(prev => [...prev, player].sort(sortGLeaguePlayers));
     setSelectedPlacedPlayer(null);
+    setOpenSlotPopover(null);
+    toastUndo(
+      heldRoles.length > 0
+        ? `${player.player.name} → G-League (${heldRoles.length} role${heldRoles.length > 1 ? 's' : ''} cleared)`
+        : `${player.player.name} → G-League`,
+      snap,
+    );
   };
 
   const handleClearRoster = () => {
+    const snap = takeSnapshot();
     const allPlaced = Object.values(depthChart).flat();
     setGLeaguePlayers(prev => [...prev, ...allPlaced].sort(sortGLeaguePlayers));
     setDepthChart({ PG: [], SG: [], SF: [], PF: [], C: [] });
@@ -548,7 +577,9 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     setSelectedGLeaguePlayer(null);
     setSelectedPlacedPlayer(null);
     setAssigning(null);
+    setOpenSlotPopover(null);
     setShowClearConfirm(false);
+    toastUndo('Roster cleared', snap);
   };
 
   // Mechanics validation
@@ -563,7 +594,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   // live requirement status without exposing any OVR/rating numbers.
   const badgeTotals = useMemo(() => countBadges(Object.values(depthChart).flat()), [depthChart]);
   const bonuses = calcTeamBonuses(allPlayers, validActivePlays, new Map());
-  const missingPos = ['PG', 'SG', 'SF', 'PF', 'C'].find(pos => depthChart[pos].length === 0);
+  const rosterFull = countPlayers(toIdChart(depthChart)) >= MAX_ROSTER;
 
   // Play-role assignment: evaluate every equipped play's roles against the active
   // 12-man roster (playAssignments/evaluatePlaybook — docs/plan_plays_and_synergies
@@ -614,20 +645,21 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
     rolesByPlayer.set(entry.playerId, [...(rolesByPlayer.get(entry.playerId) ?? []), entry]);
   }
 
-  // Save is blocked on a dangling/ineligible role (a role holding a playerId that
-  // no longer resolves to an eligible active-roster player) — an unassigned role is
-  // fine, it just leaves the play inactive. Report the first offender for the
-  // disabled button's title.
-  const invalidAssignmentReason = useMemo(() => {
-    for (const status of playbookStatus.plays) {
-      for (const r of status.roles) {
-        if (r.playerId && !r.filled) {
-          return `${status.def.name} — ${r.role.name}: ${r.reason}`;
-        }
-      }
-    }
-    return null;
-  }, [playbookStatus]);
+  // "Roster ready" checklist (D15) — the single source of save-blocker truth, shown
+  // in the header instead of hiding in a disabled button's tooltip. Cheap enough to
+  // recompute every render (the react-compiler lint rejects memoizing it here).
+  const checklist = evaluateRosterChecklist(
+    {
+      version: 2,
+      depthChart: toIdChart(depthChart),
+      activePlays: activePlays.filter((p): p is Play => p !== null).map(p => p.id),
+      playAssignments: playbookAssignments,
+      archetypes: validArchetypes,
+      gLeaguePlayers: gLeaguePlayers.map(p => p.id),
+      gLeaguePlays: gLeaguePlays.map(p => p.id),
+    },
+    draftedCards,
+  );
 
   // Assigning a role? Precompute which role/def is targeted so every depth-chart
   // card can be scored for eligibility in the same render pass.
@@ -682,17 +714,27 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   // (best-effort — dataTransfer payload isn't readable during dragover in all browsers).
   const draggingPlayerId = draggedItem?.card.type === 'Player' ? draggedItem.card.id : undefined;
 
-  const isComplete = playersInRoster === 12 && !missingPos && activePlaysCount === 3;
-
-  let statusText = 'Roster is valid';
-  if (playersInRoster < 12) statusText = `Need ${12 - playersInRoster} more Player(s)`;
-  else if (playersInRoster > 12) statusText = `Drop ${playersInRoster - 12} Player(s)`;
-  else if (missingPos) statusText = `Need a ${missingPos} Starter`;
-  else if (activePlaysCount < 3) statusText = `Need ${3 - activePlaysCount} more Play(s)`;
+  const isComplete = checklist.ready;
+  const statusText = checklist.ready
+    ? 'Roster is valid'
+    : checklist.unmet.map(i => `${i.label}${i.detail ? ` (${i.detail})` : ''}`).join(' · ');
 
   const filteredGLeaguePlayers = gLeaguePlayers.filter(p => matchesPosFilter(p.player.position, posFilter));
 
-  const handleSaveRoster = async () => {
+  // The player whose placement the depth chart is currently previewing: a selected
+  // bench row, a selected placed player, or the card being dragged.
+  const pendingPlayer: PlayerCardData | null =
+    selectedGLeaguePlayer ??
+    (draggedItem?.card.type === 'Player' ? (draggedItem.card as PlayerCardData) : null) ??
+    (selectedPlacedPlayer ? cardById.get(selectedPlacedPlayer.id) ?? null : null);
+
+  /** G-League candidates eligible for a column — feeds an empty slot's AssignPopover. */
+  const slotCandidates = (column: DepthColumn) =>
+    gLeaguePlayers.filter(p => canPlaceAt(p.player.position, column));
+
+  /** D19: "Save" lands on `/rosters`; "Save & play season" jumps straight into the
+   *  season for this draft session (only offered when there IS a session). */
+  const handleSaveRoster = async (destination: 'rosters' | 'season' = 'rosters') => {
     try {
       setSaveError(null);
       const finalZones: Record<string, 'Roster'|'GLeague'> = {};
@@ -746,7 +788,11 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
         }
       }
 
-      router.push('/rosters');
+      if (destination === 'season' && sessionId) {
+        router.push(`/season?rosterId=${encodeURIComponent(saveId)}&sessionId=${encodeURIComponent(sessionId)}`);
+      } else {
+        router.push('/rosters');
+      }
     } catch (error) {
       if (error instanceof StorageQuotaError) {
         setSaveError(error.message);
@@ -757,30 +803,37 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
   };
 
   return (
-    <div className="h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50" onClick={clearSelection}>
+    <div className="@container h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50" onClick={clearSelection}>
       <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} />
       {saveError && (
         <div className="bg-red-50 border-b border-red-200 px-4 py-3">
           <p className="text-sm text-red-700 font-semibold">{saveError}</p>
         </div>
       )}
-      <div className="flex-1 p-4 flex flex-col lg:flex-row gap-4 overflow-hidden relative">
+      {/* D17: the builder body is the container-query context — the plays column and
+          the G-League sidebar are sized in `cqw` with clamps, and the whole band wraps
+          to a column under a 1000px CONTAINER width (not viewport width). */}
+      <div className="flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative">
         {/* ACTIVE ROSTER */}
         <div className="flex-1 flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0">
-          <div className="flex justify-between items-center mb-4 shrink-0">
-            <div className="flex items-center gap-4">
-               <h2 className="text-lg font-bold uppercase text-stone-800 tracking-wider flex items-center gap-2">
-                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                 Active Roster
-               </h2>
-               <div className="flex gap-2">
-                  <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${playersInRoster === 12 && !missingPos ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
-                    Players {playersInRoster}/12
-                  </span>
-                  <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
-                    Plays {activePlaysCount}/3
-                  </span>
-               </div>
+          <div className="flex justify-between items-start gap-3 mb-4 shrink-0 flex-wrap">
+            <div className="flex flex-col gap-1.5 min-w-0">
+              <div className="flex items-center gap-4">
+                 <h2 className="text-lg font-bold uppercase text-stone-800 tracking-wider flex items-center gap-2">
+                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                   Active Roster
+                 </h2>
+                 <div className="flex gap-2">
+                    <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${playersInRoster === MAX_ROSTER ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
+                      Players {playersInRoster}/{MAX_ROSTER}
+                    </span>
+                    <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
+                      Plays {activePlaysCount}/3
+                    </span>
+                 </div>
+              </div>
+              {/* D15: the save blockers are VISIBLE, not a tooltip on a dead button. */}
+              <RosterChecklist result={checklist} />
             </div>
 
             <div className="flex items-center gap-2">
@@ -792,24 +845,39 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                 Clear
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); setShowSaveModal(true); }}
-                disabled={!isComplete || !!invalidAssignmentReason}
-                title={!isComplete ? statusText : invalidAssignmentReason ?? undefined}
+                onClick={(e) => { e.stopPropagation(); setSaveDestination('rosters'); setShowSaveModal(true); }}
+                disabled={!isComplete}
+                title={isComplete ? undefined : statusText}
                 className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
-                  isComplete && !invalidAssignmentReason
+                  isComplete
                   ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] shadow-emerald-500/30'
                   : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
                 }`}
               >
-                Save Roster
+                Save
               </button>
+              {/* D19: only offered when this roster belongs to a draft session. */}
+              {sessionId && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setSaveDestination('season'); setShowSaveModal(true); }}
+                  disabled={!isComplete}
+                  title={isComplete ? undefined : statusText}
+                  className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
+                    isComplete
+                    ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_15px_rgba(234,88,12,0.3)]'
+                    : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
+                  }`}
+                >
+                  Save &amp; play season
+                </button>
+              )}
             </div>
           </div>
 
           <div className="flex flex-row gap-3 flex-1 min-h-0">
             {/* Left Column: Active Plays — full-size cards so requirements/mechanics
                 are actually readable (was a 60px compact row). */}
-            <div className="w-[300px] shrink-0 flex flex-col min-h-0">
+            <div className="w-[clamp(240px,24cqw,340px)] shrink-0 flex flex-col min-h-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-1 shrink-0">Plays (Max 3)</h3>
               <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-amber-600' : 'text-stone-400'}`}>
                 Offense {Math.round(playbookStatus.offenseAllocation * 100)}% / {Math.round(playbookStatus.offenseBudget * 100)}%
@@ -878,125 +946,31 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
               <div className="grid grid-cols-5 gap-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
-                {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
-                  const players = depthChart[pos];
-                  const [posC1, posC2] = getPosColors(pos);
-                  const isEligibleHover = draggedItem?.card.type === 'Player' && canPlace((draggedItem.card as PlayerCardData).player.position, pos);
-                  const isAdjacentHover = draggedItem?.card.type === 'Player' && isAdjacentEligible((draggedItem.card as PlayerCardData).player.position, pos);
-                  const isInvalidHover = draggedItem?.card.type === 'Player' && !isEligibleHover;
-                  const isClickEligible = !!selectedGLeaguePlayer && canPlace(selectedGLeaguePlayer.player.position, pos);
-                  const isClickAdjacent = !!selectedGLeaguePlayer && isAdjacentEligible(selectedGLeaguePlayer.player.position, pos);
-
-                  return (
-                    <div
-                      key={pos}
-                      className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[320px] min-w-0 ${
-                        isAdjacentHover || isClickAdjacent ? 'bg-amber-50 border-amber-400 ring-1 ring-amber-300' :
-                        isEligibleHover || isClickEligible ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-300' :
-                        isInvalidHover ? 'bg-red-50 border-red-300' :
-                        'bg-stone-50 border-stone-200'
-                      } ${selectedGLeaguePlayer ? 'cursor-pointer' : ''}`}
-                      onDragOver={isEligibleHover ? handleDragOver : undefined}
-                      onDrop={(e) => handleDropOnZone(e, pos)}
-                      onClick={(e) => { e.stopPropagation(); placeSelectedInColumn(pos); }}
-                    >
-                      {/* 3px position-colour accent + column header */}
-                      <div className="h-[3px] w-full rounded-full shrink-0 pointer-events-none" style={{ background: `linear-gradient(to right, ${posC1}, ${posC2})` }} />
-                      <div className="text-center font-black text-stone-600 text-sm pb-1 pointer-events-none shrink-0">{pos}</div>
-
-                      <AnimatePresence>
-                        {players.map((p, idx) => {
-                          const isStarter = idx === 0;
-                          const isSelected = selectedPlacedPlayer?.id === p.id;
-                          const playerRoleTags = rolesByPlayer.get(p.id) ?? [];
-                          return (
-                            <motion.div
-                              key={p.id} layout initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }}
-                              className="relative shrink-0 w-full"
-                              draggable
-                              // See the framer-motion onDragStart note above — same conflict.
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              onDragStart={(e: any) => handleDragStart(e, p, pos, idx)}
-                              onDragOver={handleDragOver}
-                              onDrop={(e: React.DragEvent) => {
-                                e.stopPropagation();
-                                handleDropOnZone(e, pos, idx);
-                              }}
-                            >
-                              {isStarter && (
-                                <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">
-                                  Starter
-                                </div>
-                              )}
-                              <div
-                                className={`group relative w-full cursor-grab active:cursor-grabbing transition-opacity ${
-                                  assigning
-                                    ? (isAssignEligible(p) ? 'ring-2 ring-emerald-400 rounded-lg' : 'opacity-30 grayscale')
-                                    : ''
-                                }`}
-                                onClick={(e) => { e.stopPropagation(); handlePlacedPlayerClick(p, pos); }}
-                              >
-                                {playerRoleTags.length > 0 && (
-                                  <div className="absolute top-1 left-1 z-20 flex flex-col gap-0.5 pointer-events-none">
-                                    {playerRoleTags.slice(0, 2).map((r, i) => (
-                                      <RoleTag key={i} playName={r.playName} roleName={r.roleName} side={r.side} />
-                                    ))}
-                                    {playerRoleTags.length > 2 && (
-                                      <span className="text-[8px] font-black bg-stone-900 text-white rounded px-1 py-0.5 w-fit leading-none">
-                                        +{playerRoleTags.length - 2}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                                {isStarter ? (
-                                  /* Starter = the full 5:7 card, sized by the column width. */
-                                  <PlayerCard player={p} isSelected={isSelected} />
-                                ) : (
-                                  /* 2nd/3rd string = the medium (60px) compact card, with its
-                                     own hover pop-up showing the full card. */
-                                  <PlayerCard player={p} compact popupDirection="down" isSelected={isSelected} />
-                                )}
-                              </div>
-                              {/* Selection control strip lives BELOW the card (not an overlay tag). */}
-                              {isSelected && (
-                                <div
-                                  className="flex items-center justify-center gap-1 mt-1"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0}
-                                    onClick={() => promotePlayer(pos, idx)}
-                                    title="Promote"
-                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[11px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
-                                  >▲</button>
-                                  <button
-                                    type="button"
-                                    disabled={idx === players.length - 1}
-                                    onClick={() => demotePlayer(pos, idx)}
-                                    title="Demote"
-                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-stone-800 border border-white text-white text-[11px] leading-none disabled:opacity-30 hover:bg-stone-700 shadow"
-                                  >▼</button>
-                                  <button
-                                    type="button"
-                                    onClick={() => sendPlacedToGLeague(p, pos)}
-                                    title="Send to G-League"
-                                    className="w-6 h-6 flex items-center justify-center rounded-full bg-red-600 border border-white text-white text-[11px] leading-none hover:bg-red-500 shadow"
-                                  >✕</button>
-                                </div>
-                              )}
-                            </motion.div>
-                          );
-                        })}
-                        {players.length === 0 && (
-                          <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-stone-800/50 rounded-lg opacity-50 p-2 text-center text-stone-600 text-[10px] font-bold uppercase pointer-events-none min-h-[100px]">
-                            Drop a {pos} here
-                          </div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
+                {DEPTH_COLUMNS.map(col => (
+                  <DepthSlotColumn
+                    key={col}
+                    column={col}
+                    players={depthChart[col] ?? []}
+                    selectionActive={!!pendingPlayer}
+                    pendingFit={pendingPlayer ? positionFit(pendingPlayer.player.position, col) : undefined}
+                    rosterFull={rosterFull}
+                    selectedPlayerId={selectedPlacedPlayer?.id}
+                    rolesByPlayer={rolesByPlayer}
+                    assigning={!!assigning}
+                    isAssignEligible={isAssignEligible}
+                    openPopoverSlot={openSlotPopover?.column === col ? openSlotPopover.slot : undefined}
+                    popoverCandidates={openSlotPopover?.column === col ? slotCandidates(col) : undefined}
+                    onEmptySlotClick={handleEmptySlotClick}
+                    onPopoverPick={handleSlotPopoverPick}
+                    onPlayerClick={handlePlacedPlayerClick}
+                    onPromote={promotePlayer}
+                    onDemote={demotePlayer}
+                    onRemove={(player) => sendPlacedToGLeague(player)}
+                    onDragStart={(e, player, column, index) => handleDragStart(e, player, column, index)}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDropOnSlot}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -1004,7 +978,7 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
 
         {/* G-LEAGUE / SIDEBOARD */}
         <div
-          className="w-full lg:w-[350px] flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0 shrink-0"
+          className="w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0 shrink-0"
         >
           <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-stone-500"></span>
@@ -1167,11 +1141,11 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                   Cancel
                 </button>
                 <button
-                  onClick={handleSaveRoster}
+                  onClick={() => handleSaveRoster(saveDestination)}
                   disabled={!rosterName.trim()}
                   className="px-6 py-2 rounded-lg font-black uppercase tracking-widest bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Save to Collection
+                  {saveDestination === 'season' ? 'Save & play season' : 'Save to Collection'}
                 </button>
               </div>
             </motion.div>

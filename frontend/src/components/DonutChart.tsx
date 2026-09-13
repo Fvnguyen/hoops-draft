@@ -10,6 +10,9 @@ interface DonutSlice {
 
 interface DonutChartProps {
   data: DonutSlice[];
+  /** Base size (px) used only to derive the viewBox and stroke proportions — the
+   *  rendered SVG has no fixed width/height and fills its container fluidly
+   *  (D17: must resize 1024-1920px without clipping or staying a fixed size). */
   size?: number;
   strokeWidth?: number;
 }
@@ -54,8 +57,8 @@ export function DonutChart({ data, size = 120, strokeWidth = 20 }: DonutChartPro
 
   return (
     <div className="flex items-center gap-4" onMouseLeave={() => setHovered(null)}>
-      <div className="relative shrink-0" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Expected shot diet">
+      <div className="relative shrink-0" style={{ width: size, maxWidth: '100%', aspectRatio: '1 / 1' }}>
+        <svg viewBox={`0 0 ${size} ${size}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full" role="img" aria-label="Expected shot diet">
           {/* Track */}
           <circle cx={center} cy={center} r={radius} fill="none" className="stroke-stone-100" strokeWidth={strokeWidth} />
           {segments.map(seg => {

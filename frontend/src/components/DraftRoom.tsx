@@ -3,11 +3,14 @@
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
 import { PackOpener } from './PackOpener';
 import { DraftSidebar } from './DraftSidebar';
+import { PackPassStage, passStaggerDelayMs } from './PackPassStage';
+import { PickTimerRing } from './PickTimerRing';
+import { RoundSummary } from './RoundSummary';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { buildDraftSession } from '../lib/sessionBuilder';
@@ -17,6 +20,8 @@ import type { RosterIdentity } from '../engine/rosterStats';
 import type { PlayerCardData } from '../engine/types';
 import type { DraftSeat } from '../engine/draft';
 import type { DraftPickRecord } from '../engine/deckbuilder';
+import { isSfxEnabled, setSfxEnabled } from '../audio/sfx';
+import { clockScaleFromQuery } from '../lib/draftTimer';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 
 // Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
@@ -41,13 +46,17 @@ const playsDB: Play[] = [
 // Surfaces the most recent bot picks (pickLog) so the draft doesn't feel
 // solitary. Resolves names from the seats' own `drafted` arrays rather than
 // a separate id->card map, since every picked card already lives there.
-// Neighbour seats' picks are prioritized to the front of the ticker.
+// Neighbour seats' picks are prioritized to the front of the ticker. A
+// human pick shows up too, but only when the clock made it (D5).
 function resolvePickLabel(record: DraftPickRecord, seats: DraftSeat[]): string | null {
   const seat = seats.find(s => s.id === record.seatId);
   if (!seat) return null;
   const card = seat.drafted.find(c => c.id === record.pickedCardId);
   if (!card) return null;
   const cardName = card.type === 'Play' ? card.name : card.player.name;
+  if (record.autoPicked) {
+    return `Clock took ${cardName} for you`;
+  }
   const botName = seat.botProfile?.name || 'Bot';
   return `${botName} took ${cardName}`;
 }
@@ -56,7 +65,7 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
   const neighbourIds = new Set([seats[7]?.id, seats[1]?.id].filter(Boolean));
 
   const items = pickLog
-    .filter(r => r.seatId !== 'human-0')
+    .filter(r => r.seatId !== 'human-0' || r.autoPicked)
     .slice(-16)
     .sort((a, b) => {
       const aFirst = neighbourIds.has(a.seatId) ? 0 : 1;
@@ -73,10 +82,15 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
   return (
     <div className="w-full overflow-x-auto whitespace-nowrap px-8 py-1.5 bg-stone-100/70 border-b border-stone-200 text-[11px] text-stone-500 font-medium custom-scrollbar shrink-0">
       {items.map((text, i) => (
-        <span key={i}>
+        <motion.span
+          key={i}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: passStaggerDelayMs(i) / 1000, duration: 0.2 }}
+        >
           {i > 0 && <span className="mx-2 text-stone-300">·</span>}
           {text}
-        </span>
+        </motion.span>
       ))}
     </div>
   );
@@ -91,31 +105,36 @@ function SaveErrorBanner({ message }: { message: string | null }) {
   );
 }
 
-function DraftRoomIntroBackdrop() {
+function ModePill({ mode }: { mode: 'quick' | 'premier' }) {
   return (
-    <div className="absolute inset-0 overflow-hidden bg-[#F5F0EA] text-stone-800" aria-hidden="true">
-      <header className="h-[56px] border-b border-stone-200 bg-white/80 px-4 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-500">⌂</div>
-        <span className="text-sm font-black uppercase tracking-wider">Draft Room</span>
-      </header>
-      <div className="h-[78px] border-b border-stone-200 bg-white/60 flex items-center justify-center">
-        <div className="w-full max-w-xl flex items-center gap-5 px-6">
-          <div className="h-9 w-9 rounded-full border border-stone-200 bg-white" />
-          <div className="flex-1 flex flex-col items-center gap-2">
-            <div className="h-2 w-64 max-w-full rounded-full bg-stone-200" />
-            <div className="h-2 w-36 rounded-full bg-stone-100" />
-          </div>
-          <div className="h-9 w-9 rounded-full border border-stone-200 bg-white" />
-        </div>
-      </div>
-      <div className="absolute inset-x-0 top-[134px] bottom-0 flex items-center justify-center pr-16">
-        <div className="h-2/3 w-3/4 rounded-[32px] border border-stone-200/70 bg-white/30" />
-      </div>
-      <div className="absolute right-0 top-[134px] bottom-0 w-14 border-l border-stone-200 bg-white/70 flex flex-col items-center gap-3 pt-4">
-        <div className="h-12 w-10 rounded-lg border border-stone-300 bg-white flex items-center justify-center text-stone-400">♙</div>
-        <div className="h-12 w-10 rounded-lg border border-stone-200 bg-white/60 flex items-center justify-center text-stone-400">☷</div>
-      </div>
-    </div>
+    <span className="text-stone-500 font-black text-[9px] uppercase tracking-widest bg-white px-2.5 py-1 rounded-full border border-stone-200 shadow-sm">
+      {mode === 'premier' ? 'Premier' : 'Quick'}
+    </span>
+  );
+}
+
+function SfxToggle() {
+  // Lazy-init from localStorage: this component only ever mounts client-side
+  // (DraftRoom renders null until isClient flips true), so it's safe to read
+  // here instead of syncing it in via an effect.
+  const [enabled, setEnabled] = useState(() => isSfxEnabled());
+
+  const toggle = () => {
+    const next = !enabled;
+    setSfxEnabled(next);
+    setEnabled(next);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={enabled ? 'Mute sound' : 'Enable sound'}
+      aria-pressed={enabled}
+      className="w-7 h-7 rounded-full border border-stone-200 bg-white flex items-center justify-center text-stone-400 hover:text-stone-700 hover:border-stone-300 transition-colors shadow-sm shrink-0"
+    >
+      {enabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+    </button>
   );
 }
 
@@ -147,9 +166,13 @@ export interface DraftRoomProps {
   /** Draft mode (plan ui_draft_deckbuild_pack, D1). Read server-side from
    *  `?mode=` by `app/draft/page.tsx` (T3); missing/unknown defaults to Premier. */
   mode?: 'quick' | 'premier';
+  /** `?clock=fast` (D4, dev-only): scales the Premier pick clock down so it
+   *  can be exercised quickly in tests/manual QA. Converted to a multiplier
+   *  via `clockScaleFromQuery` and passed straight into `armIntroClock`. */
+  clockFast?: boolean;
 }
 
-export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
+export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProps = {}) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
@@ -165,7 +188,28 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
 
-  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, setDraftState, draftSeed } = useDraftEngine(allPlayers, playsDB, mode);
+  // D4: `?clock=fast` (dev-only — clockScaleFromQuery ignores it in production)
+  // scales the pick clock down; passed straight into `armIntroClock(scale)`.
+  const clockScale = clockScaleFromQuery(clockFast ? 'fast' : null, process.env.NODE_ENV === 'production');
+
+  const {
+    draftState,
+    seats,
+    humanSeat,
+    currentPackNumber,
+    currentPickNumber,
+    overallPick,
+    pickLog,
+    processPickAndPass,
+    pickFromIntro,
+    setDraftState,
+    draftSeed,
+    pickDeadline,
+    passSeq,
+    startNextRound,
+    expirePick,
+    armIntroClock,
+  } = useDraftEngine(allPlayers, playsDB, mode);
 
   const podAverageIdentity = averageRosterIdentities(
     seats
@@ -183,7 +227,7 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
   useEffect(() => {
     if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId && !savingSessionRef.current) {
       savingSessionRef.current = true;
-      const session = buildDraftSession(seats, pickLog, draftSeed);
+      const session = buildDraftSession(seats, pickLog, draftSeed, mode);
       getGameStore()
         .saveDraftSession(session)
         .then(() => {
@@ -199,7 +243,7 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
           }
         });
     }
-  }, [draftState, seats, sessionId, pickLog, draftSeed]);
+  }, [draftState, seats, sessionId, pickLog, draftSeed, mode]);
 
   useEffect(() => {
     fetch('/api/cards')
@@ -211,6 +255,27 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
       })
       .catch(e => console.error("Failed to load cards API:", e));
   }, []);
+
+  // Arm the pick clock (D4) once the pack for a live drafting turn is
+  // actually in place. No-op in Quick mode / outside 'drafting' (armIntroClock
+  // nulls pickDeadline itself in that case).
+  useEffect(() => {
+    armIntroClock(clockScale);
+  }, [draftState, overallPick, armIntroClock, clockScale]);
+
+  // Timeout: the clock ran out on the current pick (D5/D4). Guarded by
+  // overallPick inside expirePick itself (per its contract) so this effect
+  // re-arming on every render is safe.
+  useEffect(() => {
+    if (mode !== 'premier' || pickDeadline == null || draftState !== 'drafting') return;
+    const msLeft = pickDeadline - Date.now();
+    if (msLeft <= 0) {
+      expirePick(overallPick);
+      return;
+    }
+    const timer = window.setTimeout(() => expirePick(overallPick), msLeft);
+    return () => window.clearTimeout(timer);
+  }, [mode, pickDeadline, draftState, overallPick, expirePick]);
 
   const handleConfirmPick = () => {
     if (selectedCardId) {
@@ -245,22 +310,6 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
     );
   }
 
-  if (draftState === 'pack-intro') {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#F5F0EA]">
-        <DraftRoomIntroBackdrop />
-        <PackOpener
-          pack={humanSeat.currentPack}
-          backdrop
-          onComplete={() => {
-            setIsSidebarOpenToggled(false);
-            setDraftState('drafting');
-          }}
-        />
-      </div>
-    );
-  }
-
   if (draftState === 'deckbuilding') {
     return (
       <>
@@ -270,27 +319,53 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
     );
   }
 
-  const isSidebarOpen = isSidebarOpenToggled || selectedCardId !== null;
+  const packDirection = currentPackNumber === 2 ? 1 : -1;
+  const isPackIntro = draftState === 'pack-intro';
+  const isRoundSummary = draftState === 'round-summary';
+  const isSidebarOpen = (isSidebarOpenToggled || selectedCardId !== null) && !isPackIntro;
+  // D7/D8: the opener now renders inside the real room's <main>, with the
+  // header/ticker/sidebar blurred behind it instead of a hand-built backdrop.
+  const backdropClass = isPackIntro ? 'blur-sm pointer-events-none select-none' : '';
 
   return (
     <div className="flex flex-col md:flex-row h-screen text-stone-800 font-sans relative overflow-hidden pt-[56px]" style={{ background: '#F5F0EA' }}>
       <SaveErrorBanner message={saveError} />
 
+      {isRoundSummary && (
+        <RoundSummary
+          drafted={humanSeat.drafted}
+          humanZones={humanZones}
+          // `currentPackNumber` already points at the upcoming pack while
+          // paused in round-summary (applyPick advances it before pausing).
+          completedPackNumber={currentPackNumber - 1}
+          nextPassDirection={currentPackNumber === 2 ? 'right' : 'left'}
+          onStartNextRound={startNextRound}
+        />
+      )}
+
       {/* Main Draft Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}
-        <header className="px-8 py-4 flex justify-between items-center border-b border-stone-200 bg-white/50 backdrop-blur-sm shrink-0">
-          <div className="w-64 hidden md:block">
-            {/* Spacer for centering */}
+        <header className={`px-8 py-4 flex justify-between items-center border-b border-stone-200 bg-white/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass}`}>
+          <div className="w-64 hidden md:flex items-center gap-2">
+            <ModePill mode={mode} />
+            {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
+            <SfxToggle />
           </div>
 
           <div className="flex-1 flex justify-center items-center gap-4 sm:gap-8">
              {/* Left Player (Seat 7) */}
-             <div className="flex flex-col items-center gap-1 opacity-80">
+             <motion.div
+               key={`left-${passSeq}`}
+               initial={{ scale: 1 }}
+               animate={{ scale: [1, 1.15, 1] }}
+               transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 1 : 0) / 1000 }}
+               className="flex flex-col items-center gap-1 opacity-80"
+             >
                 <div className={`w-8 h-8 rounded-full bg-white border flex items-center justify-center text-sm ${currentPackNumber !== 2 ? 'border-stone-400 shadow-sm' : 'border-stone-200'}`}>🤖</div>
                 <span className={`text-[9px] uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-stone-600' : 'text-stone-400'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
-             </div>
-             
+             </motion.div>
+
              {/* Central Pass UI */}
              <div className="flex items-center gap-3 sm:gap-6">
                 {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
@@ -314,10 +389,16 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
              </div>
 
              {/* Right Player (Seat 1) */}
-             <div className="flex flex-col items-center gap-1 opacity-80">
+             <motion.div
+               key={`right-${passSeq}`}
+               initial={{ scale: 1 }}
+               animate={{ scale: [1, 1.15, 1] }}
+               transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 0 : 1) / 1000 }}
+               className="flex flex-col items-center gap-1 opacity-80"
+             >
                 <div className={`w-8 h-8 rounded-full bg-white border flex items-center justify-center text-sm ${currentPackNumber === 2 ? 'border-stone-400 shadow-sm' : 'border-stone-200'}`}>🤖</div>
                 <span className={`text-[9px] uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-stone-600' : 'text-stone-400'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
-             </div>
+             </motion.div>
           </div>
 
           <div className="w-64 hidden md:flex justify-end">
@@ -327,89 +408,120 @@ export function DraftRoom({ mode = 'premier' }: DraftRoomProps = {}) {
           </div>
         </header>
 
-        <BotPickTicker pickLog={pickLog} seats={seats} />
+        <div className={`transition-[filter] duration-200 ${backdropClass}`}>
+          <BotPickTicker pickLog={pickLog} seats={seats} />
+        </div>
 
-        {/* Cards Grid */}
-        <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-32 custom-scrollbar">
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
+        {isPackIntro ? (
+          // D7/D8: embedded in the room's own <main> rather than a fixed
+          // full-screen overlay — header/ticker/sidebar are blurred behind it
+          // (backdropClass above) instead of the old hand-built
+          // DraftRoomIntroBackdrop.
+          <main className="flex-1 overflow-y-auto relative">
+            <PackOpener
+              pack={humanSeat.currentPack}
+              packNumber={currentPackNumber}
+              totalPacks={CUBE_PACKS}
+              mode={mode}
+              pickDeadline={pickDeadline}
+              embedded
+              className="max-w-[1500px] mx-auto"
+              onPick={(pick) => pickFromIntro(pick.cardId, pick.zone)}
+              onComplete={() => {
+                setIsSidebarOpenToggled(false);
+                setDraftState('drafting');
+              }}
+            />
+          </main>
+        ) : (
+          <>
+            {/* Cards Grid */}
+            <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-32 custom-scrollbar">
+              <PackPassStage passSeq={passSeq} direction={packDirection === 1 ? 'right' : 'left'}>
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
+                  <AnimatePresence>
+                    {humanSeat.currentPack.map((card, index) => (
+                      <motion.div
+                        key={card.id}
+                        initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8, y: -50 }}
+                        transition={{ delay: index * 0.05, type: "spring", stiffness: 300, damping: 25 }}
+                        className="flex justify-center [perspective:1000px]"
+                        draggable
+                        // motion.div types onDragStart as its own pan/drag-gesture handler
+                        // (MouseEvent | TouchEvent | PointerEvent), which doesn't carry
+                        // dataTransfer — but the `draggable` attribute still fires a real
+                        // native HTML5 dragstart event at runtime, so we cast to the type
+                        // that's actually there instead of widening the param to `any`.
+                        onDragStart={(e) => {
+                          const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
+                          dragEvent.dataTransfer?.setData('text/plain', card.id);
+                          setSelectedCardId(card.id);
+                        }}
+                        onDragEnd={() => setSelectedCardId(null)}
+                      >
+                        {card.type === 'Play' ? (
+                          <PlayCard
+                            play={card as Play}
+                            isSelected={selectedCardId === card.id}
+                            onClick={() => setSelectedCardId(card.id)}
+                          />
+                        ) : (
+                          <PlayerCard
+                            player={card as Player}
+                            isSelected={selectedCardId === card.id}
+                            onClick={() => setSelectedCardId(card.id)}
+                            size="sm"
+                          />
+                        )}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </PackPassStage>
+            </main>
+
+            {/* Confirm Button — the gradient wrapper only mounts while a card is
+                selected, so it no longer permanently darkens the last row of cards. */}
             <AnimatePresence>
-              {humanSeat.currentPack.map((card, index) => (
+              {selectedCardId && (
                 <motion.div
-                  key={card.id}
-                  initial={{ opacity: 0, y: 50, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8, y: -50 }}
-                  transition={{ delay: index * 0.05, type: "spring", stiffness: 300, damping: 25 }}
-                  className="flex justify-center [perspective:1000px]"
-                  draggable
-                  // motion.div types onDragStart as its own pan/drag-gesture handler
-                  // (MouseEvent | TouchEvent | PointerEvent), which doesn't carry
-                  // dataTransfer — but the `draggable` attribute still fires a real
-                  // native HTML5 dragstart event at runtime, so we cast to the type
-                  // that's actually there instead of widening the param to `any`.
-                  onDragStart={(e) => {
-                    const dragEvent = e as unknown as React.DragEvent<HTMLDivElement>;
-                    dragEvent.dataTransfer?.setData('text/plain', card.id);
-                    setSelectedCardId(card.id);
-                  }}
-                  onDragEnd={() => setSelectedCardId(null)}
+                  key="confirm-bar"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-stone-950 via-stone-950/90 to-transparent flex justify-center pb-10 pointer-events-none z-30"
                 >
-                  {card.type === 'Play' ? (
-                    <PlayCard
-                      play={card as Play}
-                      isSelected={selectedCardId === card.id}
-                      onClick={() => setSelectedCardId(card.id)}
-                    />
-                  ) : (
-                    <PlayerCard
-                      player={card as Player}
-                      isSelected={selectedCardId === card.id}
-                      onClick={() => setSelectedCardId(card.id)}
-                      size="sm"
-                    />
-                  )}
+                  <motion.button
+                    initial={{ y: 150 }}
+                    animate={{ y: 0 }}
+                    exit={{ y: 150 }}
+                    onClick={handleConfirmPick}
+                    className="pointer-events-auto px-16 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-black text-xl rounded-full shadow-[0_0_40px_rgba(249,115,22,0.4)] transition-all transform hover:scale-105 active:scale-95 border-2 border-white/20 uppercase tracking-widest flex flex-col items-center leading-none"
+                  >
+                    <span>Confirm Pick</span>
+                  </motion.button>
                 </motion.div>
-              ))}
+              )}
             </AnimatePresence>
-          </div>
-        </main>
-
-        {/* Confirm Button — the gradient wrapper only mounts while a card is
-            selected, so it no longer permanently darkens the last row of cards. */}
-        <AnimatePresence>
-          {selectedCardId && (
-            <motion.div
-              key="confirm-bar"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-stone-950 via-stone-950/90 to-transparent flex justify-center pb-10 pointer-events-none z-30"
-            >
-              <motion.button
-                initial={{ y: 150 }}
-                animate={{ y: 0 }}
-                exit={{ y: 150 }}
-                onClick={handleConfirmPick}
-                className="pointer-events-auto px-16 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-black text-xl rounded-full shadow-[0_0_40px_rgba(249,115,22,0.4)] transition-all transform hover:scale-105 active:scale-95 border-2 border-white/20 uppercase tracking-widest flex flex-col items-center leading-none"
-              >
-                <span>Confirm Pick</span>
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          </>
+        )}
       </div>
 
       {/* Draft Sidebar */}
-      <DraftSidebar
-        drafted={humanSeat.drafted}
-        humanZones={humanZones}
-        isOpen={isSidebarOpen}
-        toggle={() => setIsSidebarOpenToggled(!isSidebarOpenToggled)}
-        activeZone={activeZone}
-        setActiveZone={setActiveZone}
-        onDropPick={handleDrop}
-        onReassignZone={handleReassignZone}
-      />
+      <div className={`transition-[filter] duration-200 ${backdropClass}`}>
+        <DraftSidebar
+          drafted={humanSeat.drafted}
+          humanZones={humanZones}
+          isOpen={isSidebarOpen}
+          toggle={() => setIsSidebarOpenToggled(!isSidebarOpenToggled)}
+          activeZone={activeZone}
+          setActiveZone={setActiveZone}
+          onDropPick={handleDrop}
+          onReassignZone={handleReassignZone}
+        />
+      </div>
     </div>
   );
 }
