@@ -1,82 +1,59 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlayerCard, PlayerCardData } from '../components/PlayerCard';
 import { getAllCards } from '@/engine/cards';
 
-// Case/diacritic-insensitive name match — the card pool spells some names with
-// accents (e.g. "Nikola Jokić") that a hard-coded ASCII lookup would miss.
-function normalizeName(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
-function findCardByName(cards: PlayerCardData[], name: string): PlayerCardData | undefined {
-  const target = normalizeName(name);
-  return cards.find(c => normalizeName(c.player.name) === target);
-}
-
-function byNameSorted(cards: PlayerCardData[], rarity: PlayerCardData['rarity'], excludeIds: Set<string>): PlayerCardData[] {
-  return cards
-    .filter(c => c.rarity === rarity && !excludeIds.has(c.id))
-    .sort((a, b) => a.player.name.localeCompare(b.player.name));
-}
-
-/**
- * Pick the hero card: a specific well-known Mythic by name, falling back to
- * the highest-rarity card in the pool if that player isn't in the data
- * (e.g. an offline data refresh drops them).
- */
-function pickHero(allCards: PlayerCardData[]): PlayerCardData | undefined {
-  const named = findCardByName(allCards, 'Giannis Antetokounmpo');
-  if (named) return named;
-  const rarityOrder: PlayerCardData['rarity'][] = ['Mythic', 'Rare'];
-  for (const rarity of rarityOrder) {
-    const pool = byNameSorted(allCards, rarity, new Set());
-    if (pool.length > 0) return pool[0];
+function shuffled<T>(items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return allCards[0];
+  return arr;
+}
+
+/** Pick a random Mythic as the hero card, falling back to any card if the pool is empty. */
+function pickHero(allCards: PlayerCardData[]): PlayerCardData | undefined {
+  const mythics = allCards.filter(c => c.rarity === 'Mythic');
+  return shuffled(mythics)[0] ?? allCards[0];
 }
 
 /**
- * Pick 4 pack-preview cards: 2 Mythic + 1 Rare + 1 Uncommon, each from a
- * different team. Preferred well-known names are tried first (by name, so
- * the choice reads as "curated"); if a preferred name is missing or its team
- * collides with an earlier pick, the next card in alphabetical order for
- * that rarity fills the slot instead. Fully deterministic given the static
- * card data — no randomness, so the page never jitters between loads.
+ * Pick 4 random pack-preview cards from Mythic + Rare (2 of each, owner
+ * decision to keep the landing page to the exciting end of the pool), each
+ * from a different team where possible. Re-rolled on every page load.
  */
 function pickPackPreview(allCards: PlayerCardData[], heroId: string | undefined): PlayerCardData[] {
-  const tiers: Array<{ rarity: PlayerCardData['rarity']; count: number; preferred: string[] }> = [
-    // Only Mythic and Rare cards on the landing page (owner decision): the hero and
-    // the pack preview should show the exciting end of the pool.
-    { rarity: 'Mythic', count: 2, preferred: ['Nikola Jokić', 'Stephen Curry'] },
-    { rarity: 'Rare', count: 2, preferred: ['Anthony Edwards', 'Jalen Brunson'] },
-  ];
-
   const usedIds = new Set<string>(heroId ? [heroId] : []);
   const usedTeams = new Set<string>();
   const picks: PlayerCardData[] = [];
 
-  for (const { rarity, count, preferred } of tiers) {
-    const pool = byNameSorted(allCards, rarity, usedIds);
-    let picked = 0;
+  const tiers: Array<{ rarity: PlayerCardData['rarity']; count: number }> = [
+    { rarity: 'Mythic', count: 2 },
+    { rarity: 'Rare', count: 2 },
+  ];
 
-    for (const name of preferred) {
-      if (picked >= count) break;
-      const card = findCardByName(pool, name);
-      if (card && !usedTeams.has(card.player.team)) {
-        picks.push(card);
-        usedIds.add(card.id);
-        usedTeams.add(card.player.team);
-        picked++;
-      }
-    }
+  for (const { rarity, count } of tiers) {
+    const pool = shuffled(allCards.filter(c => c.rarity === rarity && !usedIds.has(c.id)));
+    let picked = 0;
 
     for (const card of pool) {
       if (picked >= count) break;
-      if (usedIds.has(card.id) || usedTeams.has(card.player.team)) continue;
+      if (usedTeams.has(card.player.team)) continue;
       picks.push(card);
       usedIds.add(card.id);
       usedTeams.add(card.player.team);
+      picked++;
+    }
+
+    // Not enough distinct-team cards left in this rarity — allow a team repeat
+    // rather than shorting the preview.
+    for (const card of pool) {
+      if (picked >= count) break;
+      if (usedIds.has(card.id)) continue;
+      picks.push(card);
+      usedIds.add(card.id);
       picked++;
     }
   }
@@ -85,12 +62,22 @@ function pickPackPreview(allCards: PlayerCardData[], heroId: string | undefined)
 }
 
 const allCards = getAllCards();
-const heroPlayer = pickHero(allCards);
-const packPlayers = pickPackPreview(allCards, heroPlayer?.id);
 
 const isDev = process.env.NODE_ENV !== 'production';
 
 export default function Home() {
+  // Re-rolled client-side (not at module scope) so every visit gets a fresh
+  // draw without the server-rendered and hydrated picks ever mismatching.
+  const [showcase, setShowcase] = useState<{ hero: PlayerCardData | undefined; pack: PlayerCardData[] } | null>(null);
+
+  useEffect(() => {
+    const hero = pickHero(allCards);
+    setShowcase({ hero, pack: pickPackPreview(allCards, hero?.id) });
+  }, []);
+
+  const heroPlayer = showcase?.hero;
+  const packPlayers = showcase?.pack ?? [];
+
   return (
     <main className="min-h-screen flex items-center justify-center relative overflow-hidden bg-stone-900">
       {/* Background Layer */}
