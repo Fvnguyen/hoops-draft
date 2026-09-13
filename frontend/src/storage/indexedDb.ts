@@ -13,6 +13,7 @@ import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import type { GameStore, SavedRoster } from './types';
 import { StorageQuotaError } from './types';
+import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 interface MetaRow {
   key: string;
@@ -75,11 +76,13 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async listDraftSessions(): Promise<DraftSession[]> {
-    return this.db.draftSessions.toArray();
+    const rows = await this.db.draftSessions.toArray();
+    return rows.map(safeParseDraftSession).filter((s): s is DraftSession => s !== null);
   }
 
   async getDraftSession(id: string): Promise<DraftSession | null> {
-    return (await this.db.draftSessions.get(id)) ?? null;
+    const row = (await this.db.draftSessions.get(id)) ?? null;
+    return row ? safeParseDraftSession(row) : null;
   }
 
   async saveDraftSession(s: DraftSession): Promise<void> {
@@ -93,11 +96,13 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async listRosters(): Promise<SavedRoster[]> {
-    return this.db.rosters.toArray();
+    const rows = await this.db.rosters.toArray();
+    return rows.map(safeParseSavedRoster).filter((r): r is SavedRoster => r !== null);
   }
 
   async getRoster(id: string): Promise<SavedRoster | null> {
-    return (await this.db.rosters.get(id)) ?? null;
+    const row = (await this.db.rosters.get(id)) ?? null;
+    return row ? safeParseSavedRoster(row) : null;
   }
 
   async saveRoster(r: SavedRoster): Promise<void> {
@@ -111,15 +116,18 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async listSeasons(): Promise<Season[]> {
-    return this.db.seasons.toArray();
+    const rows = await this.db.seasons.toArray();
+    return rows.map(safeParseSeason).filter((s): s is Season => s !== null);
   }
 
   async getSeason(id: string): Promise<Season | null> {
-    return (await this.db.seasons.get(id)) ?? null;
+    const row = (await this.db.seasons.get(id)) ?? null;
+    return row ? safeParseSeason(row) : null;
   }
 
   async getSeasonByRoster(rosterId: string): Promise<Season | null> {
-    return (await this.db.seasons.where('rosterId').equals(rosterId).first()) ?? null;
+    const row = (await this.db.seasons.where('rosterId').equals(rosterId).first()) ?? null;
+    return row ? safeParseSeason(row) : null;
   }
 
   async saveSeason(s: Season): Promise<void> {
