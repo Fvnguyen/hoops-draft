@@ -200,7 +200,10 @@ export function DepthSlotColumn({
                 </div>
               )}
               {isStarter ? (
-                <PlayerCard player={player} isSelected={isSelected} />
+                // size="sm" pins the stat footer to 4 columns (PPG/RPG/APG/FG%) —
+                // a 5-across depth chart never gives the starter card enough width
+                // for the container-query 6-stat variant to stay legible.
+                <PlayerCard player={player} isSelected={isSelected} size="sm" />
               ) : (
                 <PlayerCard player={player} compact popupDirection="down" isSelected={isSelected} />
               )}

@@ -5,7 +5,7 @@ import { DraftCard, PlayerCard, PlayCard, CardListRow, Play, PlayerCardData } fr
 import { PlayPanel } from './PlayPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
 import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
@@ -125,6 +125,10 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
 
   const [isPlaysOpen, setIsPlaysOpen] = useState(true);
   const [isPlayersOpen, setIsPlayersOpen] = useState(true);
+  // Whole-sidebar collapse: frees the Active Roster column's width for the depth
+  // chart (5 columns need the room) without losing drag targets — collapsed, the
+  // G-League still accepts drops, it just shows as a thin bar instead of the full list.
+  const [isGLeagueCollapsed, setIsGLeagueCollapsed] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
@@ -976,13 +980,37 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
           </div>
         </div>
 
-        {/* G-LEAGUE / SIDEBOARD */}
+        {/* G-LEAGUE / SIDEBOARD — collapses to a thin bar so the Active Roster
+            column (and its 5-across depth chart) can claim the freed width. */}
         <div
-          className="w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0 shrink-0"
+          className={`flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm min-h-0 transition-[width] ${
+            isGLeagueCollapsed ? 'w-12 shrink-0 items-center py-3' : 'w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] shrink-0 p-4'
+          }`}
         >
-          <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2">
+          {isGLeagueCollapsed ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsGLeagueCollapsed(false); }}
+              title="Expand G-League"
+              className="flex flex-col items-center gap-3 text-stone-400 hover:text-stone-600"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span className="text-[11px] font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">G-League</span>
+            </button>
+          ) : (
+          <>
+          <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2 shrink-0">
             <span className="w-2 h-2 rounded-full bg-stone-500"></span>
             G-League
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setIsGLeagueCollapsed(true); }}
+              title="Collapse G-League"
+              className="text-stone-400 hover:text-stone-600"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </h2>
 
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
@@ -1098,6 +1126,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
               </div>
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
 
