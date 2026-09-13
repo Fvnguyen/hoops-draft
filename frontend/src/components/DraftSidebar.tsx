@@ -4,6 +4,9 @@ import { ChevronRight, ChevronLeft, Users, LayoutList, ArrowLeftRight } from 'lu
 import { DraftCard, CardListRow, RarityGem } from './PlayerCard';
 import { countBadges } from '../engine/synergies';
 import type { PlayerCardData, Rarity } from './PlayerCard';
+import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+
+const TOTAL_PICKS = CUBE_PACKS * (CUBE_PLAYER_CARDS_PER_PACK + 1);
 
 type Zone = 'Roster' | 'GLeague';
 
@@ -218,7 +221,7 @@ export function DraftSidebar({
             </div>
             <div className="whitespace-nowrap">
               <h2 className="text-stone-800 font-bold uppercase tracking-wider text-lg leading-tight">My Team</h2>
-              <div className="text-stone-400 text-xs font-medium uppercase tracking-widest">{drafted.length}/36 Drafted</div>
+              <div className="text-stone-400 text-xs font-medium uppercase tracking-widest">{drafted.length}/{TOTAL_PICKS} Drafted</div>
             </div>
           </div>
 

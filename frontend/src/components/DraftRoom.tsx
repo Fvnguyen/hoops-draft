@@ -16,6 +16,11 @@ import type { RosterIdentity } from '../engine/rosterStats';
 import type { PlayerCardData } from '../engine/types';
 import type { DraftSeat } from '../engine/draft';
 import type { DraftPickRecord } from '../engine/deckbuilder';
+import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+
+// Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
+const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
+const TOTAL_PICKS = CUBE_PACKS * PICKS_PER_PACK;
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
 const playsDB: Play[] = [
@@ -234,10 +239,10 @@ export function DraftRoom() {
                 {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
                 <div className="flex flex-col items-center gap-1.5">
                    <div className="text-stone-800 font-bold text-sm leading-none whitespace-nowrap">
-                     Pack {currentPackNumber} <span className="text-stone-400 font-medium">·</span> Pick {currentPickNumber} of 12
+                     Pack {currentPackNumber} <span className="text-stone-400 font-medium">·</span> Pick {currentPickNumber} of {PICKS_PER_PACK}
                    </div>
                    <div className="w-56 sm:w-72 h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-[1.5px]">
-                     {Array.from({ length: 36 }).map((_, i) => (
+                     {Array.from({ length: TOTAL_PICKS }).map((_, i) => (
                        <div
                          key={i}
                          className={`flex-1 rounded-[1px] ${i < overallPick - 1 ? 'bg-orange-500' : 'bg-stone-200'}`}
@@ -245,7 +250,7 @@ export function DraftRoom() {
                      ))}
                    </div>
                    <div className="text-stone-400 font-medium uppercase tracking-widest text-[9px]">
-                     Overall Pick {overallPick} / 36
+                     Overall Pick {overallPick} / {TOTAL_PICKS}
                    </div>
                 </div>
                 {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
