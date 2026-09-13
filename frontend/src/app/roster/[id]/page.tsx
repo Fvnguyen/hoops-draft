@@ -16,7 +16,6 @@ function RosterPageInner() {
   const ready = useStorageReady();
 
   const [cards, setCards] = useState<DraftCard[]>([]);
-  const [initialZones, setInitialZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [rosterName, setRosterName] = useState<string>('');
   const [initialDepthOrder, setInitialDepthOrder] = useState<Record<string, string[]> | undefined>();
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
@@ -37,7 +36,6 @@ function RosterPageInner() {
 
       if (savedRoster) {
         setCards(savedRoster.draftedCards);
-        setInitialZones(savedRoster.zones);
         setRosterName(savedRoster.name);
         setInitialDepthOrder(savedRoster.depthChartOrder);
         setInitialPlaysOrder(savedRoster.activePlays);
@@ -76,7 +74,6 @@ function RosterPageInner() {
     <div className="bg-black">
       <DeckBuilder
         draftedCards={cards}
-        initialZones={initialZones}
         existingRosterName={rosterName}
         rosterId={rosterId}
         initialDepthOrder={initialDepthOrder}

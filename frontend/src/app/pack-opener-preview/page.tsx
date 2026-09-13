@@ -58,7 +58,7 @@ function PreviewInner() {
           pack={pack}
           packNumber={packNumber}
           mode={timed ? 'premier' : 'quick'}
-          onPick={pick => setLastPick(`${pick.cardId} -> ${pick.zone}`)}
+          onPick={pick => setLastPick(pick.cardId)}
           onComplete={() => setRun(value => value + 1)}
         />
       </div>

@@ -8,35 +8,14 @@ import { describe, it, expect } from 'vitest';
 import {
   MAX_ROSTER,
   SLOTS_PER_COLUMN,
-  autoDistributeRoster,
   countPlayers,
   moveWithinChart,
   placeFromBench,
   removeFromChart,
   type DenseDepthChart,
 } from '@/engine/depthChart';
-import type { PlayerCardData } from '@/engine/types';
 
 const empty = (): DenseDepthChart => ({ PG: [], SG: [], SF: [], PF: [], C: [] });
-
-/** Minimal synthetic PlayerCardData — only the fields autoDistributeRoster reads. */
-function makePlayer(id: string, position: string, overall: number): PlayerCardData {
-  return {
-    type: 'Player',
-    id,
-    player: { id, name: id, position, height: '6-6', weight: 210, age: 26, team: 'TST' },
-    stats: {
-      gp: 70, mpg: 28, pts: 14, trb: 5, ast: 4, stl: 1, blk: 0.5, fga: 11, fg3a: 3, fta: 3,
-      pct_fga_0_3: 0.3, pct_fga_3_10: 0.15, pct_fga_10_16: 0.1, pct_fga_16_3p: 0.1, pct_fga_3p: 0.35,
-      fg_pct_0_3: 0.6, fg_pct_3_10: 0.4, fg_pct_10_16: 0.4, fg_pct_16_3p: 0.4, fg_pct_3p: 0.36,
-      fg_pct: 0.46, fg3_pct: 0.36, fg2_pct: 0.5, ft_pct: 0.78, per: 15, ts: 0.55, vorp: 1, dbpm: 0, tov: 2,
-    },
-    awards: [],
-    ratings: { overall, finishing: 60, midRange: 55, perimeter: 55, playmaking: 50, rebounding: 50, perimeterDefense: 50, postDefense: 50 },
-    traits: [],
-    rarity: 'Common',
-  };
-}
 
 /** Chart with `n` guards in PG, named g0…g(n-1). */
 const guards = (n: number): DenseDepthChart => ({
@@ -154,67 +133,5 @@ describe('removeFromChart', () => {
   it('returns the chart unchanged when the player is not placed', () => {
     const chart = { ...empty(), SF: ['f0'] };
     expect(removeFromChart(chart, 'nobody')).toBe(chart);
-  });
-});
-
-describe('autoDistributeRoster', () => {
-  it('fills all 5 starter columns, including Center, from a guard/forward-heavy haul', () => {
-    // 5 raw 'G', 2 raw 'F', 1 raw 'C' — the old defaultColumn() push piled every G into
-    // PG and every F into SF, leaving SG/PF empty and C entirely off the chart.
-    const players = [
-      makePlayer('g0', 'G', 90), makePlayer('g1', 'G', 85), makePlayer('g2', 'G', 80),
-      makePlayer('g3', 'G', 75), makePlayer('g4', 'G', 70),
-      makePlayer('f0', 'F', 88), makePlayer('f1', 'F', 83),
-      makePlayer('c0', 'C', 60),
-    ];
-    const { chart, overflow } = autoDistributeRoster(players);
-
-    for (const column of ['PG', 'SG', 'SF', 'PF', 'C'] as const) {
-      expect(chart[column].length).toBeGreaterThan(0);
-    }
-    expect(chart.C).toContain('c0');
-    expect(countPlayers(chart)).toBe(players.length);
-    expect(overflow).toEqual([]);
-  });
-
-  it('picks the highest-OVR natural fit for each starter slot', () => {
-    const players = [makePlayer('g-hi', 'PG', 90), makePlayer('g-lo', 'PG', 60), makePlayer('c0', 'C', 99)];
-    const { chart } = autoDistributeRoster(players);
-    expect(chart.PG[0]).toBe('g-hi');
-    expect(chart.C[0]).toBe('c0');
-  });
-
-  it('caps the roster at MAX_ROSTER and returns the rest as overflow, never discarding them', () => {
-    const players = Array.from({ length: 14 }, (_, i) => makePlayer(`p${i}`, 'ALL', 100 - i));
-    const { chart, overflow } = autoDistributeRoster(players);
-    expect(countPlayers(chart)).toBe(MAX_ROSTER);
-    expect(overflow).toHaveLength(players.length - MAX_ROSTER);
-    // The lowest-OVR players are the ones left over, not an arbitrary subset.
-    expect(overflow.map(p => p.id).sort()).toEqual(['p12', 'p13']);
-  });
-
-  it('never places a player where they have no eligible fit', () => {
-    const players = [makePlayer('pg0', 'PG', 90), makePlayer('c0', 'C', 90)];
-    const { chart, overflow } = autoDistributeRoster(players);
-    expect(chart.PF).toEqual([]);
-    expect(chart.SG).toEqual([]);
-    expect(overflow).toEqual([]);
-  });
-
-  it('is deterministic: the same input always produces the same chart', () => {
-    const players = [
-      makePlayer('g0', 'G', 80), makePlayer('g1', 'G', 80), makePlayer('f0', 'F', 80), makePlayer('c0', 'C', 80),
-    ];
-    const first = autoDistributeRoster(players);
-    const second = autoDistributeRoster([...players]);
-    expect(second.chart).toEqual(first.chart);
-    expect(second.overflow.map(p => p.id)).toEqual(first.overflow.map(p => p.id));
-  });
-
-  it('does not mutate its input array', () => {
-    const players = [makePlayer('g0', 'G', 80), makePlayer('c0', 'C', 80)];
-    const copy = [...players];
-    autoDistributeRoster(players);
-    expect(players).toEqual(copy);
   });
 });

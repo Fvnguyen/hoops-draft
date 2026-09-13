@@ -143,11 +143,11 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
   return (
     <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-2 flex items-stretch gap-6">
 
-      {/* 1. Team identity radar — sized down from 176px (D22): an intentionally-expanded
-           band shouldn't dominate the viewport the way the original footprint did. */}
-      <div className="flex flex-col gap-1 shrink-0" style={{ width: 120 }}>
+      {/* 1. Team identity radar — scaled up from 120px (D4, plan ui_polish_small_fixes):
+           120px read as cramped once the badge/plan panel next to it filled out. */}
+      <div className="flex flex-col gap-1 shrink-0" style={{ width: 168 }}>
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
-        <RadarChart data={identity} average={referenceIdentity} size={120} />
+        <RadarChart data={identity} average={referenceIdentity} size={168} />
       </div>
 
       {/* 2. Shot diet — sized down from 124px/20px (D22), same reasoning as the radar. */}

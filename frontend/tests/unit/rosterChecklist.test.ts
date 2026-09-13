@@ -22,8 +22,8 @@ function validRoster(overrides: Partial<BuiltRoster> = {}): BuiltRoster {
     activePlays: ['play-a', 'play-b', 'play-c'],
     playAssignments: [],
     archetypes: {},
-    gLeaguePlayers: [],
-    gLeaguePlays: [],
+    rosterPlayers: [],
+    rosterPlays: [],
     ...overrides,
   };
 }

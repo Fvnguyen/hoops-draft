@@ -24,7 +24,6 @@ function makeRoster(id: string, timestamp: string): SavedRoster {
     name: `Roster ${id}`,
     timestamp,
     draftedCards: [],
-    zones: {},
     depthChartOrder: {},
     activePlays: [],
     sessionId: null,

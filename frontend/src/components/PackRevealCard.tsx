@@ -1,8 +1,16 @@
 'use client';
 
 import type { DraftCard } from '@/engine/types';
-import { PlayerCardFront, PlayCardFront } from './PlayerCard';
+import { PlayerCard, PlayCard } from './PlayerCard';
 
+/**
+ * A revealed pack card is flippable on hover, same as everywhere else in the app (D2,
+ * plan `ui_polish_small_fixes`) — `PlayerCard`/`PlayCard` already own that hover-flip
+ * (front stats face <-> back badges/season-averages face), so the revealed branch just
+ * renders them directly instead of the static, front-only `PlayerCardFront`/`PlayCardFront`.
+ * The card is still sitting inside PackOpener's own outer flip (sealed back <-> this
+ * revealed face), so hovering it stacks a second, independent flip on top once revealed.
+ */
 export function PackRevealCard({ card, revealed }: { card: DraftCard; revealed: boolean }) {
   if (!revealed) {
     return (
@@ -17,16 +25,8 @@ export function PackRevealCard({ card, revealed }: { card: DraftCard; revealed: 
   }
 
   if (card.type === 'Player') {
-    return (
-      <div className="relative @container aspect-[5/7] w-full">
-        <PlayerCardFront player={card} size="sm" />
-      </div>
-    );
+    return <PlayerCard player={card} size="sm" />;
   }
 
-  return (
-    <div className="relative aspect-[5/7] w-full">
-      <PlayCardFront play={card} />
-    </div>
-  );
+  return <PlayCard play={card} />;
 }

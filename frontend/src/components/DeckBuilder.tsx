@@ -15,10 +15,9 @@ import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
-import { DEPTH_COLUMNS, canPlaceAt, defaultColumn, positionFit, type DepthColumn } from '@/engine/positions';
+import { DEPTH_COLUMNS, canPlaceAt, positionFit, type DepthColumn } from '@/engine/positions';
 import {
   MAX_ROSTER,
-  autoDistributeRoster,
   countPlayers,
   moveWithinChart,
   placeFromBench,
@@ -37,10 +36,10 @@ const rarityValue: Record<string, number> = {
   'Common': 1,
 };
 
-// Sort order used for the G-League player list: rarity desc, then position, then name.
+// Sort order used for the Roster (bench) player list: rarity desc, then position, then name.
 const posOrder: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4, G: 5, F: 6, 'G-F': 7, 'F-G': 7, ALL: 8, STAR: 8 };
 
-const sortGLeaguePlayers = (a: PlayerCardData, b: PlayerCardData) => {
+const sortRosterPlayers = (a: PlayerCardData, b: PlayerCardData) => {
   const rarityDiff = rarityValue[b.rarity] - rarityValue[a.rarity];
   if (rarityDiff !== 0) return rarityDiff;
   const posA = posOrder[a.player.position] ?? 9;
@@ -49,9 +48,9 @@ const sortGLeaguePlayers = (a: PlayerCardData, b: PlayerCardData) => {
   return a.player.name.localeCompare(b.player.name);
 };
 
-/** One G-League row + its own hover-preview state (D-hover) — a `useState` per row
+/** One Roster (bench) row + its own hover-preview state (D-hover) — a `useState` per row
  *  needs its own component instance, can't be called from inside a `.map()` directly. */
-function GLeaguePlayerRow({ player, selected, onDragStart, onClick }: {
+function RosterPlayerRow({ player, selected, onDragStart, onClick }: {
   player: PlayerCardData;
   selected: boolean;
   onDragStart: (e: React.DragEvent) => void;
@@ -83,7 +82,6 @@ type PosFilter = 'All' | 'G' | 'F' | 'C';
 
 export interface DeckBuilderProps {
   draftedCards: DraftCard[];
-  initialZones: Record<string, 'Roster' | 'GLeague'>;
   existingRosterName?: string;
   rosterId?: string;
   initialDepthOrder?: Record<string, string[]>;
@@ -107,17 +105,17 @@ export function DeckBuilder(props: DeckBuilderProps) {
 /** Snapshot restored by a toast's Undo action (D15). */
 interface BuilderSnapshot {
   depthChart: Record<string, PlayerCardData[]>;
-  gLeaguePlayers: PlayerCardData[];
+  rosterPlayers: PlayerCardData[];
   playAssignments: Record<string, PlayAssignment>;
   activePlays: (Play | null)[];
-  gLeaguePlays: Play[];
+  rosterPlays: Play[];
 }
 
-function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: DeckBuilderProps) {
+function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
 
-  /** Position filter chips (All / G / F / C) above the G-League list. Natural fit only. */
+  /** Position filter chips (All / G / F / C) above the Roster list. Natural fit only. */
   const matchesPosFilter = (rawPos: string, filter: PosFilter): boolean => {
     if (filter === 'All') return true;
     if (filter === 'G') return canPlaceAt(rawPos, 'PG', false) || canPlaceAt(rawPos, 'SG', false);
@@ -129,8 +127,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     PG: [], SG: [], SF: [], PF: [], C: []
   });
   const [activePlays, setActivePlays] = useState<(Play | null)[]>([null, null, null]);
-  const [gLeaguePlayers, setGLeaguePlayers] = useState<PlayerCardData[]>([]);
-  const [gLeaguePlays, setGLeaguePlays] = useState<Play[]>([]);
+  const [rosterPlayers, setRosterPlayers] = useState<PlayerCardData[]>([]);
+  const [rosterPlays, setRosterPlays] = useState<Play[]>([]);
   const [draggedItem, setDraggedItem] = useState<{ card: DraftCard, sourceZone: string, sourceIndex?: number } | null>(null);
   // Hidden bench-sized drag image (D24): imperatively updated (not React state) so it's
   // already correct by the time handleDragStart calls setDragImage synchronously.
@@ -140,7 +138,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   const dragGhostNameRef = useRef<HTMLDivElement>(null);
 
   // Click-to-place selection state
-  const [selectedGLeaguePlayer, setSelectedGLeaguePlayer] = useState<PlayerCardData | null>(null);
+  const [selectedRosterPlayer, setSelectedRosterPlayer] = useState<PlayerCardData | null>(null);
   const [posFilter, setPosFilter] = useState<PosFilter>('All');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   // Empty depth slot whose AssignPopover is open (D14). Cleared by any selection.
@@ -164,10 +162,10 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   const [isPlayersOpen, setIsPlayersOpen] = useState(true);
   // Whole-sidebar collapse: frees the Active Roster column's width for the depth
   // chart (5 columns need the room) without losing drag targets — collapsed, the
-  // G-League still accepts drops, it just shows as a thin bar instead of the full list.
+  // Roster still accepts drops, it just shows as a thin bar instead of the full list.
   // Starts collapsed: the depth chart (5 columns) needs the width more than
-  // the G-League list needs to be open by default; one click still reopens it.
-  const [isGLeagueCollapsed, setIsGLeagueCollapsed] = useState(true);
+  // the Roster list needs to be open by default; one click still reopens it.
+  const [isRosterCollapsed, setIsRosterCollapsed] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
@@ -175,31 +173,16 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
 
   useEffect(() => {
     const initDepth: Record<string, PlayerCardData[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
-    const initGPlayers: PlayerCardData[] = [];
-    const initRPlays: Play[] = [];
-    const initGPlays: Play[] = [];
-    // Collected only on the fresh-draft path (no saved depth order) and handed to
-    // autoDistributeRoster below (D20/D21) instead of being pushed column-by-column here.
-    const rosterZonedPlayers: PlayerCardData[] = [];
+    const initRosterPlayers: PlayerCardData[] = [];
+    const initRosterPlays: Play[] = [];
 
-    draftedCards.forEach(card => {
-      const zone = initialZones[card.id] || 'GLeague';
-      if (card.type === 'Play') {
-        if (zone === 'Roster') initRPlays.push(card as Play);
-        else initGPlays.push(card as Play);
-      } else {
-        const player = card as PlayerCardData;
-        if (zone === 'Roster') {
-          if (!initialDepthOrder) {
-            rosterZonedPlayers.push(player);
-          }
-        } else {
-          initGPlayers.push(player);
-        }
-      }
-    });
+    const players = draftedCards.filter((c): c is PlayerCardData => c.type === 'Player');
+    const plays = draftedCards.filter((c): c is Play => c.type === 'Play');
 
     if (initialDepthOrder) {
+      // Saved-roster edit: seed the depth chart from the saved order, everyone
+      // else (never placed, or placed at an id the draft no longer has) goes to
+      // the Roster sidebar list.
       const assignedIds = new Set<string>();
       for (const pos in initDepth) {
         if (initialDepthOrder[pos]) {
@@ -214,55 +197,52 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
            initDepth[pos] = orderedCol;
         }
       }
-      draftedCards.forEach(c => {
-        if (c.type === 'Player' && initialZones[c.id] === 'Roster' && !assignedIds.has(c.id)) {
-          initDepth[defaultColumn((c as PlayerCardData).player.position)].push(c as PlayerCardData);
-        }
+      players.forEach(p => {
+        if (!assignedIds.has(p.id)) initRosterPlayers.push(p);
       });
     } else {
-      // Starters first (best natural fit per column), then bench by OVR, capped at 12 —
-      // replaces the old defaultColumn() push that piled every guard into PG/every
-      // forward into SF and left thin columns (SG/PF/C) empty.
-      const { chart, overflow } = autoDistributeRoster(rosterZonedPlayers);
-      const byId = new Map(rosterZonedPlayers.map(p => [p.id, p]));
-      for (const column of DEPTH_COLUMNS) {
-        initDepth[column] = chart[column].map(id => byId.get(id)).filter((p): p is PlayerCardData => !!p);
-      }
-      if (overflow.length > 0) {
-        initGPlayers.push(...overflow);
-        toast.show(`${overflow.length} player${overflow.length === 1 ? '' : 's'} moved to G-League — roster capped at 12`);
-      }
+      // Fresh draft (no saved depth order): every drafted card starts in the
+      // Roster sidebar list, the depth chart starts empty — no auto-fill, the
+      // human builds the lineup (D27, supersedes D20/D21's autoDistributeRoster).
+      initRosterPlayers.push(...players);
     }
 
     const newActivePlays: (Play | null)[] = [null, null, null];
     if (initialPlaysOrder) {
+      const assignedPlayIds = new Set<string>();
       initialPlaysOrder.forEach((id, idx) => {
          if (idx < 3) {
-            const found = initRPlays.find(p => p.id === id);
-            if (found) newActivePlays[idx] = found;
+            const found = plays.find(p => p.id === id);
+            if (found) {
+              newActivePlays[idx] = found;
+              assignedPlayIds.add(id);
+            }
          }
       });
+      plays.forEach(p => {
+        if (!assignedPlayIds.has(p.id)) initRosterPlays.push(p);
+      });
     } else {
-      initRPlays.slice(0, 3).forEach((p, i) => { newActivePlays[i] = p; });
+      // Fresh draft: every play card starts in the Roster sidebar list too —
+      // no active plays pre-selected.
+      initRosterPlays.push(...plays);
     }
+
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActivePlays(newActivePlays);
-    initGPlayers.sort(sortGLeaguePlayers);
+    initRosterPlayers.sort(sortRosterPlayers);
     setDepthChart(initDepth);
-    setGLeaguePlayers(initGPlayers);
-    setGLeaguePlays(initGPlays);
+    setRosterPlayers(initRosterPlayers);
+    setRosterPlays(initRosterPlays);
 
     const initAssignments: Record<string, PlayAssignment> = {};
     (initialPlayAssignments ?? []).forEach(a => { initAssignments[a.cardId] = a; });
     setPlayAssignments(initAssignments);
-    // toast intentionally omitted: ToastProvider's context value is a fresh object every
-    // render, so including it would refire this effect on every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftedCards, initialZones, initialDepthOrder, initialPlaysOrder, initialPlayAssignments]);
+  }, [draftedCards, initialDepthOrder, initialPlaysOrder, initialPlayAssignments]);
 
   // Keep playAssignments in sync with activePlays: a play entering a slot gets a
   // fresh (or its previous) assignment; a play leaving a slot drops its assignment
-  // entirely (covers both "swap play" and "return play to G-League").
+  // entirely (covers both "swap play" and "return play to Roster").
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlayAssignments(prev => {
@@ -285,7 +265,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setSelectedGLeaguePlayer(null);
+        setSelectedRosterPlayer(null);
         setAssigning(null);
         setOpenSlotPopover(null);
       }
@@ -295,7 +275,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   }, []);
 
   const clearSelection = () => {
-    setSelectedGLeaguePlayer(null);
+    setSelectedRosterPlayer(null);
     setAssigning(null);
     setOpenSlotPopover(null);
   };
@@ -319,14 +299,14 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     ]));
 
   const takeSnapshot = (): BuilderSnapshot => ({
-    depthChart, gLeaguePlayers, playAssignments, activePlays, gLeaguePlays,
+    depthChart, rosterPlayers, playAssignments, activePlays, rosterPlays,
   });
 
   const restoreSnapshot = (snap: BuilderSnapshot) => {
     setDepthChart(snap.depthChart);
-    setGLeaguePlayers(snap.gLeaguePlayers);
+    setRosterPlayers(snap.rosterPlayers);
     setActivePlays(snap.activePlays);
-    setGLeaguePlays(snap.gLeaguePlays);
+    setRosterPlays(snap.rosterPlays);
     setPlayAssignments(snap.playAssignments);
     clearSelection();
   };
@@ -336,8 +316,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     toast.show(message, { actionLabel: 'Undo', durationMs: 5000, onAction: () => restoreSnapshot(snap) });
   };
 
-  /** Move a G-League player onto the chart. Engine refusals become error toasts. */
-  const placeFromGLeague = (player: PlayerCardData, column: DepthColumn) => {
+  /** Move a Roster (bench) player onto the chart. Engine refusals become error toasts. */
+  const placeFromRoster = (player: PlayerCardData, column: DepthColumn) => {
     const snap = takeSnapshot();
     const result = placeFromBench(toIdChart(depthChart), player.id, player.player.position, column);
     if (!result.ok) {
@@ -345,8 +325,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
       return;
     }
     setDepthChart(fromIdChart(result.chart));
-    setGLeaguePlayers(prev => prev.filter(p => p.id !== player.id));
-    setSelectedGLeaguePlayer(null);
+    setRosterPlayers(prev => prev.filter(p => p.id !== player.id));
+    setSelectedRosterPlayer(null);
     setOpenSlotPopover(null);
     toastUndo(`${player.player.name} → ${column}`, snap);
   };
@@ -387,10 +367,10 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   };
 
   const removeCardFromSource = (cardId: string, sourceZone: string) => {
-    if (sourceZone === 'GLeaguePlayers') {
-      setGLeaguePlayers(prev => prev.filter(p => p.id !== cardId));
-    } else if (sourceZone === 'GLeaguePlays') {
-      setGLeaguePlays(prev => prev.filter(p => p.id !== cardId));
+    if (sourceZone === 'RosterPlayers') {
+      setRosterPlayers(prev => prev.filter(p => p.id !== cardId));
+    } else if (sourceZone === 'RosterPlays') {
+      setRosterPlays(prev => prev.filter(p => p.id !== cardId));
     } else if (sourceZone.startsWith('ActivePlay')) {
       const idx = parseInt(sourceZone.split('-')[1]);
       setActivePlays(prev => {
@@ -406,7 +386,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     }
   };
 
-  /** Drop onto a NON-depth-chart zone (play slots, G-League lanes). Depth-chart
+  /** Drop onto a NON-depth-chart zone (play slots, Roster lanes). Depth-chart
    *  drops go through `handleDropOnSlot` so they share the engine's rules. */
   const handleDropOnZone = (e: React.DragEvent, targetZone: string) => {
     e.preventDefault();
@@ -418,20 +398,20 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     if (card.type === 'Player' && targetZone.includes('Play')) { setDraggedItem(null); return; }
     if (targetZone === sourceZone) { setDraggedItem(null); return; }
 
-    // Depth chart → G-League: the engine removes, held roles are cleared with it.
-    if (DEPTH_COLUMNS.includes(sourceZone as DepthColumn) && targetZone === 'GLeaguePlayers') {
-      sendPlacedToGLeague(card as PlayerCardData);
+    // Depth chart → Roster: the engine removes, held roles are cleared with it.
+    if (DEPTH_COLUMNS.includes(sourceZone as DepthColumn) && targetZone === 'RosterPlayers') {
+      sendPlacedToRoster(card as PlayerCardData);
       setDraggedItem(null);
       return;
     }
 
     removeCardFromSource(card.id, sourceZone);
 
-    if (targetZone === 'GLeaguePlayers') {
-      setGLeaguePlayers(prev => [...prev, card as PlayerCardData].sort(sortGLeaguePlayers));
-    } else if (targetZone === 'GLeaguePlays') {
+    if (targetZone === 'RosterPlayers') {
+      setRosterPlayers(prev => [...prev, card as PlayerCardData].sort(sortRosterPlayers));
+    } else if (targetZone === 'RosterPlays') {
       if (!card.id.startsWith('basic-')) {
-        setGLeaguePlays(prev => [...prev, card as Play]);
+        setRosterPlays(prev => [...prev, card as Play]);
       }
     } else if (targetZone.startsWith('ActivePlay')) {
       const idx = parseInt(targetZone.split('-')[1]);
@@ -439,7 +419,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
         const next = [...prev];
         const existing = next[idx];
         if (existing && !existing.id.startsWith('basic-')) {
-          setGLeaguePlays(g => [...g, existing]);
+          setRosterPlays(g => [...g, existing]);
         }
         next[idx] = card as Play;
         return next;
@@ -456,23 +436,23 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     setDraggedItem(null);
     if (!item || item.card.type !== 'Player') return;
     const player = item.card as PlayerCardData;
-    if (item.sourceZone === 'GLeaguePlayers') {
-      placeFromGLeague(player, column);
+    if (item.sourceZone === 'RosterPlayers') {
+      placeFromRoster(player, column);
     } else if (DEPTH_COLUMNS.includes(item.sourceZone as DepthColumn)) {
       moveOnChart(player, column, slotIndex);
     }
   };
 
   /** Click handling for Play cards keeps its old immediate behaviour: click a
-   *  G-League play to fill the first empty slot, click a filled slot to send
-   *  it back to the G-League. (Only Player click behaviour changes to the new
+   *  Roster play to fill the first empty slot, click a filled slot to send
+   *  it back to the Roster. (Only Player click behaviour changes to the new
    *  select → highlight → place model below.) */
   const handlePlayClick = (play: Play, currentZone: string) => {
     setAssigning(null);
     if (currentZone.startsWith('ActivePlay')) {
       removeCardFromSource(play.id, currentZone);
       if (!play.id.startsWith('basic-')) {
-        setGLeaguePlays(prev => [...prev, play]);
+        setRosterPlays(prev => [...prev, play]);
       }
     } else {
       const emptyIdx = activePlays.findIndex(p => p === null);
@@ -489,14 +469,14 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     }
   };
 
-  const handleGLeaguePlayerClick = (player: PlayerCardData) => {
+  const handleRosterPlayerClick = (player: PlayerCardData) => {
     setAssigning(null);
     setOpenSlotPopover(null);
-    setSelectedGLeaguePlayer(prev => (prev?.id === player.id ? null : player));
+    setSelectedRosterPlayer(prev => (prev?.id === player.id ? null : player));
   };
 
   /** Click on a placed player (D-remove): mid-role-assignment it assigns them to the
-   *  role being filled; otherwise it sends them straight back to G-League (undoable
+   *  role being filled; otherwise it sends them straight back to Roster (undoable
    *  toast). No more select-then-▲/▼/✕ — drag already covers reordering/moving a
    *  placed player, so a click only needs to do the one thing a drag can't: remove. */
   const handlePlacedPlayerClick = (player: PlayerCardData) => {
@@ -504,13 +484,13 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
       tryAssignRole(player);
       return;
     }
-    sendPlacedToGLeague(player);
+    sendPlacedToRoster(player);
   };
 
   // ── Play-role assignment ──────────────────────────────────────────────────
 
   const handleRoleClick = (cardId: string, roleId: string) => {
-    setSelectedGLeaguePlayer(null);
+    setSelectedRosterPlayer(null);
     setAssigning(prev => (prev?.cardId === cardId && prev.roleId === roleId ? null : { cardId, roleId }));
   };
 
@@ -582,8 +562,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   /** Click on an empty slot (D14): place the pending selection, or open the popover. */
   const handleEmptySlotClick = (column: DepthColumn, slotIndex: number) => {
     setAssigning(null);
-    if (selectedGLeaguePlayer) {
-      placeFromGLeague(selectedGLeaguePlayer, column);
+    if (selectedRosterPlayer) {
+      placeFromRoster(selectedRosterPlayer, column);
       return;
     }
     setOpenSlotPopover(prev =>
@@ -593,23 +573,23 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
 
   /** Pick from an empty slot's AssignPopover — the same component a play role uses. */
   const handleSlotPopoverPick = (column: DepthColumn, playerId: string) => {
-    const player = gLeaguePlayers.find(p => p.id === playerId);
-    if (player) placeFromGLeague(player, column);
+    const player = rosterPlayers.find(p => p.id === playerId);
+    if (player) placeFromRoster(player, column);
   };
 
-  /** Send a placed player back to the G-League. Roles they held are cleared with
+  /** Send a placed player back to the Roster. Roles they held are cleared with
    *  them — no `confirm`, the toast's Undo puts everything back (D15). */
-  const sendPlacedToGLeague = (player: PlayerCardData) => {
+  const sendPlacedToRoster = (player: PlayerCardData) => {
     const snap = takeSnapshot();
     const heldRoles = rolesByPlayer.get(player.id) ?? [];
     if (heldRoles.length > 0) removePlayerRoles(player.id);
     setDepthChart(fromIdChart(removeFromChart(toIdChart(depthChart), player.id)));
-    setGLeaguePlayers(prev => [...prev, player].sort(sortGLeaguePlayers));
+    setRosterPlayers(prev => [...prev, player].sort(sortRosterPlayers));
     setOpenSlotPopover(null);
     toastUndo(
       heldRoles.length > 0
-        ? `${player.player.name} → G-League (${heldRoles.length} role${heldRoles.length > 1 ? 's' : ''} cleared)`
-        : `${player.player.name} → G-League`,
+        ? `${player.player.name} → Roster (${heldRoles.length} role${heldRoles.length > 1 ? 's' : ''} cleared)`
+        : `${player.player.name} → Roster`,
       snap,
     );
   };
@@ -617,12 +597,12 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   const handleClearRoster = () => {
     const snap = takeSnapshot();
     const allPlaced = Object.values(depthChart).flat();
-    setGLeaguePlayers(prev => [...prev, ...allPlaced].sort(sortGLeaguePlayers));
+    setRosterPlayers(prev => [...prev, ...allPlaced].sort(sortRosterPlayers));
     setDepthChart({ PG: [], SG: [], SF: [], PF: [], C: [] });
     const returningPlays = activePlays.filter((p): p is Play => p !== null && !p.id.startsWith('basic-'));
-    setGLeaguePlays(prev => [...prev, ...returningPlays]);
+    setRosterPlays(prev => [...prev, ...returningPlays]);
     setActivePlays([null, null, null]);
-    setSelectedGLeaguePlayer(null);
+    setSelectedRosterPlayer(null);
     setAssigning(null);
     setOpenSlotPopover(null);
     setShowClearConfirm(false);
@@ -702,8 +682,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
       activePlays: activePlays.filter((p): p is Play => p !== null).map(p => p.id),
       playAssignments: playbookAssignments,
       archetypes: validArchetypes,
-      gLeaguePlayers: gLeaguePlayers.map(p => p.id),
-      gLeaguePlays: gLeaguePlays.map(p => p.id),
+      rosterPlayers: rosterPlayers.map(p => p.id),
+      rosterPlays: rosterPlays.map(p => p.id),
     },
     draftedCards,
   );
@@ -766,28 +746,23 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
     ? 'Roster is valid'
     : checklist.unmet.map(i => `${i.label}${i.detail ? ` (${i.detail})` : ''}`).join(' · ');
 
-  const filteredGLeaguePlayers = gLeaguePlayers.filter(p => matchesPosFilter(p.player.position, posFilter));
+  const filteredRosterPlayers = rosterPlayers.filter(p => matchesPosFilter(p.player.position, posFilter));
 
   // The player whose placement the depth chart is currently previewing: a selected
   // bench row, or the card being dragged.
   const pendingPlayer: PlayerCardData | null =
-    selectedGLeaguePlayer ??
+    selectedRosterPlayer ??
     (draggedItem?.card.type === 'Player' ? (draggedItem.card as PlayerCardData) : null);
 
-  /** G-League candidates eligible for a column — feeds an empty slot's AssignPopover. */
+  /** Roster candidates eligible for a column — feeds an empty slot's AssignPopover. */
   const slotCandidates = (column: DepthColumn) =>
-    gLeaguePlayers.filter(p => canPlaceAt(p.player.position, column));
+    rosterPlayers.filter(p => canPlaceAt(p.player.position, column));
 
   /** D19: "Save" lands on `/rosters`; "Save & play season" jumps straight into the
    *  season for this draft session (only offered when there IS a session). */
   const handleSaveRoster = async (destination: 'rosters' | 'season' = 'rosters') => {
     try {
       setSaveError(null);
-      const finalZones: Record<string, 'Roster'|'GLeague'> = {};
-      draftedCards.forEach(c => finalZones[c.id] = 'GLeague');
-
-      activePlays.forEach(p => { if (p && finalZones[p.id]) finalZones[p.id] = 'Roster'; });
-      Object.values(depthChart).forEach(col => col.forEach(p => finalZones[p.id] = 'Roster'));
 
       const saveId = rosterId || `roster_${Date.now()}`;
       const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
@@ -798,7 +773,6 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
         name: rosterName,
         timestamp: new Date().toISOString(),
         draftedCards,
-        zones: finalZones,
         depthChartOrder,
         activePlays: activePlayIds,
         playAssignments: playbookAssignments,
@@ -812,13 +786,6 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
 
       // Update the human's built roster in the draft session so opponents can be retrieved
       if (sessionId) {
-        const gLeaguePlayerIds = draftedCards
-          .filter(c => c.type === 'Player' && finalZones[c.id] === 'GLeague')
-          .map(c => c.id);
-        const gLeaguePlayIds = draftedCards
-          .filter(c => c.type === 'Play' && finalZones[c.id] === 'GLeague')
-          .map(c => c.id);
-
         const session = await store.getDraftSession(sessionId);
         if (session) {
           session.seats[0].builtRoster = {
@@ -827,8 +794,8 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
             activePlays: activePlayIds,
             playAssignments: playbookAssignments,
             archetypes: validArchetypes,
-            gLeaguePlayers: gLeaguePlayerIds,
-            gLeaguePlays: gLeaguePlayIds,
+            rosterPlayers: rosterPlayers.map(p => p.id),
+            rosterPlays: rosterPlays.map(p => p.id),
           };
           await store.saveDraftSession(session);
         }
@@ -869,7 +836,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
         </div>
       )}
       {/* D17: the builder body is the container-query context — the plays column and
-          the G-League sidebar are sized in `cqw` with clamps, and the whole band wraps
+          the Roster sidebar are sized in `cqw` with clamps, and the whole band wraps
           to a column under a 1000px CONTAINER width (not viewport width). */}
       <div className="flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative">
         {/* ACTIVE ROSTER */}
@@ -1030,33 +997,33 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
           </div>
         </div>
 
-        {/* G-LEAGUE / SIDEBOARD — collapses to a thin bar so the Active Roster
+        {/* ROSTER / SIDEBOARD — collapses to a thin bar so the Active Roster
             column (and its 5-across depth chart) can claim the freed width. */}
         <div
           className={`flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm min-h-0 transition-[width] ${
-            isGLeagueCollapsed ? 'w-12 shrink-0 items-center py-3' : 'w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] shrink-0 p-4'
+            isRosterCollapsed ? 'w-12 shrink-0 items-center py-3' : 'w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] shrink-0 p-4'
           }`}
         >
-          {isGLeagueCollapsed ? (
+          {isRosterCollapsed ? (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setIsGLeagueCollapsed(false); }}
-              title="Expand G-League"
+              onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(false); }}
+              title="Expand Roster"
               className="flex flex-col items-center gap-3 text-stone-400 hover:text-stone-600"
             >
               <ChevronLeft className="w-4 h-4" />
-              <span className="text-[11px] font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">G-League</span>
+              <span className="text-[11px] font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">Roster</span>
             </button>
           ) : (
           <>
           <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2 shrink-0">
             <span className="w-2 h-2 rounded-full bg-stone-500"></span>
-            G-League
+            Roster
             <div className="flex-1" />
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setIsGLeagueCollapsed(true); }}
-              title="Collapse G-League"
+              onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(true); }}
+              title="Collapse Roster"
               className="text-stone-400 hover:text-stone-600"
             >
               <ChevronRight className="w-4 h-4" />
@@ -1065,14 +1032,14 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
 
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
 
-            {/* G-League Players Lane (Moved above Plays) */}
+            {/* Roster Players Lane (Moved above Plays) */}
             <div
               className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white'}`}
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDropOnZone(e, 'GLeaguePlayers')}
+              onDrop={(e) => handleDropOnZone(e, 'RosterPlayers')}
             >
               <button onClick={(e) => { e.stopPropagation(); setIsPlayersOpen(!isPlayersOpen); }} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Players ({gLeaguePlayers.length})</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Players ({rosterPlayers.length})</h3>
                 {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
               </button>
 
@@ -1094,30 +1061,30 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
                       ))}
                     </div>
                     <div className="p-3 pt-2 flex flex-col gap-2 min-h-[80px]">
-                      {filteredGLeaguePlayers.map(player => (
-                        <GLeaguePlayerRow
+                      {filteredRosterPlayers.map(player => (
+                        <RosterPlayerRow
                           key={player.id}
                           player={player}
-                          selected={selectedGLeaguePlayer?.id === player.id}
-                          onDragStart={(e) => handleDragStart(e, player, 'GLeaguePlayers')}
-                          onClick={(e) => { e.stopPropagation(); handleGLeaguePlayerClick(player); }}
+                          selected={selectedRosterPlayer?.id === player.id}
+                          onDragStart={(e) => handleDragStart(e, player, 'RosterPlayers')}
+                          onClick={(e) => { e.stopPropagation(); handleRosterPlayerClick(player); }}
                         />
                       ))}
-                      {filteredGLeaguePlayers.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No players match this filter.</div>}
+                      {filteredRosterPlayers.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No players match this filter.</div>}
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* G-League Plays Lane */}
+            {/* Roster Plays Lane */}
             <div
               className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-blue-500 bg-blue-50' : 'border-stone-200 bg-white'}`}
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDropOnZone(e, 'GLeaguePlays')}
+              onDrop={(e) => handleDropOnZone(e, 'RosterPlays')}
             >
               <button onClick={(e) => { e.stopPropagation(); setIsPlaysOpen(!isPlaysOpen); }} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Plays ({gLeaguePlays.length})</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Plays ({rosterPlays.length})</h3>
                 {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
               </button>
 
@@ -1125,18 +1092,18 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
                 {isPlaysOpen && (
                   <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
                     <div className="p-3 flex flex-col gap-2 min-h-[80px]">
-                      {gLeaguePlays.map((play, idx) => (
+                      {rosterPlays.map((play, idx) => (
                         <div
                           key={`${play.id}-${idx}`}
                           draggable
-                          onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'GLeaguePlays')}
-                          onClick={(e) => { e.stopPropagation(); handlePlayClick(play, 'GLeaguePlays'); }}
+                          onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'RosterPlays')}
+                          onClick={(e) => { e.stopPropagation(); handlePlayClick(play, 'RosterPlays'); }}
                           className="cursor-grab active:cursor-grabbing w-full"
                         >
                            <PlayCard play={play as Play} compact evaluation={evaluatePlay(play, badgeTotals)} />
                         </div>
                       ))}
-                      {gLeaguePlays.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No plays on bench.</div>}
+                      {rosterPlays.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No plays on bench.</div>}
                     </div>
                   </motion.div>
                 )}
@@ -1240,7 +1207,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-xl font-bold uppercase text-stone-800 mb-2">Clear Roster?</h2>
-              <p className="text-stone-400 text-sm mb-6">This sends every player and play back to the G-League and cannot be undone.</p>
+              <p className="text-stone-400 text-sm mb-6">This sends every player and play back to the Roster and cannot be undone.</p>
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => setShowClearConfirm(false)}

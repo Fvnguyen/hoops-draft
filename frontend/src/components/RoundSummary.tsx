@@ -3,12 +3,9 @@
 import { DraftCard } from './PlayerCard';
 import { RosterDistribution } from './RosterDistribution';
 
-type Zone = 'Roster' | 'GLeague';
-
 export interface RoundSummaryProps {
   /** All cards the human has drafted so far. */
   drafted: DraftCard[];
-  humanZones: Record<string, Zone>;
   /** Pack number that just finished (1 or 2 — pack 3 goes straight to the
    *  builder and never shows a summary, per D3). */
   completedPackNumber: number;
@@ -20,18 +17,14 @@ export interface RoundSummaryProps {
 }
 
 /** D3 round-summary pause, shown after the last pick of packs 1 and 2 in
- *  Premier mode. Active roster and G-League side by side using the same
- *  `RosterDistribution` "mana curve" the sidebar uses, plus a button into the
- *  next pack's opener. */
+ *  Premier mode. One unified Roster list using the same `RosterDistribution`
+ *  "mana curve" the sidebar uses, plus a button into the next pack's opener. */
 export function RoundSummary({
   drafted,
-  humanZones,
   completedPackNumber,
   nextPassDirection,
   onStartNextRound,
 }: RoundSummaryProps) {
-  const roster = drafted.filter(c => humanZones[c.id] !== 'GLeague');
-  const gleague = drafted.filter(c => humanZones[c.id] === 'GLeague');
   const nextPackNumber = completedPackNumber + 1;
 
   return (
@@ -49,19 +42,11 @@ export function RoundSummary({
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-6 sm:grid-cols-2">
-          <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-            <div className="px-4 pt-4 text-xs font-black uppercase tracking-widest text-stone-500">
-              Active roster <span className="text-stone-400 font-bold">({roster.length})</span>
-            </div>
-            <RosterDistribution drafted={roster} />
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+          <div className="px-4 pt-4 text-xs font-black uppercase tracking-widest text-stone-500">
+            Roster <span className="text-stone-400 font-bold">({drafted.length})</span>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-            <div className="px-4 pt-4 text-xs font-black uppercase tracking-widest text-stone-500">
-              G-League <span className="text-stone-400 font-bold">({gleague.length})</span>
-            </div>
-            <RosterDistribution drafted={gleague} />
-          </div>
+          <RosterDistribution drafted={drafted} />
         </div>
 
         <button

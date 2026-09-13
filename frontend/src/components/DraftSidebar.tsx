@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, ChevronLeft, Users, LayoutList, ArrowLeftRight } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Users, LayoutList } from 'lucide-react';
 import { DraftCard, CardListRow, PlayerHoverPreview, PlayHoverPreview } from './PlayerCard';
 import { useHoverPreview } from './useHoverPreview';
 import { RosterDistribution } from './RosterDistribution';
@@ -8,101 +8,38 @@ import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 
 const TOTAL_PICKS = CUBE_PACKS * (CUBE_PLAYER_CARDS_PER_PACK + 1);
 
-type Zone = 'Roster' | 'GLeague';
-
-function ZoneToggleButton({ zone }: { zone: Zone }) {
-  const target = zone === 'Roster' ? 'G-League' : 'Roster';
-  return (
-    <div className="p-1.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors" title={`Move to ${target}`}>
-      <ArrowLeftRight size={13} />
-    </div>
-  );
-}
-
-/** One zone row + its own hover-preview state (D-hover) — a hook call per row needs
+/** One roster row + its own hover-preview state (D-hover) — a hook call per row needs
  *  its own component instance, can't be called from inside a `.map()` directly. */
-function ZoneCardRow({ card, trailing }: { card: DraftCard; trailing: React.ReactNode }) {
+function RosterCardRow({ card }: { card: DraftCard }) {
   // Destructured (not `const hover = ...; hover.ref`) — eslint-plugin-react-hooks'
   // `refs` rule conservatively taints every property read off an object that also
   // carries a ref, so `hover.isHovered` gets misflagged as a ref access otherwise.
   const { ref: hoverRef, isHovered, onMouseEnter, onMouseLeave } = useHoverPreview<HTMLDivElement>();
   return (
     <div ref={hoverRef} className="relative" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-      <CardListRow card={card} trailing={trailing} />
+      <CardListRow card={card} />
       {/* Screen-centred + badge panel (D-hover) — CardListRow itself has no hover
-          preview at all; a row in this scrollable roster/G-League list otherwise has
+          preview at all; a row in this scrollable roster list otherwise has
           nowhere for an anchored popup to go. */}
       {isHovered && (card.type === 'Player' ? <PlayerHoverPreview player={card} /> : <PlayHoverPreview play={card} />)}
     </div>
   );
 }
 
-function ZoneSection({
-  title, icon, zone, cards, activeZone, setActiveZone, onDragOver, onDrop, onReassignZone,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  zone: Zone;
-  cards: DraftCard[];
-  activeZone: Zone;
-  setActiveZone: (z: Zone) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, zone: Zone) => void;
-  onReassignZone: (cardId: string, zone: Zone) => void;
-}) {
-  return (
-    <div
-      onClick={() => setActiveZone(zone)}
-      onDragOver={onDragOver}
-      onDrop={(e) => onDrop(e, zone)}
-      className={`p-2 -m-2 rounded-lg transition-colors border-2 ${activeZone === zone ? 'bg-stone-50 border-stone-300' : 'border-transparent hover:border-stone-200'}`}
-    >
-      <div className="flex items-center justify-between mb-3 px-2">
-        <h3 className={`font-bold uppercase tracking-widest text-sm flex items-center gap-2 ${activeZone === zone ? 'text-stone-800' : 'text-stone-500'}`}>
-          {icon} {title}
-        </h3>
-        <span className="text-stone-400 text-xs font-bold">{cards.length}</span>
-      </div>
-      <div className="flex flex-col gap-1.5 min-h-[50px]">
-        {cards.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
-        {cards.map((c, idx) => (
-          <ZoneCardRow
-            key={`${c.id}-${idx}`}
-            card={c}
-            trailing={
-              <button onClick={(e) => { e.stopPropagation(); onReassignZone(c.id, zone === 'Roster' ? 'GLeague' : 'Roster'); }}>
-                <ZoneToggleButton zone={zone} />
-              </button>
-            }
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function DraftSidebar({
-  drafted, humanZones, isOpen, toggle, activeZone, setActiveZone, onDropPick, onReassignZone,
+  drafted, isOpen, toggle, onDropPick,
 }: {
   drafted: DraftCard[];
-  humanZones: Record<string, Zone>;
   isOpen: boolean;
   toggle: () => void;
-  activeZone: Zone;
-  setActiveZone: (z: Zone) => void;
-  /** Dropping a just-picked pack card onto a zone — also advances the draft. */
-  onDropPick: (cardId: string, zone: Zone) => void;
-  /** Moving an already-drafted card between Roster/G-League — zone only, no pick side-effects. */
-  onReassignZone: (cardId: string, zone: Zone) => void;
+  /** Dropping a just-picked pack card onto the roster list — also advances the draft. */
+  onDropPick: (cardId: string) => void;
 }) {
-  const roster = drafted.filter(c => humanZones[c.id] !== 'GLeague');
-  const gleague = drafted.filter(c => humanZones[c.id] === 'GLeague');
-
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
-  const handleDrop = (e: React.DragEvent, zone: Zone) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const cardId = e.dataTransfer.getData('text/plain');
-    if (cardId) onDropPick(cardId, zone);
+    if (cardId) onDropPick(cardId);
   };
 
   return (
@@ -125,24 +62,14 @@ export function DraftSidebar({
         {/* Collapsed Strip Overlay (Always lives in the leftmost 64px) */}
         <div className={`absolute top-0 left-0 w-[64px] h-full flex flex-col items-center pt-16 gap-6 z-20 transition-opacity duration-200 ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div
-            className={`p-2.5 rounded-xl border-2 flex flex-col items-center gap-1 cursor-pointer transition-colors ${activeZone === 'Roster' ? 'bg-stone-100 border-stone-800' : 'border-transparent hover:bg-stone-50'}`}
-            onClick={() => { setActiveZone('Roster'); toggle(); }}
+            className="p-2.5 rounded-xl border-2 border-transparent flex flex-col items-center gap-1 cursor-pointer transition-colors hover:bg-stone-50"
+            onClick={toggle}
             onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'Roster')}
+            onDrop={handleDrop}
           >
-             <Users size={18} className={activeZone === 'Roster' ? 'text-stone-800' : 'text-stone-400'} />
+             <Users size={18} className="text-stone-800" />
              <span className="text-[9px] font-bold uppercase tracking-wide text-stone-500 leading-none">Roster</span>
-             <span className="text-[10px] font-black text-stone-700 leading-none">{roster.length}</span>
-          </div>
-          <div
-            className={`p-2.5 rounded-xl border-2 flex flex-col items-center gap-1 cursor-pointer transition-colors ${activeZone === 'GLeague' ? 'bg-stone-100 border-stone-800' : 'border-transparent hover:bg-stone-50'}`}
-            onClick={() => { setActiveZone('GLeague'); toggle(); }}
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, 'GLeague')}
-          >
-             <LayoutList size={18} className={activeZone === 'GLeague' ? 'text-stone-800' : 'text-stone-400'} />
-             <span className="text-[9px] font-bold uppercase tracking-wide text-stone-500 leading-none">G-League</span>
-             <span className="text-[10px] font-black text-stone-700 leading-none">{gleague.length}</span>
+             <span className="text-[10px] font-black text-stone-700 leading-none">{drafted.length}</span>
           </div>
         </div>
 
@@ -160,17 +87,21 @@ export function DraftSidebar({
 
           <RosterDistribution drafted={drafted} />
 
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
-            <ZoneSection
-              title="Roster" icon={<Users size={16} />} zone="Roster" cards={roster}
-              activeZone={activeZone} setActiveZone={setActiveZone}
-              onDragOver={handleDragOver} onDrop={handleDrop} onReassignZone={onReassignZone}
-            />
-            <ZoneSection
-              title="G-League" icon={<LayoutList size={16} />} zone="GLeague" cards={gleague}
-              activeZone={activeZone} setActiveZone={setActiveZone}
-              onDragOver={handleDragOver} onDrop={handleDrop} onReassignZone={onReassignZone}
-            />
+          <div
+            className="flex-1 overflow-y-auto p-4 flex flex-col gap-1.5 custom-scrollbar"
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <div className="flex items-center justify-between mb-1 px-2">
+              <h3 className="font-bold uppercase tracking-widest text-sm flex items-center gap-2 text-stone-800">
+                <Users size={16} /> Roster
+              </h3>
+              <span className="text-stone-400 text-xs font-bold">{drafted.length}</span>
+            </div>
+            {drafted.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
+            {drafted.map((c, idx) => (
+              <RosterCardRow key={`${c.id}-${idx}`} card={c} />
+            ))}
           </div>
         </div>
       </div>

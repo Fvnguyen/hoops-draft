@@ -33,7 +33,6 @@ export function makeSavedRoster(overrides: Partial<SavedRoster> = {}): SavedRost
     name: 'Test Roster',
     timestamp: new Date().toISOString(),
     draftedCards: [],
-    zones: {},
     depthChartOrder: { PG: [], SG: [], SF: [], PF: [], C: [] },
     activePlays: [],
     sessionId: null,

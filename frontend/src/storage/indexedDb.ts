@@ -77,7 +77,7 @@ export class MagicBallDB extends Dexie {
             session.seats = session.seats.map((seat) => ({
               ...seat,
               builtRoster: normalizeBuiltRoster(
-                seat.builtRoster ?? { depthChart: {}, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] },
+                seat.builtRoster ?? { depthChart: {}, activePlays: [], rosterPlayers: [], rosterPlays: [] },
                 seat.drafted ?? []
               ),
             }));

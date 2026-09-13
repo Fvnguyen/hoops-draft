@@ -42,8 +42,6 @@ export interface SavedRoster {
   name: string;
   timestamp: string;
   draftedCards: DraftCard[];
-  /** Card id -> which zone it lives in ('Roster' = active 12/plays, 'GLeague' = bench). */
-  zones: Record<string, 'Roster' | 'GLeague'>;
   /** Position -> ordered card ids, index 0 is the starter. */
   depthChartOrder: Record<string, string[]>;
   /** Up to 3 selected Play card ids. */

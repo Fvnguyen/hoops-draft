@@ -54,7 +54,7 @@ const categoryLabel: Record<Play['playCategory'], string> = { system: 'SYSTEM', 
 const categoryColor: Record<Play['playCategory'], string> = { system: 'text-amber-600', special: 'text-teal-600', basic: 'text-slate-500' };
 
 export interface PlayPanelProps {
-  /** The G-League/roster card backing this slot — carries flavour text and category
+  /** The roster card backing this slot — carries flavour text and category
    *  that PlayStatus/PlayDef don't (PlayDef.rarity may be 'Basic', which RarityGem
    *  doesn't render, so the card's own `rarity` is used for the gem too). */
   play: Play;
@@ -217,7 +217,7 @@ export function PlayPanel({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          title="Return to G-League"
+          title="Return to Roster"
           className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-stone-400 hover:text-red-600 hover:bg-red-50"
         >
           <X size={13} />

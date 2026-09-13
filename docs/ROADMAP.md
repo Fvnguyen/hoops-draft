@@ -19,27 +19,33 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 2a | [ui_draft_deckbuild_pack](plans/plan_ui_draft_deckbuild_pack_2026-09-13.md) — quick/premier draft modes, timed picks, pack ceremony every round, click-first deck builder | D1-D19 shipped; wave 3 (D20-D25) code-complete; wave 4 (D26-D29) planned — drop draft-time zoning for one unified Roster list, empty-start deckbuilder (removes wave 3's auto-distribution), hover-preview auto-dismiss, quarter-score spoiler fix | — (lands before 3) | `components/{PackOpener,DraftRoom,DraftSidebar,DeckBuilder,DepthSlotColumn,PlayPanel,TopKPIBand,PlayerCard,RoundSummary,useHoverPreview}.tsx`, `engine/{depthChart,deckbuilder}.ts`, `hooks/useDraftEngine.ts`, `storage/{types,safeLoad}.ts`, `app/{page,draft,roster,rosters}` | 1.5-2 days |
+| 1b | [ui_polish_small_fixes](plans/plan_ui_polish_small_fixes_2026-09-13.md) — drag preview delay, pack-reveal preview suppression, double-click draft pick, identity radar scale | T1/T3/T4 done and live-verified; T2 (pack-reveal preview suppression) has no live preview mechanism to suppress in the current pack grid — owner decision needed (moot vs. new feature) | — | `components/{DeckBuilder,PackOpener,DraftRoom,TopKPIBand,useHoverPreview}.tsx` | done except T2 decision |
 | 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | — (unblocked) | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
-| 3 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | 2a | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 4 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 3 | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
-| 5 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 7 | mobile_pwa | not yet planned | 2-5 | — | 1-2 weeks |
-| 8 | accounts_cloud_saves | not yet planned | 7 | — | ~1 week |
-| 9 | android_twa | not yet planned | 8 | — | 2-3 days |
+| 3 | mobile_responsive — viewport export, `@container` cards, touch-friendly draft/deckbuilder, sticky game header, bottom nav (proposal D only; no manifest/service worker) | not yet planned | — (2a done, unblocked) | — | 2-3 days |
+| 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
+| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 4 (measurements must reflect the final sim and contested drafts) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
+| 7 | mobile_pwa_shell — manifest, service worker, offline fallback, Lighthouse PWA audit (proposal G.1) | not yet planned | 3 | — | 1-2 days |
+| 8 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2) | not yet planned | 7 | — | 2-3 days |
+| 9 | accounts_cloud_saves | not yet planned | 7 | — | ~1 week |
 
-Plans 7-9 keep the order agreed on 2026-09-12 (game design settles before the mobile UI is
-built once). Their scope sketch is proposals D, E, F, G in
-`docs/completed/review_code_and_architecture_2026-09-12.md`; write their plan docs when
-plans 2-5 are done.
+Re-sequenced 2026-09-13 per owner priority (mobile layout > game_engine > card_balance >
+game_theater > ui_polish > draft_ai > PWA/Android > cloud saves). `ui_draft_deckbuild_pack`
+(was #1) is done — see Recently completed. card_balance keeps its hard dependency on
+draft_ai (needs contested-draft data to measure against) so draft_ai still lands first
+despite ranking lower in value. mobile_pwa is split into mobile_responsive (#3, layout
+only, cheap) and mobile_pwa_shell (#7, manifest/service worker), so the layout pass isn't
+gated behind accounts/Android. Scope sketch for 3, 7-9 is proposals D, E, F, G in
+`docs/completed/review_code_and_architecture_2026-09-12.md`; write their plan docs
+(`/roadmap new`) when their turn comes.
 
 ## Recently completed (latest three)
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [ui_draft_deckbuild_pack](completed/plan_ui_draft_deckbuild_pack_2026-09-13.md) | 2026-09-13 | Draft/deckbuilder pass complete: draft modes, pack ceremony, unified Roster list, empty-start deckbuilder, hover-preview auto-dismiss, quarter-score fix |
 | [vercel_deploy](completed/plan_vercel_deploy_2026-09-13.md) | 2026-09-13 | Live on Vercel Hobby (Git-integrated, Root Directory `frontend`); production API/route checks verified |
 | [auth_approval](completed/plan_auth_approval_2026-09-13.md) | 2026-09-13 | Supabase email/password + admin approval, username-or-email login, per-user IndexedDB scoping |
-| [data_storage](completed/plan_data_storage_2026-09-13.md) | 2026-09-13 | Slim per-game `StoredGameResult` + re-simulate-on-view, Dexie schema v2, export/import, cardSetVersion tag |
 
 ## Model tiers used in plans
 

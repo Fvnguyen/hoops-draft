@@ -24,7 +24,6 @@ function DeckbuilderTestInner() {
   }, [rosterId, sessionIdParam, router]);
 
   const [cards, setCards] = useState<DraftCard[]>([]);
-  const [initialZones, setInitialZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [rosterName, setRosterName] = useState<string>('');
   const [initialDepthOrder, setInitialDepthOrder] = useState<Record<string, string[]> | undefined>();
   const [initialPlaysOrder, setInitialPlaysOrder] = useState<string[] | undefined>();
@@ -45,7 +44,6 @@ function DeckbuilderTestInner() {
 
         if (savedRoster) {
           setCards(savedRoster.draftedCards);
-          setInitialZones(savedRoster.zones);
           setRosterName(savedRoster.name);
           setInitialDepthOrder(savedRoster.depthChartOrder);
           setInitialPlaysOrder(savedRoster.activePlays);
@@ -78,12 +76,6 @@ function DeckbuilderTestInner() {
 
         const all = [...draftCards, ...plays].sort(() => Math.random() - 0.5);
         if (!cancelled) setCards(all);
-
-        const initial = all.reduce((acc, c) => {
-          acc[c.id] = 'GLeague';
-          return acc;
-        }, {} as Record<string, 'Roster' | 'GLeague'>);
-        if (!cancelled) setInitialZones(initial);
       });
     }
 
@@ -98,9 +90,8 @@ function DeckbuilderTestInner() {
 
   return (
     <div className="bg-black">
-      <DeckBuilder 
-        draftedCards={cards} 
-        initialZones={initialZones} 
+      <DeckBuilder
+        draftedCards={cards}
         existingRosterName={rosterName}
         rosterId={rosterId || undefined}
         initialDepthOrder={initialDepthOrder}

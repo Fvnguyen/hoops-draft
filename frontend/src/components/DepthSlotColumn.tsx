@@ -11,7 +11,7 @@
  * role uses. When the column is full there are no empty slots left; when the
  * ROSTER is full (12) the remaining empty slots render disabled ("Roster full").
  * An occupied slot is draggable (moves/reorders anywhere) and a plain click sends
- * it straight back to G-League — no intermediate select-then-▲/▼/✕ step.
+ * it straight back to Roster — no intermediate select-then-▲/▼/✕ step.
  */
 import { AssignPopover } from './AssignPopover';
 import { PlayerCard, PlayerCardFront, PlayerHoverPreview, RoleTag, getPosColors, type PlayerCardData } from './PlayerCard';
@@ -65,7 +65,7 @@ export interface DepthSlotColumnProps {
   popoverCandidates?: PlayerCardData[];
   onEmptySlotClick: (column: DepthColumn, slotIndex: number) => void;
   onPopoverPick: (column: DepthColumn, playerId: string) => void;
-  /** Not in `assigning` mode: sends the player straight back to G-League (undoable
+  /** Not in `assigning` mode: sends the player straight back to Roster (undoable
    *  toast). In `assigning` mode: assigns them to the role being filled. No more
    *  select-then-▲/▼/✕ step — drag already covers reordering/moving a placed
    *  player, so a plain click just needs to do the one thing a click can't: remove. */
@@ -166,7 +166,7 @@ export function DepthSlotColumn({
               {popoverOpen && (
                 <AssignPopover
                   candidates={popoverCandidates ?? []}
-                  emptyMessage={`No G-League player is eligible at ${column}.`}
+                  emptyMessage={`No Roster player is eligible at ${column}.`}
                   onPick={(playerId) => onPopoverPick(column, playerId)}
                 />
               )}

@@ -1,10 +1,10 @@
 # Plan: ui_draft_deckbuild_pack
 
-File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress;
-D1-D19 shipped 2026-09-13 (commit `1bdc599`); wave 3 (D20-D25) code-complete, three
-verification gaps remain (see Verification). **Wave 4 (D26-D29) planned 2026-09-13**:
-removes the draft-time zone split and wave 3's auto-distribution (superseded, see D27),
-adds a hover-preview auto-dismiss timer, fixes a quarter-score spoiler.
+File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: done 2026-09-13.
+D1-D19 shipped 2026-09-13 (commit `1bdc599`); wave 3 (D20-D25) code-complete. Wave 4
+(D26-D29) landed 2026-09-13: unified draft "Roster" list (T12), empty-start deckbuilder +
+`rosterPlayers`/`rosterPlays` rename (T13), hover-preview auto-dismiss (T14), quarter-score
+spoiler fix (T15) — all four live-verified.
 Sequence: **2a**, before `game_engine`/`draft_ai` (both edit `hooks/useDraftEngine.ts`).
 Depends on nothing.
 Files owned: `frontend/src/components/{PackOpener,PackRevealCard,DraftRoom,DraftSidebar,
@@ -146,5 +146,7 @@ T8/T12/T13 mid (multi-file rename/removal, easy to miss a call site). T9/T14/T15
   owed — see D28/D29): one unified "Roster" list, no zone toggle (T12); fresh draft opens
   empty, old saves still load (T13); preview auto-dismisses (T14); quarter row appears only
   after that quarter ends (T15).
-- On full completion: `git mv` to `docs/completed/`, update `docs/HANDOVER.md` and the
-  roadmap row, `/roadmap done ui_draft_deckbuild_pack`.
+- Full completion 2026-09-13: T12/T13 implemented and live-verified (unified Roster list
+  in the draft room; fresh deckbuilder opens with an empty depth chart and a full "Roster"
+  sidebar). T14/T15 live-verified by the owner. `npm test` (184/184), `tsc --noEmit`,
+  `npm run lint` (0 errors) all clean.

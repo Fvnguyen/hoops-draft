@@ -27,15 +27,44 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * starter card), so every call site is covered without individually wiring it up. And a
  * timer auto-clears it after `HOVER_PREVIEW_AUTO_DISMISS_MS` even with no drag and no
  * movement at all, as a hard ceiling.
+ *
+ * Two more additions (D1, plan `ui_polish_small_fixes`): a brief `HOVER_PREVIEW_DELAY_MS`
+ * delay before `isHovered` actually flips true, so a cursor merely passing over a card on
+ * its way to starting a drag doesn't pop the preview in the first place — the pending
+ * timeout is cancelled on `mouseleave` if it fires before the delay elapses. And a
+ * `document`-level `mousedown`/`click` listener (same reasoning as `dragstart` above)
+ * dismisses an already-visible preview immediately, so a click that begins a drag or a
+ * pick never has a preview sitting on top of it.
  */
 export const HOVER_PREVIEW_AUTO_DISMISS_MS = 1500;
+export const HOVER_PREVIEW_DELAY_MS = 800;
 
 export function useHoverPreview<T extends HTMLElement>() {
   const [isHovered, setIsHovered] = useState(false);
   const ref = useRef<T>(null);
+  const enterTimerRef = useRef<number | null>(null);
 
-  const onMouseEnter = useCallback(() => setIsHovered(true), []);
-  const onMouseLeave = useCallback(() => setIsHovered(false), []);
+  const clearEnterTimer = useCallback(() => {
+    if (enterTimerRef.current !== null) {
+      window.clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+  }, []);
+
+  const onMouseEnter = useCallback(() => {
+    clearEnterTimer();
+    enterTimerRef.current = window.setTimeout(() => {
+      enterTimerRef.current = null;
+      setIsHovered(true);
+    }, HOVER_PREVIEW_DELAY_MS);
+  }, [clearEnterTimer]);
+
+  const onMouseLeave = useCallback(() => {
+    clearEnterTimer();
+    setIsHovered(false);
+  }, [clearEnterTimer]);
+
+  useEffect(() => clearEnterTimer, [clearEnterTimer]);
 
   useEffect(() => {
     if (!isHovered) return;
@@ -47,12 +76,17 @@ export function useHoverPreview<T extends HTMLElement>() {
       if (!inside) setIsHovered(false);
     };
     const clearOnDragStart = () => setIsHovered(false);
+    const clearOnClick = () => setIsHovered(false);
     document.addEventListener('mousemove', checkStillOver);
     document.addEventListener('dragstart', clearOnDragStart);
+    document.addEventListener('mousedown', clearOnClick);
+    document.addEventListener('click', clearOnClick);
     const dismissTimer = setTimeout(() => setIsHovered(false), HOVER_PREVIEW_AUTO_DISMISS_MS);
     return () => {
       document.removeEventListener('mousemove', checkStillOver);
       document.removeEventListener('dragstart', clearOnDragStart);
+      document.removeEventListener('mousedown', clearOnClick);
+      document.removeEventListener('click', clearOnClick);
       clearTimeout(dismissTimer);
     };
   }, [isHovered]);

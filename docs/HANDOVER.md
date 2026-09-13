@@ -9,7 +9,7 @@ a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel s
 archetype identities and assigned-player plays; persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play. 184 Vitest tests pass, type-check is clean, `npm run lint` is
-0 errors / 13 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
+0 errors / 14 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
 screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
@@ -65,69 +65,40 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   CI (`.github/workflows/ci.yml`), a runtime error boundary (`ErrorRecovery.tsx`), safe
   loads for corrupt storage records, seeded bot reproducibility, `smoke.spec.ts`, lint 0
   errors (was 8).
+- **Analytics tooling & data storage** (done 2026-09-13, `docs/completed/plan_analytics_tooling_2026-09-13.md`/
+  `plan_data_storage_2026-09-13.md`): `frontend/scripts/analyze.ts` replaces the retired
+  synergy-based analyzer; seasons persist slim `StoredGameResult`s re-simulated on view
+  (Dexie v2); Export/Import on the rosters page.
 
-## Analytics tooling & data storage milestone — done 2026-09-13
+## ui_draft_deckbuild_pack — done 2026-09-13
 
-Design: `docs/completed/plan_analytics_tooling_2026-09-13.md`,
-`docs/completed/plan_data_storage_2026-09-13.md`. Both had no unmet dependencies and
-disjoint files, so they ran together; six wave-1 tasks landed as parallel agents plus
-driver wave-0/wave-2 work.
-
-- **Analytics**: `scripts/analyze_game_data.js` replaced by `frontend/scripts/analyze.ts`
-  (imports the real engine like `balance.ts`); reports identity tier per lane, staffed
-  plays, per-game play calls, and win rate by tier/staffing instead of the old
-  synergy/`PLAY_EFFECTS` sections (those systems no longer exist). `balance.ts --ab` adds
-  a paired treatment-vs-archetypes-off harness: at n=700 opponent-games, dedicated-tier
-  identities are +5.71 margin / +16.3pp win rate over no identity, and 2 staffed plays are
-  +14.0pp over 0 — see `docs/analytics/report_2026-09.md`. Root `package.json`'s
-  `balance`/`analyze` scripts now forward `--` args (they silently didn't before).
-- **Storage**: seasons persist `StoredGameResult` (seed + box score, not the full
-  `GameTheater`) per game; the theater re-simulates on view via
-  `resolveMatchupReplay`/`teamInfoForSeat` (`engine/season.ts`), falling back to a
-  box-score-only view if `balanceVersion` has changed, or a read-only `legacyTheater` for
-  pre-Phase-1 saves with no seed. Only the human's own matchup keeps its full box score;
-  bot-vs-bot matchups (3 of 4 per game day) drop theirs — nothing ever reads them and it's
-  what kept a season over the 100 KB target (measured 132 KB before, now under). Dexie
-  schema bumped to v2 with a one-time upgrade (`storageMeta` table, `normalizeSeason`/
-  `normalizeBuiltRoster` no longer run on every load). Rosters page has Export/Import
-  (merge by id, newer `timestamp` wins) and an "older card set" tag from the new
-  `cardSetVersion` field, stamped by the storage layer at save time.
-- **Verified**: `npm test` (122 Vitest tests, up from 103), `npx tsc --noEmit`, `npm run
-  lint` (0 errors), `npm run build` all pass.
-
-Open after this milestone: no fresh `/debug` export exists yet with the plays/archetypes
-fields populated (the on-disk dumps predate that milestone) — `docs/analytics/report_2026-09.md`'s
-identity/play-call sections are empty until someone plays a draft + season and exports.
-
-## ui_draft_deckbuild_pack waves 0-1 — done 2026-09-13
-
-Design: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan **2a**). Wave 0 (T0,
-driver) landed contracts/stubs; wave 1 ran T1-T6 as six parallel agents, then a driver T7
-integration pass.
+Design/full history: `docs/completed/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan
+**2a**). Waves 0-1 (contracts + 6 parallel agents + integration), wave 3 (auto-distribute
+fix, superseded below, card sizing), wave 4 (this session: drop draft-time zoning, empty
+deckbuilder, hover-preview auto-dismiss, quarter-score fix).
 
 - **Draft flow**: two home CTAs (`/draft?mode=quick|premier`); Premier shows a rarity-
-  ordered pack opener (Rare/Mythic hold+glow+shake, real Web Audio SFX) before every
-  pack with pick-from-the-spread, a `round-summary` pause after packs 1-2
-  (`RosterDistribution` side by side), a pick clock (`PickTimerRing`, timeout auto-picks
-  via a neutral bot profile), and a `PackPassStage` pass animation; Quick skips all of it
-  after pack 1's opener.
-- **Deck builder**: fixed 5x4-slot depth chart (`engine/depthChart.ts`) backed by a
-  single position-eligibility source (`engine/positions.ts`, bots stay natural-only);
-  `Toast`+Undo replaced every `alert`/`confirm`; a visible `RosterChecklist` replaces
-  tooltip-only Save blockers; container-query fluid layout.
+  ordered pack opener (Rare/Mythic hold+glow+shake, real Web Audio SFX) before every pack
+  with pick-from-the-spread, a pick clock (`PickTimerRing`, timeout auto-picks via a
+  neutral bot profile), and a `PackPassStage` pass animation. **Wave 4**: the old
+  Roster/G-League zone split during the draft is gone — one unified "Roster" list
+  end-to-end (`useDraftEngine.applyPick/processPickAndPass/pickFromIntro` no longer take a
+  `zone` param; `DraftPickRecord.zone` removed).
+- **Deck builder**: fixed 5x4-slot depth chart (`engine/depthChart.ts`), single
+  position-eligibility source (`engine/positions.ts`), `Toast`+Undo, visible
+  `RosterChecklist`, container-query fluid layout. **Wave 4**: fresh drafts now start with
+  an empty depth chart — `autoDistributeRoster` (wave 3) is deleted, not superseded in
+  place, matching the "no auto-fill" product rule; `BuiltRoster.gLeaguePlayers/gLeaguePlays`
+  renamed to `rosterPlayers/rosterPlays` everywhere (engine, storage, UI copy);
+  `SavedRoster.zones` dropped, `safeLoad.ts` treats it as optional so old saves still load.
 - **Presentation**: `TopKPIBand` why-locked hints, viewBox-fluid `RadarChart`/`DonutChart`,
-  `PlayerCard`/`PlayPanel` readability fixes, new `/roster/[id]` edit route
-  (`deckbuilder-test?rosterId=` redirects there).
-- **T7 integration** (driver): wired the opener's `onPick` into `pickFromIntro` (D7's
-  pick-from-spread was inert without this — no card was ever recorded), passed the real
-  clock-scale multiplier into `armIntroClock`, fixed `RoundSummary`'s off-by-one pack
-  numbers, deduped `PickTimerRing`'s schedule against `lib/draftTimer.ts`, threaded mode
-  into `buildDraftSession`. `tsc`/lint (0 errors)/`npm test` (184 tests)/`next build` all
-  clean; live verification was blocked by `auth_approval` landing a login gate in front of
-  every draft/deckbuilder route while this wave was in flight — pending a manual
-  click-through now that both plans have landed.
-
-Next: further polish/bugfixes as needed, then move the plan to `docs/completed/`.
+  new `/roster/[id]` edit route. **Wave 4**: `useHoverPreview`'s auto-dismiss timer
+  (1500ms) plus a document-level `dragstart` clear fixes a stuck preview blocking
+  drag-and-drop; `GameView.tsx`'s quarter-score filter no longer reveals a quarter's final
+  score before its last possession plays.
+- **Verified**: `npm test` (184/184), `tsc --noEmit`, `npm run lint` (0 errors) all clean;
+  unified Roster list and empty-start deckbuilder live-verified via screenshot this
+  session; hover-dismiss and quarter-score fix verified live by the owner.
 
 ## vercel_deploy & auth_approval — done 2026-09-13
 
@@ -228,6 +199,13 @@ no fresh draft/season data yet; re-run `npm run analyze` after playing a session
    necessarily a bug (may be intentional), but worth a decision one way or the other.
 7. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
+8. **`ui_polish_small_fixes` (plan 1b) needs an owner decision on T2.** T1/T3/T4 (hover-
+   preview click-dismiss, draft double-click confirm, larger deckbuilder radar) are done
+   and live-verified. T2 asked to suppress hover previews during pack-reveal animation,
+   but `PackOpener.tsx`'s pack grid renders `PackRevealCard` → static `PlayerCardFront`,
+   which never wires up `useHoverPreview` in the first place — there's nothing to
+   suppress. Decide whether to mark T2 done-as-moot, or treat "preview on a pack card" as
+   a new feature to design separately.
 
 ## Where to look
 

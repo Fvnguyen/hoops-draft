@@ -93,12 +93,14 @@ step (`RATING_CONFIG`, legendary list, badge/rarity thresholds) live in
 
 - **`buildBotRoster`** auto-builds each bot's 12-man active roster: best player per
   position first, then fills to 12 by positional need, then by smallest column; picks the
-  top 3 play cards by category (system > special > basic) then rarity; everyone else goes
-  to the G-League bench.
-- The human's roster is built interactively in **`DeckBuilder.tsx`** (depth chart
-  ordering, active play selection) and saved through the `GameStore` (`saveRoster`); the
-  whole 8-seat draft is saved as a `DraftSession` (`saveDraftSession`) when the draft
-  ends. See section 8 for the storage layer.
+  top 3 play cards by category (system > special > basic) then rarity; everyone else stays
+  in `BuiltRoster.rosterPlayers`/`rosterPlays` (the bench pool).
+- The human's roster starts with an empty depth chart and every drafted card in the
+  "Roster" sidebar list (no auto-fill — the human builds the lineup) and is built
+  interactively in **`DeckBuilder.tsx`** (depth chart ordering, active play selection),
+  then saved through the `GameStore` (`saveRoster`); the whole 8-seat draft is saved as a
+  `DraftSession` (`saveDraftSession`) when the draft ends. See section 8 for the storage
+  layer.
 
 ## 5. Game engine (`engine/game.ts` + `engine/synergies.ts`)
 

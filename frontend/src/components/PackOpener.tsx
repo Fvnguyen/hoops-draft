@@ -24,8 +24,6 @@ type PackPhase = 'sealed' | 'opening' | 'dealing' | 'revealing' | 'picking';
 export interface PackPick {
   cardId: string;
   card: DraftCard;
-  /** Always Active/Roster — a zoning default, not roster auto-fill (D7). */
-  zone: 'Roster';
   rect: DOMRect | null;
 }
 
@@ -203,7 +201,7 @@ export function PackOpener({
     if (!card) return;
     confirmedRef.current = true;
     const rect = cardRefs.current[cardId]?.getBoundingClientRect() ?? null;
-    onPick?.({ cardId, card, zone: 'Roster', rect });
+    onPick?.({ cardId, card, rect });
     onComplete?.();
   }, [onComplete, onPick, ordered]);
 

@@ -182,8 +182,6 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   const [isSidebarOpenToggled, setIsSidebarOpenToggled] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   );
-  const [activeZone, setActiveZone] = useState<'Roster' | 'GLeague'>('Roster');
-  const [humanZones, setHumanZones] = useState<Record<string, 'Roster' | 'GLeague'>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
@@ -279,25 +277,38 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
 
   const handleConfirmPick = () => {
     if (selectedCardId) {
-      setHumanZones(prev => ({ ...prev, [selectedCardId]: activeZone }));
-      processPickAndPass(selectedCardId, activeZone);
+      processPickAndPass(selectedCardId);
       setSelectedCardId(null);
     }
   };
 
-  // Dropping a just-selected pack card onto a zone: assigns the zone AND
-  // advances the draft (the card hasn't been picked yet).
-  const handleDrop = (cardId: string, zone: 'Roster' | 'GLeague') => {
-    setHumanZones(prev => ({ ...prev, [cardId]: zone }));
-    processPickAndPass(cardId, zone);
-    setSelectedCardId(null);
+  // Double-click (or a second click on the already-selected card) confirms
+  // immediately; otherwise a 2s auto-confirm timer covers the single-click
+  // baseline (MTG-style pick flow, D3). The timer resets whenever the
+  // selection changes and is cleared once a pick is confirmed.
+  const handleCardClick = (cardId: string) => {
+    if (selectedCardId === cardId) {
+      processPickAndPass(cardId);
+      setSelectedCardId(null);
+    } else {
+      setSelectedCardId(cardId);
+    }
   };
 
-  // Re-filing an already-drafted card between Roster/G-League (sidebar's
-  // trailing zone-toggle button): zone bookkeeping only, never touches the
-  // pick counter or pack contents.
-  const handleReassignZone = (cardId: string, zone: 'Roster' | 'GLeague') => {
-    setHumanZones(prev => ({ ...prev, [cardId]: zone }));
+  useEffect(() => {
+    if (!selectedCardId) return;
+    const timer = window.setTimeout(() => {
+      processPickAndPass(selectedCardId);
+      setSelectedCardId(null);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [selectedCardId, processPickAndPass]);
+
+  // Dropping a just-selected pack card onto the sidebar's roster list also
+  // advances the draft (the card hasn't been picked yet).
+  const handleDrop = (cardId: string) => {
+    processPickAndPass(cardId);
+    setSelectedCardId(null);
   };
 
   if (!isClient) return null;
@@ -314,7 +325,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
     return (
       <>
         <SaveErrorBanner message={saveError} />
-        <DeckBuilder draftedCards={humanSeat.drafted} initialZones={humanZones} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} />
+        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} />
       </>
     );
   }
@@ -334,7 +345,6 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
       {isRoundSummary && (
         <RoundSummary
           drafted={humanSeat.drafted}
-          humanZones={humanZones}
           // `currentPackNumber` already points at the upcoming pack while
           // paused in round-summary (applyPick advances it before pausing).
           completedPackNumber={currentPackNumber - 1}
@@ -426,7 +436,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
               pickDeadline={pickDeadline}
               embedded
               className="max-w-[1500px] mx-auto"
-              onPick={(pick) => pickFromIntro(pick.cardId, pick.zone)}
+              onPick={(pick) => pickFromIntro(pick.cardId)}
               onComplete={() => {
                 setIsSidebarOpenToggled(false);
                 setDraftState('drafting');
@@ -461,20 +471,27 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                         }}
                         onDragEnd={() => setSelectedCardId(null)}
                       >
-                        {card.type === 'Play' ? (
-                          <PlayCard
-                            play={card as Play}
-                            isSelected={selectedCardId === card.id}
-                            onClick={() => setSelectedCardId(card.id)}
-                          />
-                        ) : (
-                          <PlayerCard
-                            player={card as Player}
-                            isSelected={selectedCardId === card.id}
-                            onClick={() => setSelectedCardId(card.id)}
-                            size="sm"
-                          />
-                        )}
+                        <div className="relative w-full">
+                          {card.type === 'Play' ? (
+                            <PlayCard
+                              play={card as Play}
+                              isSelected={selectedCardId === card.id}
+                              onClick={() => handleCardClick(card.id)}
+                            />
+                          ) : (
+                            <PlayerCard
+                              player={card as Player}
+                              isSelected={selectedCardId === card.id}
+                              onClick={() => handleCardClick(card.id)}
+                              size="sm"
+                            />
+                          )}
+                          {selectedCardId === card.id && (
+                            <span className="absolute -bottom-5 inset-x-0 text-center text-[9px] font-bold uppercase tracking-widest text-amber-600 whitespace-nowrap">
+                              Double-click to pick
+                            </span>
+                          )}
+                        </div>
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -513,13 +530,9 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
       <div className={`transition-[filter] duration-200 ${backdropClass}`}>
         <DraftSidebar
           drafted={humanSeat.drafted}
-          humanZones={humanZones}
           isOpen={isSidebarOpen}
           toggle={() => setIsSidebarOpenToggled(!isSidebarOpenToggled)}
-          activeZone={activeZone}
-          setActiveZone={setActiveZone}
           onDropPick={handleDrop}
-          onReassignZone={handleReassignZone}
         />
       </div>
     </div>

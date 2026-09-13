@@ -110,7 +110,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
   // Shared core of processPickAndPass/pickFromIntro/expirePick (D5's timeout
   // auto-pick and D7's pick-from-the-opener-spread both need the exact same
   // pick/pass mechanics — only how `cardId` was chosen differs).
-  const applyPick = useCallback((cardId: string, zone: 'Roster' | 'GLeague', autoPicked: boolean) => {
+  const applyPick = useCallback((cardId: string, autoPicked: boolean) => {
     const humanSeatSnapshot = seats[0];
     if (!humanSeatSnapshot) return;
     const pickedCardIndex = humanSeatSnapshot.currentPack.findIndex(c => c.id === cardId);
@@ -131,7 +131,6 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
       seatId: humanSeat.id,
       packContents: humanPackSnapshot,
       pickedCardId: cardId,
-      zone,
       ...(autoPicked ? { autoPicked: true } : {}),
     });
 
@@ -230,17 +229,17 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     setPickDeadline(null);
   }, [seats, currentPackNumber, currentPickNumber, overallPick, mode]);
 
-  const processPickAndPass = useCallback((humanPickId: string, zone: 'Roster' | 'GLeague') => {
+  const processPickAndPass = useCallback((humanPickId: string) => {
     if (draftState !== 'drafting') return;
-    applyPick(humanPickId, zone, false);
+    applyPick(humanPickId, false);
   }, [draftState, applyPick]);
 
   /** Pick straight from the intro/premier opener spread (D7) instead of via the
    *  post-reveal grid. Same pick/pass mechanics as `processPickAndPass`, just
    *  valid while the draft is still showing the opener. */
-  const pickFromIntro = useCallback((cardId: string, zone: 'Roster' | 'GLeague') => {
+  const pickFromIntro = useCallback((cardId: string) => {
     if (draftState !== 'pack-intro') return;
-    applyPick(cardId, zone, false);
+    applyPick(cardId, false);
   }, [draftState, applyPick]);
 
   /** Leaves `round-summary` and deals the next pack's opener (D3). */
@@ -271,7 +270,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     const cardId = getBotPick(neutralSeat, overallPickAtExpiry);
     if (!cardId) return;
 
-    applyPick(cardId, 'Roster', true);
+    applyPick(cardId, true);
   }, [mode, draftState, overallPick, seats, applyPick]);
 
   /** Arms `pickDeadline` for whichever pick is now current (D4), Premier mode

@@ -183,7 +183,7 @@ describe('Bot Roster Builder v2 (playAssignments + archetypes)', () => {
       }
     });
 
-    it('should separate players into active roster and G-League', () => {
+    it('should separate players into active roster and the bench Roster pool', () => {
       const players = loadPlayers();
       const seats = runHeadlessDraft(players, PLAYS);
 
@@ -194,7 +194,7 @@ describe('Bot Roster Builder v2 (playAssignments + archetypes)', () => {
           (sum, roster) => sum + roster.length,
           0
         );
-        const benchCount = builtRoster.gLeaguePlayers.length;
+        const benchCount = builtRoster.rosterPlayers.length;
 
         expect(activeCount + benchCount).toBe(draftedPlayerCount);
       }

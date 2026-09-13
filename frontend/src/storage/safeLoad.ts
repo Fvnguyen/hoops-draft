@@ -39,7 +39,6 @@ export function safeParseSavedRoster(raw: unknown): SavedRoster | null {
     typeof roster.id !== 'string' ||
     typeof roster.name !== 'string' ||
     !Array.isArray(roster.draftedCards) ||
-    !isPlainObject(roster.zones) ||
     !isPlainObject(roster.depthChartOrder) ||
     !Array.isArray(roster.activePlays)
   ) {

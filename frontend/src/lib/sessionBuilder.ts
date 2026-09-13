@@ -24,7 +24,7 @@ export function buildDraftSession(
     // Auto-build roster for bots; human gets normalized empty roster
     builtRoster: seat.isBot
       ? buildBotRoster(seat.drafted, seat.botProfile)
-      : normalizeBuiltRoster({ depthChart: { PG: [], SG: [], SF: [], PF: [], C: [] }, activePlays: [], gLeaguePlayers: [], gLeaguePlays: [] }, seat.drafted),
+      : normalizeBuiltRoster({ depthChart: { PG: [], SG: [], SF: [], PF: [], C: [] }, activePlays: [], rosterPlayers: [], rosterPlays: [] }, seat.drafted),
   }));
 
   return {

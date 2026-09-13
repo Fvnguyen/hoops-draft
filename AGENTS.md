@@ -92,9 +92,9 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
   averages (PPG, RPG, …) are fine to show.
 - **Rarity is a MtG-style gem/icon, never a coloured frame** (frames fight with position
   and team colours). Rare and Mythic should feel splashy.
-- **Draft zoning stays**: drafted cards are sorted into Roster / G-League during the draft
-  (MTG Arena style pre-building). No card "inspect" panel; bot pick ticker is wanted.
-- No auto-fill in the deck builder; the human builds the lineup.
+- **One draft-time list**: every drafted card lands in a single "Roster" list, no
+  Roster/G-League split. No card "inspect" panel; bot pick ticker is wanted. No auto-fill
+  in the deck builder either: the depth chart starts empty, the human builds the lineup.
 - Locked identity plans are not selectable; one nearest-progress hint per lane (muted,
   non-clickable) explains what's missing — replaces the old "locked plans hidden" rule.
 

@@ -24,8 +24,8 @@ export interface BuiltRoster {
   playAssignments?: PlayAssignment[];
   /** Chosen roster identity (v2). */
   archetypes?: ArchetypeSelection;
-  gLeaguePlayers: string[];               // Bench player card IDs
-  gLeaguePlays: string[];                 // Bench play card IDs
+  rosterPlayers: string[];                // Bench player card IDs (non-active pool, "Roster" in the UI)
+  rosterPlays: string[];                  // Bench play card IDs
 }
 
 export const BUILT_ROSTER_VERSION = 2;
@@ -57,7 +57,6 @@ export interface DraftPickRecord {
   seatId: string;               // 'human-0' or 'bot-1' through 'bot-7'
   packContents: string[];       // Card IDs visible to this seat BEFORE picking
   pickedCardId: string;         // The card ID that was picked
-  zone?: 'Roster' | 'GLeague'; // Only for human picks
   /** Set when the Premier pick clock expired and `expirePick` picked for the
    *  human (plan ui_draft_deckbuild_pack, D5). Absent for every other pick. */
   autoPicked?: boolean;
@@ -280,7 +279,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
     });
   }
 
-  // Phase 4: Everyone not in active roster goes to G-League
+  // Phase 4: Everyone not in the active roster stays in the bench pool.
   const benchPlayers = sortedPlayers.filter(p => !assigned.has(p.id));
 
   return {
@@ -291,8 +290,8 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
     ),
     activePlays: selectedPlayCards.map(p => p.id),
     playAssignments,
-    gLeaguePlayers: benchPlayers.map(p => p.id),
-    gLeaguePlays: benchPlays.map(p => p.id),
+    rosterPlayers: benchPlayers.map(p => p.id),
+    rosterPlays: benchPlays.map(p => p.id),
   };
 }
 
