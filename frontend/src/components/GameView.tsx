@@ -369,7 +369,12 @@ export function GameView({ game, onComplete }: GameViewProps) {
         {game.quarterSummaries.length > 0 && currentPoss >= 0 && (
           <div className="flex text-[11px] font-bold text-stone-600 border-t border-stone-100 bg-white">
             <div className="flex-1"></div>
-            {game.quarterSummaries.filter(q => q.quarter <= quarter).map(q => (
+            {/* A quarter's row only appears once its possessions are fully consumed —
+                quarterSummaries holds every quarter's precomputed final score up front
+                (the theater is fully simulated ahead of playback), so including the
+                in-progress quarter here (q.quarter <= quarter) would spoil its own
+                ending before the last possession plays. */}
+            {game.quarterSummaries.filter(q => q.quarter < quarter || (isComplete && q.quarter === quarter)).map(q => (
               <div key={q.quarter} className="w-10 text-center py-1 flex flex-col border-l border-stone-100">
                 <span className="text-[9px] text-stone-400 border-b border-stone-100">{q.quarter <= 4 ? `Q${q.quarter}` : `OT`}</span>
                 <span className="py-0.5">{q.awayScore}</span>
