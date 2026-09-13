@@ -19,7 +19,6 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 0 | [stability_pass](plans/plan_stability_pass_2026-09-13.md) — CI, error boundary, safe loads, seeded bots, lint clean, smoke spec | planned | — | `.github/`, `app/{error,global-error,test-ui,deckbuilder-test,rosters}`, `hooks/useDraftEngine.ts` (seeding), `storage/*` (safe-load), `tests/smoke.spec.ts` | 0.5 day |
 | 1 | [analytics_tooling](plans/plan_analytics_tooling_2026-09-13.md) — measurement matches the current game | planned | — | `frontend/scripts/*`, `scripts/analyze_game_data.js`, `app/debug` | 0.5-1 day |
 | 2a | [ui_draft_deckbuild_pack](plans/plan_ui_draft_deckbuild_pack_2026-09-13.md) — quick/premier draft modes, timed picks, pack ceremony every round, click-first deck builder | in progress | — (lands before 3) | `components/{PackOpener,DraftRoom,DraftSidebar,DeckBuilder,PlayPanel,TopKPIBand,PlayerCard}.tsx`, `hooks/useDraftEngine.ts`, `app/{page,draft,roster,rosters}` | 1.5-2 days |
 | 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | 1 | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
@@ -40,9 +39,9 @@ plan 6 is done.
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [stability_pass](completed/plan_stability_pass_2026-09-13.md) | 2026-09-13 | CI, error boundary, safe loads, seeded bots, lint clean (0 errors), smoke spec |
 | [pack_opening_animation](completed/plan_pack_opening_animation_2026-09-13.md) | 2026-09-13 | Reveal sequence before the first pick, presentation only (`ab04726`) |
 | [plays_and_synergies](completed/plan_plays_and_synergies_2026-09-13.md) | 2026-09-13 | Archetype identities + assigned-player plays, roster v2, deck builder play panel (`632a751`..`fa10e01`) |
-| [review_code_and_architecture](completed/review_code_and_architecture_2026-09-12.md) | 2026-09-12 | Code review; Phase 0 (correctness) and Phase 1 (pure engine, cards as build artifact, IndexedDB) shipped |
 
 ## Model tiers used in plans
 

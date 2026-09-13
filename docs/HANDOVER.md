@@ -7,12 +7,16 @@ animation on the first pack) -> deck builder (depth chart, play assignments, ide
 selection) -> single game or round-robin season -> in-app analytics export. The engine is
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
 archetype identities and assigned-player plays; persistence is IndexedDB behind
-`GameStore`. 93 Vitest tests pass, type-check is clean, `npm run lint` has 8 errors left
-(7 `no-explicit-any` in the dev-only `/test-ui` page, 1 `set-state-in-effect` in
-`DraftRoom.tsx`) plus 13 warnings.
+`GameStore`. 103 Vitest tests pass, type-check is clean, `npm run lint` is 0 errors / 14
+warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
+(`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
+error boundary (`app/error.tsx`, `app/global-error.tsx`, shared `ErrorRecovery.tsx`) shows
+a recovery screen instead of a blank page; `frontend/tests/smoke.spec.ts` loads every real
+route headlessly and fails on any console/page error.
 
-Finished design docs live in `docs/completed/` (plays & synergies, pack opening). A plan
-that is still being worked on stays in `docs/` and moves there when its milestone lands.
+Finished design docs live in `docs/completed/` (plays & synergies, pack opening, stability
+pass). A plan that is still being worked on stays in `docs/` and moves there when its
+milestone lands.
 
 Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
 `ab04726` (pack opener), `fa10e01` (stricter archetype unlocking).
@@ -43,62 +47,17 @@ Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
 - Documentation added/rewritten: this file, `docs/ARCHITECTURE.md`, root `AGENTS.md`,
   root `CLAUDE.md`, root `README.md`, `frontend/README.md`, `data/README.md`.
 
-## Phase 0 (correctness) — done 2026-09-12
+## History
 
-Fixed, with tests that import the real engine (`frontend/tests/unit/`):
-- P0-1 defensive modifiers inverted → `defenseMods` are now deltas added to the opponent's
-  offense (negative = hurts them); documented on the types in `synergies.ts`.
-- P0-2 play cards never activated (id suffix) → `Play.playId` carries the effect id.
-- P0-3 possession swings dropped/double-counted → single accumulator.
-- P1-1 structural offense>defense edge → edges centred on `LEAGUE_AVG` in `gameEngine.ts`.
-- P1-2 silent localStorage quota failures → safe storage helpers (since superseded by `src/storage/`); DeckBuilder and
-  SeasonView show an inline error on quota.
-- P2-1 `/api/cards` ~900 queries → 3 queries + module-level memo (`clearCardCache()`).
-- P2-2 minutes now scale to game length (48 min regulation + 5 per OT); turnovers are a
-  real 15% share of misses and appear in the box score.
-- P2-3 Fisher-Yates shuffle; possessions clamped to [85, 115] per team.
-- Dead code removed; lint clean in `src/lib` and `src/hooks`; `/api/game-logs` returns 404 in production;
-  `outputFileTracingRoot` set; old inline-mirror node tests deleted.
-
-Measured with `npm run balance -- 1000` after the fixes: PPP ≈ 1.08 (was 1.29), team
-score mean ≈ 114 with sd ≈ 16, ≈ 80% of scores in [90, 130], home win ≈ 50%.
-
-Still open for Phase 2 (game improvements):
-- Margins are wide (mean ≈ 18, NBA ≈ 12) and score sd ≈ 16 (NBA ≈ 12): candidates are
-  `EFFICIENCY_SCALE`, the ±0.25 edge clamp, and rotation swings.
-- Bots still value players by PER only (plus role staffing in the deck builder).
-- Lint: 8 errors remain (see "Current state"). Mechanical; do before adding CI.
-- Resolved since: the play-name/effect mismatch and the uneven synergy activation were
-  superseded by the playbook catalog and archetype identities (see below).
-
-## Phase 1 (engine isolation) — done 2026-09-12
-
-- `frontend/src/engine/` is a pure TypeScript engine (no react/next/fs/sqlite; enforced by
-  `tests/unit/engine-purity.test.ts`). Every tuning constant is in `engine/balance.ts`.
-- Randomness is injected (`engine/rng.ts`, mulberry32). Drafts, seasons and games store
-  their seeds (`DraftSession.seed`, `Season.seed`, `SeasonScheduleEntry.seed`,
-  `GameTheater.seed`); `npm run balance -- 500 --seed 42` is reproducible.
-- Player cards are a build artifact: `npm run build:cards` reads `frontend/game.db` and
-  writes `frontend/src/data/cards.json` (committed). `/api/cards` serves it statically;
-  `better-sqlite3` is a devDependency used only by that script. The app has no cwd
-  dependency any more.
-- Persistence is `frontend/src/storage/` (`GameStore`: IndexedDB via Dexie in the browser,
-  in-memory during SSR/tests). `StorageProvider` at the app root runs a one-time,
-  key-driven migration of the old `localStorage` keys (renamed to `*.migrated`). All
-  pages/components go through `getGameStore()`; `src/lib/` now only holds
-  `sessionBuilder.ts`.
-- Verified in the running app: legacy localStorage data migrates into IndexedDB, the
-  rosters page lists it, a season can be created and a game played and persisted with
-  seeds. 42 Vitest tests (engine + storage on both backends) pass; production build OK.
-- NOT done: the first Vercel preview deploy (needs the user's go-ahead; nothing in the
-  app blocks it any more).
-
-Follow-ups noticed during Phase 1:
-- Score-band test tail: team scores of 174+ appear once in a few hundred games (sd ≈ 16);
-  the band assertion was loosened. Tightening the distribution is a Phase 2 tuning item.
-- Seasons still persist the full `GameTheater` per game (~200 narrated possessions);
-  with seeds stored, Phase 2 can drop that to box score + seed and re-simulate on demand.
-- Remaining lint errors are all UI-side (`any` in dashboards, `react-hooks/static-components`).
+- **Phase 0 (correctness)** (done 2026-09-12): fixed inverted defensive modifiers, play
+  activation, possession-swing double counting, offense/defense edge bias, silent storage
+  quota failures, `/api/cards` N+1 queries, minutes/turnover scaling; PPP 1.29 → 1.08.
+  Still open: margins/score sd wider than NBA (`EFFICIENCY_SCALE`, edge clamp), bots value
+  players by PER only.
+- **Phase 1 (engine isolation)** (done 2026-09-12): engine made pure/seeded
+  (`engine/rng.ts`), cards became a build artifact (`cards.json`), persistence moved to
+  `src/storage/` (GameStore/IndexedDB). Still open: seasons persist the full `GameTheater`
+  per game instead of box score + reseed; first Vercel preview deploy not done.
 
 ## Plays & archetypes milestone — done 2026-09-13
 
@@ -157,6 +116,40 @@ Open after this milestone:
 
 Not done / waiting on the owner: first Vercel preview deploy; Phase 3 (mobile/PWA) after
 game improvements.
+
+## Stability pass milestone — done 2026-09-13
+
+Design: `docs/completed/plan_stability_pass_2026-09-13.md`. A cheap, pre-everything-else
+pass removing defects likely to bite later plans and adding the two safety nets the repo
+lacked: CI and a runtime error boundary.
+
+- **CI**: `.github/workflows/ci.yml` runs `tsc --noEmit`, lint, Vitest, and `next build` on
+  every push/PR (ubuntu, Node 22). Lint is now 0 errors (was 8): the 7 `no-explicit-any` in
+  `/test-ui` got real `PlayerBio`/`SeasonStat` mocks; `DraftRoom.tsx`'s
+  `set-state-in-effect` was replaced with `useSyncExternalStore` for the client-mount flag.
+- **Error boundary**: `app/error.tsx` + `app/global-error.tsx` share `ErrorRecovery.tsx` —
+  a recovery screen with the error message, "Try again" (`reset()`), a home link, and a
+  confirm-gated "Reset local data" button that calls `getGameStore().clearAll()`.
+- **Safe loads**: `src/storage/safeLoad.ts` shape-checks every record out of a `GameStore`
+  backend (`getDraftSession`/`getRoster`/`getSeason` + list variants in both `indexedDb.ts`
+  and `memory.ts`); a corrupt record is dropped (logged, returns `null`/filtered from
+  lists) instead of throwing, and legacy seasons/rosters still upgrade via
+  `normalizeSeason`/`normalizeBuiltRoster`. Covered by `tests/storage/safeLoad.test.ts`.
+- **Draft reproducibility**: bot `noiseSeed`/`favoredTrait` are now drawn from the draft's
+  seeded `Rng` (extracted as `createBotProfiles` in `useDraftEngine.ts`) instead of
+  `Math.random()`, so the same `draftSeed` reproduces the same bot picks. Covered by
+  `tests/unit/draft-reproducibility.test.ts`.
+- **Roster edit keeps its season**: `/rosters` passes `sessionId` in the edit link;
+  `deckbuilder-test` forwards it to `DeckBuilder` (falling back to the saved roster's own
+  `sessionId` if the query param is absent), so re-saving keeps the Play Season button.
+- **PackOpener hygiene**: the keydown effect now has a stable `[]` dependency array (reads
+  phase via a ref instead of re-subscribing every render); the deal-in stagger is gated by
+  `prefers-reduced-motion` too; the duplicated unmount timer-cleanup was removed.
+- **Smoke spec**: `frontend/tests/smoke.spec.ts` loads every real route and fails on any
+  `pageerror` or console error — the local gate to run before committing (see AGENTS.md).
+
+Verified: `npm test` (103 Vitest tests, up from 93), `npx tsc --noEmit`, `npm run lint` (0
+errors), `npm run build`, and `npx playwright test tests/smoke.spec.ts` (8/8) all pass.
 
 ## How to run everything
 
