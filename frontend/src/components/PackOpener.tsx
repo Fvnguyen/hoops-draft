@@ -96,9 +96,18 @@ export function PackOpener({
   onPick,
   onComplete,
 }: PackOpenerProps) {
-  // Reveal order is fixed on mount: Common -> Mythic, so the guaranteed Rare+
-  // slot flips last (D6).
+  // Reveal TIMING is fixed on mount: Common -> Mythic, so the guaranteed Rare+
+  // slot flips last (D6). This is separate from GRID POSITION below — `ordered`
+  // only drives flipAt/holdMs indices, never what's rendered where.
   const [ordered] = useState<DraftCard[]>(() => orderForReveal(pack));
+  // Grid position stays in the pack's original slot order so the guaranteed
+  // Rare+ card doesn't visually jump to the last cell just because it flips last.
+  const [displayOrder] = useState<DraftCard[]>(() => pack);
+  const revealIndexOf = useMemo(() => {
+    const map = new Map<string, number>();
+    ordered.forEach((card, index) => map.set(card.id, index));
+    return map;
+  }, [ordered]);
   const [phase, setPhase] = useState<PackPhase>('sealed');
   const reducedMotion = useSyncExternalStore(subscribeMotion, motionSnapshot, falseSnapshot);
   const sfxOn = useSyncExternalStore(subscribeSfx, isSfxEnabled, falseSnapshot);
@@ -315,7 +324,8 @@ export function PackOpener({
             animate={{ opacity: 1 }}
             className="grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4"
           >
-            {ordered.map((card, index) => {
+            {displayOrder.map((card) => {
+              const index = revealIndexOf.get(card.id)!;
               const isFlipped = flipped[index];
               const holding = holdIndex === index;
               const dimmed = holdIndex !== null && !holding;
