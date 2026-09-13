@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
@@ -136,9 +136,16 @@ function averageRosterIdentities(identities: RosterIdentity[]): RosterIdentity |
   };
 }
 
+// Always true once mounted on the client, false during SSR — the mismatch between
+// getSnapshot and getServerSnapshot makes React re-render right after hydration
+// without a component-level setState call inside an effect.
+function subscribeNever() {
+  return () => {};
+}
+
 export function DraftRoom() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
   // Sidebar defaults open on lg+ screens (>=1024px), collapsed strip below that.
   // Read only at mount: this component renders null until isClient flips true,
@@ -189,7 +196,6 @@ export function DraftRoom() {
   }, [draftState, seats, sessionId, pickLog, draftSeed]);
 
   useEffect(() => {
-    setIsClient(true);
     fetch('/api/cards')
       .then(r => r.json())
       .then((data: Array<Omit<Player, 'type'>>) => {

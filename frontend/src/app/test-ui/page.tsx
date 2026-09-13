@@ -7,18 +7,55 @@ import { TeamInfo, GameTheater } from '../../engine/game';
 import { emptyModifiers } from '../../engine/synergies';
 import { PLAY_BUDGET_OFFENSE, PLAY_BUDGET_DEFENSE } from '../../engine/balance';
 import type { PlaybookStatus } from '../../engine/playbook';
+import type { PlayerBio, SeasonStat } from '../../engine/types';
+
+const mockBio = (name: string, pos: string, id: string): PlayerBio => ({
+  id,
+  name,
+  position: pos,
+  height: '6-6',
+  weight: 210,
+  age: 25,
+  team: 'LAL',
+});
+
+const mockStats = (): SeasonStat => ({
+  gp: 82,
+  mpg: 32,
+  pts: 20.5,
+  trb: 5.2,
+  ast: 4.1,
+  stl: 1.1,
+  blk: 0.5,
+  fga: 15,
+  fg3a: 5,
+  fta: 4,
+  pct_fga_0_3: 0.3,
+  pct_fga_3_10: 0.2,
+  pct_fga_10_16: 0.1,
+  pct_fga_16_3p: 0.1,
+  pct_fga_3p: 0.3,
+  fg_pct_0_3: 0.65,
+  fg_pct_3_10: 0.4,
+  fg_pct_10_16: 0.42,
+  fg_pct_16_3p: 0.4,
+  fg_pct_3p: 0.37,
+  fg_pct: 0.45,
+  fg3_pct: 0.37,
+  fg2_pct: 0.5,
+  ft_pct: 0.85,
+  per: 20,
+  ts: 0.58,
+  vorp: 3,
+  dbpm: 1,
+  tov: 2.5,
+});
 
 const mockPlayer = (name: string, pos: string, ovr: number, id: string): PlayerCardData => ({
   type: 'Player',
-  id: id,
+  id,
   rarity: 'Rare',
-  player: {
-    id: id,
-    name,
-    position: pos,
-    team: 'LAL',
-    age: 25,
-  } as any,
+  player: mockBio(name, pos, id),
   ratings: {
     overall: ovr,
     finishing: 80,
@@ -27,20 +64,12 @@ const mockPlayer = (name: string, pos: string, ovr: number, id: string): PlayerC
     playmaking: 80,
     perimeterDefense: 80,
     postDefense: 80,
-    rebounding: 80
+    rebounding: 80,
   },
-  stats: {
-    pts: 20.5,
-    trb: 5.2,
-    ast: 4.1,
-    stl: 1.1,
-    blk: 0.5,
-    fg_pct: 0.45,
-    mpg: 32,
-    gp: 82
-  } as any,
-  traits: []
-} as any);
+  stats: mockStats(),
+  awards: [],
+  traits: [],
+});
 
 const mockTeamInfo: TeamInfo = {
   seatId: 'test1',
@@ -81,8 +110,8 @@ const mockGameTheater: GameTheater = {
   substitutions: [],
   quarterSummaries: [],
   boxScore: { home: [], away: [] },
-  homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: {} as any, defenseMods: {} as any, playstyle: [] },
-  awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: {} as any, defenseMods: {} as any, playstyle: [] },
+  homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers(), playstyle: [] },
+  awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers(), playstyle: [] },
   finalScore: [0, 0],
   seed: 0,
   playbook: { home: mockPlaybookStatus, away: mockPlaybookStatus },
