@@ -139,8 +139,7 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   `docs/HANDOVER.md`; `docs/analytics/*` reports predate the current engine.
 
 ## Gotchas discovered in the code
-- `scripts/build-cards.ts` resolves `game.db` relative to `frontend/`; run it via the npm
-  script. The app itself has no cwd dependency any more.
+- `scripts/build-cards.ts` resolves `game.db` relative to `frontend/`; run it via the npm script.
 - `/api/game-logs` (dev-only export used by `/debug`) writes to `../data/game_logs`
   relative to cwd and is disabled in production builds.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
