@@ -14,7 +14,8 @@
     "analyze": "tsx scripts/analyze.ts",
     "build:cards": "tsx scripts/build-cards.ts",
     "feasibility": "tsx scripts/archetype-feasibility.ts",
-    "bootstrap:admin": "node scripts/bootstrap-admin.mjs"
+    "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
+    "migrate": "node scripts/run-migration.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
@@ -37,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "fake-indexeddb": "^6.2.5",
+    "pg": "^8.23.0",
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",

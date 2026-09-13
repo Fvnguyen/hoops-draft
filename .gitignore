@@ -30,6 +30,8 @@ mock-*.png
 
 # --- env / OS ---
 .env*
+!.env.example
+!frontend/.env.example
 .DS_Store
 Thumbs.db
 *.pem
@@ -41,4 +43,3 @@ screenshots/
 frontend/*.png
 
 .vercel
-.env*
