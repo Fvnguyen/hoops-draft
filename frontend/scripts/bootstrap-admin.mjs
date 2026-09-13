@@ -17,7 +17,13 @@ const { data, error } = await supabase.auth.admin.createUser({
   user_metadata: { display_name: 'Fvnguyen', username: 'fvnguyen' },
 });
 
-if (error && !error.message.toLowerCase().includes('already registered')) throw error;
+// Supabase's actual wording is "already been registered" (code 'email_exists'), not
+// "already registered" — match on the error code first, the substrings as a fallback
+// in case the wording changes again.
+const alreadyExists = error?.code === 'email_exists'
+  || error?.message.toLowerCase().includes('already registered')
+  || error?.message.toLowerCase().includes('already been registered');
+if (error && !alreadyExists) throw error;
 let user = data.user;
 if (!user) {
   const { data: users, error: listError } = await supabase.auth.admin.listUsers({ perPage: 1000 });
