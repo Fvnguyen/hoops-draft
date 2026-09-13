@@ -803,9 +803,9 @@ export function DeckBuilder({ draftedCards, initialZones, existingRosterName, ro
                 {isPlaysOpen && (
                   <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
                     <div className="p-3 flex flex-col gap-2 min-h-[80px]">
-                      {gLeaguePlays.map(play => (
+                      {gLeaguePlays.map((play, idx) => (
                         <div
-                          key={play.id}
+                          key={`${play.id}-${idx}`}
                           draggable
                           onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'GLeaguePlays')}
                           onClick={(e) => { e.stopPropagation(); handlePlayClick(play, 'GLeaguePlays'); }}
