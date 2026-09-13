@@ -79,9 +79,10 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       if (!season || !session) return;
 
       const entry = season.schedule[gameIndex];
-      if (entry.played && entry.result) {
+      const humanMatch = entry.matchups.find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0);
+      if (entry.played && humanMatch?.result) {
         // Already played — show replay
-        setActiveGame(entry.result);
+        setActiveGame(humanMatch.result);
         setActiveGameIndex(gameIndex);
         return;
       }
@@ -214,12 +215,14 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
             <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">Schedule</h2>
             <div className="flex flex-col gap-2">
               {season.schedule.map((entry, idx) => {
-                const oppSeat = session?.seats[entry.opponentSeatIndex];
-                const oppName = oppSeat?.botProfile?.name || `Bot ${entry.opponentSeatIndex}`;
+                const humanMatch = entry.matchups.find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0)!;
+                const oppSeatIndex = humanMatch.homeSeatIndex === 0 ? humanMatch.awaySeatIndex : humanMatch.homeSeatIndex;
+                const oppSeat = session?.seats[oppSeatIndex];
+                const oppName = oppSeat?.botProfile?.name || `Bot ${oppSeatIndex}`;
                 const isNext = idx === season.currentGame && !isSeasonComplete;
                 const isPlayable = isNext;
-                const result = entry.result;
-                const isHome = idx % 2 === 0;
+                const result = humanMatch.result;
+                const isHome = humanMatch.homeSeatIndex === 0;
 
                 let humanScore = 0, oppScore = 0, won = false;
                 if (result) {

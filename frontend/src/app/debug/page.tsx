@@ -51,8 +51,10 @@ function analyzeData(data: GameLogData): string[] {
   const allGames: { gameIndex: number; result: GameTheater }[] = [];
   seasons.forEach((season: Season) => {
     (season.schedule || []).forEach((entry: SeasonScheduleEntry, gIdx: number) => {
-      if (entry.played && entry.result) {
-        allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: entry.result });
+      if (!entry.played) return;
+      // A game day holds several matchups (round robin); count every played one.
+      for (const matchup of entry.matchups ?? []) {
+        if (matchup.result) allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: matchup.result });
       }
     });
   });

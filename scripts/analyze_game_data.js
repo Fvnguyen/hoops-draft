@@ -661,8 +661,11 @@ function main() {
   const allGames = [];
   seasons.forEach(season => {
     (season.schedule || []).forEach((entry, gIdx) => {
-      if (entry.played && entry.result) {
-        allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result: entry.result, seasonId: season.id });
+      if (!entry.played) return;
+      // New shape (round robin): entry.matchups[].result; old dumps: entry.result.
+      const results = entry.matchups ? entry.matchups.map(m => m.result).filter(Boolean) : (entry.result ? [entry.result] : []);
+      for (const result of results) {
+        allGames.push({ gameIndex: entry.gameIndex ?? gIdx, result, seasonId: season.id });
       }
     });
   });

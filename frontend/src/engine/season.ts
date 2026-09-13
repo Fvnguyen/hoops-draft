@@ -11,13 +11,17 @@ import { Rng, createRng, randomSeed, shuffle } from './rng';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+export interface SeasonMatchup {
+  homeSeatIndex: number;
+  awaySeatIndex: number;
+  result?: GameTheater;
+  seed?: number;
+}
+
 export interface SeasonScheduleEntry {
   gameIndex: number;          // 0-6
-  opponentSeatIndex: number;  // 1-7 (bot seat index in the draft session)
-  result?: GameTheater;       // Populated after game is played
+  matchups: SeasonMatchup[];  // 4 matchups per Game Day
   played: boolean;
-  /** RNG seed the game was (or will be) simulated with — set once the game is played. */
-  seed?: number;
 }
 
 export interface StandingsEntry {
@@ -53,14 +57,66 @@ export function createSeason(
   const seasonRng = rng ?? createRng(randomSeed());
   const humanTeam = buildTeamInfo(session.seats[0], true);
 
-  // Randomize opponent order
-  const opponentIndices = shuffle([1, 2, 3, 4, 5, 6, 7], seasonRng);
+  // Calculate bot OVRs to sort them from weakest to strongest
+  const botOvr = new Map<number, number>();
+  for (let i = 1; i < 8; i++) {
+    const seat = session.seats[i];
+    const activeIds = Object.values(seat.builtRoster.depthChart).flat();
+    let sum = 0;
+    let count = 0;
+    for (const card of seat.drafted) {
+      if (card.type !== 'Player' || !activeIds.includes(card.id)) continue;
+      // Internal only: used to order the human's opponents weakest → strongest.
+      // Never surfaced to the user (product rule: no OVR shown).
+      sum += card.ratings?.overall ?? 0;
+      count++;
+    }
+    botOvr.set(i, count > 0 ? sum / count : 0);
+  }
 
-  const schedule: SeasonScheduleEntry[] = opponentIndices.map((seatIdx, gameIdx) => ({
-    gameIndex: gameIdx,
-    opponentSeatIndex: seatIdx,
-    played: false,
-  }));
+  // Sort bot indices by OVR ascending
+  const sortedBots = [1, 2, 3, 4, 5, 6, 7].sort((a, b) => (botOvr.get(a) || 0) - (botOvr.get(b) || 0));
+
+  // Circle Scheduling Algorithm
+  const schedule: SeasonScheduleEntry[] = [];
+  
+  // We want the human (0) to play sortedBots[r] in round r.
+  // We maintain a circle array A of 7 bots. 
+  // By rotating A to the left each round, A[0] sweeps through sortedBots in order.
+  let circle = [...sortedBots];
+  
+  for (let r = 0; r < 7; r++) {
+    const matchups: SeasonMatchup[] = [];
+    
+    // Match 1: Human (0) vs circle[0]
+    // Alternate home/away for the human based on round
+    if (r % 2 === 0) {
+      matchups.push({ homeSeatIndex: 0, awaySeatIndex: circle[0] });
+    } else {
+      matchups.push({ homeSeatIndex: circle[0], awaySeatIndex: 0 });
+    }
+    
+    // Remaining 6 bots pair off: circle[6-i] vs circle[i+1] for i=0..2
+    for (let i = 0; i < 3; i++) {
+      const b1 = circle[6 - i];
+      const b2 = circle[i + 1];
+      // Alternate home/away to be fair
+      if ((r + i) % 2 === 0) {
+        matchups.push({ homeSeatIndex: b1, awaySeatIndex: b2 });
+      } else {
+        matchups.push({ homeSeatIndex: b2, awaySeatIndex: b1 });
+      }
+    }
+    
+    schedule.push({
+      gameIndex: r,
+      matchups,
+      played: false
+    });
+    
+    // Rotate circle left by 1 for the next round
+    circle = [...circle.slice(1), circle[0]];
+  }
 
   // Initialize standings with all 8 seats
   const standings: StandingsEntry[] = session.seats.map((seat, idx) => ({
@@ -96,47 +152,47 @@ export function playNextGame(
   if (season.currentGame >= 7) return null;
 
   const entry = season.schedule[season.currentGame];
-  const opponentSeat = session.seats[entry.opponentSeatIndex];
-  const opponentTeam = buildTeamInfo(opponentSeat, false);
+  let humanGameResult: GameTheater | null = null;
 
-  // Alternate home/away each game
-  const isHomeGame = season.currentGame % 2 === 0;
-  const homeTeam = isHomeGame ? season.humanTeam : opponentTeam;
-  const awayTeam = isHomeGame ? opponentTeam : season.humanTeam;
+  for (const matchup of entry.matchups) {
+    const isHumanMatch = matchup.homeSeatIndex === 0 || matchup.awaySeatIndex === 0;
+    const homeTeam = matchup.homeSeatIndex === 0 ? season.humanTeam : buildTeamInfo(session.seats[matchup.homeSeatIndex], false);
+    const awayTeam = matchup.awaySeatIndex === 0 ? season.humanTeam : buildTeamInfo(session.seats[matchup.awaySeatIndex], false);
 
-  // Reuse the entry's stored seed when replaying a game that was already
-  // simulated once (e.g. re-deriving box scores); otherwise mint a fresh one.
-  const gameRng = rng ?? createRng(entry.seed ?? randomSeed());
-  const gameResult = simulateGame(homeTeam, awayTeam, { rng: gameRng });
+    // Reuse seed if replaying
+    const gameRng = rng ?? createRng(matchup.seed ?? randomSeed());
+    const result = simulateGame(homeTeam, awayTeam, { rng: gameRng });
 
-  // Determine human result
-  const humanIsHome = isHomeGame;
-  const humanScore = humanIsHome ? gameResult.finalScore[0] : gameResult.finalScore[1];
-  const oppScore = humanIsHome ? gameResult.finalScore[1] : gameResult.finalScore[0];
-  const humanWon = humanScore > oppScore;
+    matchup.result = result;
+    matchup.seed = result.seed;
 
-  // Update schedule
-  entry.result = gameResult;
+    if (isHumanMatch) {
+      humanGameResult = result;
+    }
+
+    // Update Standings
+    const homeScore = result.finalScore[0];
+    const awayScore = result.finalScore[1];
+    const homeWon = homeScore > awayScore;
+
+    const homeStanding = season.standings.find(s => s.seatId === session.seats[matchup.homeSeatIndex].id);
+    const awayStanding = season.standings.find(s => s.seatId === session.seats[matchup.awaySeatIndex].id);
+
+    if (homeStanding) {
+      if (homeWon) homeStanding.wins++; else homeStanding.losses++;
+      homeStanding.pointsFor += homeScore;
+      homeStanding.pointsAgainst += awayScore;
+      homeStanding.pointDiff = homeStanding.pointsFor - homeStanding.pointsAgainst;
+    }
+    if (awayStanding) {
+      if (!homeWon) awayStanding.wins++; else awayStanding.losses++;
+      awayStanding.pointsFor += awayScore;
+      awayStanding.pointsAgainst += homeScore;
+      awayStanding.pointDiff = awayStanding.pointsFor - awayStanding.pointsAgainst;
+    }
+  }
+
   entry.played = true;
-  entry.seed = gameResult.seed;
-
-  // Update standings
-  const humanStanding = season.standings.find(s => s.seatId === 'human-0');
-  const oppStanding = season.standings.find(s => s.seatId === opponentSeat.id);
-
-  if (humanStanding) {
-    if (humanWon) humanStanding.wins++; else humanStanding.losses++;
-    humanStanding.pointsFor += humanScore;
-    humanStanding.pointsAgainst += oppScore;
-    humanStanding.pointDiff = humanStanding.pointsFor - humanStanding.pointsAgainst;
-  }
-
-  if (oppStanding) {
-    if (!humanWon) oppStanding.wins++; else oppStanding.losses++;
-    oppStanding.pointsFor += oppScore;
-    oppStanding.pointsAgainst += humanScore;
-    oppStanding.pointDiff = oppStanding.pointsFor - oppStanding.pointsAgainst;
-  }
 
   // Sort standings: wins desc, then point diff desc
   season.standings.sort((a, b) => {
@@ -146,5 +202,5 @@ export function playNextGame(
 
   season.currentGame++;
 
-  return { season, gameResult };
+  return { season, gameResult: humanGameResult! };
 }

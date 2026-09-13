@@ -18,12 +18,15 @@ describe('seasonEngine', () => {
     };
   }
 
-  it('createSeason schedules 7 distinct opponents', () => {
+  it('createSeason schedules 7 distinct opponents for the human', () => {
     const session = makeSession();
     const season = createSeason(session, 'test-roster');
 
     expect(season.schedule.length).toBe(7);
-    const opponentIndices = season.schedule.map((s) => s.opponentSeatIndex);
+    const opponentIndices = season.schedule.map((s) => {
+      const hm = s.matchups.find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0)!;
+      return hm.homeSeatIndex === 0 ? hm.awaySeatIndex : hm.homeSeatIndex;
+    });
     expect(new Set(opponentIndices).size).toBe(7);
     for (const idx of opponentIndices) {
       expect(idx).toBeGreaterThanOrEqual(1);
@@ -31,7 +34,7 @@ describe('seasonEngine', () => {
     }
   });
 
-  it('after playing all 7 games, standings wins+losses sum to 14 and the human row exists', () => {
+  it('after playing all 7 games, every team has played 7 games (56 total W+L)', () => {
     const session = makeSession();
     let season = createSeason(session, 'test-roster');
 
@@ -44,7 +47,7 @@ describe('seasonEngine', () => {
     expect(season.currentGame).toBe(7);
 
     const totalWL = season.standings.reduce((s, row) => s + row.wins + row.losses, 0);
-    expect(totalWL).toBe(14);
+    expect(totalWL).toBe(56);
 
     const humanRow = season.standings.find((row) => row.seatId === 'human-0');
     expect(humanRow).toBeDefined();
