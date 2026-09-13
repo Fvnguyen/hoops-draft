@@ -19,11 +19,13 @@ const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONL
 
 const COLLAPSE_STORAGE_KEY = 'deckbuilder.reportCollapsed';
 
+/** Defaults to collapsed on a first visit (D22); a user's own un-collapse persists. */
 function readStoredCollapsed(): boolean {
   try {
-    return window.localStorage.getItem(COLLAPSE_STORAGE_KEY) === '1';
+    const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+    return stored === null ? true : stored === '1';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -82,7 +84,7 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
   /** Present only when the band is editable; absent = read-only. */
   onArchetypesChange?: (sel: ArchetypeSelection) => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCollapsed(readStoredCollapsed());
@@ -139,21 +141,22 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
   }
 
   return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-3 flex items-stretch gap-8">
+    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-2 flex items-stretch gap-6">
 
-      {/* 1. Team identity radar */}
-      <div className="flex flex-col gap-1 shrink-0">
+      {/* 1. Team identity radar — sized down from 176px (D22): an intentionally-expanded
+           band shouldn't dominate the viewport the way the original footprint did. */}
+      <div className="flex flex-col gap-1 shrink-0" style={{ width: 120 }}>
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
-        <RadarChart data={identity} average={referenceIdentity} size={176} />
+        <RadarChart data={identity} average={referenceIdentity} size={120} />
       </div>
 
-      {/* 2. Shot diet */}
-      <div className="flex flex-col gap-1 pl-8 border-l border-stone-200 shrink-0">
+      {/* 2. Shot diet — sized down from 124px/20px (D22), same reasoning as the radar. */}
+      <div className="flex flex-col gap-1 pl-6 border-l border-stone-200 shrink-0">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
         <div className="flex-1 flex items-center">
           <DonutChart
-            size={124}
-            strokeWidth={20}
+            size={90}
+            strokeWidth={14}
             data={[
               { label: 'RIM', value: shotDiet.rim, color: '#f43f5e' },
               { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
@@ -165,7 +168,7 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
 
       {/* 3. Identity — only UNLOCKED plans are shown; the selected one is highlighted and
              any other unlocked plan can be selected with a click. Locked plans stay hidden. */}
-      <div className="min-w-0 flex-1 pl-8 border-l border-stone-200 flex flex-col gap-1.5">
+      <div className="min-w-0 flex-1 pl-6 border-l border-stone-200 flex flex-col gap-1.5">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Identity</h3>
           <button type="button" onClick={toggleCollapsed} aria-label="Collapse team report" title="Collapse team report" className="shrink-0 text-stone-400 hover:text-stone-600">

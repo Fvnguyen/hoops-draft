@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, type ReactNode, type JSX } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { createPortal } from 'react-dom';
+import { motion } from 'framer-motion';
+import { useHoverPreview } from './useHoverPreview';
 import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard } from '@/engine/types';
+import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard, Trait } from '@/engine/types';
 import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation, type PlayRequirement, type PlayRequirementStatus } from '@/engine/synergies';
 import type { PlayStatus } from '@/engine/playbook';
 import { getPlayDef, describeRoleRequirement } from '@/engine/playbook';
@@ -45,25 +47,70 @@ const badgeConfig: Record<string, { icon: LucideIcon; color: string; bg: string 
   'Playmaking Maestro':  { icon: Wand2,          color: '#14B8A6', bg: 'bg-teal-500/20' },
 };
 
-function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' | 'xs' }) {
+// Plain-English badge tooltip copy (MTG-style keyword reminder text) — what it boosts
+// and, for the badges that gate a roster identity (the 7 mono colors + the 3 gold
+// keystones in engine/archetypes.ts), which identity it unlocks. No exact percentages —
+// matches the game's existing "never show exact ratings/formulas" product rule. The
+// other badges (Legend, League Leader, Ironman, Efficiency Savant, Volume Scorer,
+// Young Phenom, Veteran Presence, Microwave, Stat Sheet Stuffer) aren't wired into any
+// synergy/archetype/play logic anywhere in the engine — they're flavor only, so their
+// copy says that honestly instead of inventing an effect they don't have.
+const BADGE_DESCRIPTIONS: Record<string, string> = {
+  'Finisher': "Boosts your team's rim scoring and unlocks the Rim Pressure identity.",
+  'Mid-Range Maestro': "Boosts your team's mid-range scoring and unlocks the Midrange Clinic identity.",
+  'Sharpshooter': "Boosts your team's perimeter shooting and unlocks the Shooting Gallery identity.",
+  'Floor General': "Boosts your team's playmaking and unlocks The Beautiful Game identity.",
+  'Glass Cleaner': "Boosts your team's rebounding and unlocks the Second-Chance Engine identity.",
+  'Lockdown Defender': "Boosts your team's perimeter defense and unlocks the No-Fly Zone identity.",
+  'Paint Protector': "Boosts your team's interior defense and unlocks the Paint Wall identity.",
+  'Two-Way Disruptor': "Boosts your team on both ends and unlocks the 3-and-D Paradigm identity.",
+  'Playmaking Maestro': "Boosts your team's ball movement and unlocks the Switchblade Pressure identity.",
+  'Sniper': "Boosts your team's 3-point shooting and unlocks the Five-Out Fortress identity.",
+  'Legend': 'A career-defining talent. Prestige only — no team-wide boost.',
+  'League Leader': 'Led the league in a major stat. Prestige only — no team-wide boost.',
+  'Ironman': 'Elite durability and availability. Flavor only — no team-wide boost.',
+  'Efficiency Savant': 'Elite scoring efficiency. Flavor only — no team-wide boost.',
+  'Volume Scorer': 'A high-usage, high-volume scorer. Flavor only — no team-wide boost.',
+  'Young Phenom': 'A rising star ahead of schedule. Flavor only — no team-wide boost.',
+  'Veteran Presence': 'A seasoned, battle-tested veteran. Flavor only — no team-wide boost.',
+  'Microwave': 'Instant offense off the bench. Flavor only — no team-wide boost.',
+  'Stat Sheet Stuffer': 'Fills the box score everywhere. Flavor only — no team-wide boost.',
+};
+
+function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' | 'xs' | 'cqw' | 'micro' }) {
   const cfg = badgeConfig[name] || { icon: Star, color: '#9CA3AF', bg: 'bg-stone-500/20' };
   const Icon = cfg.icon;
-  const iconSize = size === 'xs' ? 10 : size === 'small' ? 12 : 16;
-  const containerSize = size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : 'w-8 h-8';
+  const iconSize = size === 'micro' ? 7 : size === 'xs' ? 10 : size === 'small' ? 12 : size === 'cqw' ? 11 : 16;
+  const containerSize = size === 'micro' ? 'w-[13px] h-[13px] border' : size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : size === 'cqw' ? 'border' : 'w-8 h-8';
+  // 'cqw' scales with the @container ancestor (the card itself) instead of a fixed px
+  // size, so it keeps shrinking as the card narrows below the 'xs'/'small' breakpoints
+  // were designed for (D24) — a narrow starter card no longer needs badges overflowing it.
+  const containerStyle = size === 'cqw' ? { width: 'clamp(14px, 13cqw, 22px)', height: 'clamp(14px, 13cqw, 22px)' } : undefined;
+  // 'micro' (bench cards) needs a smaller level-count bubble too — the 'xs' one (16px)
+  // is bigger than the whole 13px badge circle it would sit on.
+  const levelBadgeClass = size === 'micro'
+    ? 'absolute -top-0.5 -right-0.5 w-[9px] h-[9px] text-[6px] border'
+    : 'absolute -top-1 -right-1 w-4 h-4 text-[8px] border-2';
 
   return (
-    <div className="group/badge relative" title={`${name} (Lv.${level})`}>
-      <div className={`${containerSize} rounded-full bg-stone-800 border-2 border-stone-500/60 flex items-center justify-center relative shadow-md`}>
+    <div className="group/badge relative">
+      <div className={`${containerSize} rounded-full bg-stone-800 border-2 border-stone-500/60 flex items-center justify-center relative shadow-md`} style={containerStyle}>
         <Icon size={iconSize} style={{ color: cfg.color }} strokeWidth={2.5} />
         {level > 1 && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-stone-800 border-2 border-white/40 flex items-center justify-center text-[8px] font-black text-white leading-none">
+          <span className={`${levelBadgeClass} rounded-full bg-stone-800 border-white/40 flex items-center justify-center font-black text-white leading-none`}>
             {level}
           </span>
         )}
       </div>
-      {/* Tooltip */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 text-white text-[8px] font-bold uppercase tracking-wider rounded whitespace-nowrap opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-30 border border-white/10">
-        {name}
+      {/* Keyword-style tooltip (MTG reminder-text box): icon + name + level on top,
+          a plain-English line underneath explaining what it does and, if it gates a
+          roster identity, which one — not just the bare badge name. */}
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-[168px] rounded-lg bg-stone-900 text-white p-2 opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-30 border border-white/15 shadow-xl">
+        <div className="flex items-center gap-1.5 mb-1">
+          <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.5} />
+          <span className="text-[9px] font-black uppercase tracking-wider leading-none">{name}{level > 1 ? ` (Lv.${level})` : ''}</span>
+        </div>
+        <p className="text-[8px] leading-snug text-stone-300 normal-case">{BADGE_DESCRIPTIONS[name] ?? 'A player trait.'}</p>
       </div>
     </div>
   );
@@ -72,12 +119,14 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
 // Overflow indicator for a badge row that had to cap how many BadgeIcons it shows
 // (D18: readability — small cards show 2 + "+N", list rows show 3 + "+N"). `names`
 // carries the hidden badges' names for the tooltip.
-function BadgeOverflowIndicator({ count, names, size = 'small' }: { count: number; names: string[]; size?: 'normal' | 'small' | 'xs' }) {
+function BadgeOverflowIndicator({ count, names, size = 'small' }: { count: number; names: string[]; size?: 'normal' | 'small' | 'xs' | 'cqw' | 'micro' }) {
   if (count <= 0) return null;
-  const containerSize = size === 'xs' ? 'w-[18px] h-[18px] text-[7px]' : size === 'small' ? 'w-6 h-6 text-[9px]' : 'w-8 h-8 text-[10px]';
+  const containerSize = size === 'micro' ? 'w-[13px] h-[13px] text-[6px]' : size === 'xs' ? 'w-[18px] h-[18px] text-[7px]' : size === 'small' ? 'w-6 h-6 text-[9px]' : size === 'cqw' ? 'text-[7px]' : 'w-8 h-8 text-[10px]';
+  const containerStyle = size === 'cqw' ? { width: 'clamp(14px, 13cqw, 22px)', height: 'clamp(14px, 13cqw, 22px)' } : undefined;
   return (
     <div
       className={`${containerSize} shrink-0 rounded-full bg-stone-700 border-2 border-stone-500/60 flex items-center justify-center font-black text-stone-200`}
+      style={containerStyle}
       title={names.join(', ')}
     >
       +{count}
@@ -325,16 +374,17 @@ function StatCell({ label, value, border = true, className = '' }: { label: stri
 }
 
 export function MiniPlayerCard({ player, className = "", onClick }: { player: PlayerCardData, className?: string, onClick?: () => void }) {
-  const [isHovered, setIsHovered] = useState(false);
+  const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
   const tmColor = teamColors[player.player.team] || '#9ca3af';
   const headshotUrl = `/headshots/${player.player.id}.png`;
 
   return (
     <div
+      ref={hoverRef}
       className={`relative rounded border border-stone-300 bg-white cursor-pointer transition-transform hover:-translate-y-1 shadow-sm ${className}`}
       style={{ width: '40px', height: '56px' }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={onHoverEnter}
+      onMouseLeave={onHoverLeave}
       onClick={onClick}
     >
       <div className="absolute top-0 w-full h-1.5 opacity-80" style={{ backgroundColor: tmColor }} />
@@ -356,21 +406,10 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
         />
       </div>
 
-      <AnimatePresence>
-        {isHovered && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            className="absolute z-50 pointer-events-none"
-            style={{ top: '64px', left: '50%', translateX: '-50%' }}
-          >
-            <div className="scale-[0.8] origin-top">
-              <PlayerCard player={player} />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Screen-centred (D-hover) — was a fixed-offset popup below the card, which had
+          the same "invisible near the edge of the screen" problem the depth chart's
+          bench cards had; centring + the shared badge panel fixes both at once. */}
+      {isHovered && <PlayerHoverPreview player={player} />}
     </div>
   );
 }
@@ -427,35 +466,105 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
           />
         )}
         <div className={`absolute bottom-2 w-full flex justify-center px-2 ${size === 'sm' ? 'gap-1' : 'gap-2'}`}>
-          {/* BadgeIcon has no width of its own that shrinks with the card — a
-              narrow "sm" starter card (5-across depth chart) needs the small
-              variant or 4 fixed 32px icons overflow the card. Capped to 3 +
-              overflow here too, matching the compact/list variants (D18). */}
+          {/* 'cqw' badges (D24) scale with the card's own width instead of a fixed px
+              size, so a narrow "sm" starter card (5-across depth chart) never overflows
+              regardless of how narrow the column gets. Capped to 3 + overflow here too,
+              matching the compact/list variants (D18). */}
           {player.traits.slice(0, size === 'sm' ? 3 : 4).map((trait, i) => (
-            <BadgeIcon key={i} name={trait.name} level={trait.level} size={size === 'sm' ? 'small' : 'normal'} />
+            <BadgeIcon key={i} name={trait.name} level={trait.level} size={size === 'sm' ? 'cqw' : 'normal'} />
           ))}
           {size === 'sm' && player.traits.length > 3 && (
-            <BadgeOverflowIndicator count={player.traits.length - 3} names={player.traits.slice(3).map(t => t.name)} size="small" />
+            <BadgeOverflowIndicator count={player.traits.length - 3} names={player.traits.slice(3).map(t => t.name)} size="cqw" />
           )}
         </div>
       </div>
 
-      <div className={`grid text-center bg-white border-t border-stone-200 ${size === 'sm' ? 'grid-cols-4' : 'grid-cols-4 @[180px]:grid-cols-6'}`}>
-        <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
-        <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
-        <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
-        <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
-        <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
-        <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
-      </div>
+      {/* Starter cards drop the stats grid entirely (D24) — a 5-across depth chart has
+          no room for it and it was the biggest source of visual clutter on the starter
+          row; the full stat grid stays on the "md" card everywhere else (bench,
+          G-League, hover popups). */}
+      {size !== 'sm' && (
+        <div className="grid text-center bg-white border-t border-stone-200 grid-cols-4 @[180px]:grid-cols-6">
+          <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
+          <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
+          <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
+          <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className="hidden @[180px]:block" />
+          <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className="hidden @[180px]:block" />
+          <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
+        </div>
+      )}
 
       <div className="h-1.5" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
     </div>
   );
 }
 
-export function PlayerCard({ player, onClick, isSelected = false, compact = false, popupDirection = 'up', size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down'; size?: 'sm' | 'md' }) {
+// MTG-style keyword panel: every one of a player's badges, icon + name + level +
+// plain-English description, all visible at once — no need to hover a specific tiny
+// badge icon (which is what BadgeIcon's own tooltip required, and which never worked
+// reliably here: hovering a badge on a card that ALSO flips or pops up on hover just
+// triggers that instead). Sits beside the enlarged card in PlayerHoverPreview.
+function BadgePanel({ traits }: { traits: Trait[] }) {
+  if (!traits || traits.length === 0) return null;
+  return (
+    <div className="w-[190px] max-h-[70vh] overflow-y-auto rounded-xl bg-stone-900 border border-white/15 shadow-2xl p-3 flex flex-col gap-2.5">
+      {traits.map((trait, i) => {
+        const cfg = badgeConfig[trait.name] || { icon: Star, color: '#9CA3AF', bg: 'bg-stone-500/20' };
+        const Icon = cfg.icon;
+        return (
+          <div key={i} className="flex items-start gap-2">
+            <div className="w-7 h-7 shrink-0 rounded-full bg-stone-800 border-2 border-stone-500/60 flex items-center justify-center">
+              <Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[9px] font-black uppercase tracking-wide text-white leading-tight">
+                {trait.name}{trait.level > 1 ? ` (Lv.${trait.level})` : ''}
+              </div>
+              <p className="text-[8px] leading-snug text-stone-300 mt-0.5">{BADGE_DESCRIPTIONS[trait.name] ?? 'A player trait.'}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Screen-centred hover preview (D-hover): the enlarged card (static front, never
+ * flips — flipping is what caused this whole problem, see the badge-panel comment
+ * above) plus its full badge panel, both appearing together the instant the trigger
+ * is hovered.
+ *
+ * Portalled straight to `document.body` — NOT just `fixed inset-0` in place. A plain
+ * `position: fixed` element is only fixed to the true viewport if every ancestor is
+ * free of `transform`/`filter`/`perspective`; any one of those (e.g. DraftSidebar's
+ * slide animation, `style={{ transform: 'translateX(...)' }}`) makes that ancestor
+ * the fixed element's containing block instead, trapping the "centred" popup inside
+ * whatever box the ancestor occupies — which is how this shipped broken inside the
+ * draft sidebar. The portal sidesteps the whole CSS containing-block problem, so this
+ * can render inside any component tree, animated or not, and still land dead centre
+ * on the real viewport. The caller owns the hover state and controls mounting
+ * (`{isHovered && <PlayerHoverPreview .../>}`) — a portaled node is no longer a DOM
+ * descendant of a `.group` wrapper, so CSS `group-hover` can no longer reach it.
+ */
+export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center gap-3 pointer-events-none bg-black/60">
+      <BadgePanel traits={player.traits} />
+      <div className="relative w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl" style={{ aspectRatio: '5 / 7' }}>
+        <PlayerCardFront player={player} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+export function PlayerCard({ player, onClick, isSelected = false, compact = false, size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; size?: 'sm' | 'md' }) {
   const [isFlipped, setIsFlipped] = useState(false);
+  // Portalled hover preview needs real hover state, not CSS `group-hover` — a portal
+  // renders outside this element's DOM subtree so the CSS selector can't reach it.
+  const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
 
   const [c1, c2] = getPosColors(player.player.position);
 
@@ -463,16 +572,13 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
   const headshotUrl = `/headshots/${player.player.id}.png`;
 
   if (compact) {
-    const popClasses = popupDirection === 'up'
-      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom"
-      : popupDirection === 'down'
-      ? "top-full left-1/2 -translate-x-1/2 mt-2 origin-top"
-      : "left-full top-1/2 -translate-y-1/2 ml-2 origin-left";
-
     return (
       <div
-        className={`group relative w-full h-[46px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
+        ref={hoverRef}
+        className={`relative w-full h-[36px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
         onClick={onClick}
+        onMouseEnter={onHoverEnter}
+        onMouseLeave={onHoverLeave}
       >
         {/* Left Color Bar */}
         <div className="h-full w-1.5 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
@@ -483,30 +589,30 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         </div>
 
         {/* Details — two-line header: name + position pill, then gem + badges */}
-        <div className="flex-1 min-w-0 px-1.5 flex flex-col justify-center gap-0.5">
+        <div className="flex-1 min-w-0 px-1.5 flex flex-col justify-center gap-0">
            <div className="flex items-center justify-between gap-1">
-             <div className="font-bold text-[10px] uppercase truncate text-stone-800 leading-tight">
+             <div className="font-bold text-[9px] uppercase truncate text-stone-800 leading-tight">
                {player.player.name}
              </div>
-             <PositionIcon position={player.player.position} className="min-w-[20px] h-[13px] px-1 text-[8px] shrink-0" />
+             <PositionIcon position={player.player.position} className="min-w-[24px] h-[15px] px-1.5 text-[9px] shrink-0" />
            </div>
 
            <div className="flex items-center gap-1">
              <RarityGem rarity={player.rarity} size="sm" />
-             {/* D18: small card variant caps at 2 badges + "+N" overflow */}
+             {/* D18: small card variant caps at 2 badges + "+N" overflow; 'micro' (even
+                 smaller than 'xs') keeps them from dominating a 36px-tall bench row. */}
              {player.traits.slice(0, 2).map(t => (
-               <BadgeIcon key={t.name} name={t.name} level={t.level} size="xs" />
+               <BadgeIcon key={t.name} name={t.name} level={t.level} size="micro" />
              ))}
-             <BadgeOverflowIndicator count={Math.max(0, player.traits.length - 2)} names={player.traits.slice(2).map(t => t.name)} size="xs" />
+             <BadgeOverflowIndicator count={Math.max(0, player.traits.length - 2)} names={player.traits.slice(2).map(t => t.name)} size="micro" />
            </div>
         </div>
 
-        {/* Hover Pop-Up (Full Card) */}
-        <div className={`hidden group-hover:block absolute z-50 pointer-events-none scale-110 ${popClasses}`}>
-          <div className="w-[180px]">
-            <PlayerCard player={player} />
-          </div>
-        </div>
+        {/* Hover Pop-Up (D-hover) — screen-centred, not anchored to the row: an anchored
+            popup below a Bench 3 row (near the bottom of the depth chart) had nowhere to
+            go and was invisible; centring always keeps it fully on-screen and static
+            (never flips) so its badge panel is always readable, not a moving target. */}
+        {isHovered && <PlayerHoverPreview player={player} />}
       </div>
     );
   }
@@ -699,6 +805,21 @@ export function PlayCardFront({ play }: { play: Play }) {
   );
 }
 
+/** Screen-centred hover preview for Play cards — same reasoning as PlayerHoverPreview,
+ *  static front only (never flips). No badge panel: a play's requirements already show
+ *  on its own face via PlayRequirementIcons. */
+export function PlayHoverPreview({ play }: { play: Play }) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/60">
+      <div className="relative w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl" style={{ aspectRatio: '5 / 7' }}>
+        <PlayCardFront play={play} />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export function RoleTag({ playName, roleName, side }: { playName: string; roleName: string; side: 'offense' | 'defense' }): JSX.Element {
   const bgColor = side === 'offense' ? 'bg-amber-500' : 'bg-sky-500';
   const textColor = side === 'offense' ? 'text-amber-50' : 'text-sky-50';
@@ -713,8 +834,10 @@ export function RoleTag({ playName, roleName, side }: { playName: string; roleNa
   );
 }
 
-export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up', evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right'; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
+export function PlayCard({ play, onClick, isSelected = false, compact = false, evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
   const [isFlipped, setIsFlipped] = useState(false);
+  // Portalled hover preview needs real hover state — see PlayerCard's compact block.
+  const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
 
   // Requirements come from the synergy engine, never from the legacy `play.badges`
   // flavour text. Without an `evaluation` (draft room, home page) they render neutral;
@@ -737,12 +860,6 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
   }[cat];
 
   if (compact) {
-    const popClasses = popupDirection === 'up'
-      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom"
-      : popupDirection === 'down'
-      ? "top-full left-1/2 -translate-x-1/2 mt-2 origin-top"
-      : "left-full top-1/2 -translate-y-1/2 ml-2 origin-left";
-
     // Determine which roles to show: from status or from play definition
     const playDef = status?.def || getPlayDef(play);
     const roles = status?.roles || (playDef?.roles ?? []);
@@ -750,8 +867,11 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
 
     return (
       <div
-        className={`group relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
+        ref={hoverRef}
+        className={`relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
         onClick={onClick}
+        onMouseEnter={onHoverEnter}
+        onMouseLeave={onHoverLeave}
       >
         <div className={`h-full w-2 shrink-0 ${theme.barColor} rounded-l-[7px]`} />
         <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5 overflow-hidden">
@@ -779,11 +899,18 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
              )}
            </div>
         </div>
-        <div className={`hidden group-hover:block absolute z-50 pointer-events-none scale-110 ${popClasses}`}>
-           <div className="w-[180px] shadow-2xl">
-             <PlayCard play={play} evaluation={evaluation} status={status} players={players} />
-           </div>
-        </div>
+        {/* Screen-centred hover pop-up (D-hover), portalled to document.body — see
+            PlayerHoverPreview's doc comment for why it can't just be `fixed inset-0`
+            in place. This one keeps the full evaluated `PlayCard` (role fill status),
+            which `PlayCardFront` alone can't show, so it isn't `PlayHoverPreview`. */}
+        {isHovered && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/60">
+            <div className="w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl">
+              <PlayCard play={play} evaluation={evaluation} status={status} players={players} />
+            </div>
+          </div>,
+          document.body,
+        )}
       </div>
     );
   }

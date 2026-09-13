@@ -1,7 +1,8 @@
 'use client';
 
 import { ChevronRight, ChevronLeft, Users, LayoutList, ArrowLeftRight } from 'lucide-react';
-import { DraftCard, CardListRow } from './PlayerCard';
+import { DraftCard, CardListRow, PlayerHoverPreview, PlayHoverPreview } from './PlayerCard';
+import { useHoverPreview } from './useHoverPreview';
 import { RosterDistribution } from './RosterDistribution';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 
@@ -14,6 +15,24 @@ function ZoneToggleButton({ zone }: { zone: Zone }) {
   return (
     <div className="p-1.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors" title={`Move to ${target}`}>
       <ArrowLeftRight size={13} />
+    </div>
+  );
+}
+
+/** One zone row + its own hover-preview state (D-hover) — a hook call per row needs
+ *  its own component instance, can't be called from inside a `.map()` directly. */
+function ZoneCardRow({ card, trailing }: { card: DraftCard; trailing: React.ReactNode }) {
+  // Destructured (not `const hover = ...; hover.ref`) — eslint-plugin-react-hooks'
+  // `refs` rule conservatively taints every property read off an object that also
+  // carries a ref, so `hover.isHovered` gets misflagged as a ref access otherwise.
+  const { ref: hoverRef, isHovered, onMouseEnter, onMouseLeave } = useHoverPreview<HTMLDivElement>();
+  return (
+    <div ref={hoverRef} className="relative" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      <CardListRow card={card} trailing={trailing} />
+      {/* Screen-centred + badge panel (D-hover) — CardListRow itself has no hover
+          preview at all; a row in this scrollable roster/G-League list otherwise has
+          nowhere for an anchored popup to go. */}
+      {isHovered && (card.type === 'Player' ? <PlayerHoverPreview player={card} /> : <PlayHoverPreview play={card} />)}
     </div>
   );
 }
@@ -47,7 +66,7 @@ function ZoneSection({
       <div className="flex flex-col gap-1.5 min-h-[50px]">
         {cards.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
         {cards.map((c, idx) => (
-          <CardListRow
+          <ZoneCardRow
             key={`${c.id}-${idx}`}
             card={c}
             trailing={

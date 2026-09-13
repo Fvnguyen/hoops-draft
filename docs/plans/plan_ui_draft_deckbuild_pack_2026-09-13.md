@@ -1,144 +1,150 @@
 # Plan: ui_draft_deckbuild_pack
 
-File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress; waves 0-1 done 2026-09-13, remaining T7 items next (see Progress).
-Sequence: **2a**, before `game_engine` and `draft_ai` (both edit `hooks/useDraftEngine.ts`;
-this plan lands first, never touches `engine/draft.ts`). Depends on nothing.
+File: `docs/plans/plan_ui_draft_deckbuild_pack_2026-09-13.md`. Status: in progress;
+D1-D19 shipped 2026-09-13 (commit `1bdc599`); **wave 3 (D20-D25) code-complete
+2026-09-13**, T8-T11 all done and unit/type/lint-clean — three verification gaps remain
+(full-draft click-through, native-drag confirmation, a Playwright login fixture), see
+Verification section.
+Sequence: **2a**, before `game_engine`/`draft_ai` (both edit `hooks/useDraftEngine.ts`).
+Depends on nothing.
 Files owned: `frontend/src/components/{PackOpener,PackRevealCard,DraftRoom,DraftSidebar,
-DeckBuilder,PlayPanel,TopKPIBand,PlayerCard,RadarChart,DonutChart}.tsx` + new components in
-Tasks, `hooks/useDraftEngine.ts`, `lib/{sessionBuilder,draftTimer,packReveal,
-rosterChecklist}.ts`, `app/{page,draft,roster,rosters,deckbuilder-test,
-pack-opener-preview}/**`, new `src/audio/`, new `engine/{depthChart,positions}.ts`,
-`engine/deckbuilder.ts` (eligibility + optional session fields), `tests/*.spec.ts`.
+DeckBuilder,DepthSlotColumn,PlayPanel,TopKPIBand,PlayerCard,RadarChart,DonutChart}.tsx`,
+`hooks/useDraftEngine.ts`, `lib/{sessionBuilder,draftTimer,packReveal,rosterChecklist}.ts`,
+`app/{page,draft,roster,rosters,deckbuilder-test,pack-opener-preview}/**`, `src/audio/`,
+`engine/{depthChart,positions}.ts`, `tests/*.spec.ts`.
 
-Why: pack opener has no rarity moment, draft room has no motion/clock, the deck builder
-(1,217 lines) leans on drag-and-drop/`alert`/`confirm`/hidden lock reasons and disagrees
-with the engine on position eligibility. Goal: MTG-Arena-style drafting, click-first
-builder. Engine numbers untouched.
+## Goal
+
+Pack opener/draft room/deck builder feel like a real MTG-Arena-style draft-to-roster flow,
+click-first, no `alert`/`confirm`. Wave 3 goal specifically: opening a fresh draft's deck
+builder gives a sane starting roster (a starter per position, bench filled by OVR, capped
+at 12) instead of every guard piling into PG and every Center left in G-League; the KPI
+band and G-League sidebar stay out of the way by default; cards are small enough to read
+and drag onto slots that are actually big enough to hit.
 
 ## Decisions (locked)
 
-Draft modes and flow
-- D1 Two CTAs on the home page; Premier is primary. Route `/draft?mode=quick|premier`,
-  read server-side in `app/draft/page.tsx`; missing/unknown = `premier`. Optional
-  `DraftSession.mode` and `DraftPickRecord.autoPicked` (old sessions load unchanged).
-- D2 **Quick Draft**: opener before pack 1 only, no timer, no round summaries.
-- D3 **Premier Draft**: opener before every pack (skippable). After the last pick of packs
-  1 and 2 the draft pauses in a new state `round-summary`: Active roster and G-League side
-  by side (G/F/C bars, rarity counts, badge tally, plays), "Next pack passes left/right",
-  one button "Start round N" that runs the next opener. Pack 3 goes straight to the builder.
-- D4 Premier picks are timed: seconds per pick 1..8 = `[60,55,50,40,30,20,15,10]`; ring
-  amber under 10s, red+pulsing under 5s. `pickDeadline` (epoch ms, `useDraftEngine`) is
-  drawn by `PickTimerRing`; arms once a pack is in place, null during
-  openers/summaries/quick mode. Dev-only `?clock=fast` scales it.
-- D5 On timeout `expirePick(overallPick)` picks for the human via `getBotPick` on a
-  synthetic neutral seat (no engine change), zone **Active**, `autoPicked: true`, ticker
-  "Clock took <name> for you". Guarded by `overallPick` (no double-pick). Bots unaffected.
+D1-D19 (draft modes/timer, pack opener v2 motion+sound, draft room pass animation, deck
+builder slot model/eligibility/click-first/toasts/readability/save flow) shipped
+2026-09-13 — full text in commit `1bdc599` and git history; unchanged, not restated here.
 
-Pack opener v2
-- D6 Cards dealt face down in rarity order (Common→Mythic; play card by its own rarity)
-  so the guaranteed Rare+ slot flips last. Auto-stagger 120ms; Rare holds 700ms glowing,
-  other cards dimmed; Mythic holds 950ms with glow+edge flash+shake. Pure helper
-  `lib/packReveal.ts` (`orderForReveal`, `buildRevealTimeline`); reduced motion = one
-  200ms fade + static 400ms glow, no shake.
-- D7 **Pick from the spread**: after the last flip the spread stays; click selects, "Take
-  <name>" (Enter) confirms; zone always Active (a zoning default, not roster auto-fill).
-  Skip (Esc) jumps to the revealed spread, pick still made there. Opener renders inside
-  the real room's `<main>` (header/sidebar blurred behind, `DraftRoomIntroBackdrop`
-  deleted); heading "Pack N of 3".
-- D8 Handoff is the pass animation (D10) itself: seven remaining cards slide to the
-  neighbour, next pack slides in; only the picked card flies to its sidebar row via a
-  framer-motion `layoutId`/`LayoutGroup` (fallback: `getBoundingClientRect` fly-to-rect).
-- D9 Sound: `src/audio/sfx.ts` synthesizes `tear`/`flip`/`rareSting(rarity)` via Web Audio
-  (no files); AudioContext on first click; gain 0.15; toggle in opener + draft header;
-  `localStorage['magicball.sfx']`; **off by default**.
+**Wave 3 — reported deck builder problems, root-caused against current code:**
 
-Draft room v2
-- D10 `PackPassStage`: pack exits 140px toward the passing side, next enters from the
-  other side, 280ms each (~600ms total, skippable via click/key). Bot avatars pulse in
-  passing order (40ms stagger), ticker rows animate with the same stagger.
-- D11 Header adds the timer ring (Premier only), a mode pill, and the SFX toggle.
-
-Deck builder v2
-- D12 Slot model: 5 columns x 4 fixed slots (Starter, Bench 1-3); roster exactly 12; a
-  full column's empty slots disabled ("Column full"), a 13th player refused via toast.
-  Persisted shape stays the dense `Record<Position, string[]>`; pure helpers in
-  `engine/depthChart.ts` (`placeFromBench`, `moveWithinChart`, `removeFromChart`, `countPlayers`).
-- D13 One source of position eligibility: `engine/positions.ts` (`naturalPositions`,
-  `positionFit`, `defaultColumn`); UI's four local copies and the engine's private
-  `getEligiblePositions` deleted. Bots stay natural-only.
-- D14 Click-first: select a G-League row then click a slot; empty-slot click opens the
-  same **AssignPopover** an empty play role uses (extracted from `PlayPanel.RoleRow`);
-  ▲/▼ and native HTML5 drag stay for pointer devices (no framer `drag` prop — conflicts).
-- D15 Feedback: `ToastProvider` (no library) replaces `alert`/`confirm`; the move happens
-  immediately, toast offers Undo (5s) from a snapshot; ineligible drops/clicks toast the
-  engine reason. **Roster ready** checklist (12 players, 5 starters naming the missing
-  column, 3 plays, roles valid, identity optional) replaces tooltip-only Save blockers.
-- D16 Why-locked hints: each identity lane shows, after its unlocked plans, the
-  highest-progress locked plan with up to two `ArchetypeStatus.missing` conditions,
-  muted, not clickable (amends "locked plans hidden" to "not selectable, one hint per
-  lane"; AGENTS.md updated).
-- D17 Fluid layout: builder body is a container; plays column/G-League sidebar use `cqw`
-  min/max, not fixed widths; report band wraps under 1000px; radar/donut become viewBox
-  SVGs. Verified 1024-1920px; phone landscape unverified but no fixed-width region.
-- D18 Readability: small cards show 2 badges + "+N", list rows 3 + "+N"; PlayPanel role/
-  player names 11px, requirement text 10px, name truncates before the position pill.
-- D19 Save flow: "Save" (`/rosters`) and "Save & play season" (`/season?rosterId&sessionId`,
-  only with a session). New `/roster/[id]` edit route passes `sessionId` through;
-  `/deckbuilder-test?rosterId=` redirects there (else keeps its sandbox); `/rosters` links
-  to the new route. (Restates AGENTS.md: no OVR to users, rarity as gem not frame, no
-  inspect panel, no roster auto-fill.)
-
-## Progress
-
-- 2026-09-13: wave 0 (T0, driver) done — contracts/stubs for D1-D19 landed and compiled
-  (`lib/draftTimer.ts`, `engine/{positions,depthChart}.ts`, `Toast.tsx`, `audio/sfx.ts`
-  stub, `RosterDistribution`/`AssignPopover` extractions, widened `useDraftEngine`/
-  `PackOpener`/`DraftRoom` APIs). Commit `cfa1858`.
-- 2026-09-13: wave 1 (T1-T6, six parallel agents) done, followed by a driver T7
-  integration pass — real hook behaviour (round-summary, pick clock, timeout auto-pick),
-  reworked opener (D6-D9), draft room v2 (D10-D11 + home CTAs), deck builder v2 (D12-D15,
-  D17, D19), presentation polish (D16, D18), `/roster/[id]` route. T7 fixed cross-agent
-  integration gaps: opener's `onPick` wasn't wired to `pickFromIntro` (picks were never
-  recorded), clock scale wasn't passed to `armIntroClock`, `RoundSummary`'s pack numbers
-  were off by one, `PickTimerRing` duplicated the timer schedule. `tsc`/lint (0 errors)/
-  `npm test` (184 tests)/`next build` all clean; live verification blocked by the
-  parallel `auth_approval` session's login gate. Commit `1bdc599`. Remaining: Playwright
-  specs beyond `home.spec.ts`, screenshots, and a manual click-through once auth allows it.
+- D20 **Auto-distribution root cause**: `DeckBuilder.tsx`'s fresh-draft init effect pushes
+  each Roster-zoned card via `defaultColumn(position)` (`engine/positions.ts`), which is
+  `naturalPositions(raw)[0]` — always the *first* natural column (`G`→always `PG`, never
+  `SG`; `F`→always `SF`, never `PF`), with no awareness of how full a column already is.
+  Result: PG/SF overflow past their 4 slots (excess silently unrendered — see
+  `DepthSlotColumn` reading only `players[0..3]`) while SG/PF/C sit empty. Fix: new pure
+  `autoDistributeRoster(players: PlayerCardData[]): {chart: DenseDepthChart, overflow:
+  PlayerCardData[]}` in `engine/depthChart.ts`. Two passes over `DEPTH_COLUMNS` (`['PG',
+  'SG','SF','PF','C']`): pass 1 fills slot 0 (starter) per column, pass 2 fills slots 1-3;
+  each pick takes the highest-OVR unplaced player with `positionFit === 'natural'` for
+  that column, falling back to `'adjacent'` only if no natural candidate remains for that
+  column in that pass. Placement stops entirely at `MAX_ROSTER` (12, already exported by
+  `depthChart.ts`). Deterministic tie-break: OVR desc, then player id asc.
+- D21 Wire-up: `DeckBuilder.tsx`'s init effect (lines ~145-186) calls
+  `autoDistributeRoster` on the fresh-draft branch only (`initialDepthOrder` absent); the
+  saved-roster edit branch (`initialDepthOrder` present) is untouched — it already
+  restores an exact prior layout. `overflow` players are moved into the G-League zone
+  (they're never discarded) with one `Toast`: "N player(s) moved to G-League — roster
+  capped at 12" (only shown when `overflow.length > 0`).
+- D22 **TopKPIBand**: already has a working collapse + `localStorage` persistence
+  (`deckbuilder.reportCollapsed`) but defaults *expanded* (`useState(false)`,
+  `readStoredCollapsed()` returns `false` when the key is unset). Flip both defaults to
+  collapsed-first-visit; a user's own un-collapse still persists and wins on return
+  visits. Also shrink the expanded layout: `RadarChart`/`DonutChart` 176px/124px →
+  ~120px/90px so an intentionally-expanded band doesn't dominate the viewport (target
+  expanded band height ≤ ~180px at 1280px wide, screenshot-verified, down from ~230px+).
+- D23 **G-League sidebar**: code already defaults collapsed
+  (`isGLeagueCollapsed = useState(true)`, `DeckBuilder.tsx:133`, `w-12` strip). No state
+  change needed — T9 takes a fresh `/deckbuilder-test` screenshot to confirm; if it still
+  renders expanded, that's a regression to root-cause and fix in the same task, not a
+  redesign.
+- D24 **Card sizing**: starter cards (`PlayerCard size="sm"`, used in
+  `DepthSlotColumn.tsx:220`) drop the stats grid entirely for `size='sm'`
+  (`PlayerCard.tsx:443-450` currently renders it regardless of size) and pin badges to a
+  `cqw`-scaled variant of `BadgeIcon` (today `BadgeIcon`'s `xs`/`small`/`normal` sizes are
+  fixed 18/24/32px — `PlayerCard.tsx:430-433`'s own comment already flags this as the
+  cause of badge overflow on narrow cards) so badges shrink with the column instead of
+  needing per-size manual variant picking. Bench cards (`compact`, currently `h-[46px]`,
+  already stats-free) shrink further to `h-[36px]` and use `BadgeIcon`'s `xs` (18px)
+  variant only. Drag-and-drop always uses a `compact`-rendered drag image
+  (`e.dataTransfer.setDragImage`) regardless of the source card's own size, so dragging a
+  starter card doesn't drag an oversized ghost around the screen.
+- D25 **Drop-zone hit areas**: empty-slot buttons (`DepthSlotColumn.tsx:139`, currently a
+  fixed `min-h-[62px]`) grow to match the occupied-card footprint at that column's actual
+  width (same box a placed card would occupy, not a fixed small pad), so a dragged card —
+  which after D24 is still noticeably taller than 62px — isn't aimed at a target much
+  smaller than itself. Occupied-slot drop targets (already the full card `div`) unchanged.
 
 ## Out of scope
 
 Engine/balance numbers (game_engine), bot valuation (draft_ai), season/game views, phone
-portrait (mobile_pwa), audio files/music, resuming a draft after a page reload.
+portrait (mobile_pwa), redesigning the depth-chart slot model itself (D12 stands), moving
+auto-distribution logic into the engine's bot-roster builder (bots are unaffected).
 
 ## Tasks
 
-- T0 Contracts (driver): done — see Progress.
-- T1 Hook (mid): done. T2 Opener (top): done. T3 Draft room (mid): done. T4 Builder
-  (top, longest pole): done. T5 Presentation (mid): done. T6 Routes/docs (low): done.
-  All six — see Progress for what shipped and file names.
-- T7 Integration (driver, top): cross-agent wiring fixes done (see Progress); remaining —
-  Playwright specs beyond `home.spec.ts`, screenshots, type-check/lint/tests, commits.
+- T0-T6: done, see commit `1bdc599`.
+- T7 (driver, top): cross-agent wiring — done. Remaining: Playwright specs beyond
+  `home.spec.ts`, screenshots, manual click-through — still open, folded into T11 below.
+- T8 (mid): **done.** `autoDistributeRoster` (D20) + 6 Vitest cases, incl. one that
+  caught a real ordering bug (an earlier column's adjacent-fit fallback could steal a
+  player a later column would have fit naturally — fixed with a natural-fit sub-pass
+  across all columns before any adjacent fallback runs). Wired per D21. `npm test`
+  (190/190)/`tsc`/lint clean. Not live-verified through a full draft — browser-automation
+  coordinate clicks kept mis-hitting the draft room's "Back to Home" link mid-draft;
+  correctness rests on the Vitest cases + code review, still owed a human click-through.
+- T9 (low): **done.** D22/D23 as specced. `tsc`/lint/`npm test` clean. **Confirmed live**
+  (test account, `/deckbuilder-test`): KPI band and G-League sidebar both render
+  collapsed on first load, screenshotted.
+- T10 (mid): **done.** D24 as specced — `cqw` badge scaling (`clamp(14px, 13cqw, 22px)`,
+  needs the `@container` ancestor; added to `PackRevealCard.tsx` too), starter stats grid
+  removed, bench card `h-[46px]`→`h-[36px]`, drag-image swap via an imperative hidden
+  ghost node (not React state — must be correct before the synchronous
+  `setDragImage` call). `tsc`/lint/`npm test` clean. **Confirmed live**: starter/bench
+  sizing correct on `/deckbuilder-test` at 1400px. Drag-image swap itself not
+  screenshot-verified — synthetic mouse automation doesn't reliably trigger native HTML5
+  `dragstart`, and OS-rendered drag images aren't reliably capturable by a page
+  screenshot regardless; deferred to T11's manual pass.
+- T11 (mid): **done.** D25: starter empty slots `aspect-[5/7]` (real card footprint),
+  bench empty slots `h-[36px]` (compact-card height) — replaces the old uniform
+  `min-h-[62px]` pad. `tsc`/lint/`npm test` clean. **Confirmed live** (test account,
+  1400px): empty-slot sizing screenshotted; click-to-place (G-League→PG starter) works;
+  an ineligible click toasts "Not eligible for this position"; placed starter shows no
+  stats row. Native HTML5 drag: `dragover` tinting fired and the ghost name updated
+  correctly, but the browser tool's synthetic drag never completed a `drop` — an
+  automation limitation, not evidence of a bug (click-to-place exercises the same
+  `handleDropOnSlot`/`handleDropOnZone` code). Playwright `deckbuilder` spec **not
+  written** — every existing spec, `home.spec.ts` included, already fails against the
+  Supabase login gate added after this plan started; one new spec without a shared login
+  fixture would be shallow. Flagged below as a separate follow-up.
 
 ## Parallelization
 
-Wave 0 (T0, driver) done. Wave 1: T1-T6 in parallel, disjoint files. Wave 2: T7 (driver;
-agents never run git). Wall-clock with agents: 1.5-2 days.
+Wave 3: T8 and T9 run in parallel (disjoint files). T10 then T11 run sequentially after
+(both touch `DepthSlotColumn.tsx`) — same agent or handed off with a diff review between.
+Driver reviews all four against a live `/deckbuilder-test` before commit.
 
 ## Recommended model tier
 
-Driver: Fable 5.1/Opus 5/Gemini 3 Pro (T0, T2 motion design, T7). Agents: Opus 5/Gemini 3
-Pro for T4; Sonnet 5/Gemini 3 Pro for T1, T3, T5; Haiku 4.5/Gemini 3 Flash for T6.
+T8 mid (Sonnet 5/Gemini 3 Pro — algorithm correctness, needs real test cases). T9 low
+(Haiku 4.5/Gemini 3 Flash — mechanical). T10/T11 mid (careful CSS + native DnD).
 
 ## Verification / exit criteria
 
-- Vitest: `draftTimer`, `packReveal` (rare last, holds inserted, reduced-motion total),
-  `depthChart`, `positions` (engine/UI agree on `G-F`, `F/C`, `G`), `rosterChecklist`,
-  `bots.test.ts` still green. `npm test`, `tsc --noEmit`, `npm run lint` clean.
-- Playwright (dev server running): `draft-quick` (no second opener), `draft-premier`
-  ("Round 1 complete" / "Pack 2 of 3"), `draft-timer` (`?clock=fast` → "Clock took"),
-  `deckbuilder` (click-to-add, empty-slot popover, 13th add toasts), `save-play`
-  (→ `/season?rosterId=…&sessionId=…`; premier spec also at 1024x768).
-- Screenshots of `/pack-opener-preview?pack=2&timed=1` (Mythic hold), `/draft?mode=premier`
-  round summary, `/roster/[id]` at 1024-1920px wide; checked for clipping.
-- Manual: one full Premier draft with SFX on, one Quick draft, one roster built by click
-  only (no drag), one edited roster keeps its Play Season button.
+- `npm test` (190/190), `tsc --noEmit`, `npm run lint` — done, clean, every wave-3 task.
+- KPI band collapsed by default, G-League sidebar collapsed by default, starter/bench
+  card sizes visibly smaller with no starter stats, empty-slot sizing matches the real
+  card footprint, click-to-place and its ineligible-drop toast all work — done,
+  confirmed live with a real account (screenshots taken this session, not committed).
+- Still open before this plan can close: (1) a full 24-pick draft click-through to see
+  `autoDistributeRoster` seed a real skewed-position roster end-to-end (T8's gap) —
+  automation kept mis-hitting nav chrome mid-draft; (2) an actual native-HTML5-drag
+  confirmation, since only click-to-place was verified (T11's gap) — both need a human
+  in the browser, not another automation attempt. (3) A login fixture so the Playwright
+  suite (currently 100% broken by the Supabase auth gate, including `home.spec.ts`) can
+  run at all — a repo-wide fix, belongs in its own plan, not this one.
+- On completion of (1)-(2): `git mv` this file to `docs/completed/`, update
+  `docs/HANDOVER.md` and the roadmap row, `/roadmap done ui_draft_deckbuild_pack`.

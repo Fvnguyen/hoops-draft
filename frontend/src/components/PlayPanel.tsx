@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import type { Play, PlayerCardData } from './PlayerCard';
 import { RarityGem, PositionIcon } from './PlayerCard';
 import type { PlayStatus, PlayRole } from '../engine/playbook';
@@ -102,7 +102,11 @@ function RoleRow({
   return (
     <div className="relative">
       <div
-        className={`flex items-center gap-2 px-2 py-1.5 min-h-[40px] rounded-md border transition-colors ${rowBg} ${filled ? 'border-l-4' : ''} ${isSelected ? 'ring-2 ring-emerald-400 animate-pulse' : ''}`}
+        className={`flex items-center gap-2 px-2 py-1.5 min-h-[40px] rounded-md border transition-colors ${rowBg} ${filled ? 'border-l-4' : ''} ${isSelected ? 'ring-2 ring-emerald-400 animate-pulse' : ''} ${!filled ? 'cursor-pointer' : ''}`}
+        // The whole row is the drop target (native drag) AND, when unfilled, the click
+        // target that opens the AssignPopover below — no separate small "Assign" chip
+        // (it read as a tiny drop zone rather than an obvious full-row control).
+        onClick={!filled ? (e) => { e.stopPropagation(); onRoleClick(role.id); } : undefined}
         onDragOver={(e) => { e.preventDefault(); }}
         onDragEnter={(e) => {
           e.preventDefault();
@@ -148,13 +152,10 @@ function RoleRow({
             </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onRoleClick(role.id); }}
-            className="shrink-0 px-2 py-1 rounded border border-dashed border-stone-400 text-[9px] font-bold uppercase text-stone-500 hover:border-emerald-500 hover:text-emerald-600"
-          >
+          <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold uppercase text-stone-500">
             Assign
-          </button>
+            <ChevronDown size={12} />
+          </span>
         )}
       </div>
 

@@ -18,7 +18,7 @@ export function PackRevealCard({ card, revealed }: { card: DraftCard; revealed: 
 
   if (card.type === 'Player') {
     return (
-      <div className="relative aspect-[5/7] w-full">
+      <div className="relative @container aspect-[5/7] w-full">
         <PlayerCardFront player={card} size="sm" />
       </div>
     );
