@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { GameTheater, TeamInfo } from '../engine/game';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { GameTheater, TeamInfo, PlayerBoxScore } from '../engine/game';
 import { Play as PlayIcon, FastForward, Pause, SkipForward } from 'lucide-react';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
 import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
@@ -145,6 +145,48 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
   );
 }
 
+
+/**
+ * Box score for the possessions played so far (the theater is precomputed, so the final
+ * box score would spoil the game). Points come from running-score deltas, minutes from
+ * on-court possessions scaled to the period length. Turnovers are only known at the end.
+ */
+function deriveLiveBoxScore(game: GameTheater, throughIndex: number): { home: PlayerBoxScore[]; away: PlayerBoxScore[] } {
+  const stats = new Map<string, PlayerBoxScore>();
+  const teamOf = new Map<string, 'home' | 'away'>();
+  for (const p of game.homeTeam.players) { teamOf.set(p.id, 'home'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0 }); }
+  for (const p of game.awayTeam.players) { teamOf.set(p.id, 'away'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0 }); }
+
+  const regulationPoss = game.possessions.filter(e => e.quarter <= 4).length || 1;
+  const otPoss = new Map<number, number>();
+  for (const e of game.possessions) if (e.quarter > 4) otPoss.set(e.quarter, (otPoss.get(e.quarter) ?? 0) + 1);
+
+  let prev: [number, number] = [0, 0];
+  for (let i = 0; i <= Math.min(throughIndex, game.possessions.length - 1); i++) {
+    const e = game.possessions[i];
+    const minPerPoss = e.quarter <= 4 ? 48 / regulationPoss : 5 / (otPoss.get(e.quarter) ?? 10);
+    for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) { b.possessions++; b.minutes += minPerPoss; } }
+    for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.minutes += minPerPoss; }
+    const delta = e.team === 'home' ? e.runningScore[0] - prev[0] : e.runningScore[1] - prev[1];
+    prev = e.runningScore;
+    if (delta > 0 && e.scoringPlayerId) {
+      const b = stats.get(e.scoringPlayerId);
+      if (b) {
+        b.points += delta;
+        if (e.outcome === '3pt') { b.threePointers++; if (delta === 4) b.andOnes++; }
+        else if (delta >= 2) { b.twoPointers++; if (e.outcome === 'and1') b.andOnes++; }
+      }
+      if (e.assistPlayerId) { const a = stats.get(e.assistPlayerId); if (a) a.assists++; }
+    }
+  }
+  const rows = Array.from(stats.values()).map(b => ({ ...b, minutes: Math.round(b.minutes * 10) / 10 }));
+  const byPoints = (a: PlayerBoxScore, b: PlayerBoxScore) => b.points - a.points;
+  return {
+    home: rows.filter(b => teamOf.get(b.playerId) === 'home').sort(byPoints),
+    away: rows.filter(b => teamOf.get(b.playerId) === 'away').sort(byPoints),
+  };
+}
+
 export function GameView({ game, onComplete }: GameViewProps) {
   const [currentPoss, setCurrentPoss] = useState(-1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
@@ -156,6 +198,7 @@ export function GameView({ game, onComplete }: GameViewProps) {
   const totalPoss = game.possessions.length;
   const isComplete = currentPoss >= totalPoss - 1;
   const currentEvent = currentPoss >= 0 ? game.possessions[currentPoss] : null;
+  const liveBox = useMemo(() => deriveLiveBoxScore(game, currentPoss), [game, currentPoss]);
   const score = currentEvent ? currentEvent.runningScore : [0, 0];
   const quarter = currentEvent?.quarter || 1;
 
@@ -345,9 +388,15 @@ export function GameView({ game, onComplete }: GameViewProps) {
         {/* Box Score */}
         {activeTab === 'boxScore' && (
           <div className="flex-1 overflow-y-auto p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">
+              {isComplete ? 'Final box score' : currentPoss < 0 ? 'Pre-game' : `Through ${quarterLabel} · live`}
+            </div>
             {['home', 'away'].map(side => {
               const team = side === 'home' ? game.homeTeam : game.awayTeam;
-              const box = side === 'home' ? game.boxScore.home : game.boxScore.away;
+              // Never reveal the precomputed final numbers mid-game: derive from what has been played.
+              const box = isComplete
+                ? (side === 'home' ? game.boxScore.home : game.boxScore.away)
+                : (side === 'home' ? liveBox.home : liveBox.away);
               return (
                 <div key={side} className="mb-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{team.name}</h3>
@@ -374,7 +423,7 @@ export function GameView({ game, onComplete }: GameViewProps) {
                           <td className="text-center py-1">{b.threePointers}</td>
                           <td className="text-center py-1">{b.andOnes}</td>
                           <td className="text-center py-1">{b.assists}</td>
-                          <td className="text-center py-1">{b.turnovers}</td>
+                          <td className="text-center py-1">{isComplete ? b.turnovers : '–'}</td>
                         </tr>
                       ))}
                     </tbody>

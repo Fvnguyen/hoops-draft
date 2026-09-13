@@ -401,7 +401,12 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
           }}
         />
         {player.rarity === 'Mythic' && (
-          <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.28) 100%)', mixBlendMode: 'overlay' }} />
+          <div
+            // No mix-blend-mode here: a blended layer is composited separately and ignores
+            // backface-visibility, so a Mythic front bled through the card back on flips.
+            className="absolute inset-0 pointer-events-none"
+            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.22) 100%)' }}
+          />
         )}
         <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
           {player.traits.slice(0, 4).map((trait, i) => (
@@ -500,7 +505,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         {/* ===== BACK ===== */}
         <div
           className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-stone-900 text-stone-100 border border-stone-700"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' }}
         >
           {/* Top accent bar (same as front) */}
           <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
@@ -776,7 +781,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
         {/* ===== FRONT ===== */}
         <div
           className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-100"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', isolation: 'isolate' }}
         >
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
@@ -945,7 +950,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
         {/* ===== BACK ===== */}
         <div
           className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-900"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' }}
         >
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
