@@ -1,6 +1,6 @@
 # Plan: stability_pass
 
-File: `docs/plans/plan_stability_pass_2026-09-13.md`. Status: planned.
+File: `docs/completed/plan_stability_pass_2026-09-13.md`. Status: done 2026-09-13.
 Sequence: 0 in `docs/ROADMAP.md` (runs before everything else). Depends on: nothing.
 Files owned: `.github/workflows/ci.yml` (new), `frontend/src/app/{error,global-error}.tsx`
 (new), `frontend/src/hooks/useDraftEngine.ts` (bot profile seeding only),
