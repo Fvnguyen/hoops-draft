@@ -1,6 +1,6 @@
 # Plan: auth_approval
 
-File: `docs/plans/plan_auth_approval_2026-09-13.md`. Status: planned. Sequence: 2c. Depends on: `plan_vercel_deploy_2026-09-13.md`. Files owned: `frontend/src/app/(auth)/` (new), `frontend/src/app/admin/` (new), auth server/client helpers, auth API/actions, Supabase migration/seed instructions, auth tests, auth deployment documentation. Do not modify engine files or the IndexedDB schema in this plan.
+File: `docs/plans/plan_auth_approval_2026-09-13.md`. Status: in progress. Sequence: 2c. Depends on: `plan_vercel_deploy_2026-09-13.md`. Files owned: `frontend/src/app/(auth)/` (new), `frontend/src/app/admin/` (new), auth server/client helpers, auth API/actions, Supabase migration/seed instructions, auth tests, auth deployment documentation. Do not modify engine files or the IndexedDB schema in this plan.
 
 ## Goal
 
