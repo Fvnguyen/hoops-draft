@@ -12,7 +12,31 @@ function isProtected(pathname: string) {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+// The project has multiple live production aliases (hoops-draft.vercel.app,
+// hoops-draft-fvnguyen1.vercel.app, hoops-draft-git-main-fvnguyen1.vercel.app,
+// frontend-six-zeta-19.vercel.app). Auth cookies and IndexedDB are both
+// strictly per-origin, so landing on a non-canonical one mid-session drops
+// your session (fixed above) or makes your saved rosters/drafts look missing
+// (they're not — they're just in that origin's storage, unreachable from here
+// by design). Normalizing to one host stops either from happening again; it
+// can't recover data already split across them. Listed explicitly (not a
+// blanket *.vercel.app match) so a future PR preview deployment's own unique
+// URL still works for previewing that build.
+const CANONICAL_HOST = 'hoops-draft.vercel.app';
+const NON_CANONICAL_ALIASES = new Set([
+  'hoops-draft-fvnguyen1.vercel.app',
+  'hoops-draft-git-main-fvnguyen1.vercel.app',
+  'frontend-six-zeta-19.vercel.app',
+]);
+
 export async function proxy(request: NextRequest) {
+  if (NON_CANONICAL_ALIASES.has(request.nextUrl.hostname)) {
+    const canonical = new URL(request.url);
+    canonical.hostname = CANONICAL_HOST;
+    canonical.port = '';
+    return NextResponse.redirect(canonical, 308);
+  }
+
   let response = NextResponse.next({ request });
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
