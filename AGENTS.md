@@ -12,7 +12,8 @@ better-sqlite3.
 
 ```
 data/            Scraper + stats pipeline (Python + Playwright). See data/README.md.
-docs/            Design docs: game_mechanics.md, card_schema.md, analytics/, ARCHITECTURE.md, HANDOVER.md
+docs/            Design docs: game_mechanics.md, card_schema.md, analytics/, ARCHITECTURE.md, HANDOVER.md,
+                 ROADMAP.md; completed/ holds finished implementation plans (kept for the "why")
 scripts/         Node dev scripts: analyze_game_data.js, check_card_counts.js, screenshot.js
 frontend/        The Next.js app (see frontend/README.md)
   src/engine/    PURE game engine (no react/next/fs): types, rng, balance (all tuning

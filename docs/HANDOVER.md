@@ -1,13 +1,21 @@
-# Handover — 2026-09-12
+# Handover — 2026-09-13
 
 ## Current state
 
-Magic Ball is playable end to end: draft (cube, 8 seats) -> deck builder -> single game or
-7-game season -> in-app analytics export. The engine was recently reworked to a
-multi-channel shot model (rim/mid/three) with channel-specific synergies and plays; that
-work, plus a home page redesign ("HOOPS DRAFT" hero) and a `FranchiseDashboard` /
-`TopKPIBand` / `DonutChart` set of season-summary components, is committed. Playwright
-visual tests exist for the new components with win32 snapshots.
+Magic Ball is playable end to end: draft (cube, 8 seats, 8-card packs, pack-opening
+animation on the first pack) -> deck builder (depth chart, play assignments, identity
+selection) -> single game or round-robin season -> in-app analytics export. The engine is
+a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
+archetype identities and assigned-player plays; persistence is IndexedDB behind
+`GameStore`. 93 Vitest tests pass, type-check is clean, `npm run lint` has 8 errors left
+(7 `no-explicit-any` in the dev-only `/test-ui` page, 1 `set-state-in-effect` in
+`DraftRoom.tsx`) plus 13 warnings.
+
+Finished design docs live in `docs/completed/` (plays & synergies, pack opening). A plan
+that is still being worked on stays in `docs/` and moves there when its milestone lands.
+
+Last commits before this handover: `cc32edf` (live box score, Mythic flip fix),
+`ab04726` (pack opener), `fa10e01` (stricter archetype unlocking).
 
 ## What this cleanup changed
 
@@ -58,17 +66,10 @@ score mean ≈ 114 with sd ≈ 16, ≈ 80% of scores in [90, 130], home win ≈ 
 Still open for Phase 2 (game improvements):
 - Margins are wide (mean ≈ 18, NBA ≈ 12) and score sd ≈ 16 (NBA ≈ 12): candidates are
   `EFFICIENCY_SCALE`, the ±0.25 edge clamp, and rotation swings.
-- Play card NAMES in `DraftRoom.tsx` `playsDB` don't match their EFFECTS in
-  `synergies.ts` `PLAY_EFFECTS` for play-std-2 (card "Box-and-One" → effect "Iso Ball"),
-  play-std-3 ("Horns" → "Zone Defense"), play-std-4 ("Full Court Press" → "Fast Break"),
-  play-std-5 ("Four Out One In" → "3-Point Barrage"). The card text describes something
-  other than what the play does; decide which side is right and align both.
-- Synergy activation is very uneven (Young Guns ≈ 85%, Brotherhood ≈ 14%).
-- Bots still value players by PER only.
-- Lint: 84 errors remain in UI files (`npm run lint` in `frontend/`): 63 `no-explicit-any`
-  (35 in the dev-only `app/debug/page.tsx`, the rest in TopKPIBand, GameView,
-  FranchiseDashboard, test-ui) and 15 `react-hooks/static-components` (components defined
-  inside render). Mechanical; do before adding CI.
+- Bots still value players by PER only (plus role staffing in the deck builder).
+- Lint: 8 errors remain (see "Current state"). Mechanical; do before adding CI.
+- Resolved since: the play-name/effect mismatch and the uneven synergy activation were
+  superseded by the playbook catalog and archetype identities (see below).
 
 ## Phase 1 (engine isolation) — done 2026-09-12
 
@@ -101,7 +102,7 @@ Follow-ups noticed during Phase 1:
 
 ## Plays & archetypes milestone — done 2026-09-13
 
-Design: docs/plan_plays_and_synergies_2026-09-13.md with the reduced scope agreed with the
+Design: `docs/completed/plan_plays_and_synergies_2026-09-13.md` with the reduced scope agreed with the
 owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans hidden.
 
 - **Engine**: `engine/archetypes.ts` (16 plans, tiers Online/Dedicated, caps, bot
@@ -130,7 +131,32 @@ owner: no mastery tiers, fixed allocations, no chemistry synergies, locked plans
 Open after this milestone:
 - Play impact is modest; decide whether allocations/effects should grow.
 - Overtime possessions do not roll for plays (scope cut).
+- Defensive identities are rarer than offensive ones; the defensive colour thresholds in
+  `MONO_THRESHOLDS_BY_COLOR` are the knob.
 - Home page / draft room still show the 5:7 play card with neutral roles (fine).
+
+## Post-milestone fixes — 2026-09-13
+
+- **Pack opener** (`ab04726`, another session; design in
+  `docs/completed/plan_pack_opening_animation_2026-09-13.md`): the first pack of a new
+  draft plays a reveal sequence with dedicated static reveal cards, Skip control and
+  keyboard support; presentation only, the draft state is unchanged.
+- **Live box score** (`cc32edf`): `GameView.tsx` derives the box score from the
+  possessions played so far (`deriveLiveBoxScore`) instead of showing the precomputed
+  final numbers mid-game. Header reads "Through Q# · live", turnovers show "–" until the
+  game is complete, then the engine's final box is used. Verified: live points equal the
+  scoreboard.
+- **Mythic card back bleed-through** (`cc32edf`): the Mythic foil overlay no longer uses
+  `mix-blend-mode` (blended layers ignore `backface-visibility`, Firefox especially) and
+  every card face has `isolation: isolate`. Not reproducible in Chromium; if a user
+  still sees the front through the back, test in Firefox first.
+- **Legacy data**: seasons saved before round-robin game days are upgraded on load
+  (`normalizeSeason`, `humanMatchup`); rosters drafted with duplicate play ids render
+  with index-suffixed keys. Rosters saved before v2 load with empty play assignments.
+- Screenshots under `frontend/*.png` are gitignored.
+
+Not done / waiting on the owner: first Vercel preview deploy; Phase 3 (mobile/PWA) after
+game improvements.
 
 ## How to run everything
 
@@ -159,7 +185,10 @@ activating, localStorage quota risk) and the phased PWA/DB/Vercel plan is in
 Findings below are from `docs/analytics/analysis_report.md` and
 `docs/analytics/analytics_summary.md` (auto-generated by `scripts/analyze_game_data.js`
 against 5 draft sessions / 5 seasons / 35 games, curated by the user). Quoted "User Note"
-lines are the user's own hypotheses, not verified conclusions.
+lines are the user's own hypotheses, not verified conclusions. Items 1, 3 and 4 predate
+the Phase 0 fixes and the plays & archetypes milestone (PPP is now ≈ 1.08; the old
+synergy list and `PLAY_EFFECTS` no longer exist) — re-run `npm run analyze` on a fresh
+export before acting on them.
 
 1. **Offense is too powerful.** Points-per-possession measured at 1.290 (NBA average
    ~1.15); only 36% of logged game scores fell in a realistic 90-130 range. User's
@@ -204,7 +233,9 @@ lines are the user's own hypotheses, not verified conclusions.
 |---|---|
 | How is a player's OVR computed? | `frontend/src/engine/ratings.ts` (+ constants in `engine/balance.ts`) |
 | How does a possession resolve? | `frontend/src/engine/game.ts` (`resolvePossession`) |
-| What do synergies/plays do? | `frontend/src/engine/synergies.ts`, `docs/game_mechanics.md` |
+| What do identities/plays do? | `frontend/src/engine/archetypes.ts`, `engine/playbook.ts`, called in `engine/game.ts`; `docs/game_mechanics.md` |
+| Why were plays/identities built this way? | `docs/completed/plan_plays_and_synergies_2026-09-13.md` |
+| Tuning identity thresholds | `npm run feasibility -- 100` (`frontend/scripts/archetype-feasibility.ts`) |
 | How is the cube built / how do bots draft? | `frontend/src/engine/draft.ts`, `frontend/src/hooks/useDraftEngine.ts` |
 | How do bots build a roster? | `frontend/src/engine/deckbuilder.ts` |
 | Season scheduling/standings | `frontend/src/engine/season.ts` |
