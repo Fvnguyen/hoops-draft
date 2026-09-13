@@ -1,18 +1,51 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { GameTheater, PossessionEvent } from '../engine/game';
+import { GameTheater, TeamInfo } from '../engine/game';
 import { Play as PlayIcon, FastForward, Pause, SkipForward } from 'lucide-react';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
-import { calcTeamBonuses } from '../engine/synergies';
-import { MiniPlayerCard } from './PlayerCard';
+import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
+import type { PlaybookStatus, PlayStatus } from '../engine/playbook';
+import { MiniPlayerCard, type PlayerCardData } from './PlayerCard';
 
 interface GameViewProps {
   game: GameTheater;
   onComplete?: () => void;
 }
 
-export function TeamStarters({ team, isHome }: { team: any, isHome: boolean }) {
+const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
+const TIER_CLASS: Record<ArchetypeTier, string> = {
+  none: 'bg-stone-100 text-stone-400',
+  online: 'bg-emerald-100 text-emerald-700',
+  dedicated: 'bg-amber-100 text-amber-700',
+};
+
+function playerName(players: PlayerCardData[], id?: string): string {
+  if (!id) return 'Unassigned';
+  return players.find(p => p.id === id)?.player.name ?? 'Unknown';
+}
+
+function playRoleSummary(status: PlayStatus, players: PlayerCardData[]): string {
+  return status.roles.map(r => `${r.role.name}: ${playerName(players, r.playerId)}`).join(', ');
+}
+
+/** A team's selected archetype(s) (Offense/Defense Philosophy, or one Gold plan), evaluated. */
+function teamArchetypeStatuses(team: TeamInfo): ArchetypeStatus[] {
+  const statuses = evaluateArchetypes(team.players, new Set(team.starters));
+  const byId = new Map(statuses.map(s => [s.def.id, s]));
+  const selection = team.archetypes;
+  const selected: ArchetypeStatus[] = [];
+  if (selection?.gold) {
+    const s = byId.get(selection.gold);
+    if (s) selected.push(s);
+  } else {
+    if (selection?.offense) { const s = byId.get(selection.offense); if (s) selected.push(s); }
+    if (selection?.defense) { const s = byId.get(selection.defense); if (s) selected.push(s); }
+  }
+  return selected;
+}
+
+export function TeamStarters({ team, isHome }: { team: TeamInfo; isHome: boolean }) {
   const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
   const resolvedDepth = resolveDepthChart(team.players, team.depthChart);
   return (
@@ -21,11 +54,11 @@ export function TeamStarters({ team, isHome }: { team: any, isHome: boolean }) {
         const starter = resolvedDepth[pos]?.[0];
         if (!starter) return null;
         return (
-          <div 
-            key={pos} 
+          <div
+            key={pos}
             className="relative transition-transform hover:-translate-y-2 hover:z-20"
-            style={{ 
-              marginLeft: idx === 0 ? '0' : '-1.5rem', 
+            style={{
+              marginLeft: idx === 0 ? '0' : '-1.5rem',
               zIndex: isHome ? 10 - idx : idx,
             }}
           >
@@ -37,17 +70,33 @@ export function TeamStarters({ team, isHome }: { team: any, isHome: boolean }) {
   );
 }
 
-export function TaleOfTheTape({ game }: { game: any }) {
+function TeamMechanics({ team, playbook }: { team: TeamInfo; playbook: PlaybookStatus }) {
+  const archetypes = teamArchetypeStatuses(team);
+  const activePlays = playbook.plays.filter(p => p.active);
+  return (
+    <div className="space-y-1 text-xs">
+      {archetypes.map(s => (
+        <div key={s.def.id} className="text-stone-600 flex items-center gap-1.5">
+          <span className="text-emerald-500 text-[10px]">✦</span> {s.def.name}
+          <span className={`text-[8px] font-black uppercase tracking-wide px-1 py-0.5 rounded ${TIER_CLASS[s.tier]}`}>{TIER_LABEL[s.tier]}</span>
+        </div>
+      ))}
+      {activePlays.map(p => (
+        <div key={p.assignment.cardId} className="text-stone-600 flex items-start gap-1.5">
+          <span className="text-amber-500 text-[10px] mt-0.5">▶</span>
+          <span>Play: {p.def.name} — {playRoleSummary(p, team.players)}</span>
+        </div>
+      ))}
+      {archetypes.length === 0 && activePlays.length === 0 && <div className="text-stone-400 italic">No identity or active plays yet.</div>}
+    </div>
+  );
+}
+
+export function TaleOfTheTape({ game }: { game: GameTheater }) {
   const homeDepth = resolveDepthChart(game.homeTeam.players, game.homeTeam.depthChart);
   const homeId = calcRosterIdentity(homeDepth);
   const awayDepth = resolveDepthChart(game.awayTeam.players, game.awayTeam.depthChart);
   const awayId = calcRosterIdentity(awayDepth);
-  
-  const allHome = Object.values(homeDepth).flat() as any[];
-  const homeBonuses = calcTeamBonuses(allHome, game.homeTeam.plays, new Map());
-  
-  const allAway = Object.values(awayDepth).flat() as any[];
-  const awayBonuses = calcTeamBonuses(allAway, game.awayTeam.plays, new Map());
 
   const bars = [
     { label: 'Finishing', h: homeId.finishing, a: awayId.finishing, color: 'bg-purple-500' },
@@ -64,22 +113,14 @@ export function TaleOfTheTape({ game }: { game: any }) {
       <div className="grid grid-cols-2 gap-8">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{game.awayTeam.name} Mechanics</h3>
-          <div className="space-y-1 text-xs">
-             {awayBonuses.activeSynergies.map((s: any) => <div key={s.name} className="text-stone-600 flex items-center gap-1.5"><span className="text-emerald-500 text-[10px]">✦</span> {s.name}</div>)}
-             {awayBonuses.activePlays.filter((p: any) => p.activated === 'full').map((p: any) => <div key={p.name} className="text-stone-600 flex items-center gap-1.5"><span className="text-amber-500 text-[10px]">▶</span> {p.name}</div>)}
-             {awayBonuses.activeSynergies.length === 0 && awayBonuses.activePlays.filter((p: any) => p.activated === 'full').length === 0 && <div className="text-stone-400 italic">No fully active mechanics.</div>}
-          </div>
+          <TeamMechanics team={game.awayTeam} playbook={game.playbook.away} />
         </div>
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{game.homeTeam.name} Mechanics</h3>
-          <div className="space-y-1 text-xs">
-             {homeBonuses.activeSynergies.map((s: any) => <div key={s.name} className="text-stone-600 flex items-center gap-1.5"><span className="text-emerald-500 text-[10px]">✦</span> {s.name}</div>)}
-             {homeBonuses.activePlays.filter((p: any) => p.activated === 'full').map((p: any) => <div key={p.name} className="text-stone-600 flex items-center gap-1.5"><span className="text-amber-500 text-[10px]">▶</span> {p.name}</div>)}
-             {homeBonuses.activeSynergies.length === 0 && homeBonuses.activePlays.filter((p: any) => p.activated === 'full').length === 0 && <div className="text-stone-400 italic">No fully active mechanics.</div>}
-          </div>
+          <TeamMechanics team={game.homeTeam} playbook={game.playbook.home} />
         </div>
       </div>
-      
+
       <div className="bg-white rounded-xl border border-stone-200 p-4">
         <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-4 text-center">Team Identity Matchup</h3>
         <div className="flex flex-col gap-2">
@@ -269,7 +310,7 @@ export function GameView({ game, onComplete }: GameViewProps) {
         {activeTab === 'playByPlay' && currentPoss >= 0 && (
           <div ref={feedRef} className="flex-1 overflow-y-auto p-3">
             <div className="flex flex-col gap-1">
-              {visiblePossessions.slice(-30).map((poss, i) => {
+              {visiblePossessions.slice(-30).map(poss => {
                 const isScoring = poss.outcome === '2pt' || poss.outcome === '3pt' || poss.outcome === 'and1';
                 const isHomeTeam = poss.team === 'home';
                 return (
@@ -278,7 +319,17 @@ export function GameView({ game, onComplete }: GameViewProps) {
                     <span className={`shrink-0 text-[10px] font-bold uppercase w-12 ${isHomeTeam ? 'text-blue-600' : 'text-red-500'}`}>
                       {isHomeTeam ? game.homeTeam.name.substring(0, 6) : game.awayTeam.name.substring(0, 6)}
                     </span>
-                    <span className="flex-1">{poss.narrativeText}</span>
+                    <span className="flex-1 flex items-center flex-wrap gap-1.5">
+                      {poss.calledPlays?.map((call, idx) => (
+                        <span
+                          key={idx}
+                          className={`shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}
+                        >
+                          {call.side === 'offense' ? '▶' : '🛡'} {call.name}
+                        </span>
+                      ))}
+                      <span>{poss.narrativeText}</span>
+                    </span>
                     {isScoring && (
                       <span className="shrink-0 font-mono text-[10px] text-stone-400">
                         {poss.runningScore[0]}-{poss.runningScore[1]}

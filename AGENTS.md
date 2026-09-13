@@ -68,6 +68,10 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 - **Game simulation**: `frontend/src/engine/game.ts` (possession battle, multi-channel
   shot resolution) and `frontend/src/engine/synergies.ts` (badge-driven synergy/play
   modifiers). **Every tuning number lives in `frontend/src/engine/balance.ts`.**
+- **Identities and plays**: `engine/archetypes.ts` (colour thresholds, 16-plan catalog,
+  tiers, caps, `bestSelection` for bots) and `engine/playbook.ts` (play roles, fixed
+  allocations, `evaluatePlaybook`); called possessions are resolved in `engine/game.ts`.
+  Tune thresholds with `npm run feasibility`. No mastery tiers, no chemistry synergies.
 - **Randomness**: engine code never calls `Math.random()`; it takes an `Rng`
   (`engine/rng.ts`, mulberry32). Drafts, seasons and games store their seed, so any
   result can be reproduced. Pass `--seed N` to `npm run balance` for a deterministic run.

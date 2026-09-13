@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type JSX } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2 } from 'lucide-react';
+import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard } from '@/engine/types';
 import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation, type PlayRequirement, type PlayRequirementStatus } from '@/engine/synergies';
+import type { PlayStatus } from '@/engine/playbook';
+import { getPlayDef, describeRoleRequirement } from '@/engine/playbook';
 
 // Re-exported so existing `from '@/components/PlayerCard'` type-only imports
 // elsewhere in the app keep working — the canonical definitions live in
@@ -355,18 +357,80 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
   );
 }
 
-export function PlayerCard({ player, onClick, isSelected = false, compact = false, popupDirection = 'up', size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down'; size?: 'sm' | 'md' }) {
-  const [isFlipped, setIsFlipped] = useState(false);
-
+export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { player: PlayerCardData; isSelected?: boolean; size?: 'sm' | 'md' }) {
   const [c1, c2] = getPosColors(player.player.position);
   const teamColor = teamColors[player.player.team] || '#374151';
   const teamId = teamIds[player.player.team];
-
-  // NBA CDN headshot URL -> now served locally via the offline script!
   const headshotUrl = `/headshots/${player.player.id}.png`;
   const logoUrl = teamId ? `/logos/${teamId}.svg` : null;
   const isRareOrMythic = player.rarity === 'Rare' || player.rarity === 'Mythic';
   const rarityAccentColor = player.rarity === 'Mythic' ? '#f97316' : '#eab308';
+
+  return (
+    <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl border border-stone-300 flex flex-col ${isSelected ? 'ring-2 ring-orange-500' : ''}`} style={{ background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
+      {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: rarityAccentColor }} />}
+
+      <div className="flex items-center gap-2 px-2.5 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
+        <RarityGem rarity={player.rarity} size="lg" />
+        <div className="flex-1 min-w-0 flex flex-col leading-tight">
+          <span className={`font-bold tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
+          <span className="text-[10px] font-semibold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
+        </div>
+        <PositionIcon position={player.player.position} />
+      </div>
+
+      <div className="flex-1 relative overflow-hidden bg-stone-200">
+        <div className="absolute top-0 right-0 w-9 h-full opacity-90 flex flex-col items-center pt-2" style={{ backgroundColor: teamColor }}>
+          {logoUrl && (
+            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-md border border-stone-200 z-10">
+              <img src={logoUrl} alt={player.player.team} className="w-6 h-6 object-contain" />
+            </div>
+          )}
+        </div>
+
+        <img
+          src={headshotUrl}
+          alt={player.player.name}
+          className="w-full h-full object-cover object-top"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
+              target.src = 'https://www.transparenttextures.com/patterns/black-mamba.png';
+              target.className = "w-full h-full object-cover object-center opacity-10";
+            }
+          }}
+        />
+        {player.rarity === 'Mythic' && (
+          <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.28) 100%)', mixBlendMode: 'overlay' }} />
+        )}
+        <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
+          {player.traits.slice(0, 4).map((trait, i) => (
+            <BadgeIcon key={i} name={trait.name} level={trait.level} />
+          ))}
+        </div>
+      </div>
+
+      <div className={`grid text-center bg-white border-t border-stone-200 ${size === 'sm' ? 'grid-cols-4' : 'grid-cols-4 @[180px]:grid-cols-6'}`}>
+        <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
+        <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
+        <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
+        <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
+        <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
+        <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
+      </div>
+
+      <div className="h-1.5" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
+    </div>
+  );
+}
+
+export function PlayerCard({ player, onClick, isSelected = false, compact = false, popupDirection = 'up', size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down'; size?: 'sm' | 'md' }) {
+  const [isFlipped, setIsFlipped] = useState(false);
+
+  const [c1, c2] = getPosColors(player.player.position);
+
+  // NBA CDN headshot URL -> now served locally via the offline script!
+  const headshotUrl = `/headshots/${player.player.id}.png`;
 
   if (compact) {
     const popClasses = popupDirection === 'up'
@@ -431,72 +495,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         transition={{ duration: 0.3, type: 'spring', stiffness: 200, damping: 20 }}
       >
         {/* FRONT */}
-        <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl group-hover:shadow-2xl transition-shadow border border-stone-300 flex flex-col ${isSelected ? 'ring-2 ring-orange-500' : ''}`} style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
-          {/* Rarity top accent line — Rare/Mythic only; frame itself stays neutral */}
-          {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: rarityAccentColor }} />}
-
-          {/* Top Bar — [gem] [name / team · age] [position pill]: gem and position frame the text */}
-          <div className="flex items-center gap-2 px-2.5 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
-            <RarityGem rarity={player.rarity} size="lg" />
-            <div className="flex-1 min-w-0 flex flex-col leading-tight">
-              <span className={`font-bold tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
-              <span className="text-[10px] font-semibold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
-            </div>
-            <PositionIcon position={player.player.position} />
-          </div>
-
-          {/* Main Visual */}
-          <div className="flex-1 relative overflow-hidden bg-stone-200">
-            {/* Team color stripe with Logo */}
-            <div className="absolute top-0 right-0 w-9 h-full opacity-90 flex flex-col items-center pt-2" style={{ backgroundColor: teamColor }}>
-              {logoUrl && (
-                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-md border border-stone-200 z-10">
-                  <img src={logoUrl} alt={player.player.team} className="w-6 h-6 object-contain" />
-                </div>
-              )}
-            </div>
-
-            <img
-              src={headshotUrl}
-              alt={player.player.name}
-              className="w-full h-full object-cover object-top"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
-                    target.src = 'https://www.transparenttextures.com/patterns/black-mamba.png';
-                    target.className = "w-full h-full object-cover object-center opacity-10";
-                }
-              }}
-            />
-            {/* Mythic foil highlight — faint diagonal overlay, kept off other rarities */}
-            {player.rarity === 'Mythic' && (
-              <div
-                className="absolute inset-0 pointer-events-none"
-                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.28) 100%)', mixBlendMode: 'overlay' }}
-              />
-            )}
-            {/* Traits/Badges as Icons */}
-            <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
-              {player.traits.slice(0, 4).map((trait, i) => (
-                <BadgeIcon key={i} name={trait.name} level={trait.level} />
-              ))}
-            </div>
-
-          </div>
-
-          {/* Stats Row — 4 cols under 180px container width (or size="sm"), 6 at/above */}
-          <div className={`grid text-center bg-white border-t border-stone-200 ${size === 'sm' ? 'grid-cols-4' : 'grid-cols-4 @[180px]:grid-cols-6'}`}>
-            <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
-            <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
-            <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
-            <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
-            <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className={size === 'sm' ? 'hidden' : 'hidden @[180px]:block'} />
-            <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
-          </div>
-
-          {/* Bottom accent bar */}
-          <div className="h-1.5" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
-        </div>
+        <PlayerCardFront player={player} isSelected={isSelected} size={size} />
 
         {/* ===== BACK ===== */}
         <div
@@ -629,7 +628,60 @@ function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
   );
 }
 
-export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up', evaluation }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right'; evaluation?: PlayEvaluation }) {
+export function PlayCardFront({ play }: { play: Play }) {
+  const cat = play.playCategory || 'special';
+  const theme = {
+    system: { accent: 'bg-amber-500', accentDark: 'bg-amber-600', board: 'bg-amber-900', label: 'SYSTEM' },
+    special: { accent: 'bg-teal-500', accentDark: 'bg-teal-600', board: 'bg-teal-900', label: 'SPECIAL' },
+    basic: { accent: 'bg-slate-500', accentDark: 'bg-slate-600', board: 'bg-slate-800', label: 'BASIC' },
+  }[cat];
+  const requirements = getPlayRequirements(getPlayEffectId(play));
+
+  return (
+    <div className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-100">
+      <div className={`h-1.5 w-full ${theme.accent}`} />
+      <div className="px-2 py-1 bg-white flex items-center gap-1 border-b border-stone-200">
+        <RarityGem rarity={play.rarity} size="sm" />
+        <div className="flex-1 min-w-0 ml-1">
+          <div className={`font-black uppercase leading-none tracking-tight text-stone-900 ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
+            {play.name}
+          </div>
+          <div className="text-[7px] text-stone-500 font-bold uppercase tracking-wider leading-tight mt-0.5">PLAY</div>
+        </div>
+        <div className={`text-[9px] font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>{theme.label}</div>
+      </div>
+      <div className={`flex-1 relative overflow-hidden ${theme.board} flex items-center justify-center p-2`}>
+        <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
+        <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
+          <PlayBoardGraphic cat={cat} />
+        </div>
+      </div>
+      {requirements.length > 0 && (
+        <div className="px-2 py-2 bg-white flex flex-col items-center gap-1 border-t border-stone-200 min-h-[40px] justify-center">
+          <span className="text-[6px] text-stone-400 font-bold uppercase tracking-widest leading-none">Synergy Key</span>
+          <PlayRequirementIcons requirements={requirements} size="small" />
+        </div>
+      )}
+      <div className={`h-1 ${theme.accent}`} />
+    </div>
+  );
+}
+
+export function RoleTag({ playName, roleName, side }: { playName: string; roleName: string; side: 'offense' | 'defense' }): JSX.Element {
+  const bgColor = side === 'offense' ? 'bg-amber-500' : 'bg-sky-500';
+  const textColor = side === 'offense' ? 'text-amber-50' : 'text-sky-50';
+
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-1 rounded-full text-[8px] font-bold uppercase ${bgColor} ${textColor} shrink-0 h-[18px]`}
+      title={`${playName} — ${roleName}`}
+    >
+      {roleName}
+    </span>
+  );
+}
+
+export function PlayCard({ play, onClick, isSelected = false, compact = false, popupDirection = 'up', evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; popupDirection?: 'up' | 'down' | 'right'; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
   const [isFlipped, setIsFlipped] = useState(false);
 
   // Requirements come from the synergy engine, never from the legacy `play.badges`
@@ -653,14 +705,19 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
   }[cat];
 
   if (compact) {
-    const popClasses = popupDirection === 'up' 
-      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom" 
-      : popupDirection === 'down' 
+    const popClasses = popupDirection === 'up'
+      ? "bottom-full left-1/2 -translate-x-1/2 mb-2 origin-bottom"
+      : popupDirection === 'down'
       ? "top-full left-1/2 -translate-x-1/2 mt-2 origin-top"
       : "left-full top-1/2 -translate-y-1/2 ml-2 origin-left";
 
+    // Determine which roles to show: from status or from play definition
+    const playDef = status?.def || getPlayDef(play);
+    const roles = status?.roles || (playDef?.roles ?? []);
+    const showRoleDots = status !== undefined;
+
     return (
-      <div 
+      <div
         className={`group relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
         onClick={onClick}
       >
@@ -671,16 +728,28 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
            </div>
            <div className="flex items-center gap-1.5 overflow-hidden">
              <span className={`text-[9px] font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
-             {requirements.length > 0 && (
-               <div className="flex-1 min-w-0 overflow-hidden [&>div]:justify-start [&>div]:flex-nowrap">
-                 <PlayRequirementIcons requirements={requirements} size="xs" />
+             {roles && roles.length > 0 && (
+               <div className="flex items-center gap-0.5 shrink-0">
+                 {roles.map((roleOrStatus, i) => {
+                   const filled = 'filled' in roleOrStatus ? roleOrStatus.filled : false;
+                   const badge = ('role' in roleOrStatus ? roleOrStatus.role : roleOrStatus)?.badge;
+                   const badgeName = badge || 'Veteran Presence';
+                   return (
+                     <div key={i} className="relative">
+                       <BadgeIcon name={badgeName} level={1} size="xs" />
+                       {showRoleDots && (
+                         <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-stone-900 ${filled ? 'bg-emerald-400' : 'bg-stone-300'}`} />
+                       )}
+                     </div>
+                   );
+                 })}
                </div>
              )}
            </div>
         </div>
         <div className={`hidden group-hover:block absolute z-50 pointer-events-none scale-110 ${popClasses}`}>
            <div className="w-[180px] shadow-2xl">
-             <PlayCard play={play} evaluation={evaluation} />
+             <PlayCard play={play} evaluation={evaluation} status={status} players={players} />
            </div>
         </div>
       </div>
@@ -726,17 +795,121 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
             </div>
           </div>
 
-          {/* Playboard Image Area */}
-          <div className={`flex-1 relative overflow-hidden ${theme.board} flex items-center justify-center p-2`}>
-            <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
-            
-            <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
-                <PlayBoardGraphic cat={cat} />
-            </div>
-          </div>
+          {/* Playboard Image Area OR Role List (when status is present) */}
+          {status ? (
+            // NEW: Role list view
+            <div className="flex-1 flex flex-col overflow-hidden px-2 py-1.5 bg-white/50">
+              <div className="flex-1 overflow-y-auto space-y-1 mb-1">
+                {status.roles.map((roleStatus, i) => {
+                  const playerFromRoster = players?.find(p => p.id === roleStatus.playerId);
+                  const isSelected = selectedRoleId === roleStatus.role.id;
+                  const isFilled = roleStatus.filled;
+                  const headshotUrl = playerFromRoster ? `/headshots/${playerFromRoster.id}.png` : undefined;
 
-          {/* Requirement icons — driven by the synergy engine, not the legacy play.badges flavour text */}
-          {requirements.length > 0 && (
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-1 p-1 rounded border transition-all ${
+                        isFilled
+                          ? 'border-l-4 border-l-emerald-500 border-r border-r-stone-200 border-t border-t-stone-200 border-b border-b-stone-200 bg-emerald-50/30'
+                          : 'border border-stone-200 bg-stone-50/30'
+                      } ${isSelected ? 'ring-2 ring-amber-400' : ''}`}
+                      style={isSelected ? { animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' } : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRoleClick?.(roleStatus.role.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.add('bg-amber-100/50');
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('bg-amber-100/50');
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-amber-100/50');
+                        e.stopPropagation();
+                        const cardId = e.dataTransfer.getData('text/plain') || '';
+                        if (cardId) {
+                          onRoleDrop?.(roleStatus.role.id, cardId);
+                        }
+                      }}
+                    >
+                      {/* Badge + Level */}
+                      <div className="flex-shrink-0 pt-0.5">
+                        <BadgeIcon name={roleStatus.role.badge || 'Veteran Presence'} level={roleStatus.role.minLevel ?? 1} size="xs" />
+                      </div>
+
+                      {/* Role name + player assignment */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[9px] font-bold uppercase text-stone-800 leading-none truncate">
+                          {roleStatus.role.name}
+                        </div>
+                        {playerFromRoster && headshotUrl ? (
+                          <div className="flex items-center gap-0.5 mt-0.5">
+                            <img
+                              src={headshotUrl}
+                              alt=""
+                              className="w-5 h-5 rounded-full object-cover object-top border border-stone-300 flex-shrink-0 bg-stone-100"
+                              onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                            />
+                            <span className="text-[8px] text-stone-700 font-semibold truncate">
+                              {playerFromRoster.player.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-0.5 mt-0.5 px-1 py-0.5 border border-dashed border-stone-300 rounded text-[8px] text-stone-500 font-semibold">
+                            Assign
+                          </div>
+                        )}
+                        {!isFilled && roleStatus.reason && (
+                          <div className="text-[8px] text-red-600 font-semibold leading-none mt-0.5">
+                            {roleStatus.reason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Clear button */}
+                      {playerFromRoster && (
+                        <button
+                          className="flex-shrink-0 p-0.5 hover:bg-red-100 rounded transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRoleClear?.(roleStatus.role.id);
+                          }}
+                        >
+                          <X size={12} className="text-red-600" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Status line */}
+              <div className="flex items-center justify-between gap-1 px-1 py-1 border-t border-stone-200 bg-white/60">
+                <span className={`text-[8px] font-black uppercase tracking-wider ${status.active ? 'text-emerald-600' : 'text-stone-500'}`}>
+                  {status.active ? 'ACTIVE' : 'INACTIVE'}
+                </span>
+                <span className="text-[8px] text-stone-600 font-semibold">
+                  {Math.round(status.allocation * 100)}% of {status.def.side === 'offense' ? 'possessions' : 'opp. possessions'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            // ORIGINAL: Playboard Image Area
+            <div className={`flex-1 relative overflow-hidden ${theme.board} flex items-center justify-center p-2`}>
+              <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
+
+              <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
+                  <PlayBoardGraphic cat={cat} />
+              </div>
+            </div>
+          )}
+
+          {/* Requirement icons — only when there's no status (legacy) */}
+          {!status && requirements.length > 0 && (
             <div className="px-2 py-2 bg-white flex flex-col items-center gap-1 border-t border-stone-200 min-h-[40px] justify-center">
                 <span className="text-[6px] text-stone-400 font-bold uppercase tracking-widest leading-none">Synergy Key</span>
                 <PlayRequirementIcons requirements={requirements} size="small" />
@@ -744,6 +917,26 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
                   <span className={`text-[8px] font-black uppercase tracking-widest ${stateLabel.color}`}>{stateLabel.text}</span>
                 )}
             </div>
+          )}
+
+          {/* Neutral role list — when no status but getPlayDef exists */}
+          {!status && !requirements.length && (
+            (() => {
+              const playDef = getPlayDef(play);
+              return playDef && playDef.roles.length > 0 ? (
+                <div className="px-2 py-2 bg-white flex flex-col gap-1 border-t border-stone-200">
+                  {playDef.roles.map((role, i) => (
+                    <div key={i} className="flex items-center gap-1 text-[8px]">
+                      <BadgeIcon name={role.badge || 'Veteran Presence'} level={role.minLevel ?? 1} size="xs" />
+                      <div className="flex-1">
+                        <div className="font-bold text-stone-800 uppercase">{role.name}</div>
+                        <div className="text-stone-600">{describeRoleRequirement(role)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+            })()
           )}
 
           <div className={`h-1 ${theme.accent}`} />
@@ -780,27 +973,40 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, p
               </p>
             </div>
 
-            {effectSummary && (
+            {(status?.def.summary || effectSummary) && (
               <div className="w-full px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/30">
                 <span className="text-[7px] text-emerald-400 font-black uppercase tracking-widest block mb-0.5">Effect</span>
-                <span className="text-emerald-200 text-[9px] font-bold leading-snug block">{effectSummary}</span>
+                <span className="text-emerald-200 text-[9px] font-bold leading-snug block">{status?.def.summary || effectSummary}</span>
               </div>
             )}
 
-            {requirements.length > 0 && (
+            {/* Show role requirements when status is present */}
+            {status ? (
               <div className="w-full flex flex-col gap-0.5">
-                {requirements.map((req, i) => {
-                  const status = isRequirementStatus(req) ? req : null;
-                  return (
-                    <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
-                      <span className="font-bold text-stone-300 uppercase truncate">{req.badge}</span>
-                      <span className={`font-black shrink-0 ${status ? (status.met ? 'text-emerald-400' : 'text-red-400') : 'text-stone-400'}`}>
-                        {status ? `${status.have}/${status.levels} ${status.met ? '✓' : '✗'}` : `×${req.levels}`}
-                      </span>
-                    </div>
-                  );
-                })}
+                {status.def.roles.map((role, i) => (
+                  <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
+                    <span className="font-bold text-stone-300 uppercase truncate">{role.name}</span>
+                    <span className="text-stone-400 text-[7px]">{describeRoleRequirement(role)}</span>
+                  </div>
+                ))}
               </div>
+            ) : (
+              /* Legacy requirement display */
+              requirements.length > 0 && (
+                <div className="w-full flex flex-col gap-0.5">
+                  {requirements.map((req, i) => {
+                    const reqStatus = isRequirementStatus(req) ? req : null;
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
+                        <span className="font-bold text-stone-300 uppercase truncate">{req.badge}</span>
+                        <span className={`font-black shrink-0 ${reqStatus ? (reqStatus.met ? 'text-emerald-400' : 'text-red-400') : 'text-stone-400'}`}>
+                          {reqStatus ? `${reqStatus.have}/${reqStatus.levels} ${reqStatus.met ? '✓' : '✗'}` : `×${req.levels}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
             )}
           </div>
 

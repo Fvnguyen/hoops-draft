@@ -1,22 +1,51 @@
 import React from 'react';
 import { TeamInfo } from '../engine/game';
 import { calcRosterIdentity, calcRosterShotDiet, resolveDepthChart, LEAGUE_AVG_IDENTITY } from '../engine/rosterStats';
-import { calcTeamBonuses } from '../engine/synergies';
-import { PlayerCardData, Play, MiniPlayerCard } from './PlayerCard';
+import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
+import { evaluatePlaybook, type PlayStatus } from '../engine/playbook';
+import { PlayerCardData, MiniPlayerCard } from './PlayerCard';
 import { RadarChart } from './RadarChart';
+
+const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
+const TIER_CLASS: Record<ArchetypeTier, string> = {
+  none: 'bg-stone-100 text-stone-400',
+  online: 'bg-emerald-100 text-emerald-700',
+  dedicated: 'bg-amber-100 text-amber-700',
+};
+
+function playerName(players: PlayerCardData[], id?: string): string {
+  if (!id) return 'Unassigned';
+  return players.find(p => p.id === id)?.player.name ?? 'Unknown';
+}
+
+function playRoleSummary(status: PlayStatus, players: PlayerCardData[]): string {
+  return status.roles.map(r => `${r.role.name}: ${playerName(players, r.playerId)}`).join(', ');
+}
 
 export function FranchiseDashboard({ team }: { team: TeamInfo }) {
   const resolvedDepth = resolveDepthChart(team.players, team.depthChart);
   const identity = calcRosterIdentity(resolvedDepth);
-  const shotDiet = calcRosterShotDiet(resolvedDepth, team.plays);
-  
-  // Group players for rendering
-  const allPlayers = Object.values(resolvedDepth).flat() as PlayerCardData[];
-  const bonuses = calcTeamBonuses(allPlayers, team.plays, new Map());
+  const shotDiet = calcRosterShotDiet(resolvedDepth, team.plays, team.archetypes);
+
+  const starterIds = new Set(team.starters);
+  const archetypeStatuses = evaluateArchetypes(team.players, starterIds);
+  const byId = new Map(archetypeStatuses.map(s => [s.def.id, s]));
+  const selection = team.archetypes;
+  const selectedArchetypes: ArchetypeStatus[] = [];
+  if (selection?.gold) {
+    const s = byId.get(selection.gold);
+    if (s) selectedArchetypes.push(s);
+  } else {
+    if (selection?.offense) { const s = byId.get(selection.offense); if (s) selectedArchetypes.push(s); }
+    if (selection?.defense) { const s = byId.get(selection.defense); if (s) selectedArchetypes.push(s); }
+  }
+
+  const playbookStatus = evaluatePlaybook(team.playAssignments ?? [], team.players);
+  const activePlays = playbookStatus.plays.filter(p => p.active);
 
   return (
     <div className="bg-white border-b border-stone-200 px-6 py-4 flex gap-8 items-start shadow-sm w-full">
-      
+
       {/* Left: Starters */}
       <div className="shrink-0 flex flex-col items-center">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Starting Five</h3>
@@ -63,30 +92,32 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
 
       <div className="w-px bg-stone-200 self-stretch" />
 
-      {/* Right: Active Mechanics */}
+      {/* Right: Active Mechanics — selected archetype(s) + active plays with assigned players */}
       <div className="flex-1 min-w-[250px] max-w-[350px]">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Active Mechanics</h3>
         <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[100px] pr-2 custom-scrollbar">
-          {bonuses.activeSynergies.map(s => (
-            <div key={s.name} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
-              <span className="text-emerald-500 text-[10px] mt-0.5">✦</span> 
+          {selectedArchetypes.map(s => (
+            <div key={s.def.id} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
+              <span className="text-emerald-500 text-[10px] mt-0.5">✦</span>
               <div className="flex flex-col leading-tight">
-                <span className="font-bold text-[10px] text-stone-700">{s.name}</span>
-                <span className="text-stone-500 text-[9px]">{s.description}</span>
+                <span className="font-bold text-[10px] text-stone-700">{s.def.name}</span>
+                <span className={`text-[8px] font-black uppercase tracking-wide w-fit px-1 py-0.5 rounded mt-0.5 ${TIER_CLASS[s.tier]}`}>
+                  {TIER_LABEL[s.tier]}
+                </span>
               </div>
             </div>
           ))}
-          {bonuses.activePlays.filter(p => p.activated === 'full').map(p => (
-            <div key={p.name} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
+          {activePlays.map(p => (
+            <div key={p.assignment.cardId} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
               <span className="text-amber-500 text-[10px] mt-0.5">▶</span>
               <div className="flex flex-col leading-tight">
-                <span className="font-bold text-[10px] text-stone-700">{p.name}</span>
-                <span className="text-stone-500 text-[9px]">{p.description}</span>
+                <span className="font-bold text-[10px] text-stone-700">Play: {p.def.name}</span>
+                <span className="text-stone-500 text-[9px]">{playRoleSummary(p, team.players)}</span>
               </div>
             </div>
           ))}
-          {bonuses.activeSynergies.length === 0 && bonuses.activePlays.filter(p => p.activated === 'full').length === 0 && (
-             <div className="text-stone-400 italic text-xs py-2">No fully active synergies or plays.</div>
+          {selectedArchetypes.length === 0 && activePlays.length === 0 && (
+             <div className="text-stone-400 italic text-xs py-2">No identity or active plays yet.</div>
           )}
         </div>
       </div>
