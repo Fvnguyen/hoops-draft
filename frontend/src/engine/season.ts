@@ -204,3 +204,49 @@ export function playNextGame(
 
   return { season, gameResult: humanGameResult! };
 }
+
+// ── Legacy shape upgrade ───────────────────────────────────────────────────
+
+/** Schedule entry shape used before round-robin game days (one human game per entry). */
+interface LegacyScheduleEntry {
+  gameIndex: number;
+  opponentSeatIndex: number;
+  played: boolean;
+  result?: GameTheater;
+  seed?: number;
+  matchups?: undefined;
+}
+
+/**
+ * Upgrade a season saved before round-robin game days to the current shape.
+ * Legacy entries held a single human game (`opponentSeatIndex`, `result`); they
+ * become a game day with one matchup. The human was home on even game indexes.
+ * Returns the same object when nothing needed changing.
+ */
+export function normalizeSeason(season: Season): { season: Season; changed: boolean } {
+  let changed = false;
+  const schedule = (season.schedule ?? []).map((raw): SeasonScheduleEntry => {
+    const entry = raw as SeasonScheduleEntry | LegacyScheduleEntry;
+    if (Array.isArray(entry.matchups)) return entry as SeasonScheduleEntry;
+    changed = true;
+    const legacy = entry as LegacyScheduleEntry;
+    const humanHome = legacy.gameIndex % 2 === 0;
+    const opponent = legacy.opponentSeatIndex ?? 1;
+    return {
+      gameIndex: legacy.gameIndex,
+      played: !!legacy.played,
+      matchups: [{
+        homeSeatIndex: humanHome ? 0 : opponent,
+        awaySeatIndex: humanHome ? opponent : 0,
+        result: legacy.result,
+        seed: legacy.seed,
+      }],
+    };
+  });
+  return changed ? { season: { ...season, schedule }, changed } : { season, changed };
+}
+
+/** The human's matchup on a game day, if any. */
+export function humanMatchup(entry: SeasonScheduleEntry): SeasonMatchup | undefined {
+  return (entry.matchups ?? []).find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0);
+}

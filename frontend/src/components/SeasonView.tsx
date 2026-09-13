@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
 import { useStorageReady } from './StorageProvider';
-import { Season, createSeason, playNextGame } from '../engine/season';
+import { Season, createSeason, playNextGame, normalizeSeason, humanMatchup } from '../engine/season';
 import type { DraftSession } from '../engine/deckbuilder';
 import { GameTheater } from '../engine/game';
 import { GameView } from './GameView';
@@ -50,7 +50,13 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       if (cancelled) return;
 
       if (existingSeason) {
-        setSeason(existingSeason);
+        // Seasons saved before round-robin game days are upgraded on load and re-saved.
+        const { season: upgraded, changed } = normalizeSeason(existingSeason);
+        if (changed) {
+          try { await store.saveSeason(upgraded); } catch { /* best effort; the view still works */ }
+        }
+        if (cancelled) return;
+        setSeason(upgraded);
       } else {
         const newSeason = createSeason(loadedSession, rosterId);
         try {
@@ -79,7 +85,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       if (!season || !session) return;
 
       const entry = season.schedule[gameIndex];
-      const humanMatch = entry.matchups.find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0);
+      const humanMatch = humanMatchup(entry);
       if (entry.played && humanMatch?.result) {
         // Already played — show replay
         setActiveGame(humanMatch.result);
@@ -215,7 +221,8 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
             <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">Schedule</h2>
             <div className="flex flex-col gap-2">
               {season.schedule.map((entry, idx) => {
-                const humanMatch = entry.matchups.find(m => m.homeSeatIndex === 0 || m.awaySeatIndex === 0)!;
+                const humanMatch = humanMatchup(entry);
+                if (!humanMatch) return null;
                 const oppSeatIndex = humanMatch.homeSeatIndex === 0 ? humanMatch.awaySeatIndex : humanMatch.homeSeatIndex;
                 const oppSeat = session?.seats[oppSeatIndex];
                 const oppName = oppSeat?.botProfile?.name || `Bot ${oppSeatIndex}`;
