@@ -9,7 +9,7 @@ const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetM
 const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
 
 export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
-  const [draftState, setDraftState] = useState<'loading' | 'drafting' | 'deckbuilding'>('loading');
+  const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'deckbuilding'>('loading');
   const [seats, setSeats] = useState<DraftSeat[]>([]);
   const [currentPackNumber, setCurrentPackNumber] = useState(1); // 1, 2, 3
   const [currentPickNumber, setCurrentPickNumber] = useState(1); // 1 to 12
@@ -60,7 +60,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[]) {
     setCurrentPackNumber(1);
     setCurrentPickNumber(1);
     setOverallPick(1);
-    setDraftState('drafting');
+    setDraftState('pack-intro');
   }, [allPlayers, playsDB]);
 
   // Initialize Draft Pod — start exactly once, when allPlayers first becomes non-empty.

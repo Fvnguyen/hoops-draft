@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
+import { PackOpener } from './PackOpener';
 import { DraftSidebar } from './DraftSidebar';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
@@ -90,6 +91,34 @@ function SaveErrorBanner({ message }: { message: string | null }) {
   );
 }
 
+function DraftRoomIntroBackdrop() {
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-[#F5F0EA] text-stone-800" aria-hidden="true">
+      <header className="h-[56px] border-b border-stone-200 bg-white/80 px-4 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-500">⌂</div>
+        <span className="text-sm font-black uppercase tracking-wider">Draft Room</span>
+      </header>
+      <div className="h-[78px] border-b border-stone-200 bg-white/60 flex items-center justify-center">
+        <div className="w-full max-w-xl flex items-center gap-5 px-6">
+          <div className="h-9 w-9 rounded-full border border-stone-200 bg-white" />
+          <div className="flex-1 flex flex-col items-center gap-2">
+            <div className="h-2 w-64 max-w-full rounded-full bg-stone-200" />
+            <div className="h-2 w-36 rounded-full bg-stone-100" />
+          </div>
+          <div className="h-9 w-9 rounded-full border border-stone-200 bg-white" />
+        </div>
+      </div>
+      <div className="absolute inset-x-0 top-[134px] bottom-0 flex items-center justify-center pr-16">
+        <div className="h-2/3 w-3/4 rounded-[32px] border border-stone-200/70 bg-white/30" />
+      </div>
+      <div className="absolute right-0 top-[134px] bottom-0 w-14 border-l border-stone-200 bg-white/70 flex flex-col items-center gap-3 pt-4">
+        <div className="h-12 w-10 rounded-lg border border-stone-300 bg-white flex items-center justify-center text-stone-400">♙</div>
+        <div className="h-12 w-10 rounded-lg border border-stone-200 bg-white/60 flex items-center justify-center text-stone-400">☷</div>
+      </div>
+    </div>
+  );
+}
+
 function averageRosterIdentities(identities: RosterIdentity[]): RosterIdentity | undefined {
   if (identities.length === 0) return undefined;
 
@@ -123,7 +152,7 @@ export function DraftRoom() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
 
-  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, draftSeed } = useDraftEngine(allPlayers, playsDB);
+  const { draftState, seats, humanSeat, currentPackNumber, currentPickNumber, overallPick, pickLog, processPickAndPass, setDraftState, draftSeed } = useDraftEngine(allPlayers, playsDB);
 
   const podAverageIdentity = averageRosterIdentities(
     seats
@@ -200,6 +229,22 @@ export function DraftRoom() {
     return (
       <div className="flex h-screen items-center justify-center font-sans">
         <div className="text-2xl font-semibold text-stone-400 animate-pulse">Generating Draft Pod...</div>
+      </div>
+    );
+  }
+
+  if (draftState === 'pack-intro') {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#F5F0EA]">
+        <DraftRoomIntroBackdrop />
+        <PackOpener
+          pack={humanSeat.currentPack}
+          backdrop
+          onComplete={() => {
+            setIsSidebarOpenToggled(false);
+            setDraftState('drafting');
+          }}
+        />
       </div>
     );
   }
