@@ -1,26 +1,13 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { RosterIdentity, getBadgeTally } from '../engine/rosterStats';
+import { RosterIdentity, getBadgeTally, LEAGUE_AVG_IDENTITY } from '../engine/rosterStats';
 import { SYNERGIES } from '../engine/synergies';
 import type { TeamBonuses } from '../engine/synergies';
 import type { TeamShotProfile } from '../engine/game';
 import type { PlayerCardData } from '../engine/types';
 import { DonutChart } from './DonutChart';
 import { RadarChart } from './RadarChart';
-
-// League-mean values for each identity axis, computed over the full card pool
-// (see docs/ROADMAP.md P1-1). Used ONLY to draw the reference polygon on the
-// identity radar — never rendered as a number (product rule: no ratings or OVR shown).
-const LEAGUE_AVG_IDENTITY: Record<keyof RosterIdentity, number> = {
-  finishing: 55.5,
-  midRange: 49.0,
-  perimeter: 57.5,
-  playmaking: 35.3,
-  rebounding: 41.1,
-  perDef: 53.5,
-  postDef: 46.4,
-};
 
 const COLLAPSE_STORAGE_KEY = 'deckbuilder.reportCollapsed';
 

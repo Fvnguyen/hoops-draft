@@ -126,3 +126,18 @@ export function getBadgeTally(depthChart: Record<string, PlayerCardData[]>) {
     teasers
   };
 }
+
+/**
+ * League-mean values for each identity axis, computed over the full card pool
+ * (see docs/ROADMAP.md P1-1). Used only as a visual reference (radar outline,
+ * ticks) — never rendered as a number (product rule: no ratings shown).
+ */
+export const LEAGUE_AVG_IDENTITY: RosterIdentity = {
+  finishing: 55.5,
+  midRange: 49.0,
+  perimeter: 57.5,
+  playmaking: 35.3,
+  rebounding: 41.1,
+  perDef: 53.5,
+  postDef: 46.4,
+};
