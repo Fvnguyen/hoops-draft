@@ -116,9 +116,11 @@ export default function RostersPage() {
                     <div className="w-36 shrink-0">
                       <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 text-center">Plays</h3>
                       <div className="flex flex-col gap-2">
-                        {rosterObj.activePlays?.map((playId: string) => {
+                        {rosterObj.activePlays?.map((playId: string, idx: number) => {
                           const play = rosterObj.draftedCards.find((c: DraftCard) => c.id === playId);
-                          return play && play.type === 'Play' ? <PlayCard key={play.id} play={play} compact /> : null;
+                          // Key by slot as well as id: rosters saved from an older pack builder can
+                          // hold two copies of the same play id.
+                          return play && play.type === 'Play' ? <PlayCard key={`${play.id}-${idx}`} play={play} compact /> : null;
                         })}
                         {(!rosterObj.activePlays || rosterObj.activePlays.length === 0) && (
                           <div className="text-stone-400 text-[10px] uppercase font-bold text-center py-4 border border-stone-300 border-dashed rounded-lg bg-stone-900/50">No Plays</div>
