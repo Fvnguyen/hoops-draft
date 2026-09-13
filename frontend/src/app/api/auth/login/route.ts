@@ -18,7 +18,10 @@ export async function POST(request: Request) {
   let email = identifier.toLowerCase();
   if (!email.includes('@')) {
     const admin = createSupabaseAdminClient();
-    const { data: profile } = await admin.from('profiles').select('email').eq('username', email).maybeSingle();
+    const { data: profile, error: lookupError } = await admin.from('profiles').select('email').eq('username', email).maybeSingle();
+    // TEMP diagnostic — no secrets, just which branch fired. Remove once the
+    // username-login bug report is resolved.
+    console.error('[login] username lookup', { username: email, found: !!profile, errorCode: lookupError?.code, errorMessage: lookupError?.message });
     if (!profile) return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     email = profile.email;
   }

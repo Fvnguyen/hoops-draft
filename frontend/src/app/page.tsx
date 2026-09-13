@@ -67,11 +67,15 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 export default function Home() {
   // Re-rolled client-side (not at module scope) so every visit gets a fresh
-  // draw without the server-rendered and hydrated picks ever mismatching.
+  // draw without the server-rendered and hydrated picks ever mismatching —
+  // the standard "randomize after mount" exception to setState-in-effect
+  // (there's no prop/event this could instead derive from; it's synchronizing
+  // with a fresh Math.random() draw, not adjusting state from a render input).
   const [showcase, setShowcase] = useState<{ hero: PlayerCardData | undefined; pack: PlayerCardData[] } | null>(null);
 
   useEffect(() => {
     const hero = pickHero(allCards);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- see comment above
     setShowcase({ hero, pack: pickPackPreview(allCards, hero?.id) });
   }, []);
 

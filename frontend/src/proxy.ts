@@ -25,18 +25,33 @@ export async function proxy(request: NextRequest) {
     },
   );
 
+  // getUser() silently refreshes an expired access token via the refresh-token
+  // cookie and hands the new pair to `setAll` above, landing on `response` —
+  // but a redirect built as `NextResponse.redirect(...)` is a brand-new object
+  // that doesn't carry those refreshed cookies. Without copying them over here,
+  // a refresh-then-redirect (e.g. hitting a protected route right as the access
+  // token expires) ships the OLD, now-consumed refresh token back to the
+  // browser: every next request repeats the same failed refresh and redirect,
+  // even though the session is actually fine (confirmed by /api/auth/me, which
+  // runs in a Route Handler and persists its own refresh correctly).
+  const redirect = (url: URL) => {
+    const redirectResponse = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+    return redirectResponse;
+  };
+
   const { data: { user } } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
 
   if (PUBLIC_PATHS.has(pathname) || pathname.startsWith('/api/auth')) {
     if (user && (pathname === '/login' || pathname === '/signup')) {
-      return NextResponse.redirect(new URL('/', request.url));
+      return redirect(new URL('/', request.url));
     }
     return response;
   }
 
   if (!isProtected(pathname)) return response;
-  if (!user) return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url));
+  if (!user) return redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url));
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -46,7 +61,7 @@ export async function proxy(request: NextRequest) {
 
   if (profile?.status !== 'APPROVED') {
     const destination = profile?.status === 'REJECTED' ? '/login?error=rejected' : '/pending';
-    return NextResponse.redirect(new URL(destination, request.url));
+    return redirect(new URL(destination, request.url));
   }
 
   return response;
