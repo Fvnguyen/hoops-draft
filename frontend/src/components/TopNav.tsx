@@ -30,7 +30,11 @@ export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const profile = useCurrentProfile();
-  const isHome = pathname === '/';
+  // Full-bleed dark layouts with their own "HOOPS DRAFT" home link and no room
+  // for an opaque bar: the home hero and every (auth) page (login/signup/pending
+  // share AuthLayout's bg-stone-950 shell). The standard cream bar left a hard
+  // seam against these and duplicated the in-page home link.
+  const isBareLayout = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/pending';
 
   const handleHomeClick = (e: React.MouseEvent) => {
     if (pathname.includes('/draft') || pathname.includes('/deckbuilder')) {
@@ -56,12 +60,7 @@ export function TopNav() {
     router.refresh();
   }
 
-  // The home page is a full-bleed dark hero with its own "HOOPS DRAFT" title
-  // and no room for an opaque bar — the standard cream bar clashed with it
-  // (hard seam against the dark background) and duplicated the home-button's
-  // job. Just the profile menu floats over the hero instead; everywhere else
-  // keeps the full bar (home button + page title + profile menu).
-  if (isHome) {
+  if (isBareLayout) {
     if (!profile) return null;
     return (
       <div className="fixed top-4 right-4 z-50">
