@@ -128,7 +128,9 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
   // Whole-sidebar collapse: frees the Active Roster column's width for the depth
   // chart (5 columns need the room) without losing drag targets — collapsed, the
   // G-League still accepts drops, it just shows as a thin bar instead of the full list.
-  const [isGLeagueCollapsed, setIsGLeagueCollapsed] = useState(false);
+  // Starts collapsed: the depth chart (5 columns) needs the width more than
+  // the G-League list needs to be open by default; one click still reopens it.
+  const [isGLeagueCollapsed, setIsGLeagueCollapsed] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
@@ -881,7 +883,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
           <div className="flex flex-row gap-3 flex-1 min-h-0">
             {/* Left Column: Active Plays — full-size cards so requirements/mechanics
                 are actually readable (was a 60px compact row). */}
-            <div className="w-[clamp(240px,24cqw,340px)] shrink-0 flex flex-col min-h-0">
+            <div className="w-[clamp(200px,20cqw,280px)] shrink-0 flex flex-col min-h-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-1 shrink-0">Plays (Max 3)</h3>
               <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-amber-600' : 'text-stone-400'}`}>
                 Offense {Math.round(playbookStatus.offenseAllocation * 100)}% / {Math.round(playbookStatus.offenseBudget * 100)}%
@@ -949,7 +951,7 @@ function DeckBuilderBody({ draftedCards, initialZones, existingRosterName, roste
                 each column, 2nd/3rd string are medium compact cards below. */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
               <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
-              <div className="grid grid-cols-5 gap-4 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
+              <div className="grid grid-cols-5 gap-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
                 {DEPTH_COLUMNS.map(col => (
                   <DepthSlotColumn
                     key={col}

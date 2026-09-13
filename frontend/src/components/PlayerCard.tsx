@@ -426,10 +426,17 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
             style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.22) 100%)' }}
           />
         )}
-        <div className="absolute bottom-2 w-full flex justify-center gap-2 px-2">
-          {player.traits.slice(0, 4).map((trait, i) => (
-            <BadgeIcon key={i} name={trait.name} level={trait.level} />
+        <div className={`absolute bottom-2 w-full flex justify-center px-2 ${size === 'sm' ? 'gap-1' : 'gap-2'}`}>
+          {/* BadgeIcon has no width of its own that shrinks with the card — a
+              narrow "sm" starter card (5-across depth chart) needs the small
+              variant or 4 fixed 32px icons overflow the card. Capped to 3 +
+              overflow here too, matching the compact/list variants (D18). */}
+          {player.traits.slice(0, size === 'sm' ? 3 : 4).map((trait, i) => (
+            <BadgeIcon key={i} name={trait.name} level={trait.level} size={size === 'sm' ? 'small' : 'normal'} />
           ))}
+          {size === 'sm' && player.traits.length > 3 && (
+            <BadgeOverflowIndicator count={player.traits.length - 3} names={player.traits.slice(3).map(t => t.name)} size="small" />
+          )}
         </div>
       </div>
 
@@ -464,33 +471,33 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
     return (
       <div
-        className={`group relative w-full h-[60px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
+        className={`group relative w-full h-[46px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
         onClick={onClick}
       >
         {/* Left Color Bar */}
-        <div className="h-full w-2 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
+        <div className="h-full w-1.5 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
 
         {/* Headshot */}
-        <div className="w-12 h-full bg-stone-100 shrink-0 overflow-hidden relative border-r border-stone-200">
+        <div className="w-9 h-full bg-stone-100 shrink-0 overflow-hidden relative border-r border-stone-200">
           <img src={headshotUrl} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
 
         {/* Details — two-line header: name + position pill, then gem + badges */}
-        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5">
+        <div className="flex-1 min-w-0 px-1.5 flex flex-col justify-center gap-0.5">
            <div className="flex items-center justify-between gap-1">
-             <div className="font-bold text-[11px] uppercase truncate text-stone-800 leading-tight">
+             <div className="font-bold text-[10px] uppercase truncate text-stone-800 leading-tight">
                {player.player.name}
              </div>
-             <PositionIcon position={player.player.position} className="min-w-[24px] h-[16px] px-1 text-[9px] shrink-0" />
+             <PositionIcon position={player.player.position} className="min-w-[20px] h-[13px] px-1 text-[8px] shrink-0" />
            </div>
 
            <div className="flex items-center gap-1">
              <RarityGem rarity={player.rarity} size="sm" />
              {/* D18: small card variant caps at 2 badges + "+N" overflow */}
              {player.traits.slice(0, 2).map(t => (
-               <BadgeIcon key={t.name} name={t.name} level={t.level} size="small" />
+               <BadgeIcon key={t.name} name={t.name} level={t.level} size="xs" />
              ))}
-             <BadgeOverflowIndicator count={Math.max(0, player.traits.length - 2)} names={player.traits.slice(2).map(t => t.name)} size="small" />
+             <BadgeOverflowIndicator count={Math.max(0, player.traits.length - 2)} names={player.traits.slice(2).map(t => t.name)} size="xs" />
            </div>
         </div>
 

@@ -93,7 +93,7 @@ export function DepthSlotColumn({
   return (
     <div
       data-testid={`depth-column-${column}`}
-      className={`flex flex-col gap-2 rounded-lg p-2 border transition-colors min-h-[320px] min-w-0 ${tint}`}
+      className={`flex flex-col gap-1.5 rounded-lg p-1.5 border transition-colors min-h-[300px] min-w-0 ${tint}`}
     >
       {/* 3px position-colour accent + column header */}
       <div
@@ -175,9 +175,15 @@ export function DepthSlotColumn({
               onDrop(e, column, slotIndex);
             }}
           >
-            <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">
-              {SLOT_LABELS[slotIndex]}
-            </div>
+            {/* Starter keeps its own label line (there's only one, and it's the
+                card readers look for first); bench slots fold theirs into a
+                tiny corner tag on the card instead — a separate 9px line
+                above each of the 3 bench rows added up fast. */}
+            {isStarter && (
+              <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">
+                {SLOT_LABELS[slotIndex]}
+              </div>
+            )}
             <div
               className={`group relative w-full cursor-pointer transition-opacity ${
                 assigning ? (dimmed ? 'opacity-30 grayscale' : 'ring-2 ring-emerald-400 rounded-lg') : ''
@@ -187,6 +193,14 @@ export function DepthSlotColumn({
                 onPlayerClick(player, column);
               }}
             >
+              {!isStarter && (
+                <span
+                  className="absolute -top-1 -right-1 z-20 w-4 h-4 flex items-center justify-center rounded-full bg-stone-700 text-white text-[8px] font-black leading-none pointer-events-none"
+                  title={SLOT_LABELS[slotIndex]}
+                >
+                  {slotIndex + 1}
+                </span>
+              )}
               {roleTags.length > 0 && (
                 <div className="absolute top-1 left-1 z-20 flex flex-col gap-0.5 pointer-events-none">
                   {roleTags.slice(0, 2).map((r, i) => (
