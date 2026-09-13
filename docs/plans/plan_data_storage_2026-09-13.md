@@ -1,6 +1,6 @@
 # Plan: data_storage
 
-Status: planned
+File: `docs/plans/plan_data_storage_2026-09-13.md`. Status: planned.
 Sequence: 6 in `docs/ROADMAP.md`. Depends on: nothing (can run in parallel with 1-5 by a
 second session; it owns disjoint files). Files owned: `frontend/src/storage/*`,
 `engine/season.ts` (schedule entry result shape), `engine/index.ts` exports,

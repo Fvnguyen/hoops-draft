@@ -12,8 +12,8 @@ better-sqlite3.
 
 ```
 data/            Scraper + stats pipeline (Python + Playwright). See data/README.md.
-docs/            ROADMAP.md = which plans in which order; plans/<slug>.md = one locked plan per
-                 piece of work (TEMPLATE.md); completed/ = finished plans and reviews (the "why");
+docs/            ROADMAP.md = which plans in which order; plans/plan_<topic>_<date>.md = one locked
+                 plan per piece of work (TEMPLATE.md); completed/ = finished plans and reviews (the "why");
                  HANDOVER.md, ARCHITECTURE.md, game_mechanics.md, card_schema.md, analytics/
 scripts/         Node dev scripts: analyze_game_data.js, check_card_counts.js, screenshot.js
 frontend/        The Next.js app (see frontend/README.md)
@@ -136,7 +136,7 @@ turns `game.db` into `frontend/src/data/cards.json`, which is what the app ships
   `localStorage` state and POSTs it to `/api/game-logs`, which writes the JSON that
   `analyze_game_data.js` consumes. Play a few drafts/seasons, hit export on `/debug`, then
   run `npm run analyze`.
-- The plan sequence is `docs/ROADMAP.md`, each plan is `docs/plans/<slug>.md`; open balance issues
+- The plan sequence is `docs/ROADMAP.md`, each plan is `docs/plans/plan_<topic>_<date>.md`; open balance issues
   are tracked in `docs/HANDOVER.md`; the underlying findings are
   in `docs/analytics/analysis_report.md` and `docs/analytics/analytics_summary.md`.
 

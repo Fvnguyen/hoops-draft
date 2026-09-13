@@ -1,6 +1,6 @@
 # Plan: game_engine
 
-Status: planned
+File: `docs/plans/plan_game_engine_2026-09-13.md`. Status: planned.
 Sequence: 2 in `docs/ROADMAP.md`. Depends on: analytics_tooling (the `--ab` harness).
 Files owned: `frontend/src/engine/game.ts` (simulation, not the narration text pools),
 `engine/balance.ts` (simulation and play sections), `engine/playbook.ts` (allocation

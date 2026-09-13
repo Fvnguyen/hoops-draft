@@ -4,12 +4,12 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 ## Rules
 
-- Every piece of work bigger than a bug fix has a plan in `docs/plans/<slug>.md`, written
+- Every piece of work bigger than a bug fix has a plan in
+  `docs/plans/plan_<topic>_<YYYY-MM-DD>.md` (date = when the plan was written), created
   from `docs/plans/TEMPLATE.md`. A plan has all decisions locked in before work starts,
   a task list with an optional parallelization plan, and a recommended model tier.
-- When a plan's exit criteria are met, `git mv` it to `docs/completed/` with the date
-  appended (`<slug>_<YYYY-MM-DD>.md`), update `docs/HANDOVER.md`, and update the tables
-  below.
+- When a plan's exit criteria are met, `git mv` it unchanged to `docs/completed/`, set its
+  status line to `done <date>`, update `docs/HANDOVER.md`, and update the tables below.
 - The "Recently completed" list shows only the **latest three** plans; older ones stay in
   `docs/completed/` and are found via `ls`, not listed here.
 - Sequence is the default order. A plan whose "Depends on" column is satisfied can be
@@ -19,12 +19,12 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 1 | [analytics_tooling](plans/analytics_tooling.md) — measurement matches the current game | planned | — | `frontend/scripts/*`, `scripts/analyze_game_data.js`, `app/debug` | 0.5-1 day |
-| 2 | [game_engine](plans/game_engine.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | 1 | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
-| 3 | [draft_ai](plans/draft_ai.md) — bots contest identities; drafts differ by strategy | planned | 1 | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 4 | [card_balance](plans/card_balance.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 3 | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
-| 5 | [game_theater](plans/game_theater.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 6 | [data_storage](plans/data_storage.md) — seed-based game persistence, schema versioning, export/import | planned | — (can run in parallel with 1-5) | `src/storage/*`, `engine/season.ts` result shape, `app/rosters` | 1-2 days |
+| 1 | [analytics_tooling](plans/plan_analytics_tooling_2026-09-13.md) — measurement matches the current game | planned | — | `frontend/scripts/*`, `scripts/analyze_game_data.js`, `app/debug` | 0.5-1 day |
+| 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | 1 | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
+| 3 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | 1 | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
+| 4 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 3 | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 5 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
+| 6 | [data_storage](plans/plan_data_storage_2026-09-13.md) — seed-based game persistence, schema versioning, export/import | planned | — (can run in parallel with 1-5) | `src/storage/*`, `engine/season.ts` result shape, `app/rosters` | 1-2 days |
 | 7 | mobile_pwa | not yet planned | 2-6 | — | 1-2 weeks |
 | 8 | accounts_cloud_saves | not yet planned | 6, 7 | — | ~1 week |
 | 9 | android_twa | not yet planned | 8 | — | 2-3 days |

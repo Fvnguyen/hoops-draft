@@ -178,7 +178,7 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; next up is `docs/plans/analytics_tooling.md`).
+What to do next is `docs/ROADMAP.md` (plan sequence; next up is `docs/plans/plan_analytics_tooling_2026-09-13.md`).
 The 2026-09-12 code review that produced Phases 0-1 is archived as
 `docs/completed/review_code_and_architecture_2026-09-12.md`. The list below predates it.
 
@@ -241,7 +241,7 @@ export before acting on them.
 | Season scheduling/standings | `frontend/src/engine/season.ts` |
 | Where is user data stored? | `frontend/src/storage/` (GameStore, IndexedDB) |
 | Data pipeline (scrape -> game.db) | `data/README.md` |
-| What to work on next | `docs/ROADMAP.md`, then `docs/plans/<slug>.md` |
+| What to work on next | `docs/ROADMAP.md`, then `docs/plans/plan_<topic>_<date>.md` |
 | Original code review (2026-09-12) | `docs/completed/review_code_and_architecture_2026-09-12.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
 | How to regenerate a balance report | `npm run balance` (headless) or `scripts/analyze_game_data.js` (`npm run analyze`, from app exports) |

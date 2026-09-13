@@ -1,6 +1,7 @@
-# Plan: <slug>
+# Plan: <topic>
 
-Status: planned | in progress | done (then move to `docs/completed/<slug>_<date>.md`)
+File: `docs/plans/plan_<topic>_<YYYY-MM-DD>.md` (date written). Status: planned | in progress |
+done <date> (then `git mv` unchanged to `docs/completed/`)
 Sequence: <n> in `docs/ROADMAP.md`. Depends on: <plans>. Files owned: <list>.
 
 ## Goal

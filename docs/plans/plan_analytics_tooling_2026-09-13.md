@@ -1,6 +1,6 @@
 # Plan: analytics_tooling
 
-Status: planned
+File: `docs/plans/plan_analytics_tooling_2026-09-13.md`. Status: planned.
 Sequence: 1 in `docs/ROADMAP.md`. Depends on: nothing. Files owned:
 `frontend/scripts/balance.ts`, `frontend/scripts/analyze.ts` (new),
 `scripts/analyze_game_data.js` (deleted), `frontend/src/app/debug/page.tsx`,

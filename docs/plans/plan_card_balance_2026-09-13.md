@@ -1,6 +1,6 @@
 # Plan: card_balance
 
-Status: planned
+File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: planned.
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
 reflect the final simulation and contested drafts). Files owned: `data/fetch_players.py`,
 `frontend/game.db` (regenerated), `engine/ratings.ts`, `engine/balance.ts` (rating,

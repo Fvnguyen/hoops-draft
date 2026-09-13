@@ -1,6 +1,6 @@
 # Plan: game_theater
 
-Status: planned
+File: `docs/plans/plan_game_theater_2026-09-13.md`. Status: planned.
 Sequence: 5 in `docs/ROADMAP.md`. Depends on: game_engine (both edit `game.ts`; run
 after it to avoid conflicts). Files owned: `frontend/src/engine/game.ts` (narration only:
 `generateNarrative`, the `*_TEXTS` pools, `PossessionEvent.narrativeText`), new

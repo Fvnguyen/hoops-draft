@@ -1,6 +1,6 @@
 # Plan: draft_ai
 
-Status: planned
+File: `docs/plans/plan_draft_ai_2026-09-13.md`. Status: planned.
 Sequence: 3 in `docs/ROADMAP.md`. Depends on: analytics_tooling (feasibility/AB reporting).
 Files owned: `frontend/src/engine/draft.ts`, `engine/types.ts` (`BotProfile`),
 `engine/balance.ts` (draft section), `hooks/useDraftEngine.ts`,
