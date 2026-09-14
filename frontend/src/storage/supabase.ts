@@ -38,7 +38,10 @@ export interface CloudSyncClient {
   ): Promise<{ data: CasUpsertRow[] | null; error: { message: string } | null }>;
   from(table: SyncTable): {
     select(columns: string): { eq(col: string, val: string): Promise<{ data: Array<{ id: string; data: unknown; updated_at: string }> | null; error: { message: string } | null }> };
-    delete(): { eq(col: string, val: string): Promise<{ error: { message: string } | null }> };
+    // PromiseLike, not Promise — matches the real supabase-js PostgrestBuilder, which
+    // implements only `then` (no `.catch`/`.finally`). Typing this as `Promise<...>`
+    // once let a `.catch(() => {})` chain compile clean while throwing at runtime.
+    delete(): { eq(col: string, val: string): PromiseLike<{ error: { message: string } | null }> };
   };
 }
 
@@ -133,13 +136,20 @@ export class SupabaseGameStore implements GameStore {
     return rows?.[0] ?? null;
   }
 
-  /** Normal write path: retries an unknown-baseline rejection once as a fetched-baseline
-   *  update, then falls back to `merge.ts` on a genuine conflict. */
+  /** Normal write path. A rejection's `current_row` tells us what actually happened:
+   *  - `null` means the row doesn't exist server-side at all — either this was a genuine
+   *    first push (`expected` was already `null`, in which case this can't happen — a
+   *    null-expected rejection always returns the conflicting row) or `expected` was a
+   *    baseline for a row that's since been deleted (by us, or another device). Either
+   *    way the fix is the same: retry once as a fresh insert.
+   *  - present with `expected === null` means "already exists" (a first push raced an
+   *    existing row) — retry once as an update using the row's real `updated_at`.
+   *  - present with `expected` non-null means a genuine conflict — hand it to `merge.ts`. */
   private async push(table: SyncTable, id: string, data: { timestamp?: string }): Promise<void> {
     if (!this.ownerId) return;
     const key = `${table}:${id}`;
     try {
-      let expected = this.baselines.get(key) ?? null;
+      const expected = this.baselines.get(key) ?? null;
       let result = await this.rpcOnce(table, id, data, expected);
       if (result?.ok) {
         this.baselines.set(key, result.current_row!.updated_at);
@@ -147,16 +157,21 @@ export class SupabaseGameStore implements GameStore {
         this.emit();
         return;
       }
-      if (expected === null && result?.current_row) {
-        expected = result.current_row.updated_at;
-        result = await this.rpcOnce(table, id, data, expected);
-        if (result?.ok) {
-          this.baselines.set(key, result.current_row!.updated_at);
-          this.retryQueue.delete(key);
-          this.emit();
-          return;
-        }
+
+      if (!result?.current_row) {
+        // Our baseline (if any) pointed at a row that's gone — the server has nothing
+        // to compare-and-swap against, so this is really an insert.
+        result = await this.rpcOnce(table, id, data, null);
+      } else if (expected === null) {
+        result = await this.rpcOnce(table, id, data, result.current_row.updated_at);
       }
+      if (result?.ok) {
+        this.baselines.set(key, result.current_row!.updated_at);
+        this.retryQueue.delete(key);
+        this.emit();
+        return;
+      }
+
       if (result?.current_row) {
         await this.resolveViaMerge(table, id, data, result.current_row.data, result.current_row.updated_at);
       } else {
@@ -224,6 +239,19 @@ export class SupabaseGameStore implements GameStore {
     this.emit();
   }
 
+  /** Best-effort cloud delete: `PostgrestBuilder` is `PromiseLike`, not a real `Promise`
+   *  — it has no `.catch`, so chaining one throws synchronously instead of rejecting.
+   *  `await` inside a real try/catch is the correct way to swallow a failed delete. */
+  private async deleteRemote(table: SyncTable, id: string): Promise<void> {
+    this.baselines.delete(`${table}:${id}`);
+    if (!this.ownerId) return;
+    try {
+      await this.client.from(table).delete().eq('id', id);
+    } catch {
+      // best-effort — a local delete should not be blocked by a network/RLS failure.
+    }
+  }
+
   private async readLocal(table: SyncTable, id: string): Promise<unknown> {
     if (table === 'draft_sessions') return this.local.getDraftSession(id);
     if (table === 'rosters') return this.local.getRoster(id);
@@ -286,7 +314,7 @@ export class SupabaseGameStore implements GameStore {
   }
   async deleteDraftSession(id: string): Promise<void> {
     await this.local.deleteDraftSession(id);
-    if (this.ownerId) await this.client.from('draft_sessions').delete().eq('id', id).catch(() => {});
+    await this.deleteRemote('draft_sessions', id);
   }
 
   // ── GameStore: rosters ────────────────────────────────────────────────
@@ -299,7 +327,7 @@ export class SupabaseGameStore implements GameStore {
   }
   async deleteRoster(id: string): Promise<void> {
     await this.local.deleteRoster(id);
-    if (this.ownerId) await this.client.from('rosters').delete().eq('id', id).catch(() => {});
+    await this.deleteRemote('rosters', id);
   }
 
   // ── GameStore: seasons ────────────────────────────────────────────────
@@ -313,7 +341,7 @@ export class SupabaseGameStore implements GameStore {
   }
   async deleteSeason(id: string): Promise<void> {
     await this.local.deleteSeason(id);
-    if (this.ownerId) await this.client.from('seasons').delete().eq('id', id).catch(() => {});
+    await this.deleteRemote('seasons', id);
   }
 
   // ── GameStore: bulk / meta ─────────────────────────────────────────────

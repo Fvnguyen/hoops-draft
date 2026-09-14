@@ -10,7 +10,7 @@ archetype identities and assigned-player plays. Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
-— see the milestone below. 210 Vitest tests pass, type-check is clean, `npm run lint` is
+— see the milestone below. 212 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -59,6 +59,11 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
 - **ui_draft_deckbuild_pack** (done 2026-09-13, `docs/completed/plan_ui_draft_deckbuild_pack_2026-09-13.md`):
   rarity-ordered pack opener with pick clock, unified Roster list (no draft-time zoning),
   fixed 5x4 depth chart, empty-start deck builder (no auto-fill).
+- **ui_polish_small_fixes & playwright_auth_fixture** (done 2026-09-14): hover-preview/
+  draft-pick-confirm/radar polish; dedicated E2E Supabase account +
+  `tests/auth.setup.ts` fixture so `test:e2e` can finally run authenticated
+  (`docs/completed/plan_ui_polish_small_fixes_2026-09-13.md`,
+  `plan_playwright_auth_fixture_2026-09-14.md`).
 
 ## accounts_cloud_saves — in progress 2026-09-14
 
@@ -85,15 +90,45 @@ UI are live in dev; still open before calling it done, see below.
   `/api/analytics?scope=self|all` (self = own RLS-scoped data, all = ADMIN via service
   role) and `/admin/analytics` page, both verified live against the real DB and gates
   (non-admin gets 403/redirect).
-- **Verified**: `npm test` (210/210), `tsc --noEmit`, `npm run lint` (0 errors) clean;
-  migration applied and confirmed via direct DB query (tables/policies/RPC present);
-  logged in live as the real admin account and as the E2E account — sync indicator
-  renders, `/admin/analytics` renders real (empty, no data yet) numbers, `scope=self`/`all`
-  gating both confirmed via HTTP.
+- **Two real bugs found and fixed post-deploy** (2026-09-14, live-tested with a Playwright
+  e2e run against the real Supabase project, not a mock): (1) `deleteRoster`/`deleteSeason`/
+  `deleteDraftSession` chained `.catch(() => {})` onto a Supabase `PostgrestBuilder`, which
+  is `PromiseLike`, not a real `Promise` — it has no `.catch`, so every cloud delete threw
+  synchronously and never reached the server; fixed to `await` inside a real try/catch
+  (`deleteRemote`), and `CloudSyncClient`'s delete return type corrected to `PromiseLike`
+  so this class of mistake fails to compile next time. (2) `push()` treated a CAS
+  rejection with a stale (since-deleted) baseline as "needs a merge," found nothing to
+  merge against, and silently queued forever instead of ever writing the save — fixed to
+  retry as a fresh insert when the server reports no row at all. Both covered by new
+  `tests/storage/supabase.test.ts` cases (a mock `.delete().eq()` that's a bare
+  `PromiseLike`, matching the real client, would now fail the same way).
+- **tests/season.spec.ts** (new): drives the merged `game-results-visibility` fix
+  end-to-end — imports a fixed-id fixture (`scripts/build-e2e-season-fixture.ts` ->
+  `tests/fixtures/season-fixture.json`) via the real rosters-page Import flow, plays game
+  1, leaves early via "Exit Game" and confirms nothing saved, then finishes and hits
+  "Continue to Schedule" and confirms the schedule/standings update. Self-cleaning (deletes
+  its own fixture roster/season at the start of each run) — verified idempotent across 3
+  consecutive live runs.
+- **Verified**: `npm test` (212/212), `tsc --noEmit`, `npm run lint` (0 errors) clean;
+  `npm run test:e2e` 13/15 (2 known pre-existing snapshot failures, see open issues);
+  migration applied and confirmed via direct DB query (tables/policies/RPC present); the
+  delete/re-insert bug fixes verified against the live DB, not just the mock.
 - **Open before `/roadmap done`**: no real second-device field test yet (simulated via
   the `SupabaseGameStore` test suite's `FakeCloud`, not two physical devices); no roster
   has actually hit a conflict outside tests — worth playing a draft/season on two devices
   once mobile work lands to confirm `SyncConflictPrompt` in the wild.
+
+## game-results-visibility (merged, not this session's own plan) — 2026-09-14
+
+Single-commit fix from a separate Claude session/branch
+(`claude/game-results-visibility-season-atxivj`, merged `2cd44e5`): `SeasonView` used to
+commit a freshly-played game's result to `season` state/the store the instant `playNextGame`
+ran, so leaving mid-playback (or before a single possession rendered) already revealed the
+final score and updated standings. Now `playNextGame` runs against a cloned `Season`, and
+the result only commits once the user watches `GameView` to completion and hits "Continue
+to Schedule"; a still-running fresh game shows a destructive "Exit Game" control with a
+"this won't be saved" confirmation instead. Replays of already-played days are unaffected.
+No test shipped with the original commit — `tests/season.spec.ts` (above) covers it now.
 
 ## game_engine — done 2026-09-14
 
@@ -129,33 +164,6 @@ one session; sequence #2 in the roadmap.
 - Verified: `npm test` (193/193), `tsc --noEmit`, `npm run lint` (0 errors) clean;
   `npm run balance -- 500 --seed 42 --report` matches D11's shape; `smoke.spec.ts` (9/9,
   including `/season`) passes with no console errors.
-
-## ui_polish_small_fixes & playwright_auth_fixture — done 2026-09-14
-
-Design: `docs/completed/plan_ui_polish_small_fixes_2026-09-13.md` (plan 1b),
-`docs/completed/plan_playwright_auth_fixture_2026-09-14.md` (plan 1c, written and
-executed same session once 1b's smoke-test criterion turned out to need it).
-
-- **UI polish**: hover-preview show delay raised to 800ms plus immediate click-dismiss
-  (`useHoverPreview.ts`); draft-room picks confirm via a second click or a 2s auto-confirm
-  timer with a "Double-click to pick" hint (`DraftRoom.tsx`); deckbuilder identity radar
-  120 -> 168 (`TopKPIBand.tsx`). T2 ("suppress pack-reveal previews") was replaced: the
-  pack grid never wired up a preview in the first place, so revealed pack cards were made
-  flippable on hover instead, reusing `PlayerCard`/`PlayCard`'s existing flip (same as
-  everywhere else) rather than reimplementing the mechanic.
-- **Playwright auth fixture**: `test:e2e` had been unable to pass since `auth_approval` —
-  every protected route 401'd for Playwright's unauthenticated context. A dedicated
-  E2E-only Supabase account (`E2E_TEST_EMAIL`/`E2E_TEST_PASSWORD` in `.env.local`,
-  `scripts/bootstrap-e2e-user.mjs`, run once via `npm run bootstrap:e2e`) plus
-  `tests/auth.setup.ts` (logs in through the real `/login` form, saves `storageState`)
-  now gates the `chromium` Playwright project. `smoke.spec.ts` (8/8) and `home.spec.ts`
-  (2/2) pass for the first time since the auth gate landed.
-- **Fallout, not scope creep**: `visual.spec.ts` could finally run too and found one real
-  regression (DeckBuilder Top KPI Band snapshot, stale from the radar resize above —
-  updated) plus two failures that predate anything in this session (Franchise Dashboard,
-  Game View Matchup — see open issues, left as-is per owner call).
-- **Verified**: `npm test` (184/184), `tsc --noEmit`, `npm run lint` (0 errors) clean;
-  `npm run test:e2e` 12/14 (2 known pre-existing snapshot failures below).
 
 ## How to run everything
 

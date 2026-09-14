@@ -53,8 +53,17 @@ class FakeCloud implements CloudSyncClient {
           error: null,
         }),
       }),
+      // Deliberately a bare PromiseLike, no `.catch`/`.finally` — matches the real
+      // supabase-js PostgrestBuilder (implements only `then`), so calling `.catch()` on
+      // this instead of `await`-ing inside a try/catch throws here exactly like it would
+      // against the real client.
       delete: () => ({
-        eq: async (_col: string, val: string) => { rows.delete(val); return { error: null }; },
+        eq: (_col: string, val: string): PromiseLike<{ error: null }> => ({
+          then(onfulfilled, onrejected) {
+            rows.delete(val);
+            return Promise.resolve({ error: null as null }).then(onfulfilled, onrejected);
+          },
+        }),
       }),
     };
   }
@@ -90,6 +99,48 @@ describe('SupabaseGameStore', () => {
     const row = cloud.rows.get('rosters')!.get(roster.id);
     expect(row).toBeDefined();
     expect((row!.data as typeof roster).name).toBe(roster.name);
+  });
+
+  it('deleteRoster/deleteSeason/deleteDraftSession actually remove the cloud row', async () => {
+    const roster = makeSavedRoster();
+    const session = makeDraftSession();
+    await store.saveRoster(roster);
+    await store.saveDraftSession(session);
+    await flush();
+    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(true);
+    expect(cloud.rows.get('draft_sessions')!.has(session.id)).toBe(true);
+
+    await store.deleteRoster(roster.id);
+    await store.deleteDraftSession(session.id);
+
+    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(false);
+    expect(cloud.rows.get('draft_sessions')!.has(session.id)).toBe(false);
+    expect(await store.getRoster(roster.id)).toBeNull();
+    expect(await store.getDraftSession(session.id)).toBeNull();
+  });
+
+  it('re-saving after the known baseline row was deleted server-side re-inserts instead of silently queuing', async () => {
+    // Regression: a stale baseline pointing at a since-deleted row used to make push()
+    // treat the CAS rejection (current_row: null) as "needs a merge", find nothing to
+    // merge against, and queue forever without ever writing the new save.
+    const roster = makeSavedRoster();
+    await store.saveRoster(roster);
+    await flush();
+    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(true);
+
+    // Simulate another device deleting it without this store knowing (its baseline for
+    // the id is still the old updated_at).
+    cloud.rows.get('rosters')!.delete(roster.id);
+
+    const renamed = { ...roster, name: 'Renamed after delete' };
+    await store.saveRoster(renamed);
+    await flush();
+
+    expect(store.getSyncStatus().pending).toBe(0);
+    expect(await store.listConflicts()).toEqual([]);
+    const row = cloud.rows.get('rosters')!.get(roster.id);
+    expect(row).toBeDefined();
+    expect((row!.data as typeof renamed).name).toBe('Renamed after delete');
   });
 
   it('pulls a cloud-only row into a fresh local store on setOwnerId', async () => {
