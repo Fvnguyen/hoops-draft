@@ -1,4 +1,4 @@
-# Handover — 2026-09-13
+# Handover — 2026-09-14
 
 ## Current state
 
@@ -6,10 +6,12 @@ Magic Ball is playable end to end: draft (cube, 8 seats, 8-card packs, pack-open
 animation on the first pack) -> deck builder (depth chart, play assignments, identity
 selection) -> single game or round-robin season -> in-app analytics export. The engine is
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
-archetype identities and assigned-player plays; persistence is IndexedDB behind
+archetype identities and assigned-player plays. Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
-than the full play-by-play. 193 Vitest tests pass, type-check is clean, `npm run lint` is
-0 errors / 14 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
+than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
+(`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
+— see the milestone below. 210 Vitest tests pass, type-check is clean, `npm run lint` is
+0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
 screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
@@ -54,6 +56,44 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   [hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app); Supabase
   email/password auth with admin approval and username login; local IndexedDB data
   stamped per-user (Dexie v3).
+- **ui_draft_deckbuild_pack** (done 2026-09-13, `docs/completed/plan_ui_draft_deckbuild_pack_2026-09-13.md`):
+  rarity-ordered pack opener with pick clock, unified Roster list (no draft-time zoning),
+  fixed 5x4 depth chart, empty-start deck builder (no auto-fill).
+
+## accounts_cloud_saves — in progress 2026-09-14
+
+Plan: `docs/plans/plan_accounts_cloud_saves_2026-09-14.md` (sequence #3). T1-T9 built and
+verified this session against the real Supabase project (not a mock) — schema, RPC, and
+UI are live in dev; still open before calling it done, see below.
+
+- **Schema/sync**: migration `202609140001_cloud_saves.sql` (applied) adds
+  `draft_sessions`/`rosters`/`seasons` tables, owner+admin RLS, and a `cas_upsert`
+  compare-and-swap RPC. `SupabaseGameStore` (`frontend/src/storage/supabase.ts`) wraps
+  `IndexedDbGameStore` — reads stay local, writes push through `cas_upsert`, offline/failed
+  pushes queue and retry on reconnect — and is now the default `getGameStore()` result in
+  the browser.
+- **Concurrency**: `storage/merge.ts` (pure, no Supabase/Dexie/fetch imports, purity-tested
+  like `engine/`) auto-merges draft sessions (longer `pickLog` wins) and seasons (schedule
+  entries unioned by `played`, standings recomputed via the new
+  `engine/season.ts#recomputeStandingsFromSchedule`); a roster conflict has no sensible
+  auto-merge and surfaces via `SyncConflictPrompt` (`TopNav`'s new sync indicator,
+  `useSyncStatus`).
+- **Migration**: `StorageProvider` pushes any local-only rows to the cloud once per login
+  (`pushLocalToCloud`, insert-only — never overwrites an existing cloud row).
+- **Analytics**: aggregate math extracted from `scripts/analyze.ts` into
+  `src/lib/analyzeStats.ts` (byte-identical `npm run analyze` output, diffed). New
+  `/api/analytics?scope=self|all` (self = own RLS-scoped data, all = ADMIN via service
+  role) and `/admin/analytics` page, both verified live against the real DB and gates
+  (non-admin gets 403/redirect).
+- **Verified**: `npm test` (210/210), `tsc --noEmit`, `npm run lint` (0 errors) clean;
+  migration applied and confirmed via direct DB query (tables/policies/RPC present);
+  logged in live as the real admin account and as the E2E account — sync indicator
+  renders, `/admin/analytics` renders real (empty, no data yet) numbers, `scope=self`/`all`
+  gating both confirmed via HTTP.
+- **Open before `/roadmap done`**: no real second-device field test yet (simulated via
+  the `SupabaseGameStore` test suite's `FakeCloud`, not two physical devices); no roster
+  has actually hit a conflict outside tests — worth playing a draft/season on two devices
+  once mobile work lands to confirm `SyncConflictPrompt` in the wild.
 
 ## game_engine — done 2026-09-14
 
@@ -89,36 +129,6 @@ one session; sequence #2 in the roadmap.
 - Verified: `npm test` (193/193), `tsc --noEmit`, `npm run lint` (0 errors) clean;
   `npm run balance -- 500 --seed 42 --report` matches D11's shape; `smoke.spec.ts` (9/9,
   including `/season`) passes with no console errors.
-
-## ui_draft_deckbuild_pack — done 2026-09-13
-
-Design/full history: `docs/completed/plan_ui_draft_deckbuild_pack_2026-09-13.md` (plan
-**2a**). Waves 0-1 (contracts + 6 parallel agents + integration), wave 3 (auto-distribute
-fix, superseded below, card sizing), wave 4 (this session: drop draft-time zoning, empty
-deckbuilder, hover-preview auto-dismiss, quarter-score fix).
-
-- **Draft flow**: two home CTAs (`/draft?mode=quick|premier`); Premier shows a rarity-
-  ordered pack opener (Rare/Mythic hold+glow+shake, real Web Audio SFX) before every pack
-  with pick-from-the-spread, a pick clock (`PickTimerRing`, timeout auto-picks via a
-  neutral bot profile), and a `PackPassStage` pass animation. **Wave 4**: the old
-  Roster/G-League zone split during the draft is gone — one unified "Roster" list
-  end-to-end (`useDraftEngine.applyPick/processPickAndPass/pickFromIntro` no longer take a
-  `zone` param; `DraftPickRecord.zone` removed).
-- **Deck builder**: fixed 5x4-slot depth chart (`engine/depthChart.ts`), single
-  position-eligibility source (`engine/positions.ts`), `Toast`+Undo, visible
-  `RosterChecklist`, container-query fluid layout. **Wave 4**: fresh drafts now start with
-  an empty depth chart — `autoDistributeRoster` (wave 3) is deleted, not superseded in
-  place, matching the "no auto-fill" product rule; `BuiltRoster.gLeaguePlayers/gLeaguePlays`
-  renamed to `rosterPlayers/rosterPlays` everywhere (engine, storage, UI copy);
-  `SavedRoster.zones` dropped, `safeLoad.ts` treats it as optional so old saves still load.
-- **Presentation**: `TopKPIBand` why-locked hints, viewBox-fluid `RadarChart`/`DonutChart`,
-  new `/roster/[id]` edit route. **Wave 4**: `useHoverPreview`'s auto-dismiss timer
-  (1500ms) plus a document-level `dragstart` clear fixes a stuck preview blocking
-  drag-and-drop; `GameView.tsx`'s quarter-score filter no longer reveals a quarter's final
-  score before its last possession plays.
-- **Verified**: `npm test` (184/184), `tsc --noEmit`, `npm run lint` (0 errors) all clean;
-  unified Roster list and empty-start deckbuilder live-verified via screenshot this
-  session; hover-dismiss and quarter-score fix verified live by the owner.
 
 ## ui_polish_small_fixes & playwright_auth_fixture — done 2026-09-14
 

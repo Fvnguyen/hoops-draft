@@ -85,6 +85,18 @@ export interface GameStore {
   /** D3: the typed schema/card-set version row. Null on a store with no meta row yet
    *  (e.g. a brand-new MemoryGameStore, which does not do Dexie-style migrations). */
   getStorageMeta(): Promise<StorageMeta | null>;
+
+  /** accounts_cloud_saves D4/D7: pushes `storage/merge.ts` couldn't auto-resolve — always
+   *  empty on a backend with no cloud sync (IndexedDb/Memory). */
+  listConflicts(): Promise<SyncConflict[]>;
+  /** Resolves one conflict by picking a side; a store with no cloud sync should never
+   *  have one to resolve, so this is a no-op there. */
+  resolveConflict(table: SyncTable, id: string, choice: 'local' | 'remote'): Promise<void>;
+  /** Current sync state, for `useSyncStatus`. Stores with no cloud sync report `idle`. */
+  getSyncStatus(): SyncStatus;
+  /** Subscribe to sync status changes; returns an unsubscribe function. A store with no
+   *  cloud sync should call `listener` once with the idle status and never again. */
+  subscribeSyncStatus(listener: (status: SyncStatus) => void): () => void;
 }
 
 export class StorageQuotaError extends Error {
@@ -93,3 +105,25 @@ export class StorageQuotaError extends Error {
     this.name = 'StorageQuotaError';
   }
 }
+
+// ── accounts_cloud_saves (D4/D7): cloud sync status + conflicts ────────────
+
+export type SyncTable = 'draft_sessions' | 'rosters' | 'seasons';
+
+/** A push that `storage/merge.ts` couldn't auto-resolve (currently: only rosters ever
+ *  land here — draft/season conflicts always auto-merge). Surfaced via
+ *  `SyncConflictPrompt`; resolved with `GameStore.resolveConflict`. */
+export interface SyncConflict {
+  table: SyncTable;
+  id: string;
+  local: unknown;
+  remote: unknown;
+}
+
+export interface SyncStatus {
+  state: 'idle' | 'syncing' | 'offline';
+  pending: number;
+  conflicts: SyncConflict[];
+}
+
+export const IDLE_SYNC_STATUS: SyncStatus = { state: 'idle', pending: 0, conflicts: [] };

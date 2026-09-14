@@ -8,7 +8,16 @@
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import { CURRENT_CARD_SET_VERSION, type GameStore, type SavedRoster, type StorageMeta } from './types';
+import {
+  CURRENT_CARD_SET_VERSION,
+  IDLE_SYNC_STATUS,
+  type GameStore,
+  type SavedRoster,
+  type StorageMeta,
+  type SyncConflict,
+  type SyncStatus,
+  type SyncTable,
+} from './types';
 import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 export class MemoryGameStore implements GameStore {
@@ -130,5 +139,14 @@ export class MemoryGameStore implements GameStore {
       rosters: all.rosters.length,
       bytesEstimate,
     };
+  }
+
+  // accounts_cloud_saves: no cloud sync on the in-memory backend — always idle.
+  async listConflicts(): Promise<SyncConflict[]> { return []; }
+  async resolveConflict(_table: SyncTable, _id: string, _choice: 'local' | 'remote'): Promise<void> {}
+  getSyncStatus(): SyncStatus { return IDLE_SYNC_STATUS; }
+  subscribeSyncStatus(listener: (status: SyncStatus) => void): () => void {
+    listener(IDLE_SYNC_STATUS);
+    return () => {};
   }
 }

@@ -265,6 +265,60 @@ export function playNextGame(
   return { season, gameResult: humanGameResult! };
 }
 
+// ── Standings recomputation (accounts_cloud_saves D4) ──────────────────────
+
+/**
+ * Rebuild `standings` from `schedule` alone (every played matchup's `finalScore`),
+ * rather than trusting an incrementally-updated `standings` array. Used by
+ * `storage/merge.ts`'s `mergeSeason` after merging two divergent copies of a season's
+ * schedule, so a cross-device merge can never leave standings out of sync with the
+ * schedule that produced them. Pure and deterministic: same schedule + session always
+ * produces the same standings, in the same sorted order `playNextGame` uses (wins desc,
+ * then point differential desc).
+ */
+export function recomputeStandingsFromSchedule(
+  schedule: SeasonScheduleEntry[],
+  session: DraftSession,
+  humanName: string = 'You'
+): StandingsEntry[] {
+  const standings: StandingsEntry[] = session.seats.map((seat, idx) => ({
+    seatId: seat.id,
+    name: idx === 0 ? humanName : (seat.botProfile?.name || seat.id),
+    wins: 0,
+    losses: 0,
+    pointsFor: 0,
+    pointsAgainst: 0,
+    pointDiff: 0,
+  }));
+
+  for (const entry of schedule) {
+    if (!entry.played) continue;
+    for (const matchup of entry.matchups ?? []) {
+      if (!matchup.result) continue;
+      const [homeScore, awayScore] = matchup.result.finalScore;
+      const homeWon = homeScore > awayScore;
+      const homeStanding = standings.find((s) => s.seatId === session.seats[matchup.homeSeatIndex]?.id);
+      const awayStanding = standings.find((s) => s.seatId === session.seats[matchup.awaySeatIndex]?.id);
+
+      if (homeStanding) {
+        if (homeWon) homeStanding.wins++; else homeStanding.losses++;
+        homeStanding.pointsFor += homeScore;
+        homeStanding.pointsAgainst += awayScore;
+        homeStanding.pointDiff = homeStanding.pointsFor - homeStanding.pointsAgainst;
+      }
+      if (awayStanding) {
+        if (!homeWon) awayStanding.wins++; else awayStanding.losses++;
+        awayStanding.pointsFor += awayScore;
+        awayStanding.pointsAgainst += homeScore;
+        awayStanding.pointDiff = awayStanding.pointsFor - awayStanding.pointsAgainst;
+      }
+    }
+  }
+
+  standings.sort((a, b) => (b.wins !== a.wins ? b.wins - a.wins : b.pointDiff - a.pointDiff));
+  return standings;
+}
+
 // ── Legacy shape upgrade ───────────────────────────────────────────────────
 
 /** Schedule entry shape used before round-robin game days (one human game per entry). */

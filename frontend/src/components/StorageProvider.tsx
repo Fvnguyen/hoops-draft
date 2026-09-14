@@ -38,6 +38,13 @@ export function StorageProvider({ children }: { children: ReactNode }) {
           const store = getGameStore();
           await store.setOwnerId(profile.id);
           await store.claimLegacyData();
+          // accounts_cloud_saves D5: push whatever this device has that the cloud
+          // doesn't, once per mount — cas_upsert-based, so this is a no-op for rows the
+          // server already has (only IndexedDB-backed SupabaseGameStore has this method;
+          // MemoryGameStore/IndexedDbGameStore alone never do).
+          if ('pushLocalToCloud' in store) {
+            await (store as { pushLocalToCloud(): Promise<void> }).pushLocalToCloud();
+          }
         }
       })
       .catch((err) => {

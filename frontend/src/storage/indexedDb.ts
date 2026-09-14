@@ -13,8 +13,8 @@ import type { DraftSession } from '@/engine/deckbuilder';
 import { normalizeBuiltRoster } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import { normalizeSeason } from '@/engine/season';
-import type { GameStore, SavedRoster, StorageMeta } from './types';
-import { StorageQuotaError, CURRENT_CARD_SET_VERSION } from './types';
+import type { GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
+import { StorageQuotaError, CURRENT_CARD_SET_VERSION, IDLE_SYNC_STATUS } from './types';
 import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 interface MetaRow {
@@ -316,5 +316,14 @@ export class IndexedDbGameStore implements GameStore {
       schemaVersion: existing?.schemaVersion ?? SCHEMA_VERSION,
       cardSetVersion,
     });
+  }
+
+  // accounts_cloud_saves: no cloud sync on the plain IndexedDB backend — always idle.
+  async listConflicts(): Promise<SyncConflict[]> { return []; }
+  async resolveConflict(_table: SyncTable, _id: string, _choice: 'local' | 'remote'): Promise<void> {}
+  getSyncStatus(): SyncStatus { return IDLE_SYNC_STATUS; }
+  subscribeSyncStatus(listener: (status: SyncStatus) => void): () => void {
+    listener(IDLE_SYNC_STATUS);
+    return () => {};
   }
 }

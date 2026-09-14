@@ -177,9 +177,22 @@ which returns the single `GameStore` implementation for the environment:
   to `*.migrated`, never deleted.
 - `StorageProvider` (`src/components/StorageProvider.tsx`) runs `initStorage()` once at
   app start and exposes `useStorageReady()` so pages can wait for the migration.
-
-A remote backend (Phase 4, accounts and cloud saves) is a third implementation of the
-same interface, with the IndexedDB store kept as the offline cache.
+- `supabase.ts` — `SupabaseGameStore` (accounts_cloud_saves), the browser default in
+  `getGameStore()`: wraps an `IndexedDbGameStore` (every read still goes through it) and,
+  once `setOwnerId` has a real id, pushes every write to Supabase (`draft_sessions`,
+  `rosters`, `seasons` tables, migration `202609140001_cloud_saves.sql`) via a
+  `cas_upsert` RPC — an atomic `update ... where updated_at = expected`, so a push that
+  raced another device is rejected instead of silently clobbering it. A rejection is
+  resolved with `merge.ts` (pure, no Supabase/Dexie/fetch imports, same purity discipline
+  as `engine/`): draft sessions and seasons auto-merge (longer `pickLog` wins; schedule
+  entries are unioned by `played` and standings recomputed via
+  `engine/season.ts#recomputeStandingsFromSchedule`); a roster conflict has no sensible
+  auto-merge and is parked for `SyncConflictPrompt` (driven by `useSyncStatus`/
+  `GameStore.subscribeSyncStatus`) to let the user pick a side. `StorageProvider` also
+  runs a one-time `pushLocalToCloud()` per login, insert-only (never overwrites an
+  existing cloud row). `/api/analytics` and `/admin/analytics` read the same
+  Supabase tables (`src/lib/analyzeStats.ts`, shared with `scripts/analyze.ts`) — `scope=self`
+  works under the caller's own RLS-scoped session, `scope=all` is ADMIN-gated.
 
 ## 9. Headless tooling
 

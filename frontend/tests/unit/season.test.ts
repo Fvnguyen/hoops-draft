@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createSeason, playNextGame } from '@/engine/season';
+import { createSeason, playNextGame, recomputeStandingsFromSchedule } from '@/engine/season';
 import type { DraftSession } from '@/engine/deckbuilder';
 import { loadPlayers, PLAYS, runHeadlessDraft } from './helpers';
 
@@ -52,5 +52,32 @@ describe('seasonEngine', () => {
     const humanRow = season.standings.find((row) => row.seatId === 'human-0');
     expect(humanRow).toBeDefined();
     expect((humanRow!.wins + humanRow!.losses)).toBe(7);
+  });
+
+  // accounts_cloud_saves T2: recomputeStandingsFromSchedule must reproduce whatever
+  // playNextGame's incremental bookkeeping already produced, from the schedule alone.
+  it('recomputeStandingsFromSchedule matches playNextGame after a partial season', () => {
+    const session = makeSession();
+    let season = createSeason(session, 'test-roster');
+
+    for (let i = 0; i < 3; i++) {
+      const result = playNextGame(season, session);
+      season = result!.season;
+    }
+
+    const recomputed = recomputeStandingsFromSchedule(season.schedule, session, season.humanTeam.name);
+
+    const sortedActual = [...season.standings].sort((a, b) => a.seatId.localeCompare(b.seatId));
+    const sortedRecomputed = [...recomputed].sort((a, b) => a.seatId.localeCompare(b.seatId));
+    expect(sortedRecomputed).toEqual(sortedActual);
+  });
+
+  it('recomputeStandingsFromSchedule ignores unplayed game days', () => {
+    const session = makeSession();
+    const season = createSeason(session, 'test-roster');
+
+    const recomputed = recomputeStandingsFromSchedule(season.schedule, session, season.humanTeam.name);
+    expect(recomputed.every((row) => row.wins === 0 && row.losses === 0)).toBe(true);
+    expect(recomputed).toHaveLength(8);
   });
 });

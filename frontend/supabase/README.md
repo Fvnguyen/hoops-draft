@@ -1,12 +1,18 @@
-# Supabase auth setup
+# Supabase setup
 
 1. Apply the migrations in order, either from the Supabase SQL editor (paste each file's
    contents and run) or directly from this repo with `scripts/run-migration.mjs` (same
    approach as TG-Training):
 
    ```powershell
-   npm run migrate -- supabase/migrations/202609130001_auth_approval.sql supabase/migrations/202609130002_add_username.sql supabase/migrations/202609130003_remove_auto_approve.sql
+   npm run migrate -- supabase/migrations/202609130001_auth_approval.sql supabase/migrations/202609130002_add_username.sql supabase/migrations/202609130003_remove_auto_approve.sql supabase/migrations/202609140001_cloud_saves.sql
    ```
+
+   `202609140001_cloud_saves.sql` (accounts_cloud_saves plan) adds the `draft_sessions`/
+   `rosters`/`seasons` tables `SupabaseGameStore` (`frontend/src/storage/supabase.ts`)
+   syncs to, their RLS policies (owner full access; an ADMIN profile can additionally
+   read every owner's rows, for `/admin/analytics`), and the `cas_upsert` RPC every push
+   goes through.
 
    Requires `SUPABASE_DB_URL` in `frontend/.env.local` — Dashboard -> Project Settings ->
    Database -> Connection string -> URI, **Session pooler** mode (the direct `db.<ref>`
