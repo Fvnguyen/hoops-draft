@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getGameStore } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase } from '@/engine/season';
-import { WHATS_NEW } from '@/data/whatsnew';
+import { WHATS_NEW, type ChangelogEntry } from '@/data/whatsnew';
 
 const LAST_SEEN_CHANGELOG_KEY = 'lastSeenChangelogId';
 const DISMISSED_NOTICES_KEY = 'dismissedNoticeIds';
@@ -37,12 +37,16 @@ async function loadDismissedIds(): Promise<Set<string>> {
 export function useNotices(): {
   notices: Notice[];
   unreadCount: number;
+  /** whats_new_splash: the most recent unseen release, for the full-screen splash. Null
+   *  once the user has seen (or dismissed) the latest entry. */
+  latestUnseenEntry: ChangelogEntry | null;
   markChangelogSeen: () => void;
   dismissNotice: (id: string) => void;
 } {
   const ready = useStorageReady();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [latestUnseenEntry, setLatestUnseenEntry] = useState<ChangelogEntry | null>(null);
 
   const load = useCallback(async () => {
     const store = getGameStore();
@@ -70,12 +74,13 @@ export function useNotices(): {
       kind: 'changelog' as const,
       date: e.date,
       title: e.title,
-      body: e.body,
+      body: e.subtitle,
     }));
 
     const all = [...seasonNotices, ...changelogNotices].sort((a, b) => (a.date < b.date ? 1 : -1));
     setNotices(all);
     setUnreadCount(unseenChangelog.length + seasonNotices.length);
+    setLatestUnseenEntry(unseenChangelog.length > 0 ? unseenChangelog[unseenChangelog.length - 1] : null);
   }, []);
 
   useEffect(() => {
@@ -97,5 +102,5 @@ export function useNotices(): {
     });
   }, [load]);
 
-  return { notices, unreadCount, markChangelogSeen, dismissNotice };
+  return { notices, unreadCount, latestUnseenEntry, markChangelogSeen, dismissNotice };
 }

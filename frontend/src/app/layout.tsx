@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Bebas_Neue, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNav } from '@/components/TopNav';
+import { WhatsNewSplash } from '@/components/WhatsNewSplash';
 import { StorageProvider } from '@/components/StorageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AuthProvider>
           <StorageProvider>
             <TopNav />
+            <WhatsNewSplash />
             {children}
           </StorageProvider>
         </AuthProvider>
