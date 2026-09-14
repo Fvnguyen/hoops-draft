@@ -154,6 +154,24 @@ describe('SupabaseGameStore', () => {
     expect(await second.getRoster(roster.id)).toMatchObject({ id: roster.id, name: roster.name });
   });
 
+  it('a fresh login does not report a conflict for a roster nothing actually changed on', async () => {
+    // Reproduces the "changed on another device" toast appearing on every login: a brand
+    // new SupabaseGameStore has an empty in-memory `baselines` map, so without a content
+    // check every already-synced row looks "unbacked" on the first pull — and rosters
+    // always report a conflict from mergeRoster, which never auto-resolves.
+    const roster = makeSavedRoster();
+    await store.saveRoster(roster);
+    await flush();
+
+    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    await local.saveRoster(roster);
+    const freshLogin = new SupabaseGameStore(local, cloud);
+    await freshLogin.setOwnerId(OWNER);
+    await flush();
+
+    expect(await freshLogin.listConflicts()).toEqual([]);
+  });
+
   it('auto-merges a draft session pushed further on another device (no conflict)', async () => {
     const session = makeDraftSession({ pickLog: [] });
     await store.saveDraftSession(session);

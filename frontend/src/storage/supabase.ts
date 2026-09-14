@@ -51,6 +51,23 @@ function timestampOf(data: { timestamp?: string }): string {
   return data.timestamp ?? new Date().toISOString();
 }
 
+/** Key-order-independent deep equality (object keys sorted recursively, array order kept
+ *  as-is — order is meaningful there). Postgres jsonb doesn't preserve the original key
+ *  insertion order, so a plain `JSON.stringify` comparison would report a false diff for
+ *  two objects that are otherwise identical. */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sameContent(a: unknown, b: unknown): boolean {
+  return stableStringify(a) === stableStringify(b);
+}
+
 export class SupabaseGameStore implements GameStore {
   private local: GameStore;
   private client: CloudSyncClient;
@@ -274,7 +291,15 @@ export class SupabaseGameStore implements GameStore {
           await this.writeLocalOnly(table, row.data);
           this.baselines.set(key, row.updated_at);
         } else if (this.baselines.get(key) !== row.updated_at) {
-          await this.resolveViaMerge(table, row.id, existing, row.data, row.updated_at);
+          // A missing baseline (e.g. a fresh page load/login) doesn't by itself mean the
+          // row changed — only a real content difference does. Without this check, every
+          // login would treat every already-synced row as "changed on another device"
+          // (rosters always report a conflict from mergeRoster, which never auto-resolves).
+          if (sameContent(existing, row.data)) {
+            this.baselines.set(key, row.updated_at);
+          } else {
+            await this.resolveViaMerge(table, row.id, existing, row.data, row.updated_at);
+          }
         }
       }
     }
