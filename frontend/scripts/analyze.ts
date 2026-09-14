@@ -276,10 +276,20 @@ function reportRosterSection(sessions: DraftSession[]): RosterSummary[] {
  * current engine, or that predates seeded persistence entirely and has no matching
  * draft session to rebuild TeamInfo from, is skipped (undercounts rather than reports a
  * game that never actually happened under today's rules).
+ *
+ * Each game is tagged with the owning session's `ownerId` (the Supabase user id who ran
+ * the draft, unset for local/anonymous play) so reportOwnerSection can attribute results
+ * to a real user without needing a separate per-user data store.
  */
-function collectGames(seasons: Season[], sessions: DraftSession[]): GameTheater[] {
+interface OwnedGame {
+  theater: GameTheater;
+  ownerId?: string;
+  session?: DraftSession;
+}
+
+function collectGames(seasons: Season[], sessions: DraftSession[]): OwnedGame[] {
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
-  const games: GameTheater[] = [];
+  const games: OwnedGame[] = [];
   seasons.forEach((season) => {
     const session = sessionById.get(season.sessionId);
     (season.schedule ?? []).forEach((entry: SeasonScheduleEntry) => {
@@ -287,23 +297,23 @@ function collectGames(seasons: Season[], sessions: DraftSession[]): GameTheater[
       for (const matchup of entry.matchups ?? []) {
         if (!matchup.result) continue;
         if (matchup.result.legacyTheater) {
-          games.push(matchup.result.legacyTheater as GameTheater);
+          games.push({ theater: matchup.result.legacyTheater as GameTheater, ownerId: session?.ownerId, session });
           continue;
         }
         if (!session) continue; // can't rebuild bot TeamInfo without the draft session
         const homeTeam = teamInfoForSeat(season, session, matchup.homeSeatIndex);
         const awayTeam = teamInfoForSeat(season, session, matchup.awaySeatIndex);
         const replay = resolveMatchupReplay(matchup.result, homeTeam, awayTeam);
-        if (replay.kind !== 'versionMismatch') games.push(replay.theater);
+        if (replay.kind !== 'versionMismatch') games.push({ theater: replay.theater, ownerId: session?.ownerId, session });
       }
     });
   });
   return games;
 }
 
-function reportGameSection(games: GameTheater[]): void {
+function reportGameSection(theaters: GameTheater[]): void {
   header('Game Results: Play Calls, Score Bands, Margins');
-  if (!games.length) {
+  if (!theaters.length) {
     console.log('No completed games found.');
     return;
   }
@@ -316,7 +326,7 @@ function reportGameSection(games: GameTheater[]): void {
   let possessionsWithCalls = 0;
   let totalPossessions = 0;
 
-  games.forEach((g) => {
+  theaters.forEach((g) => {
     const [h, a] = g.finalScore ?? [0, 0];
     teamScores.push(h, a);
     margins.push(Math.abs(h - a));
@@ -331,14 +341,14 @@ function reportGameSection(games: GameTheater[]): void {
     });
   });
 
-  console.log(`\nGames: ${games.length}`);
+  console.log(`\nGames: ${theaters.length}`);
   console.log(`Score: mean ${mean(teamScores).toFixed(1)} | median ${median(teamScores).toFixed(1)} | sd ${sd(teamScores).toFixed(1)}`);
   const close = margins.filter((m) => m <= 5).length;
   const mid = margins.filter((m) => m >= 6 && m <= 14).length;
   const blowout = margins.filter((m) => m >= 15).length;
   console.log(`Margin: mean ${mean(margins).toFixed(1)} | close(<=5) ${pct(close, margins.length)} | mid(6-14) ${pct(mid, margins.length)} | blowout(15+) ${pct(blowout, margins.length)}`);
-  console.log(`Home win %: ${pct(homeWins, games.length)}`);
-  console.log(`OT %: ${pct(otGames, games.length)}`);
+  console.log(`Home win %: ${pct(homeWins, theaters.length)}`);
+  console.log(`OT %: ${pct(otGames, theaters.length)}`);
 
   console.log('\nPlay call counts (from PossessionEvent.calledPlays):');
   if (!Object.keys(playCallCounts).length) {
@@ -365,9 +375,9 @@ function staffedCountOf(team: TeamInfo): number {
   return status.plays.filter((p) => p.active).length;
 }
 
-function reportWinRateSection(games: GameTheater[]): void {
+function reportWinRateSection(theaters: GameTheater[]): void {
   header('Win Rate by Identity Tier and Staffed Plays');
-  if (!games.length) {
+  if (!theaters.length) {
     console.log('No completed games found.');
     return;
   }
@@ -377,7 +387,7 @@ function reportWinRateSection(games: GameTheater[]): void {
   let sawArchetypes = false;
   let sawAssignments = false;
 
-  games.forEach((g) => {
+  theaters.forEach((g) => {
     const [h, a] = g.finalScore ?? [0, 0];
     const sides: { team: TeamInfo; won: boolean }[] = [
       { team: g.homeTeam, won: h > a },
@@ -431,7 +441,103 @@ function reportWinRateSection(games: GameTheater[]): void {
   }
 }
 
+// ── Section 5: Draft & performance by owner (human user vs bots) ──────────
+
+/**
+ * Attributes sessions/games to the Supabase `ownerId` who ran the draft, so results can
+ * be compared across real users (once production play accumulates data — today's local
+ * dumps predate ownerId and all fall into 'local/anonymous'). Pass ids/emails to exclude
+ * via `--exclude=<ownerId1>,<ownerId2>` (e.g. the E2E test account from
+ * `npm run bootstrap:e2e`), never hardcoded here since that account's id is generated
+ * per environment.
+ *
+ * Reports three independent signals per owner so their relative weight on winning can be
+ * read off the numbers rather than guessed:
+ *   - draft quality proxy: avg OVR of early picks (1-4) — how well they drafted
+ *   - lineup construction proxy: avg staffed plays + best identity tier reached
+ *   - outcome: win rate and avg margin in their games
+ */
+function reportOwnerSection(sessions: DraftSession[], ownedGames: OwnedGame[], excludeOwnerIds: Set<string>): void {
+  header('Draft & Performance by Owner');
+
+  const filteredSessions = sessions.filter((s) => !s.ownerId || !excludeOwnerIds.has(s.ownerId));
+  const filteredGames = ownedGames.filter((g) => !g.ownerId || !excludeOwnerIds.has(g.ownerId));
+  if (excludeOwnerIds.size) {
+    const excludedSessions = sessions.length - filteredSessions.length;
+    console.log(`Excluding ${excludeOwnerIds.size} owner id(s): ${excludedSessions} session(s) dropped.`);
+  }
+
+  const ownerKey = (id: string | undefined) => id ?? 'local/anonymous';
+  const ownerIds = new Set<string>([...filteredSessions.map((s) => ownerKey(s.ownerId)), ...filteredGames.map((g) => ownerKey(g.ownerId))]);
+  if (!ownerIds.size) {
+    console.log('No sessions or games found.');
+    return;
+  }
+
+  Array.from(ownerIds).sort().forEach((owner) => {
+    const ownerSessions = filteredSessions.filter((s) => ownerKey(s.ownerId) === owner);
+    const ownerGames = filteredGames.filter((g) => ownerKey(g.ownerId) === owner);
+
+    const early: number[] = [];
+    ownerSessions.forEach((session) => {
+      const allCards = (session.seats ?? []).flatMap((s) => s.drafted ?? []);
+      (session.pickLog ?? [])
+        .filter((rec: DraftPickRecord) => rec.packNumber === 1 && rec.pickNumber <= 4)
+        .forEach((rec: DraftPickRecord) => {
+          const card = allCards.find((c: DraftCard) => c.id === rec.pickedCardId);
+          if (card?.type === 'Player' && card.ratings?.overall) early.push(card.ratings.overall);
+        });
+    });
+
+    const staffedCounts: number[] = [];
+    const bestTiers: ArchetypeTier[] = [];
+    ownerSessions.forEach((session) => {
+      (session.seats ?? []).forEach((seat) => {
+        const roster = seat.builtRoster;
+        if (!roster?.archetypes && !roster?.playAssignments) return;
+        const { players, starterIds } = activeRosterOf(seat);
+        const statuses = evaluateArchetypes(players, starterIds, roster.archetypes);
+        const lanes = selectedTiersByLane(statuses, roster.archetypes);
+        const { staffed } = staffedPlayInfo(roster.playAssignments, players);
+        staffedCounts.push(staffed);
+        const tierRank: Record<ArchetypeTier, number> = { none: 0, online: 1, dedicated: 2 };
+        const best = ([lanes.offense.tier, lanes.defense.tier, lanes.gold.tier] as ArchetypeTier[])
+          .sort((a, b) => tierRank[b] - tierRank[a])[0];
+        bestTiers.push(best);
+      });
+    });
+
+    let wins = 0;
+    const margins: number[] = [];
+    ownerGames.forEach(({ theater }) => {
+      const [h, a] = theater.finalScore ?? [0, 0];
+      const homeIsOwner = theater.homeTeam?.seatId === 'human-0';
+      const awayIsOwner = theater.awayTeam?.seatId === 'human-0';
+      if (!homeIsOwner && !awayIsOwner) return;
+      const won = homeIsOwner ? h > a : a > h;
+      if (won) wins++;
+      margins.push(homeIsOwner ? h - a : a - h);
+    });
+
+    console.log(`\n${owner}`);
+    console.log(`  Sessions: ${ownerSessions.length}  |  Games: ${margins.length}`);
+    console.log(`  Draft quality (avg OVR, R1 picks 1-4): ${early.length ? mean(early).toFixed(1) : 'n/a'}`);
+    console.log(
+      `  Lineup construction: avg staffed plays ${staffedCounts.length ? mean(staffedCounts).toFixed(1) : 'n/a'}` +
+      `, dedicated-tier lanes ${bestTiers.length ? pct(bestTiers.filter((t) => t === 'dedicated').length, bestTiers.length) : 'n/a'}`
+    );
+    console.log(`  Outcome: win rate ${margins.length ? pct(wins, margins.length) : 'n/a'}, avg margin ${margins.length ? mean(margins).toFixed(1) : 'n/a'}`);
+  });
+}
+
 // ── Main ────────────────────────────────────────────────────────────────
+
+function parseExcludeOwnerIds(argv: string[]): Set<string> {
+  const flag = argv.find((a) => a.startsWith('--exclude='));
+  const fromFlag = flag ? flag.slice('--exclude='.length) : '';
+  const fromEnv = process.env.ANALYZE_EXCLUDE_OWNER_IDS ?? '';
+  return new Set([fromFlag, fromEnv].join(',').split(',').map((s) => s.trim()).filter(Boolean));
+}
 
 function main(): void {
   const dumpPath = findNewestDump();
@@ -441,9 +547,11 @@ function main(): void {
 
   reportDraftSection(data.sessions);
   reportRosterSection(data.sessions);
-  const games = collectGames(data.seasons, data.sessions);
-  reportGameSection(games);
-  reportWinRateSection(games);
+  const ownedGames = collectGames(data.seasons, data.sessions);
+  const theaters = ownedGames.map((g) => g.theater);
+  reportGameSection(theaters);
+  reportWinRateSection(theaters);
+  reportOwnerSection(data.sessions, ownedGames, parseExcludeOwnerIds(process.argv.slice(2)));
 
   console.log('');
 }
