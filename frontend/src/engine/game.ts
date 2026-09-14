@@ -18,17 +18,17 @@ import { PlayerCardData, Play } from './types';
 import { DraftSessionSeat, normalizeBuiltRoster } from './deckbuilder';
 import { calcTeamBonuses, TeamBonuses, GameModifiers } from './synergies';
 import {
-  PlayAssignment, PlayStatus, PlayCallModifiers, PlaybookStatus,
+  PlayAssignment, PlayStatus, PlayCallModifiers, PlaybookStatus, ScaledPlay,
   evaluatePlaybook, scaledPlayAllocations, playbookPossessionSwing,
 } from './playbook';
 import type { ArchetypeSelection } from './archetypes';
 import { Rng, createRng, randomSeed } from './rng';
 import {
-  BASE_PACE, NOISE_PCT, STRENGTH_SWING_PCT,
+  BASE_PACE, HOME_NOISE_LO_PCT, HOME_NOISE_HI_PCT, AWAY_NOISE_LO_PCT, AWAY_NOISE_HI_PCT, STRENGTH_SWING_PCT,
   POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
   OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
-  NBA_BASELINE, LEAGUE_AVG, AND1_BASE, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
-  PLAY_SCORER_BOOST, IDENTITY_CAPS,
+  NBA_BASELINE, LEAGUE_AVG, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
+  PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
 } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -46,17 +46,12 @@ export interface PlayerBoxScore {
   assists: number;
 }
 
-export interface SubstitutionEvent {
-  possession: number;
-  quarter: number;
-  playerIn: string;       // Player ID entering
-  playerOut: string;      // Player ID leaving
-  position: string;       // Position column (PG, SG, etc.)
-}
-
 export interface PossessionEvent {
   index: number;
   quarter: number;
+  /** T6 code review follow-up (2026-09-14): a coach-mode hook, not yet read anywhere —
+   *  see SEGMENTS_PER_GAME in balance.ts. */
+  segment: number;
   team: 'home' | 'away';
   lineupOnCourt: string[];    // 5 player IDs on offense
   defenseOnCourt: string[];   // 5 player IDs on defense
@@ -84,7 +79,6 @@ export interface GameTheater {
   homeTeam: TeamInfo;
   awayTeam: TeamInfo;
   possessions: PossessionEvent[];
-  substitutions: SubstitutionEvent[];
   quarterSummaries: QuarterSummary[];
   finalScore: [number, number];
   boxScore: { home: PlayerBoxScore[]; away: PlayerBoxScore[] };
@@ -114,8 +108,18 @@ export interface TeamInfo {
 // ── Rotation Engine ────────────────────────────────────────────────────────
 
 /**
- * Calculate possession shares for each player (0-1, how much of the game they play).
- * Used for team strength calculations and playstyle weighting.
+ * Calculate possession shares for each player (0-1, how much of the game they play),
+ * from talent gap (bigger OVR gap → starter plays more), real historical MPG (blended
+ * 60/40 with the formula), and an age penalty for 35+.
+ *
+ * T6 code review follow-up (2026-09-14): this is now the ONLY input driving who's on
+ * court each possession (see drawLineup) — a fresh weighted draw per position, per
+ * possession, rather than the old precomputed quarter-phase rotation timeline, which
+ * only read this map's starter fraction and only in half the quarters (see HANDOVER.md
+ * issue #9). No per-quarter choreography (starter-opens/backup-closes, etc.) survives:
+ * that was NBA-broadcast flavor with no game_theater consumer (`SubstitutionEvent` was
+ * never read by any UI) and no strategic weight — the roster-construction signal this
+ * function encodes is what should matter, not a scripted pattern layered on top of it.
  */
 export function calcPossessionShares(
   depthChart: Record<string, string[]>,
@@ -185,91 +189,34 @@ export function calcPossessionShares(
 }
 
 /**
- * Generate NBA-style rotation timeline for a quarter.
- * Returns which player is on court at each possession for each position.
+ * Draw one possession's lineup: one player per position, weighted by that position's
+ * players' `calcPossessionShares` values (T6 code review follow-up, 2026-09-14 — replaces
+ * the old precomputed quarter-phase rotation timeline). Independent per possession, per
+ * team, regardless of which side of the ball that team is on this possession — the
+ * engine doesn't model continuous on-court stints; if a presentation ever wants
+ * real-looking substitution patterns, that's a game_theater transform over this log, not
+ * something the engine needs to fake for itself.
  */
-function generateQuarterRotation(
-  depthChart: Record<string, string[]>,
-  players: PlayerCardData[],
-  quarterPoss: number,
-  quarter: number, // 1-4
-  shares: Map<string, number>
-): Map<string, string>[] {
-  // Each entry = lineup at that possession index: Map<position, playerId>
-  const timeline: Map<string, string>[] = [];
-  const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
-
-  for (let p = 0; p < quarterPoss; p++) {
-    const lineup = new Map<string, string>();
-
-    for (const pos of positions) {
-      const ids = depthChart[pos] || [];
-      if (ids.length === 0) continue;
-
-      if (ids.length === 1) {
-        lineup.set(pos, ids[0]);
-        continue;
-      }
-
-      // NBA rotation pattern per quarter
-      const starterPoss = Math.round(quarterPoss * (shares.get(ids[0]) || 0.7));
-
-      if (quarter === 1 || quarter === 3) {
-        // Starter starts, backup mid-quarter, starter closes
-        if (p < starterPoss * 0.55) {
-          lineup.set(pos, ids[0]); // Starter opens
-        } else if (p < quarterPoss - starterPoss * 0.35) {
-          lineup.set(pos, ids[1]); // Backup mid-quarter
-        } else {
-          lineup.set(pos, ids[0]); // Starter closes
-        }
-      } else {
-        // Q2/Q4: Backup opens, starter re-enters for bulk
-        if (p < quarterPoss * 0.25) {
-          lineup.set(pos, ids[1]); // Backup opens
-        } else if (p < quarterPoss * 0.85) {
-          lineup.set(pos, ids[0]); // Starter bulk
-        } else {
-          // Deep bench gets a few possessions in Q2/Q4 if available
-          lineup.set(pos, ids.length >= 3 ? ids[2] : ids[1]);
-        }
-      }
-    }
-
-    timeline.push(lineup);
+function drawLineup(depthChart: Record<string, string[]>, shares: Map<string, number>, rng: Rng): Map<string, string> {
+  const lineup = new Map<string, string>();
+  for (const [pos, ids] of Object.entries(depthChart)) {
+    if (ids.length === 0) continue;
+    if (ids.length === 1) { lineup.set(pos, ids[0]); continue; }
+    const weights = ids.map(id => shares.get(id) ?? 0);
+    lineup.set(pos, weightedRandom(ids, weights, rng));
   }
-
-  return timeline;
+  return lineup;
 }
 
 /**
- * Extract substitution events from a rotation timeline.
+ * Coach-mode hook (not yet read anywhere — see SEGMENTS_PER_GAME in balance.ts): which
+ * segment of the game a quarter falls in. Overtime is always the trailing segment,
+ * whatever SEGMENTS_PER_GAME is set to.
  */
-function extractSubstitutions(
-  timeline: Map<string, string>[],
-  startPossIndex: number,
-  quarter: number
-): SubstitutionEvent[] {
-  const subs: SubstitutionEvent[] = [];
-  const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
-
-  for (let i = 1; i < timeline.length; i++) {
-    for (const pos of positions) {
-      const prev = timeline[i - 1].get(pos);
-      const curr = timeline[i].get(pos);
-      if (prev && curr && prev !== curr) {
-        subs.push({
-          possession: startPossIndex + i,
-          quarter,
-          playerIn: curr,
-          playerOut: prev,
-          position: pos,
-        });
-      }
-    }
-  }
-
-  return subs;
+function segmentForQuarter(quarter: number): number {
+  if (quarter > 4) return SEGMENTS_PER_GAME;
+  const quartersPerSegment = 4 / SEGMENTS_PER_GAME;
+  return Math.floor((quarter - 1) / quartersPerSegment);
 }
 
 // ── Possession Battle ──────────────────────────────────────────────────────
@@ -293,9 +240,12 @@ function calcPossessionSplit(
   awayBonuses: TeamBonuses,
   rng: Rng
 ): PossessionSplit {
-  // Independent noise per team: ±NOISE_PCT of BASE_PACE
-  const homeNoise = (rng.next() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
-  const awayNoise = (rng.next() - 0.5) * 2 * BASE_PACE * NOISE_PCT;
+  // T2 (D4): independent per-team possession-count noise, drawn from asymmetric ranges —
+  // home skewed positive, away roughly centered — instead of a flat efficiency bonus.
+  // This is the same roll that existed before (was symmetric ±5% of BASE_PACE for both
+  // sides, i.e. no home-court mechanic at all); only the bounds changed.
+  const homeNoise = (HOME_NOISE_LO_PCT + rng.next() * (HOME_NOISE_HI_PCT - HOME_NOISE_LO_PCT)) * BASE_PACE;
+  const awayNoise = (AWAY_NOISE_LO_PCT + rng.next() * (AWAY_NOISE_HI_PCT - AWAY_NOISE_LO_PCT)) * BASE_PACE;
 
   let homePoss = BASE_PACE + homeNoise;
   let awayPoss = BASE_PACE + awayNoise;
@@ -460,7 +410,7 @@ export function calcTeamShotProfile(
  *   4. If make → points + and-1 check
  *   5. If miss → narrated as turnover/block/miss for variety
  */
-function resolvePossession(
+export function resolvePossession(
   offenseLineup: PlayerCardData[],
   defenseLineup: PlayerCardData[],
   shotProfile: TeamShotProfile,
@@ -471,7 +421,7 @@ function resolvePossession(
   /** Playbook (§7): on a called offensive play, these assigned players' scorer weights
    *  are multiplied by PLAY_SCORER_BOOST so they're favoured to take the shot. */
   boostedIds?: Set<string>
-): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
+): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; isCleanFieldGoal: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
 
   // Step 1: Roll shot type from team distribution
   const roll = rng.next();
@@ -544,30 +494,43 @@ function resolvePossession(
     // sync by deciding the turnover here rather than leaving it to the randomly
     // chosen narrative flavor text.
     const isTurnover = rng.next() < TURNOVER_RATE;
-    return { outcome: 'miss', points: 0, isAnd1: false, isTurnover, channel, scorerId, narrativeHint: isTurnover ? 'turnover' : 'miss' };
+    return { outcome: 'miss', points: 0, isAnd1: false, isTurnover, isCleanFieldGoal: false, channel, scorerId, narrativeHint: isTurnover ? 'turnover' : 'miss' };
   }
 
   // Step 4: Points + and-1 check
   let points: number;
   let narrativeHint: string;
+  let isCleanFieldGoal: boolean;
 
   if (channel === 'rim') {
-    // Rim makes: 50% → 2pts (clean make), 50% → 1pt (foul/FTs) → avg 1.5
-    points = rng.next() < 0.5 ? 2 : 1;
-    narrativeHint = points === 2 ? 'rim_make' : 'rim_ft';
+    // Rim makes: 50% clean 2, 50% a shooting foul — two FTs at RIM_FT_PCT (T3 code
+    // review, 2026-09-14: this used to be a flat 1 point, understating a real FT trip's
+    // ~1.5 expected value at league-average shooting and dragging PPP well below NBA
+    // norms; see balance.ts's RIM_FT_PCT comment).
+    isCleanFieldGoal = rng.next() < 0.5;
+    if (isCleanFieldGoal) {
+      points = 2;
+      narrativeHint = 'rim_make';
+    } else {
+      points = (rng.next() < RIM_FT_PCT ? 1 : 0) + (rng.next() < RIM_FT_PCT ? 1 : 0);
+      narrativeHint = 'rim_ft';
+    }
   } else if (channel === 'mid') {
     points = 2;
+    isCleanFieldGoal = true;
     narrativeHint = 'mid_make';
   } else {
     points = 3;
+    isCleanFieldGoal = true;
     narrativeHint = 'three_make';
   }
 
-  // And-1 check (only possible on clean field goals, not free throw events)
+  // And-1 check: only a clean field goal can draw an and-1 — a made free-throw trip
+  // (isCleanFieldGoal false) isn't a field goal at all, so it can't be "and one" no
+  // matter how many of the two free throws went in.
   let isAnd1 = false;
-  if (points >= 2) {
-    const and1Base = AND1_BASE[channel];
-    const and1Chance = and1Base + offenseMods.and1Bonus;
+  if (isCleanFieldGoal) {
+    const and1Chance = clampAnd1Chance(AND1_BASE[channel], offenseMods.and1Bonus);
     if (rng.next() < and1Chance) {
       isAnd1 = true;
       points += 1;
@@ -575,9 +538,10 @@ function resolvePossession(
     }
   }
 
-  // Assist: playmaking-weighted, excluding scorer, only on clean field goals
+  // Assist: playmaking-weighted, excluding scorer, only on clean field goals — a free
+  // throw is never assisted.
   let assistId: string | undefined;
-  if (points >= 2) {
+  if (isCleanFieldGoal) {
     const assistCandidates = offenseLineup.filter(p => p.id !== scorerId);
     if (assistCandidates.length > 0 && rng.next() < 0.65) {
       const assistWeights = assistCandidates.map(p => p.ratings?.playmaking ?? 50);
@@ -586,7 +550,19 @@ function resolvePossession(
     }
   }
 
-  return { outcome: channel, points, isAnd1, isTurnover: false, channel, scorerId, assistId, narrativeHint };
+  return { outcome: channel, points, isAnd1, isTurnover: false, isCleanFieldGoal, channel, scorerId, assistId, narrativeHint };
+}
+
+/**
+ * T6 code review (2026-09-14): every other combined modifier in resolvePossession gets a
+ * final sane-range clamp (efficiency to [0.15, 0.85], edge to [-0.25, 0.25]) — and1Chance
+ * (base + offense and1Bonus) didn't, even though each input is already independently
+ * capped (AND1_BASE, IDENTITY_CAPS.and1). With today's content the reachable max is
+ * ~0.16, well under AND1_CHANCE_CAP, so this is a defensive floor for future content,
+ * not a fix to any currently-reachable behavior.
+ */
+export function clampAnd1Chance(and1Base: number, and1Bonus: number): number {
+  return Math.min(AND1_CHANCE_CAP, Math.max(0, and1Base + and1Bonus));
 }
 
 function weightedRandom<T>(items: T[], weights: number[], rng: Rng): T {
@@ -672,6 +648,162 @@ function applyCalledShareShift(base: TeamShotProfile, mods: PlayCallModifiers): 
   const sum = rim + mid + per;
   if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
   return { rim, mid, per };
+}
+
+/** A lineup map built from each position's starter (depth-chart index 0) only — OT's
+ *  "your best 5 close the game" default before any play call is applied. */
+function starterLineupMap(depthChart: Record<string, string[]>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [pos, ids] of Object.entries(depthChart)) {
+    if (ids.length > 0) map.set(pos, ids[0]);
+  }
+  return map;
+}
+
+/**
+ * T1 (game_engine D3, 2026-09-14): resolve one possession — roll for a called offensive
+ * play and a coverage play, apply their on-call modifiers, resolve the shot, update the
+ * box score, and build the PossessionEvent. Shared by regulation and OT so OT possessions
+ * roll for plays/coverage "exactly like regulation possessions" (same budgets, same rng
+ * stream) instead of duplicating this logic with OT quietly left out, as it was before.
+ * The caller still owns score accumulation (needs `points` before it can fill in
+ * `runningScore`) and pushing the returned event onto `allPossessions`.
+ */
+function playOnePossession(params: {
+  index: number;
+  quarter: number;
+  segment: number;
+  team: 'home' | 'away';
+  offenseTeam: TeamInfo;
+  defenseTeam: TeamInfo;
+  /** Lineup BEFORE any play-call override — drawn per-possession (drawLineup) in
+   *  regulation, starters-only (starterLineupMap) in OT. */
+  offenseLineupMap: Map<string, string>;
+  defenseLineupMap: Map<string, string>;
+  offenseMods: GameModifiers;
+  defFromOpp: GameModifiers;
+  baseShotProfile: TeamShotProfile;
+  offenseScaled: ScaledPlay[];
+  coverageScaled: ScaledPlay[];
+  minutesPerPoss: number;
+  isPossWin: boolean;
+  rng: Rng;
+  leagueAvg: Record<ShotChannel, { off: number; def: number }>;
+  boxStats: Map<string, PlayerBoxScore>;
+  playerNameMap: Map<string, string>;
+}): { event: PossessionEvent; points: number } {
+  const {
+    index, quarter, segment, team, offenseTeam, defenseTeam,
+    offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp, baseShotProfile,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, rng, leagueAvg, boxStats, playerNameMap,
+  } = params;
+  const isHome = team === 'home';
+
+  let offenseIds = Array.from(offenseLineupMap.values());
+  let defenseIds = Array.from(defenseLineupMap.values());
+
+  // Playbook (§7): roll independently for (a) the offense team's called play over its
+  // own possessions and (b) the defending team's coverage play over the opponent's
+  // possessions. Both rolls skip entirely (no rng draw) when that side has no active
+  // plays. A roll that lands on a play whose assigned players can't form a legal lineup
+  // (overrideLineupForPlay returns null) falls back to the normal lineup and does not
+  // count as called.
+  let calledOffense: PlayStatus | undefined;
+  const rolledOffense = rollCalledPlay(rng, offenseScaled);
+  if (rolledOffense) {
+    const overridden = overrideLineupForPlay(offenseLineupMap, offenseTeam.depthChart, rolledOffense.playerIds);
+    if (overridden) { offenseIds = Array.from(overridden.values()); calledOffense = rolledOffense; }
+  }
+
+  let calledCoverage: PlayStatus | undefined;
+  const rolledCoverage = rollCalledPlay(rng, coverageScaled);
+  if (rolledCoverage) {
+    const overriddenDef = overrideLineupForPlay(defenseLineupMap, defenseTeam.depthChart, rolledCoverage.playerIds);
+    if (overriddenDef) { defenseIds = Array.from(overriddenDef.values()); calledCoverage = rolledCoverage; }
+  }
+
+  const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
+  const defenseLineup = defenseIds.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
+
+  // Playbook on-call modifiers (§7): a called offensive play shifts this possession's
+  // shot profile (renormalized) and adds to channel efficiency/and-1; a coverage play's
+  // (negative) eff deltas add to the opponent's channel efficiency for this possession
+  // only, same sign convention as defenseMods. The combined per-possession eff shift per
+  // channel is clamped to ±IDENTITY_CAPS.eff and share shifts to ±IDENTITY_CAPS.share
+  // (applyCalledShareShift does the share clamp).
+  const shotProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
+
+  const rimEffDelta = clampTo((calledOffense?.def.mods.rimEff ?? 0) + (calledCoverage?.def.mods.rimEff ?? 0), IDENTITY_CAPS.eff);
+  const midEffDelta = clampTo((calledOffense?.def.mods.midEff ?? 0) + (calledCoverage?.def.mods.midEff ?? 0), IDENTITY_CAPS.eff);
+  const threeEffDelta = clampTo((calledOffense?.def.mods.threeEff ?? 0) + (calledCoverage?.def.mods.threeEff ?? 0), IDENTITY_CAPS.eff);
+  const and1Delta = clampTo(calledOffense?.def.mods.and1 ?? 0, IDENTITY_CAPS.and1);
+
+  const possessionOffenseMods: GameModifiers = (rimEffDelta || midEffDelta || threeEffDelta || and1Delta)
+    ? { ...offenseMods, rimEffBonus: offenseMods.rimEffBonus + rimEffDelta, midEffBonus: offenseMods.midEffBonus + midEffDelta, perEffBonus: offenseMods.perEffBonus + threeEffDelta, and1Bonus: offenseMods.and1Bonus + and1Delta }
+    : offenseMods;
+
+  const boostedIds = calledOffense ? new Set(calledOffense.playerIds) : undefined;
+
+  // Resolve the possession (multi-channel: shot type → edge → efficiency)
+  const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, leagueAvg, rng, boostedIds);
+
+  // Playbook recording (§7): tag this possession with whichever calls applied.
+  const calledPlays: PossessionEvent['calledPlays'] = [];
+  if (calledOffense) calledPlays.push({ playId: calledOffense.def.playId, name: calledOffense.def.name, side: 'offense', teamSide: team });
+  if (calledCoverage) calledPlays.push({ playId: calledCoverage.def.playId, name: calledCoverage.def.name, side: 'defense', teamSide: isHome ? 'away' : 'home' });
+
+  // Update box score. P2-2: minutes accrue per possession a player is on court for,
+  // whether on offense OR defense.
+  for (const id of offenseIds) {
+    const bs = boxStats.get(id);
+    if (bs) { bs.possessions++; bs.minutes += minutesPerPoss; }
+  }
+  for (const id of defenseIds) {
+    const bs = boxStats.get(id);
+    if (bs) { bs.minutes += minutesPerPoss; }
+  }
+  if (result.scorerId && result.points > 0) {
+    const bs = boxStats.get(result.scorerId);
+    if (bs) {
+      bs.points += result.points;
+      // isCleanFieldGoal guard: a made rim free-throw trip (2-for-2) is 2 points but
+      // not a made field goal — counting it as a two-pointer would misattribute it.
+      if (result.isCleanFieldGoal && (result.channel === 'rim' || result.channel === 'mid') && result.points >= 2) bs.twoPointers++;
+      if (result.channel === 'three') bs.threePointers++;
+      if (result.isAnd1) bs.andOnes++;
+    }
+  }
+  if (result.isTurnover && result.scorerId) {
+    const bs = boxStats.get(result.scorerId);
+    if (bs) bs.turnovers++;
+  }
+  if (result.assistId && result.points > 0) {
+    const bs = boxStats.get(result.assistId);
+    if (bs) bs.assists++;
+  }
+
+  const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
+  const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
+
+  const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
+    : result.channel === 'three' ? '3pt' as const
+    : result.isAnd1 ? 'and1' as const
+    : '2pt' as const;
+
+  const event: PossessionEvent = {
+    index, quarter, segment, team,
+    lineupOnCourt: offenseIds,
+    defenseOnCourt: defenseIds,
+    outcome: outcomeForEvent,
+    scoringPlayerId: result.scorerId,
+    assistPlayerId: result.assistId,
+    isPossessionWinEvent: isPossWin || undefined,
+    narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin),
+    runningScore: [0, 0], // filled in by the caller once it's updated home/awayScore
+    calledPlays,
+  };
+
+  return { event, points: result.points };
 }
 
 // ── Narrative Generator ────────────────────────────────────────────────────
@@ -923,15 +1055,15 @@ export function simulateGame(
   // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
   // Minutes are credited per on-court possession (offense and defense), scaled to
   // the actual game length: a player on court for every possession gets exactly 48.
-  // (Defined before the split so the constant can be derived from it below.)
-  let REG_MIN_PER_POSS = 0.24;
   const split = calcPossessionSplit(
     homeTeam.players, awayTeam.players,
     homeTeam.depthChart, awayTeam.depthChart,
     homeBonuses, awayBonuses,
     rng
   );
-  REG_MIN_PER_POSS = 48 / split.totalPoss;
+  // T6 code review: this used to be declared with a throwaway 0.24 initializer above the
+  // split, always overwritten below before any read — dead value, removed.
+  const REG_MIN_PER_POSS = 48 / split.totalPoss;
 
   // 4. Pre-game shot profiles (team-wide, blended with NBA baseline)
   const homeShotProfile = calcTeamShotProfile(
@@ -946,9 +1078,8 @@ export function simulateGame(
   // 4. Distribute possessions across 4 quarters with noise
   const quarterPoss = distributeQuarters(split.homePoss, split.awayPoss, rng);
 
-  // 5. Generate rotation timelines per quarter
+  // 5. Simulate possessions, drawing each possession's lineup fresh (see drawLineup)
   const allPossessions: PossessionEvent[] = [];
-  const allSubs: SubstitutionEvent[] = [];
   const quarterSummaries: QuarterSummary[] = [];
 
   let homeScore = 0, awayScore = 0;
@@ -971,17 +1102,9 @@ export function simulateGame(
 
   for (let q = 0; q < 4; q++) {
     const quarter = q + 1;
+    const segment = segmentForQuarter(quarter);
     const homeQ = quarterPoss[q].home;
     const awayQ = quarterPoss[q].away;
-
-    // Generate rotation for this quarter
-    const homeRotation = generateQuarterRotation(homeTeam.depthChart, homeTeam.players, homeQ, quarter, homeShares);
-    const awayRotation = generateQuarterRotation(awayTeam.depthChart, awayTeam.players, awayQ, quarter, awayShares);
-
-    // Extract subs
-    const homeSubs = extractSubstitutions(homeRotation, possIndex, quarter);
-    const awaySubs = extractSubstitutions(awayRotation, possIndex, quarter);
-    allSubs.push(...homeSubs, ...awaySubs);
 
     const qStartScore: [number, number] = [homeScore, awayScore];
     let homePossCount = 0, awayPossCount = 0;
@@ -998,56 +1121,15 @@ export function simulateGame(
       else { team = isHomeTurn ? 'home' : 'away'; isHomeTurn = !isHomeTurn; }
 
       const isHome = team === 'home';
-      const rotIdx = isHome ? homeIdx : awayIdx;
-      const rotation = isHome ? homeRotation : awayRotation;
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
+      const offenseShares = isHome ? homeShares : awayShares;
+      const defenseShares = isHome ? awayShares : homeShares;
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
-
-      // Get current lineup from rotation
-      const lineupMap = rotation[Math.min(rotIdx, rotation.length - 1)];
-      let offenseIds = Array.from(lineupMap.values());
-
-      // Get defense lineup (use the other team's rotation at their current index)
-      const defRotation = isHome ? awayRotation : homeRotation;
-      const defIdx = isHome ? awayIdx : homeIdx;
-      const defLineupMap = defRotation[Math.min(defIdx, defRotation.length - 1)];
-      let defenseIds = Array.from(defLineupMap.values());
-
-      // Playbook (§7): roll independently for (a) the offense team's called play over
-      // its own possessions and (b) the defending team's coverage play over the
-      // opponent's possessions. Both rolls skip entirely (no rng draw) when that side
-      // has no active plays, so a playbook-less team reproduces the exact same game as
-      // before this feature existed. A roll that lands on a play whose assigned players
-      // can't form a legal lineup (overrideLineupForPlay returns null) falls back to the
-      // normal lineup and does not count as called.
       const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
       const coverageScaled = isHome ? awayDefenseScaled : homeDefenseScaled;
-
-      let calledOffense: PlayStatus | undefined;
-      const rolledOffense = rollCalledPlay(rng, offenseScaled);
-      if (rolledOffense) {
-        const overridden = overrideLineupForPlay(lineupMap, offenseTeam.depthChart, rolledOffense.playerIds);
-        if (overridden) {
-          offenseIds = Array.from(overridden.values());
-          calledOffense = rolledOffense;
-        }
-      }
-
-      let calledCoverage: PlayStatus | undefined;
-      const rolledCoverage = rollCalledPlay(rng, coverageScaled);
-      if (rolledCoverage) {
-        const overriddenDef = overrideLineupForPlay(defLineupMap, defenseTeam.depthChart, rolledCoverage.playerIds);
-        if (overriddenDef) {
-          defenseIds = Array.from(overriddenDef.values());
-          calledCoverage = rolledCoverage;
-        }
-      }
-
-      // Resolve lineup to player objects
-      const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-      const defenseLineup = defenseIds.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
+      const baseShotProfile = isHome ? homeShotProfile : awayShotProfile;
 
       // Check if this is a possession-winning event
       let isPossWin = false;
@@ -1057,93 +1139,20 @@ export function simulateGame(
         isPossWin = true; awayExtraPoss--;
       }
 
-      // Playbook on-call modifiers (§7): a called offensive play shifts this
-      // possession's shot profile (renormalized) and adds to channel efficiency/and-1;
-      // a coverage play's (negative) eff deltas add to the opponent's channel efficiency
-      // for this possession only, same sign convention as defenseMods. The combined
-      // per-possession eff shift per channel is clamped to ±IDENTITY_CAPS.eff and share
-      // shifts to ±IDENTITY_CAPS.share (applyCalledShareShift does the share clamp).
-      const baseShotProfile = isHome ? homeShotProfile : awayShotProfile;
-      const shotProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
-
-      const rimEffDelta = clampTo((calledOffense?.def.mods.rimEff ?? 0) + (calledCoverage?.def.mods.rimEff ?? 0), IDENTITY_CAPS.eff);
-      const midEffDelta = clampTo((calledOffense?.def.mods.midEff ?? 0) + (calledCoverage?.def.mods.midEff ?? 0), IDENTITY_CAPS.eff);
-      const threeEffDelta = clampTo((calledOffense?.def.mods.threeEff ?? 0) + (calledCoverage?.def.mods.threeEff ?? 0), IDENTITY_CAPS.eff);
-      const and1Delta = clampTo(calledOffense?.def.mods.and1 ?? 0, IDENTITY_CAPS.and1);
-
-      const possessionOffenseMods: GameModifiers = (rimEffDelta || midEffDelta || threeEffDelta || and1Delta)
-        ? { ...offenseMods, rimEffBonus: offenseMods.rimEffBonus + rimEffDelta, midEffBonus: offenseMods.midEffBonus + midEffDelta, perEffBonus: offenseMods.perEffBonus + threeEffDelta, and1Bonus: offenseMods.and1Bonus + and1Delta }
-        : offenseMods;
-
-      const boostedIds = calledOffense ? new Set(calledOffense.playerIds) : undefined;
-
-      // Resolve the possession (multi-channel: shot type → edge → efficiency)
-      const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, leagueAvg, rng, boostedIds);
-
-      // Playbook recording (§7): tag this possession with whichever calls applied.
-      const calledPlays: PossessionEvent['calledPlays'] = [];
-      if (calledOffense) calledPlays.push({ playId: calledOffense.def.playId, name: calledOffense.def.name, side: 'offense', teamSide: team });
-      if (calledCoverage) calledPlays.push({ playId: calledCoverage.def.playId, name: calledCoverage.def.name, side: 'defense', teamSide: isHome ? 'away' : 'home' });
-
-      if (isHome) homeScore += result.points; else awayScore += result.points;
-
-      // Update box score. P2-2: minutes accrue 0.24 per possession a player is on
-      // court for, whether on offense OR defense (previously only offensive
-      // possessions counted, so a starter topped out around 24 min instead of ~36).
-      // A team is on-court for ~100 of its own offensive possessions plus ~100 of the
-      // opponent's per game (~200 combined @ BASE_PACE=100/team), so a player with
-      // ~75% possession share (typical starter, see calcPossessionShares) lands near
-      // 200 * 0.75 * 0.24 ≈ 36 min; a true iron-man (100% share both ways) caps at 48.
-      for (const id of offenseIds) {
-        const bs = boxStats.get(id);
-        if (bs) { bs.possessions++; bs.minutes += REG_MIN_PER_POSS; }
-      }
-      for (const id of defenseIds) {
-        const bs = boxStats.get(id);
-        if (bs) { bs.minutes += REG_MIN_PER_POSS; }
-      }
-      if (result.scorerId && result.points > 0) {
-        const bs = boxStats.get(result.scorerId);
-        if (bs) {
-          bs.points += result.points;
-          if (result.channel === 'rim' && result.points >= 2) bs.twoPointers++;
-          if (result.channel === 'mid' && result.points >= 2) bs.twoPointers++;
-          if (result.channel === 'three') bs.threePointers++;
-          if (result.isAnd1) bs.andOnes++;
-        }
-      }
-      if (result.isTurnover && result.scorerId) {
-        const bs = boxStats.get(result.scorerId);
-        if (bs) bs.turnovers++;
-      }
-      if (result.assistId && result.points > 0) {
-        const bs = boxStats.get(result.assistId);
-        if (bs) bs.assists++;
-      }
-
-      const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
-      const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
-
-      // Map channel result to PossessionEvent outcome format
-      const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
-        : result.channel === 'three' ? '3pt' as const
-        : result.isAnd1 ? 'and1' as const
-        : '2pt' as const;
-
-      allPossessions.push({
-        index: possIndex,
-        quarter,
-        team,
-        lineupOnCourt: offenseIds,
-        defenseOnCourt: defenseIds,
-        outcome: outcomeForEvent,
-        scoringPlayerId: result.scorerId,
-        assistPlayerId: result.assistId,
-        isPossessionWinEvent: isPossWin,
-        narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin),
-        runningScore: [homeScore, awayScore],
-        calledPlays,
+      // Fresh per-possession lineup draw, weighted by each roster's possession shares
+      // (see drawLineup) — replaces the old precomputed quarter-phase rotation timeline.
+      const { event, points } = playOnePossession({
+        index: possIndex, quarter, segment, team,
+        offenseTeam, defenseTeam,
+        offenseLineupMap: drawLineup(offenseTeam.depthChart, offenseShares, rng),
+        defenseLineupMap: drawLineup(defenseTeam.depthChart, defenseShares, rng),
+        offenseMods, defFromOpp, baseShotProfile, offenseScaled, coverageScaled,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, rng, leagueAvg, boxStats, playerNameMap,
       });
+
+      if (isHome) homeScore += points; else awayScore += points;
+      event.runningScore = [homeScore, awayScore];
+      allPossessions.push(event);
 
       possIndex++;
       if (isHome) { homeIdx++; homePossCount++; } else { awayIdx++; awayPossCount++; }
@@ -1162,7 +1171,7 @@ export function simulateGame(
   let isOvertime = false;
   let overtimePeriods = 0;
 
-  while (homeScore === awayScore) {
+  while (homeScore === awayScore && overtimePeriods < MAX_OT_PERIODS) {
     isOvertime = true;
     overtimePeriods++;
     const otPoss = OT_POSS_PER_TEAM * 2; // 5 per team + noise
@@ -1185,65 +1194,32 @@ export function simulateGame(
       const isHome = team === 'home';
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
-
-      // Starters only in OT
-      const offenseLineup = offenseTeam.starters.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-      const defenseLineup = defenseTeam.starters.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
       const otShotProfile = isHome ? homeShotProfile : awayShotProfile;
+      const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
+      const coverageScaled = isHome ? awayDefenseScaled : homeDefenseScaled;
+      const otSegment = segmentForQuarter(otQuarter);
 
-      const result = resolvePossession(offenseLineup, defenseLineup, otShotProfile, offenseMods, defFromOpp, leagueAvg, rng);
-      if (isHome) homeScore += result.points; else awayScore += result.points;
-
-      // Box score. Same 0.24-per-possession-on-court convention as regulation (P2-2):
-      // OT lineups are starters-only on both ends, so crediting both offense and
-      // defense lineups here (instead of the old offense-only 0.48) keeps a full OT
-      // period worth the same total minutes as before, just attributed consistently.
-      for (const p of offenseLineup) {
-        const bs = boxStats.get(p.id);
-        if (bs) { bs.possessions++; bs.minutes += OT_MIN_PER_POSS; }
-      }
-      for (const p of defenseLineup) {
-        const bs = boxStats.get(p.id);
-        if (bs) { bs.minutes += OT_MIN_PER_POSS; }
-      }
-      if (result.scorerId && result.points > 0) {
-        const bs = boxStats.get(result.scorerId);
-        if (bs) {
-          bs.points += result.points;
-          if (result.channel === 'rim' && result.points >= 2) bs.twoPointers++;
-          if (result.channel === 'mid' && result.points >= 2) bs.twoPointers++;
-          if (result.channel === 'three') bs.threePointers++;
-          if (result.isAnd1) bs.andOnes++;
-        }
-      }
-      if (result.isTurnover && result.scorerId) {
-        const bs = boxStats.get(result.scorerId);
-        if (bs) bs.turnovers++;
-      }
-      if (result.assistId && result.points > 0) { const bs = boxStats.get(result.assistId); if (bs) bs.assists++; }
-
-      const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
-
-      const otOutcomeForEvent = result.outcome === 'miss' ? 'miss' as const
-        : result.channel === 'three' ? '3pt' as const
-        : result.isAnd1 ? 'and1' as const
-        : '2pt' as const;
-
-      allPossessions.push({
-        index: possIndex++,
-        quarter: otQuarter,
-        team,
-        lineupOnCourt: offenseLineup.map(p => p.id),
-        defenseOnCourt: defenseLineup.map(p => p.id),
-        outcome: otOutcomeForEvent,
-        scoringPlayerId: result.scorerId,
-        assistPlayerId: result.assistId,
-        narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, result.assistId ? playerNameMap.get(result.assistId) : undefined),
-        runningScore: [homeScore, awayScore],
+      // T1 (D3): OT possessions roll for called plays and coverages exactly like
+      // regulation (same budgets, same rng stream, via the shared playOnePossession) —
+      // this used to skip play-calling entirely. The default lineup before any play
+      // override is still starters-only (closing lineup stays a deliberate design
+      // choice, not something D3 asked to change); a play whose assigned players
+      // include a bench player can still force them on, same as regulation.
+      const { event, points } = playOnePossession({
+        index: possIndex, quarter: otQuarter, segment: otSegment, team,
+        offenseTeam, defenseTeam,
+        offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
+        defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
+        offenseMods, defFromOpp, baseShotProfile: otShotProfile, offenseScaled, coverageScaled,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, rng, leagueAvg, boxStats, playerNameMap,
       });
+
+      if (isHome) homeScore += points; else awayScore += points;
+      event.runningScore = [homeScore, awayScore];
+      allPossessions.push(event);
+      possIndex++;
 
       if (isHome) homeOTIdx++; else awayOTIdx++;
     }
@@ -1255,6 +1231,31 @@ export function simulateGame(
       homePossessions: homeOTPoss,
       awayPossessions: awayOTPoss,
     });
+  }
+
+  // T6 code review, refined per game_engine feedback: MAX_OT_PERIODS periods of a real
+  // tie is not reachable under today's efficiencies, but the loop above stops there
+  // regardless. Rather than a coin flip, the team with the higher average starter OVR
+  // wins — OT already plays starters-only (starterLineupMap), so this keeps the
+  // tiebreak consistent with "the better top-heavy team should win it" rather than
+  // reintroducing pure luck at the last possible moment. A coin flip remains only as
+  // the fallback for an exact OVR tie. Credited to the winning team's first starter and
+  // folded into the last quarter summary so finalScore stays consistent with
+  // boxScore/quarterSummaries (see game.test.ts).
+  if (homeScore === awayScore) {
+    const avgStarterOvr = (team: TeamInfo): number => {
+      const overalls = team.starters.map(id => team.players.find(p => p.id === id)?.ratings.overall ?? 0);
+      return overalls.reduce((sum, o) => sum + o, 0) / (overalls.length || 1);
+    };
+    const homeAvg = avgStarterOvr(homeTeam);
+    const awayAvg = avgStarterOvr(awayTeam);
+    const homeWins = homeAvg !== awayAvg ? homeAvg > awayAvg : rng.next() < 0.5;
+    if (homeWins) homeScore += 1; else awayScore += 1;
+    const lastQuarter = quarterSummaries[quarterSummaries.length - 1];
+    if (lastQuarter) { if (homeWins) lastQuarter.homeScore += 1; else lastQuarter.awayScore += 1; }
+    const recipientId = (homeWins ? homeTeam : awayTeam).starters[0];
+    const recipientBox = recipientId ? boxStats.get(recipientId) : undefined;
+    if (recipientBox) recipientBox.points += 1;
   }
 
   // Round minutes
@@ -1275,7 +1276,6 @@ export function simulateGame(
     homeTeam,
     awayTeam,
     possessions: allPossessions,
-    substitutions: allSubs,
     quarterSummaries,
     finalScore: [homeScore, awayScore],
     boxScore: { home: homeBox, away: awayBox },

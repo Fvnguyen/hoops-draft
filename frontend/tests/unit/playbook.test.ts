@@ -135,7 +135,7 @@ describe('evaluatePlayAssignment / evaluatePlaybook', () => {
   it('scales a side\'s allocations down proportionally when active plays exceed its budget, never exceeding the budget', () => {
     const used = new Set<string>();
     // Four offensive plays, all made active, whose raw allocations sum well above
-    // PLAY_BUDGET_OFFENSE (0.30): 0.09 + 0.10 + 0.10 + 0.12 = 0.41.
+    // PLAY_BUDGET_OFFENSE (0.40, T4 2026-09-14): 0.13 + 0.15 + 0.15 + 0.18 = 0.61.
     const handler = pickWithBadge(players, 'Floor General', 1, used);
     const roller = pickWithBadge(players, 'Finisher', 1, used);
     const organizer = pickWithBadge(players, 'Floor General', 2, used);
@@ -159,7 +159,7 @@ describe('evaluatePlayAssignment / evaluatePlaybook', () => {
 
     const status = evaluatePlaybook(assignments, roster);
     expect(status.plays.every(p => p.active)).toBe(true);
-    expect(status.offenseAllocation).toBeCloseTo(0.41, 5);
+    expect(status.offenseAllocation).toBeCloseTo(0.61, 5);
     expect(status.overBudget).toBe(true);
 
     const scaled = scaledPlayAllocations(status, 'offense');

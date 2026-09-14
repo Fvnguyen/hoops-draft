@@ -8,7 +8,7 @@ selection) -> single game or round-robin season -> in-app analytics export. The 
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model,
 archetype identities and assigned-player plays; persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
-than the full play-by-play. 184 Vitest tests pass, type-check is clean, `npm run lint` is
+than the full play-by-play. 193 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / 14 warnings (all `<img>`/unused-var warnings, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -49,6 +49,46 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   `plan_data_storage_2026-09-13.md`): `frontend/scripts/analyze.ts` replaces the retired
   synergy-based analyzer; seasons persist slim `StoredGameResult`s re-simulated on view
   (Dexie v2); Export/Import on the rosters page.
+- **Vercel deploy & auth** (done 2026-09-13, `docs/completed/plan_vercel_deploy_2026-09-13.md`/
+  `plan_auth_approval_2026-09-13.md`): live at
+  [hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app); Supabase
+  email/password auth with admin approval and username login; local IndexedDB data
+  stamped per-user (Dexie v3).
+
+## game_engine — done 2026-09-14
+
+Design/full history: `docs/completed/plan_game_engine_2026-09-13.md`. All T1-T8 done in
+one session; sequence #2 in the roadmap.
+
+- **Bugs fixed**: OT never called plays (now shares `playOnePossession` with regulation,
+  stays starters-only per owner intent, capped at 3 periods, tie broken by average
+  starter OVR not a coin flip); home court was a complete no-op (48.6% home win) — now an
+  asymmetric possession-noise roll, 52-56% with identical rosters; a rim shooting foul
+  paid a flat 1pt instead of two real FTs (`RIM_FT_PCT` 0.77), the single biggest driver
+  of PPP sitting below target — fixed (PPP 0.994->1.06), which also exposed an
+  and-1/assist eligibility bug; `calcPossessionShares` was dead code, replaced the
+  quarter-phase rotation with per-possession `drawLineup`.
+- **Balance tuning**: play call-rate budgets/allocations raised so no play sits at ~0
+  win-rate impact (catalog sample size also raised 300->600, `npm run balance --
+  --catalog`); two content outliers (Horns, Triangle Offense, Midrange Clinic, Elbow
+  Orchestra — all shift shots into `NBA_BASELINE.mid`'s worst-efficiency channel) handed
+  to `card_balance`, out of this plan's scope.
+- **Analytics**: `npm run balance -- <n> --seed <s> --report` produces one versioned
+  `balance_report_*.json` (schemaVersion 2: catalog+draftImpact+spread+
+  outcomeDecomposition), the source for the [Power Curve
+  report](https://claude.ai/code/artifact/17ace14e-ea53-40ff-be8c-9196c3415964).
+  `outcomeDecomposition` replaced an earlier strategy-only cut that conflated real
+  opponent talent with luck: talent (OVR gap) alone explains 7.6% of a single game but
+  24.4% of a full 7-game season, win% climbing monotonically 27%->73% across OVR-gap
+  deciles — talent is rewarded, mechanics are sound.
+- **Open from this milestone**: the two mid-range-shifting content outliers and
+  `NBA_BASELINE.mid`'s low efficiency, handed to `card_balance`; margin/sd run slightly
+  wide of D5's original target band (margin 14-16 vs. 12-14 target, sd ~13.2-13.5 vs.
+  12-13) but was accepted as the final tuning result after `RIM_FT_PCT` — worth a look if
+  `card_balance` content changes shift the shot mix enough to matter.
+- Verified: `npm test` (193/193), `tsc --noEmit`, `npm run lint` (0 errors) clean;
+  `npm run balance -- 500 --seed 42 --report` matches D11's shape; `smoke.spec.ts` (9/9,
+  including `/season`) passes with no console errors.
 
 ## ui_draft_deckbuild_pack — done 2026-09-13
 
@@ -107,35 +147,6 @@ executed same session once 1b's smoke-test criterion turned out to need it).
 - **Verified**: `npm test` (184/184), `tsc --noEmit`, `npm run lint` (0 errors) clean;
   `npm run test:e2e` 12/14 (2 known pre-existing snapshot failures below).
 
-## vercel_deploy & auth_approval — done 2026-09-13
-
-Both plans (sequence 2b/2c) landed; moved to `docs/completed/`.
-
-- **Vercel**: live at
-  [hoops-draft-fvnguyen1.vercel.app](https://hoops-draft-fvnguyen1.vercel.app) (project
-  `hoops-draft`, Root `frontend`, Node 22.x, Git deploys from `main`, Hobby $0/month).
-  Verified via the Vercel API: production READY, 0 runtime errors in 7d, `/api/game-logs`
-  404s, `/api/cards` returns data. **Unverified from here**: a spend alert/hard budget is
-  set in the dashboard (no API for this) — confirm manually.
-- **Auth** (Supabase email/password, admin approval): `profiles` (`status`
-  PENDING/APPROVED/REJECTED, `role` USER/ADMIN, RLS-gated); `nguyen.teomads@gmail.com`
-  auto-approved; `/login`, `/signup`, `/pending`, `/admin/users`; proxy-based route
-  protection; a top-right profile menu (sign-out, admin tools for admins). Local IndexedDB
-  rows are stamped `ownerId` and filtered per logged-in user (Dexie v3,
-  `claimLegacyData()` adopts pre-login data into the first login) — still local, not synced.
-- **This session's follow-up** (username login + team name): added a `username` column
-  (migration `202609130002_add_username.sql`, unique, backfilled from email), separate from
-  `display_name`; `/login` accepts either (non-`@` input resolves to an email server-side
-  via the service-role client first). The engine's hardcoded `'You'` label is now an
-  optional `humanName` param (`buildTeamInfo`/`createSeason`, default `'You'`) threaded
-  from `SeasonView.tsx`'s `useCurrentProfile().display_name`.
-- **Known gaps**: no automated auth-route/role-gate tests (no Supabase-mocking harness
-  yet); the new migration must be run in the SQL editor before username login works
-  (`frontend/supabase/README.md`); re-run the bootstrap script once to backfill
-  `username: 'fvnguyen'` on the existing admin row.
-- Verified: `tsc`/lint (0 errors)/`npm test` (184)/`next build` clean; `/login`/`/signup`
-  checked visually. Not created: a real account — a human should run a signup/login/approve pass.
-
 ## How to run everything
 
 ```bash
@@ -157,57 +168,30 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is unblocked, and
-`ui_draft_deckbuild_pack` has waves 0-1 done — see that plan's Progress for what's left).
-The 2026-09-12 code review that produced Phases 0-1 is archived as
-`docs/completed/review_code_and_architecture_2026-09-12.md`; the list below predates it.
+What to do next is `docs/ROADMAP.md` (plan sequence; `game_engine` is done, `card_balance`
+and `game_theater` are now unblocked). The 2026-09-12 code review that produced Phases
+0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`; the list
+below predates it.
 
-Findings below are from `docs/analytics/analysis_report.md` and
-`docs/analytics/analytics_summary.md` (both now banner-marked stale; generated by the
-retired `scripts/analyze_game_data.js` against 5 draft sessions / 5 seasons / 35 games,
-curated by the user). Quoted "User Note" lines are the user's own hypotheses, not
-verified conclusions. Items 1, 3 and 4 predate the Phase 0 fixes and the plays &
-archetypes milestone (PPP is now ≈ 1.08; the old synergy list and `PLAY_EFFECTS` no
-longer exist) — `docs/analytics/report_2026-09.md` is the current tool's output, but has
-no fresh draft/season data yet; re-run `npm run analyze` after playing a session.
+Item 1 below is from `docs/analytics/analysis_report.md`/`analytics_summary.md` (both
+banner-marked stale, generated by the retired `scripts/analyze_game_data.js`) —
+`docs/analytics/report_2026-09.md` is the current tool's output but has no fresh
+draft/season data yet; re-run `npm run analyze` after playing a session.
 
-1. **Offense is too powerful.** Points-per-possession measured at 1.290 (NBA average
-   ~1.15); only 36% of logged game scores fell in a realistic 90-130 range. User's
-   hypothesis: *"edge always rewards the same team (likely if a team has an offensive
-   edge once, it has it always and therefore scores a lot)"* — i.e. the per-channel edge
-   in `resolvePossession` (`gameEngine.ts`) may compound rather than vary possession to
-   possession. Worth instrumenting edge distribution per game before changing
-   `EFFICIENCY_SCALE`.
-2. **Turnover rate is ~0.8%** vs. an NBA-typical ~13-14%. Per the user's note, this is
-   arguably a non-issue: the engine's "turnovers" are just narrative flavor text on missed
-   possessions (`MISS_TEXTS` in `gameEngine.ts`), not a modeled stat with a real rate — the
-   real lever for possession count is the possession-battle noise/swing, not a turnover
-   mechanic. Comparing it to real-world TO rate is likely apples-to-oranges; flagged here
-   so it isn't "fixed" by adding a fake turnover stat.
-3. **Synergies trigger too often.** Several stacking/combo synergies (Point God System
-   91.4%, Court Vision 90.0%, Inside-Out 90.0%, Paint Dominance 87.1%) activate in nearly
-   every game, while others are rare (Brotherhood 7.1%, Lockdown Squad 18.6%). User's
-   note: *"We need to reduce the number of synergies and how they are triggered."*
-   Thresholds live in `frontend/src/engine/synergies.ts` (`SYNERGIES` array).
-4. **Play-card activation is uneven.** High Pick & Roll fully activates 64.7% of the time;
-   Horns and Four Out One In almost never fully activate (91.7% / 100% failure). Check
-   `PLAY_EFFECTS` requirements in `synergies.ts` against how rosters actually distribute
-   badges.
-5. **Cube draft duplicate bug — likely already resolved, unverified.** One early session
-   log (`docs/analytics/analysis_report.md`, session #1) showed only 113/264 unique player
-   cards (151 duplicates); the four subsequent sessions in the same report all show
-   264/264 unique. `game.db` currently has 448 players, well above the 264 needed for a
-   duplicate-free cube, and `generateCubePool` (`draftEngine.ts`) only produces duplicates
-   when the pool is smaller than 264. It's unverified whether session #1 ran against a
-   smaller/differently-filtered player set or hit some other edge case — worth a targeted
-   test (`scripts/check_card_counts.js` checks `data/computed_cards.json`, not a live
-   draft) rather than assuming it's fixed.
-6. **Home court advantage is a no-op.** Home teams won 17/35 (48.6%) with a 0.1-point
-   average margin — there is no explicit home-court modifier in `gameEngine.ts`. Not
-   necessarily a bug (may be intentional), but worth a decision one way or the other.
-7. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
+1. **Offense-too-powerful / turnover-rate / synergy-frequency findings (pre-Phase-0,
+   stale)** — PPP 1.290 and a suspected compounding per-channel edge, ~0.8% turnover rate
+   (likely apples-to-oranges vs NBA — turnovers are flavor text, not a modeled stat), and
+   uneven synergy/play-card activation rates. All measured against the old `gameEngine.ts`/
+   `PLAY_EFFECTS` pre-Phase-0/pre-plays-and-archetypes; PPP is now ≈1.06 and neither file
+   exists anymore. Re-run `npm run analyze` on a fresh session before treating any of this
+   as current.
+2. **Cube draft duplicate bug — likely already resolved, unverified.** One early session
+   log showed 113/264 unique cards; `game.db` now has 448 players (needs ≥264 for a
+   duplicate-free cube) and every later session shows 264/264 unique. Worth a targeted
+   test rather than assuming fixed.
+3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-8. **Two `visual.spec.ts` snapshots fail with no known cause.** "Season View Franchise
+4. **Two `visual.spec.ts` snapshots fail with no known cause.** "Season View Franchise
    Dashboard" (expects 234px tall, gets 226px) and "Game View Matchup Header and Tape"
    (600px vs 601px) — neither touches any file changed in `ui_draft_deckbuild_pack` or
    `ui_polish_small_fixes`. First time these could even run since `auth_approval` gated
@@ -232,5 +216,5 @@ no fresh draft/season data yet; re-run `npm run analyze` after playing a session
 | What to work on next | `docs/ROADMAP.md`, then `docs/plans/plan_<topic>_<date>.md` |
 | Original code review (2026-09-12) | `docs/completed/review_code_and_architecture_2026-09-12.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
-| How to regenerate a balance report | `npm run balance` (headless, `--ab` for identity/play impact) or `frontend/scripts/analyze.ts` (`npm run analyze`, from a `/debug` export) |
+| How to regenerate a balance report | `npm run balance` (headless; `--ab`/`--catalog`/`--draft-impact` flags) or `frontend/scripts/analyze.ts` (`npm run analyze`, from a `/debug` export) |
 | Screenshotting a route | `scripts/screenshot.js` (`npm run screenshot`) |

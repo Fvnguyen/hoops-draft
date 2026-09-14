@@ -14,18 +14,27 @@ import type { Rarity } from './types';
  * `storage/types.ts` `StoredGameResult.balanceVersion`) so the season view can tell a
  * stale theater from a fresh one instead of silently re-narrating a different game.
  */
-export const BALANCE_VERSION = 1;
+export const BALANCE_VERSION = 6; // 2026-09-14: OT capped at 3 periods, tie broken by starter OVR not a coin flip
 
 // ── game.ts (from gameEngine.ts) ────────────────────────────────────────────
 
 /** NBA pace baseline — all noise and swings are relative to this. */
 export const BASE_PACE = 100;
 
-/** Independent per-team possession noise: ±5% of BASE_PACE. */
-export const NOISE_PCT = 0.05;
+/**
+ * T2 (game_engine D4, 2026-09-14): home court is an asymmetric coin flip on the same
+ * per-team possession-noise roll that already existed here (was a flat ±5% of BASE_PACE
+ * for both sides — no home-court mechanic at all). Home draws from a skewed-positive
+ * range, away stays roughly centered. Tune the skew, not the mechanism, to hit D4's
+ * 52-56% home win rate — see calcPossessionSplit in game.ts.
+ */
+export const HOME_NOISE_LO_PCT = -0.055;
+export const HOME_NOISE_HI_PCT = 0.09;
+export const AWAY_NOISE_LO_PCT = -0.075;
+export const AWAY_NOISE_HI_PCT = 0.075;
 
 /** Possession battle swing from team strength delta: ±8% of BASE_PACE. */
-export const STRENGTH_SWING_PCT = 0.08;
+export const STRENGTH_SWING_PCT = 0.035;
 
 /** Regulation possessions per team are clamped to [85%, 115%] of BASE_PACE. */
 export const POSSESSION_CLAMP_MIN_PCT = 0.85;
@@ -34,6 +43,26 @@ export const POSSESSION_CLAMP_MAX_PCT = 1.15;
 /** Overtime: 5 possessions per team baseline (±1 noise), 5-minute period. */
 export const OT_POSS_PER_TEAM = 5;
 export const OT_PERIOD_MINUTES = 5;
+
+/**
+ * T6 code review (2026-09-14): simulateGame's overtime loop runs `while (homeScore ===
+ * awayScore)` with no upper bound. A repeated-tie streak is vanishingly unlikely under
+ * real efficiencies, but games are precomputed synchronously in the browser — an
+ * unbounded loop is a hang risk, not just a statistics one. Capped at 3 real periods to
+ * mirror how few games actually go to multiple OTs; beyond this the engine breaks the
+ * tie by average starter OVR (top players make it), not a coin flip — see simulateGame.
+ */
+export const MAX_OT_PERIODS = 3;
+
+/**
+ * T6 code review follow-up (2026-09-14): a coach-mode hook, not yet wired to any
+ * behavior. Possessions are tagged with a `segment` index (see segmentForQuarter in
+ * game.ts) purely as a future seam — a mid-game adjustment feature could apply "from
+ * segment N onward" without needing to know about the per-possession lineup mechanism at
+ * all. Default 2 = halves; bump to 4 for quarter-level breaks without touching
+ * segmentForQuarter's shape.
+ */
+export const SEGMENTS_PER_GAME = 2;
 
 type ShotChannel = 'rim' | 'mid' | 'three';
 
@@ -73,9 +102,31 @@ export const AND1_BASE: Record<ShotChannel, number> = {
   three: 0.01,   // 1% of 3pt makes → and-1 (4-point play, very rare)
 };
 
+/**
+ * T3 (game_engine D5, 2026-09-14): a rim "make" that draws a shooting foul (50% of made
+ * rim shots) sends the shooter to the line for two free throws — modeled as two
+ * independent rolls at this league-average FT rate, not a flat 1 point as before. The
+ * old flat value understated a real FT trip's ~1.5 expected points at any realistic FT%,
+ * and was the single largest driver of PPP sitting well below NBA norms: two rolls at
+ * 77% average 1.54 points per trip vs the old flat 1, closing most of the gap to D5's PPP
+ * band without touching NBA_BASELINE's actual shot efficiencies (which were fine).
+ */
+export const RIM_FT_PCT = 0.77;
+
+/**
+ * T6 code review (2026-09-14): every other combined modifier in resolvePossession has a
+ * final sane-range clamp (efficiency to [0.15, 0.85], edge to [-0.25, 0.25]) — and1Chance
+ * (AND1_BASE + archetype and1Bonus + play and1 delta) did not, even though each of those
+ * three sources is independently capped. With today's content the reachable max is
+ * ~0.08 + 0.04 + 0.04 = 0.16, well under this cap, so this is a defensive floor for
+ * future content (e.g. card_balance adding more and-1-boosting plays/identities), not a
+ * fix to any currently-reachable behavior.
+ */
+export const AND1_CHANCE_CAP = 0.30;
+
 /** Efficiency scaling: how much the edge shifts base efficiency. Max shift ±10pp. */
-export const EFFICIENCY_SCALE = 0.30;
-export const MAX_EFF_SHIFT = 0.10;  // ±10 percentage points max
+export const EFFICIENCY_SCALE = 0.10;
+export const MAX_EFF_SHIFT = 0.04;  // ±10 percentage points max
 
 /** Profile blending: 50% NBA baseline, 50% team tendency. */
 export const PROFILE_WEIGHT = 0.50;
@@ -165,9 +216,9 @@ export const TARGET_ROSTER = 12;
 
 // ── Playbook & archetypes (docs/plan_plays_and_synergies_2026-09-13.md) ──────
 /** Max share of OWN possessions that active offensive plays may claim in total. */
-export const PLAY_BUDGET_OFFENSE = 0.30;
+export const PLAY_BUDGET_OFFENSE = 0.40;
 /** Max share of OPPONENT possessions that active defensive plays may cover in total. */
-export const PLAY_BUDGET_DEFENSE = 0.25;
+export const PLAY_BUDGET_DEFENSE = 0.35;
 /** Scorer-weight multiplier for the assigned players on a called possession. */
 export const PLAY_SCORER_BOOST = 2.0;
 /** Online archetypes deliver this fraction of the Dedicated effect. */

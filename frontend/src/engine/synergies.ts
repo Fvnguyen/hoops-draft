@@ -236,8 +236,14 @@ export function getPlayRequirements(playId: string): PlayRequirement[] {
 
 /**
  * Evaluate a play against a roster's badge totals: which requirements are met, by how
- * much, and the resulting activation. This is the single source of truth for both the
- * simulation (checkPlayActivation) and the UI (play card requirement icons).
+ * much, and the resulting activation.
+ *
+ * T6 code review (2026-09-14): this docstring used to claim it was also read by the
+ * simulation (a `checkPlayActivation` that no longer exists anywhere in the codebase).
+ * It isn't — per this file's top-of-file note, plays are resolved per-possession in
+ * game.ts against the assigned-player playbook (playbook.ts), not through badge totals.
+ * `evaluatePlay`/`PLAY_EFFECTS` are UI-only now: DeckBuilder's play-card badge-progress
+ * display and PlayerCard's requirement icons (see call sites).
  */
 export function evaluatePlay(play: Pick<Play, 'id' | 'playId' | 'name'>, badges: BadgeTotals): PlayEvaluation {
   const effectId = getPlayEffectId(play);

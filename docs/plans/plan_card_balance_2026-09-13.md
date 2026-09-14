@@ -18,6 +18,22 @@ offensive ones. After this plan the card pool supports every plan in the catalog
 plan has plays that fit it, rarity feels like MtG (Mythics are events, Rares are the
 backbone of a strategy), and positions are real.
 
+## Real-data findings (update timestamp when a newer dump lands)
+
+**2026-09-14** — first real-user export (see game_engine plan's findings for the game-level
+numbers from the same dump: `data/game_logs/full_dump_2026-09-14T08-27-49-961Z.json`).
+This is one session's 168-card draft cube, not the full 448-player pool D2/D3 measure
+against — treat as a spot-check, not a verification:
+- Cube rarity mix (192 cards incl. plays): Mythic 12, Rare 15, Uncommon 57, Common 108.
+- Early-pick average OVR 71.6 (R1 picks 1-4) — lower than the 71-74 range seen in the
+  earlier pre-v2 local test dumps; not enough signal to act on, flag for T2's rarity
+  re-tune to check against the regenerated `cards.json` once T1 (positions) lands.
+- No usable signal yet on badge coverage or plan-to-play coverage (D3/D4) — one drafted
+  roster's plays don't represent the full pool.
+- Wait for this plan's own dependencies (game_engine, draft_ai) and re-run
+  `npm run analyze` / `npm run feasibility` against the regenerated `cards.json` before
+  treating any of this as evidence toward D2/D3.
+
 ## Decisions (locked)
 
 - D1 Positions: `data/fetch_players.py` keeps basketball-reference `Pos` as primary and

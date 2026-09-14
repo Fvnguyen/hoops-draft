@@ -107,7 +107,6 @@ const mockGameTheater: GameTheater = {
   isOvertime: false,
   overtimePeriods: 0,
   possessions: [],
-  substitutions: [],
   quarterSummaries: [],
   boxScore: { home: [], away: [] },
   homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers(), playstyle: [] },

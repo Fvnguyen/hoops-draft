@@ -19,11 +19,10 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | — (unblocked) | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
 | 3 | mobile_responsive — viewport export, `@container` cards, touch-friendly draft/deckbuilder, sticky game header, bottom nav (proposal D only; no manifest/service worker) | not yet planned | — (2a done, unblocked) | — | 2-3 days |
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 2, 4 (measurements must reflect the final sim and contested drafts) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
-| 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | 2 | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
+| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 4 (game_engine done; needs contested-draft data) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | — (game_engine done, unblocked) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
 | 7 | mobile_pwa_shell — manifest, service worker, offline fallback, Lighthouse PWA audit (proposal G.1) | not yet planned | 3 | — | 1-2 days |
 | 8 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2) | not yet planned | 7 | — | 2-3 days |
 | 9 | accounts_cloud_saves | not yet planned | 7 | — | ~1 week |
@@ -43,9 +42,9 @@ accounts/Android. Scope sketch for 3, 7-9 is proposals D, E, F, G in
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [game_engine](completed/plan_game_engine_2026-09-13.md) | 2026-09-14 | OT/home-court/spread/impact tuning fixed and measured; code review (T6) fixed dead-code lineup wiring; draft-impact + talent-vs-luck decomposition unified into `--report` and the Power Curve artifact |
 | [playwright_auth_fixture](completed/plan_playwright_auth_fixture_2026-09-14.md) | 2026-09-14 | Dedicated E2E Supabase account + `tests/auth.setup.ts` login fixture; `smoke.spec.ts`/`home.spec.ts` pass for the first time since `auth_approval` |
 | [ui_polish_small_fixes](completed/plan_ui_polish_small_fixes_2026-09-13.md) | 2026-09-14 | Hover-preview delay/click-dismiss, draft double-click confirm, larger deckbuilder radar, pack cards flippable on hover |
-| [ui_draft_deckbuild_pack](completed/plan_ui_draft_deckbuild_pack_2026-09-13.md) | 2026-09-13 | Draft/deckbuilder pass complete: draft modes, pack ceremony, unified Roster list, empty-start deckbuilder, hover-preview auto-dismiss, quarter-score fix |
 
 ## Model tiers used in plans
 
