@@ -12,6 +12,9 @@ import { MiniPlayerCard, type PlayerCardData } from './PlayerCard';
 interface GameViewProps {
   game: GameTheater;
   onComplete?: () => void;
+  /** Fires synchronously (no delay) whenever `isComplete` changes, so a caller can gate
+   *  UI — e.g. an exit control — on whether the game has actually finished playing out. */
+  onCompletionChange?: (isComplete: boolean) => void;
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -259,7 +262,7 @@ export function BoxScoreOnly({ result, homeTeamName, awayTeamName }: {
   );
 }
 
-export function GameView({ game, onComplete }: GameViewProps) {
+export function GameView({ game, onComplete, onCompletionChange }: GameViewProps) {
   const [currentPoss, setCurrentPoss] = useState(-1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(500); // ms per possession
@@ -305,6 +308,10 @@ export function GameView({ game, onComplete }: GameViewProps) {
       return () => clearTimeout(t);
     }
   }, [isComplete, onComplete]);
+
+  useEffect(() => {
+    onCompletionChange?.(isComplete);
+  }, [isComplete, onCompletionChange]);
 
   const handleStart = () => { setCurrentPoss(0); setIsPlaying(true); setActiveTab('playByPlay'); };
   const handleTogglePlay = () => setIsPlaying(prev => !prev);
