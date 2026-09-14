@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
@@ -13,7 +13,7 @@ import {
 import type { DraftSession } from '../engine/deckbuilder';
 import { GameTheater, TeamInfo } from '../engine/game';
 import { GameView, BoxScoreOnly } from './GameView';
-import { Trophy, Swords, ChevronLeft, ArrowRight } from 'lucide-react';
+import { Trophy, Swords, ChevronLeft, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
 
 interface SeasonViewProps {
@@ -39,6 +39,16 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const [activeGameIndex, setActiveGameIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Whether the active game is a fresh play (result not yet committed to `season`/the
+  // store) vs. a replay of an already-played day — a replay has nothing to lose by
+  // leaving early, so it skips the finished-gate and the leave warning entirely.
+  const [isFreshPlay, setIsFreshPlay] = useState(false);
+  const [gameFinished, setGameFinished] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  // Holds the simulated result for a fresh play until the user watches it to
+  // completion and hits "Continue" — nothing is written to `season` state or the
+  // store before that, so backing out early leaves the day looking unplayed.
+  const pendingCommitRef = useRef<Season | null>(null);
 
   // Load or create season
   useEffect(() => {
@@ -103,10 +113,14 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       const humanMatch = humanMatchup(entry);
       if (entry.played && humanMatch?.result) {
         // Already played — re-simulate for replay (or fall back to box-score-only /
-        // legacy read-only playback per D1/D8; see resolveMatchupReplay).
+        // legacy read-only playback per D1/D8; see resolveMatchupReplay). Nothing new
+        // is at stake, so this skips the finished-gate and leave warning below.
         const homeTeam = teamInfoForSeat(season, session, humanMatch.homeSeatIndex);
         const awayTeam = teamInfoForSeat(season, session, humanMatch.awaySeatIndex);
         const replay = resolveMatchupReplay(humanMatch.result, homeTeam, awayTeam);
+        pendingCommitRef.current = null;
+        setIsFreshPlay(false);
+        setGameFinished(true);
         setActiveGame(
           replay.kind === 'versionMismatch'
             ? { kind: 'boxOnly', result: replay.result, homeTeam, awayTeam }
@@ -119,11 +133,16 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       // Must be the next game in order
       if (gameIndex !== season.currentGame) return;
 
-      const result = playNextGame(season, session);
+      // Simulate on a clone so the live `season` state (and the store) stay untouched
+      // until the user actually watches the game to completion and hits "Continue" —
+      // otherwise the schedule/standings would reveal the day's results immediately.
+      const seasonCopy: Season = structuredClone(season);
+      const result = playNextGame(seasonCopy, session);
       if (!result) return;
 
-      setSeason({ ...result.season });
-      await getGameStore().saveSeason(result.season);
+      pendingCommitRef.current = result.season;
+      setIsFreshPlay(true);
+      setGameFinished(false);
       setActiveGame({ kind: 'theater', theater: result.gameResult });
       setActiveGameIndex(gameIndex);
     } catch (err) {
@@ -135,13 +154,42 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
     }
   };
 
-  const handleGameComplete = () => {
-    // Nothing special — user can navigate back to schedule
-  };
-
-  const handleBackToSchedule = () => {
+  const closeActiveGame = () => {
+    pendingCommitRef.current = null;
     setActiveGame(null);
     setActiveGameIndex(null);
+    setIsFreshPlay(false);
+    setGameFinished(false);
+    setShowLeaveConfirm(false);
+  };
+
+  // "Continue" CTA — only reachable once the fresh play has actually finished, so this
+  // is where the season's schedule/standings first learn about the new result.
+  const handleContinueToSchedule = async () => {
+    const pending = pendingCommitRef.current;
+    if (!pending) { closeActiveGame(); return; }
+    try {
+      setSeason({ ...pending });
+      await getGameStore().saveSeason(pending);
+    } catch (err) {
+      if (err instanceof StorageQuotaError) {
+        setSaveError(err.message);
+      } else {
+        setSaveError('Failed to save season. Please try again.');
+      }
+    } finally {
+      closeActiveGame();
+    }
+  };
+
+  // "Exit Game" while a fresh play is still running — nothing has been committed yet,
+  // so leaving discards the in-progress game rather than silently revealing it.
+  const handleExitGame = () => {
+    if (isFreshPlay && !gameFinished) {
+      setShowLeaveConfirm(true);
+    } else {
+      closeActiveGame();
+    }
   };
 
   if (error) {
@@ -169,21 +217,55 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
   // If a game is active, show GameView
   if (activeGame) {
+    // A fresh, still-running play gets a distinct "Exit Game" control (warns before
+    // discarding); everything else (a finished fresh play, or any replay) gets the
+    // plain "Continue"/"Schedule" CTA since there's nothing left to lose.
+    const exitIsDestructive = isFreshPlay && !gameFinished;
     return (
       <div className="min-h-screen pt-[70px] p-4 flex flex-col">
         <div className="mb-3 flex items-center gap-3">
-          <button onClick={handleBackToSchedule} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-sm font-bold text-stone-600 hover:bg-stone-50 transition-colors">
-            <ChevronLeft className="w-4 h-4" /> Schedule
-          </button>
+          {exitIsDestructive ? (
+            <button onClick={handleExitGame} className="flex items-center gap-1 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm font-bold text-red-600 hover:bg-red-100 transition-colors">
+              <LogOut className="w-4 h-4" /> Exit Game
+            </button>
+          ) : isFreshPlay ? (
+            <button onClick={handleContinueToSchedule} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-colors">
+              Continue to Schedule <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button onClick={handleExitGame} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-sm font-bold text-stone-600 hover:bg-stone-50 transition-colors">
+              <ChevronLeft className="w-4 h-4" /> Schedule
+            </button>
+          )}
           <span className="text-sm font-bold text-stone-400 uppercase tracking-wider">
             Game {(activeGameIndex ?? 0) + 1} of 7
           </span>
         </div>
         <div className="flex-1 min-h-0">
           {activeGame.kind === 'theater'
-            ? <GameView game={activeGame.theater} onComplete={handleGameComplete} />
+            ? <GameView game={activeGame.theater} onCompletionChange={setGameFinished} />
             : <BoxScoreOnly result={activeGame.result} homeTeamName={activeGame.homeTeam.name} awayTeamName={activeGame.awayTeam.name} />}
         </div>
+
+        {showLeaveConfirm && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl border border-stone-200 shadow-xl p-6 max-w-sm w-full text-center">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-amber-500" />
+              <h2 className="text-lg font-bold text-stone-800 mb-2">Leave this game?</h2>
+              <p className="text-sm text-stone-500 mb-5">
+                This game hasn&apos;t finished yet — if you leave now, it won&apos;t be saved and you&apos;ll need to play it again.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setShowLeaveConfirm(false)} className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
+                  Keep Watching
+                </button>
+                <button onClick={closeActiveGame} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors">
+                  Leave Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
