@@ -313,6 +313,30 @@ export default function DebugPage() {
     }
   }, [loadSavedFiles]);
 
+  // Runs entirely in the browser, unlike saveToDisk (which needs the dev-only
+  // /api/game-logs route and a filesystem it can write to) — this is the only
+  // export path that works on the deployed Vercel app, where the data actually
+  // lives (per-browser IndexedDB, no server-side store).
+  const downloadJson = useCallback(async () => {
+    setSaveStatus('Preparing download...');
+    try {
+      const data = await loadData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `full_dump_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setSaveStatus('✅ Downloaded to your device.');
+    } catch (err: unknown) {
+      setSaveStatus(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     try {
       const store = getGameStore();
@@ -363,8 +387,11 @@ export default function DebugPage() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button onClick={downloadJson} className="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 text-xs uppercase tracking-wider">
+              ⬇️ Download Full Logs (JSON)
+            </button>
             <button onClick={saveToDisk} className="px-4 py-2 bg-emerald-600 text-white rounded font-bold hover:bg-emerald-500 text-xs uppercase tracking-wider">
-              💾 Save Full Logs to Disk
+              💾 Save Full Logs to Disk (dev only)
             </button>
             <button onClick={handleClearAll} className="px-4 py-2 bg-red-700 text-white rounded font-bold hover:bg-red-600 text-xs uppercase tracking-wider">
               🗑️ Clear all local data
