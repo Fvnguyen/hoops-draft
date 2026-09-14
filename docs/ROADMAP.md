@@ -19,7 +19,6 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 1b | [ui_polish_small_fixes](plans/plan_ui_polish_small_fixes_2026-09-13.md) — drag preview delay, pack-reveal preview suppression, double-click draft pick, identity radar scale | T1/T3/T4 done and live-verified; T2 (pack-reveal preview suppression) has no live preview mechanism to suppress in the current pack grid — owner decision needed (moot vs. new feature) | — | `components/{DeckBuilder,PackOpener,DraftRoom,TopKPIBand,useHoverPreview}.tsx` | done except T2 decision |
 | 2 | [game_engine](plans/plan_game_engine_2026-09-13.md) — decisive plays/identities, realistic spread, OT plays, home court | planned | — (unblocked) | `engine/game.ts`, `engine/balance.ts`, `engine/playbook.ts` allocations, `engine/season.ts` | 1-2 days |
 | 3 | mobile_responsive — viewport export, `@container` cards, touch-friendly draft/deckbuilder, sticky game header, bottom nav (proposal D only; no manifest/service worker) | not yet planned | — (2a done, unblocked) | — | 2-3 days |
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
@@ -30,12 +29,13 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | 9 | accounts_cloud_saves | not yet planned | 7 | — | ~1 week |
 
 Re-sequenced 2026-09-13 per owner priority (mobile layout > game_engine > card_balance >
-game_theater > ui_polish > draft_ai > PWA/Android > cloud saves). `ui_draft_deckbuild_pack`
-(was #1) is done — see Recently completed. card_balance keeps its hard dependency on
-draft_ai (needs contested-draft data to measure against) so draft_ai still lands first
-despite ranking lower in value. mobile_pwa is split into mobile_responsive (#3, layout
-only, cheap) and mobile_pwa_shell (#7, manifest/service worker), so the layout pass isn't
-gated behind accounts/Android. Scope sketch for 3, 7-9 is proposals D, E, F, G in
+game_theater > ui_polish > draft_ai > PWA/Android > cloud saves). `ui_draft_deckbuild_pack`,
+`ui_polish_small_fixes` and `playwright_auth_fixture` (was #1/1b/1c) are all done — see
+Recently completed. card_balance keeps its hard dependency on draft_ai (needs
+contested-draft data to measure against) so draft_ai still lands first despite ranking
+lower in value. mobile_pwa is split into mobile_responsive (#3, layout only, cheap) and
+mobile_pwa_shell (#7, manifest/service worker), so the layout pass isn't gated behind
+accounts/Android. Scope sketch for 3, 7-9 is proposals D, E, F, G in
 `docs/completed/review_code_and_architecture_2026-09-12.md`; write their plan docs
 (`/roadmap new`) when their turn comes.
 
@@ -43,9 +43,9 @@ gated behind accounts/Android. Scope sketch for 3, 7-9 is proposals D, E, F, G i
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [playwright_auth_fixture](completed/plan_playwright_auth_fixture_2026-09-14.md) | 2026-09-14 | Dedicated E2E Supabase account + `tests/auth.setup.ts` login fixture; `smoke.spec.ts`/`home.spec.ts` pass for the first time since `auth_approval` |
+| [ui_polish_small_fixes](completed/plan_ui_polish_small_fixes_2026-09-13.md) | 2026-09-14 | Hover-preview delay/click-dismiss, draft double-click confirm, larger deckbuilder radar, pack cards flippable on hover |
 | [ui_draft_deckbuild_pack](completed/plan_ui_draft_deckbuild_pack_2026-09-13.md) | 2026-09-13 | Draft/deckbuilder pass complete: draft modes, pack ceremony, unified Roster list, empty-start deckbuilder, hover-preview auto-dismiss, quarter-score fix |
-| [vercel_deploy](completed/plan_vercel_deploy_2026-09-13.md) | 2026-09-13 | Live on Vercel Hobby (Git-integrated, Root Directory `frontend`); production API/route checks verified |
-| [auth_approval](completed/plan_auth_approval_2026-09-13.md) | 2026-09-13 | Supabase email/password + admin approval, username-or-email login, per-user IndexedDB scoping |
 
 ## Model tiers used in plans
 

@@ -17,33 +17,13 @@ screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
 Finished design docs live in `docs/completed/`; a plan still being worked on stays in
 `docs/plans/` and moves there when its milestone lands.
 
-## What this cleanup changed
-
-- **Git restructure**: `frontend/` used to be a separate nested git repository, tracked in
-  the main repo only as a bare gitlink (so a fresh clone got an empty `frontend/`). It has
-  been absorbed into the main repo with its full history merged via a subtree merge
-  (commits `aa0f02b` "chore: absorb nested frontend repo..." and `e26dcb7` "chore: link
-  frontend git history"). The old nested `.git` was backed up to
-  `C:\Users\fabia\magic-ball-frontend.git.bak` — safe to delete once you've confirmed
-  `git log -- frontend/...` shows the expected history.
-- The root `node_modules` was previously tracked (183 files); it is now untracked
-  and gitignored.
-- Dead one-off scripts were removed: the `generate_engine1..10.py` heredoc generators and
-  `refactor_*.js` / `update_engine.py` patchers that used to produce
-  `frontend/src/lib/engine.ts` (edit it directly now), plus `data/analyze_*.py`,
-  `data/check_*.py`, `data/fix_merge.py`, `data/update_fetch.py` one-off patchers of
-  `fetch_players.py`. History is preserved in git if you need to see what they did.
-- `tests/analyze_game_data.js` moved to `scripts/analyze_game_data.js` (it's a dev tool).
-- Root `package.json` gained `dev`/`build`/`test`/`test:e2e`/`analyze`/`screenshot`
-  scripts so the whole project can be driven from the repo root.
-- Removed unused npm dependencies `@prisma/client` and `unidecode` from `frontend/` and
-  the legacy `frontend/prisma/schema.prisma` (nothing imported them; all DB access is
-  `better-sqlite3` in `engine.ts`).
-- Documentation added/rewritten: this file, `docs/ARCHITECTURE.md`, root `AGENTS.md`,
-  root `CLAUDE.md`, root `README.md`, `frontend/README.md`, `data/README.md`.
-
 ## History
 
+- **Repo cleanup** (done 2026-09-12): absorbed the nested `frontend/` git repo via subtree
+  merge (`aa0f02b`/`e26dcb7`, old `.git` backed up to
+  `C:\Users\fabia\magic-ball-frontend.git.bak`); removed dead generator/patcher scripts and
+  unused deps (`@prisma/client`, `unidecode`); wrote this file, `ARCHITECTURE.md`, root
+  `AGENTS.md`/`CLAUDE.md`/`README.md`.
 - **Phase 0 (correctness)** (done 2026-09-12): fixed inverted defensive modifiers, play
   activation, possession-swing double counting, offense/defense edge bias, silent storage
   quota failures, `/api/cards` N+1 queries, minutes/turnover scaling; PPP 1.29 → 1.08.
@@ -100,6 +80,33 @@ deckbuilder, hover-preview auto-dismiss, quarter-score fix).
   unified Roster list and empty-start deckbuilder live-verified via screenshot this
   session; hover-dismiss and quarter-score fix verified live by the owner.
 
+## ui_polish_small_fixes & playwright_auth_fixture — done 2026-09-14
+
+Design: `docs/completed/plan_ui_polish_small_fixes_2026-09-13.md` (plan 1b),
+`docs/completed/plan_playwright_auth_fixture_2026-09-14.md` (plan 1c, written and
+executed same session once 1b's smoke-test criterion turned out to need it).
+
+- **UI polish**: hover-preview show delay raised to 800ms plus immediate click-dismiss
+  (`useHoverPreview.ts`); draft-room picks confirm via a second click or a 2s auto-confirm
+  timer with a "Double-click to pick" hint (`DraftRoom.tsx`); deckbuilder identity radar
+  120 -> 168 (`TopKPIBand.tsx`). T2 ("suppress pack-reveal previews") was replaced: the
+  pack grid never wired up a preview in the first place, so revealed pack cards were made
+  flippable on hover instead, reusing `PlayerCard`/`PlayCard`'s existing flip (same as
+  everywhere else) rather than reimplementing the mechanic.
+- **Playwright auth fixture**: `test:e2e` had been unable to pass since `auth_approval` —
+  every protected route 401'd for Playwright's unauthenticated context. A dedicated
+  E2E-only Supabase account (`E2E_TEST_EMAIL`/`E2E_TEST_PASSWORD` in `.env.local`,
+  `scripts/bootstrap-e2e-user.mjs`, run once via `npm run bootstrap:e2e`) plus
+  `tests/auth.setup.ts` (logs in through the real `/login` form, saves `storageState`)
+  now gates the `chromium` Playwright project. `smoke.spec.ts` (8/8) and `home.spec.ts`
+  (2/2) pass for the first time since the auth gate landed.
+- **Fallout, not scope creep**: `visual.spec.ts` could finally run too and found one real
+  regression (DeckBuilder Top KPI Band snapshot, stale from the radar resize above —
+  updated) plus two failures that predate anything in this session (Franchise Dashboard,
+  Game View Matchup — see open issues, left as-is per owner call).
+- **Verified**: `npm test` (184/184), `tsc --noEmit`, `npm run lint` (0 errors) clean;
+  `npm run test:e2e` 12/14 (2 known pre-existing snapshot failures below).
+
 ## vercel_deploy & auth_approval — done 2026-09-13
 
 Both plans (sequence 2b/2c) landed; moved to `docs/completed/`.
@@ -138,6 +145,7 @@ npm test               # Vitest: frontend/tests/unit (real engine) + tests/stora
 npm run build:cards    # regenerate frontend/src/data/cards.json from frontend/game.db
 npm run balance -- 500 # headless balance report (PPP, scores, play impact)
 npm run feasibility -- 100 # archetype reachability for focused drafters vs bots
+npm run bootstrap:e2e  # one-time: create/approve the E2E test account (needs .env.local)
 npm run test:e2e       # Playwright specs, needs `npm run dev` running separately
 npm run analyze        # balance report from the latest data/game_logs/full_dump_*.json
 npm run screenshot -- /draft draft.png --full
@@ -199,13 +207,13 @@ no fresh draft/season data yet; re-run `npm run analyze` after playing a session
    necessarily a bug (may be intentional), but worth a decision one way or the other.
 7. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-8. **`ui_polish_small_fixes` (plan 1b) needs an owner decision on T2.** T1/T3/T4 (hover-
-   preview click-dismiss, draft double-click confirm, larger deckbuilder radar) are done
-   and live-verified. T2 asked to suppress hover previews during pack-reveal animation,
-   but `PackOpener.tsx`'s pack grid renders `PackRevealCard` → static `PlayerCardFront`,
-   which never wires up `useHoverPreview` in the first place — there's nothing to
-   suppress. Decide whether to mark T2 done-as-moot, or treat "preview on a pack card" as
-   a new feature to design separately.
+8. **Two `visual.spec.ts` snapshots fail with no known cause.** "Season View Franchise
+   Dashboard" (expects 234px tall, gets 226px) and "Game View Matchup Header and Tape"
+   (600px vs 601px) — neither touches any file changed in `ui_draft_deckbuild_pack` or
+   `ui_polish_small_fixes`. First time these could even run since `auth_approval` gated
+   Playwright out; the drift may predate that plan entirely. Worth a `git bisect` against
+   the visual-snapshot history, or just re-baseline once someone confirms the current
+   render is correct by eye.
 
 ## Where to look
 

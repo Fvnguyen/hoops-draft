@@ -1,9 +1,19 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Standalone Node process — unlike `next dev`/`next build`, nothing loads .env.local for
+// us. Guarded because this file is also read in environments without one (CI doesn't run
+// Playwright at all per AGENTS.md, but the import must not throw there regardless).
+try {
+  process.loadEnvFile('.env.local');
+} catch {
+  // no .env.local present — fine outside local dev
+}
+
 export default defineConfig({
   testDir: './tests',
-  // Only Playwright specs; tests/unit and tests/storage are Vitest (*.test.ts).
-  testMatch: /.*\.spec\.ts$/,
+  // Playwright specs (*.spec.ts) plus the auth setup project (*.setup.ts); tests/unit and
+  // tests/storage are Vitest (*.test.ts).
+  testMatch: /.*\.(spec|setup)\.ts$/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -15,9 +25,14 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts$/,
+    },
+    {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      testMatch: /.*\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'], storageState: 'tests/.auth/user.json' },
+      dependencies: ['setup'],
     },
   ],
-  
 });

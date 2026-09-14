@@ -33,3 +33,8 @@
 All registrations land `PENDING` until an approved administrator changes their status
 at `/admin/users` — there is no auto-approved email (the previous hardcoded
 `nguyen.teomads@gmail.com` special case was removed in `202609130003_remove_auto_approve.sql`).
+
+5. For `npm run test:e2e` (Playwright): set `E2E_TEST_EMAIL`/`E2E_TEST_PASSWORD` in
+   `frontend/.env.local` (a plus-addressed alias of your own email is fine — see
+   `.env.example`), then run `npm run bootstrap:e2e` once to create/approve that dedicated
+   test account. `tests/auth.setup.ts` logs in as it automatically before the suite runs.

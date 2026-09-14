@@ -1,7 +1,10 @@
 # Plan: UI Polish — Small Fixes
 
-File: `docs/plans/plan_ui_polish_small_fixes_2026-09-13.md`. Status: T1/T3/T4 done and
-live-verified 2026-09-13; T2 blocked on an owner decision (see below).
+File: `docs/plans/plan_ui_polish_small_fixes_2026-09-13.md`. Status: done 2026-09-14.
+T1/T3/T4 done and live-verified 2026-09-13. T2 was replaced 2026-09-14 per owner
+direction: instead of suppressing a hover preview that never existed on pack-reveal
+cards, revealed pack cards were made flippable on hover via the existing
+`PlayerCard`/`PlayCard` flip, matching the draft room — see `PackRevealCard.tsx`.
 Sequence: 1b in `docs/ROADMAP.md`. Depends on: `ui_draft_deckbuild_pack` (done). Files
 owned: `components/{DeckBuilder,PackOpener,DraftRoom,TopKPIBand,useHoverPreview}.tsx`
 (actual path for the hook is `components/useHoverPreview.ts`, not `hooks/`).
@@ -84,13 +87,16 @@ components, can be merged after any order).
 2. Drag-and-drop works without preview interference (T1) — **done**: 300ms show-delay +
    immediate click-dismiss added to `useHoverPreview.ts`, additive to the existing
    auto-dismiss/dragstart clears. Not independently timing-verified live.
-3. Pack-reveal animation shows no tooltip on moving cards (T2) — **not done, blocked**:
-   `PackOpener.tsx`'s pack grid renders `PackRevealCard` → static `PlayerCardFront`, which
-   never calls `useHoverPreview` — there is no live preview to suppress. See
-   `docs/HANDOVER.md` open issue 8 for the decision needed (moot vs. new feature).
+3. Pack-reveal cards are flippable on hover (T2, redirected 2026-09-14) — **done,
+   live-verified**: `PackRevealCard.tsx`'s revealed branch now renders `PlayerCard`/
+   `PlayCard` directly (their existing hover-flip) instead of the static
+   `PlayerCardFront`/`PlayCardFront`. Confirmed live: hovering a revealed card flips it to
+   its badges/season-averages back face, flips back on mouse-leave.
 4. Draft pick cycle: click → highlight → 2s timeout or double-click → confirm (T3) —
    **done, live-verified**: single click shows an orange ring + "Double-click to pick"
    hint; a second click on the same card confirms immediately.
 5. Deck-builder radar is noticeably larger (T4) — **done, live-verified**: `size={120}` →
    `size={168}` in `TopKPIBand.tsx`, fits the KPI band without clipping.
-6. `npm run test:e2e` smoke.spec.ts passes (no console errors) — not yet run.
+6. `npm run test:e2e` smoke.spec.ts passes (no console errors) — **done 2026-09-14**: 8/8
+   routes pass, 0 console errors (required `plan_playwright_auth_fixture_2026-09-14` to
+   unblock the auth-gated Playwright session first).
