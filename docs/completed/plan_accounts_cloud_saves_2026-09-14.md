@@ -1,7 +1,6 @@
 # Plan: accounts_cloud_saves
 
-File: `docs/plans/plan_accounts_cloud_saves_2026-09-14.md`. Status: in progress (T1-T9 built,
-verified live 2026-09-14; open: real multi-device field test — `docs/HANDOVER.md`)
+File: `docs/plans/plan_accounts_cloud_saves_2026-09-14.md`. Status: done 2026-09-14
 Sequence: 3. Depends on: — (auth_approval done, unblocked).
 Files owned: `frontend/supabase/migrations/202609140001_cloud_saves.sql`, `frontend/src/
 storage/{supabase,merge}.ts` (merge.ts new), `storage/index.ts`, `storage/types.ts`,
