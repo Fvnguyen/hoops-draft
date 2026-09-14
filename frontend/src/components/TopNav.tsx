@@ -1,9 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Cloud, CloudOff, Home, LogOut, RefreshCw, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
+import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
 import { useCurrentProfile, type CurrentProfile } from './AuthProvider';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
+import { useNotices } from '@/hooks/useNotices';
+import { useUserSeasonStats } from '@/hooks/useUserSeasonStats';
 import { SyncConflictPrompt } from './SyncConflictPrompt';
 
 /** accounts_cloud_saves D7: a small non-blocking pill next to the profile menu — never a
@@ -41,10 +43,48 @@ function SyncIndicator({ dark = false }: { dark?: boolean }) {
   );
 }
 
-/** The dropdown itself — name/email, admin tools when applicable, sign out.
+/** season_lifecycle_notifications D8: bell next to the profile menu, its own dropdown
+ *  (not folded into ProfileMenu's) listing changelog + season-complete notices. */
+function NotificationBell({ dark = false }: { dark?: boolean }) {
+  const { notices, unreadCount, markChangelogSeen, dismissNotice } = useNotices();
+
+  return (
+    <details className="relative group" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) markChangelogSeen(); }}>
+      <summary
+        className={`relative flex cursor-pointer list-none items-center justify-center rounded-full p-2 hover:bg-white/10 ${dark ? 'text-white' : 'text-stone-600 hover:bg-white'}`}
+        title="Notifications"
+      >
+        <Bell className="h-5 w-5" />
+        {unreadCount > 0 && (
+          <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500" />
+        )}
+      </summary>
+      <div className="absolute right-0 top-12 w-80 max-h-96 overflow-y-auto border border-stone-200 bg-white p-2 text-stone-700 shadow-xl">
+        {notices.length === 0 ? (
+          <p className="px-3 py-4 text-center text-sm text-stone-400">You&apos;re all caught up.</p>
+        ) : (
+          notices.map((notice) => (
+            <div key={notice.id} className="border-b border-stone-100 px-3 py-2 last:border-0">
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-bold text-sm">{notice.title}</p>
+                {notice.kind === 'season-complete' && (
+                  <button onClick={() => dismissNotice(notice.id)} className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600">Dismiss</button>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-stone-500">{notice.body}</p>
+            </div>
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** The dropdown itself — name/email, season record, admin tools when applicable, sign out.
  *  `dark` swaps to light text for use over the home page's dark hero, where
  *  there's no opaque bar behind it to provide contrast. */
 function ProfileMenu({ profile, onSignOut, dark = false }: { profile: CurrentProfile; onSignOut: () => void; dark?: boolean }) {
+  const stats = useUserSeasonStats();
   return (
     <details className="relative group">
       <summary
@@ -55,7 +95,15 @@ function ProfileMenu({ profile, onSignOut, dark = false }: { profile: CurrentPro
         <span className="hidden max-w-32 truncate text-xs font-bold uppercase tracking-wider sm:block">{profile.display_name}</span>
       </summary>
       <div className="absolute right-0 top-12 w-64 border border-stone-200 bg-white p-2 text-stone-700 shadow-xl">
-        <div className="border-b border-stone-100 px-3 py-2"><p className="font-bold">{profile.display_name}</p><p className="truncate text-xs text-stone-400">{profile.email}</p></div>
+        <div className="border-b border-stone-100 px-3 py-2">
+          <p className="font-bold">{profile.display_name}</p>
+          <p className="truncate text-xs text-stone-400">{profile.email}</p>
+          {stats.seasonsPlayed > 0 && (
+            <p className="mt-1 text-[11px] text-stone-500">
+              {stats.seasonsPlayed} season{stats.seasonsPlayed === 1 ? '' : 's'} · {stats.wins}-{stats.losses} · {stats.avgWins} W avg
+            </p>
+          )}
+        </div>
         <div className="mt-1 border-b border-stone-100 pb-1"><Link href="/debug" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Debug export</Link></div>
         {profile.role === 'ADMIN' && <div className="mt-1 border-b border-stone-100 pb-1"><p className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-yellow-600"><ShieldCheck className="mr-1 inline h-3 w-3" /> Admin tools</p><Link href="/admin/users" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><ShieldCheck className="h-4 w-4" /> Account approvals</Link><Link href="/admin/analytics" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><BarChart3 className="h-4 w-4" /> Analytics</Link><Link href="/data" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Data viewer</Link><Link href="/deckbuilder-test" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Deckbuilder sandbox</Link><Link href="/test-ui" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Test UI</Link><Link href="/pack-opener-preview" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Pack opener preview</Link></div>}
         <button onClick={onSignOut} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"><LogOut className="h-4 w-4" /> Sign out</button>
@@ -105,6 +153,7 @@ export function TopNav() {
       <>
         <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
           <SyncIndicator dark />
+          <NotificationBell dark />
           <ProfileMenu profile={profile} onSignOut={signOut} dark />
         </div>
         <SyncConflictPrompt conflicts={syncStatus.conflicts} />
@@ -131,6 +180,7 @@ export function TopNav() {
         {profile && (
           <div className="flex items-center gap-3">
             <SyncIndicator />
+            <NotificationBell />
             <ProfileMenu profile={profile} onSignOut={signOut} />
           </div>
         )}

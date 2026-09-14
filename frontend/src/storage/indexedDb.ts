@@ -293,7 +293,6 @@ export class IndexedDbGameStore implements GameStore {
     return { sessions, seasons, rosters, bytesEstimate };
   }
 
-  /** Internal helper used by migrate.ts to record the one-time migration flag. */
   async setMeta(key: string, value: string): Promise<void> {
     await this.db.meta.put({ key, value });
   }

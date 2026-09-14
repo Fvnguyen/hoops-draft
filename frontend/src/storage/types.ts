@@ -86,6 +86,12 @@ export interface GameStore {
    *  (e.g. a brand-new MemoryGameStore, which does not do Dexie-style migrations). */
   getStorageMeta(): Promise<StorageMeta | null>;
 
+  /** season_lifecycle_notifications D6: an arbitrary device-local string key/value store
+   *  (notification "last seen"/"dismissed" state, migration markers). Deliberately never
+   *  cloud-synced — `SupabaseGameStore` delegates straight to its wrapped local store. */
+  getMeta(key: string): Promise<string | null>;
+  setMeta(key: string, value: string): Promise<void>;
+
   /** accounts_cloud_saves D4/D7: pushes `storage/merge.ts` couldn't auto-resolve — always
    *  empty on a backend with no cloud sync (IndexedDb/Memory). */
   listConflicts(): Promise<SyncConflict[]>;

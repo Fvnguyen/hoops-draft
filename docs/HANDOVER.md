@@ -10,7 +10,7 @@ archetype identities and assigned-player plays. Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
-— see the milestone below. 212 Vitest tests pass, type-check is clean, `npm run lint` is
+— see the milestones below. 217 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -64,67 +64,12 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   `tests/auth.setup.ts` fixture so `test:e2e` can finally run authenticated
   (`docs/completed/plan_ui_polish_small_fixes_2026-09-13.md`,
   `plan_playwright_auth_fixture_2026-09-14.md`).
-
-## accounts_cloud_saves — done 2026-09-14
-
-Design/full history: `docs/completed/plan_accounts_cloud_saves_2026-09-14.md`; sequence
-#3 in the roadmap. T1-T9 built and verified against the real Supabase project throughout
-(never just a mock), including the two-device merge/conflict paths — see below.
-
-- **Schema/sync**: migration `202609140001_cloud_saves.sql` (applied) adds
-  `draft_sessions`/`rosters`/`seasons` tables, owner+admin RLS, and a `cas_upsert`
-  compare-and-swap RPC. `SupabaseGameStore` (`frontend/src/storage/supabase.ts`) wraps
-  `IndexedDbGameStore` — reads stay local, writes push through `cas_upsert`, offline/failed
-  pushes queue and retry on reconnect — and is now the default `getGameStore()` result in
-  the browser.
-- **Concurrency**: `storage/merge.ts` (pure, no Supabase/Dexie/fetch imports, purity-tested
-  like `engine/`) auto-merges draft sessions (longer `pickLog` wins) and seasons (schedule
-  entries unioned by `played`, standings recomputed via the new
-  `engine/season.ts#recomputeStandingsFromSchedule`); a roster conflict has no sensible
-  auto-merge and surfaces via `SyncConflictPrompt` (`TopNav`'s new sync indicator,
-  `useSyncStatus`).
-- **Migration**: `StorageProvider` pushes any local-only rows to the cloud once per login
-  (`pushLocalToCloud`, insert-only — never overwrites an existing cloud row).
-- **Analytics**: aggregate math extracted from `scripts/analyze.ts` into
-  `src/lib/analyzeStats.ts` (byte-identical `npm run analyze` output, diffed). New
-  `/api/analytics?scope=self|all` (self = own RLS-scoped data, all = ADMIN via service
-  role) and `/admin/analytics` page, both verified live against the real DB and gates
-  (non-admin gets 403/redirect).
-- **Two real bugs found and fixed post-deploy** (2026-09-14, live-tested with a Playwright
-  e2e run against the real Supabase project, not a mock): (1) `deleteRoster`/`deleteSeason`/
-  `deleteDraftSession` chained `.catch(() => {})` onto a Supabase `PostgrestBuilder`, which
-  is `PromiseLike`, not a real `Promise` — it has no `.catch`, so every cloud delete threw
-  synchronously and never reached the server; fixed to `await` inside a real try/catch
-  (`deleteRemote`), and `CloudSyncClient`'s delete return type corrected to `PromiseLike`
-  so this class of mistake fails to compile next time. (2) `push()` treated a CAS
-  rejection with a stale (since-deleted) baseline as "needs a merge," found nothing to
-  merge against, and silently queued forever instead of ever writing the save — fixed to
-  retry as a fresh insert when the server reports no row at all. Both covered by new
-  `tests/storage/supabase.test.ts` cases (a mock `.delete().eq()` that's a bare
-  `PromiseLike`, matching the real client, would now fail the same way).
-- **tests/season.spec.ts** (new): drives the merged `game-results-visibility` fix
-  end-to-end — imports a fixed-id fixture (`scripts/build-e2e-season-fixture.ts` ->
-  `tests/fixtures/season-fixture.json`) via the real rosters-page Import flow, plays game
-  1, leaves early via "Exit Game" and confirms nothing saved, then finishes and hits
-  "Continue to Schedule" and confirms the schedule/standings update. Self-cleaning (deletes
-  its own fixture roster/season at the start of each run) — verified idempotent across 3
-  consecutive live runs.
-- **Two-device exit criteria closed live** (2026-09-14): rather than leave this to a
-  future physical-device session, verified with two independent `SupabaseGameStore`
-  instances signed in as the same account against the real backend (temporary script,
-  not committed — evidence, not test infra): device A creates a season, device B pulls
-  it, plays a game and saves; device A (still holding its stale local copy) saves too and
-  merges to the correct `currentGame` with zero conflicts. Same setup for a roster: device
-  B renames it, device A edits its own stale copy and saves — a real conflict is recorded
-  (not silently lost) and resolves correctly either direction. Both real `cas_upsert`
-  round trips against production RLS, not mocked.
-- **Verified**: `npm test` (212/212), `tsc --noEmit`, `npm run lint` (0 errors) clean;
-  `npm run test:e2e` 13/15 (2 known pre-existing snapshot failures, see open issues);
-  migration applied and confirmed via direct DB query (tables/policies/RPC present); the
-  delete/re-insert bug fixes and the two-device merge/conflict paths above all verified
-  against the live DB, not just the mock; `/admin/analytics` screenshotted showing real
-  non-zero cross-user numbers (2 owners, 20 sessions, 28 games) once a real user's data
-  synced in.
+- **accounts_cloud_saves** (done 2026-09-14, `docs/completed/plan_accounts_cloud_saves_2026-09-14.md`):
+  Supabase-backed `GameStore` (`cas_upsert` optimistic-CAS RPC, `SupabaseGameStore` wraps
+  `IndexedDbGameStore`), type-specific auto-merge (`storage/merge.ts`), roster conflict UI
+  (`SyncConflictPrompt`), scoped `/api/analytics`+`/admin/analytics`; two real post-deploy
+  bugs (dead `.catch` on a `PostgrestBuilder`, CAS-vs-deleted-row retry) found and fixed
+  live against production; two-device merge/conflict paths verified live, not mocked.
 
 ## game-results-visibility (merged, not this session's own plan) — 2026-09-14
 
@@ -173,6 +118,40 @@ one session; sequence #2 in the roadmap.
   `npm run balance -- 500 --seed 42 --report` matches D11's shape; `smoke.spec.ts` (9/9,
   including `/season`) passes with no console errors.
 
+## season_lifecycle_notifications — done 2026-09-14
+
+Design: `docs/completed/plan_season_lifecycle_notifications_2026-09-14.md` (inserted as
+sequence #2b, ahead of `mobile_responsive`). All 6 tasks done in one session.
+
+- **Lifecycle status is derived, not stored**: `getSeasonPhase()` (`engine/season.ts`)
+  maps `Season.currentGame` to `'preseason' | 'live' | 'completed'` — no new persisted
+  field, no migration, no merge changes. `HUMAN_SEAT_ID` const added to replace 8 raw
+  `'human-0'` literals across `useDraftEngine.ts`/`analyzeStats.ts`/`DraftRoom.tsx`/
+  `SeasonView.tsx`.
+- **Locking**: a Completed roster/season is enforced UI-side only (no storage
+  write-guard). `app/roster/[id]/page.tsx` computes `readOnly` from the linked season and
+  passes it into `DeckBuilder`, which shows a banner and wraps the whole editing surface
+  in `pointer-events-none` (Save is also no-op guarded). `SeasonView`'s existing
+  `isSeasonComplete` now calls the shared helper instead of its own inline check.
+- **Records + stats**: `computeUserSeasonStats()` sums the human standings row across
+  every Completed season (`seasonsPlayed`/`wins`/`losses`/`avgWins`/`avgLosses`, 1
+  decimal, 0-season case handled). `app/rosters/page.tsx` shows a phase pill + W-L per
+  roster card; the profile menu (`TopNav.tsx`) shows a one-line blurb via the shared
+  `useUserSeasonStats` hook.
+- **Notifications**: `GameStore.getMeta/setMeta` (already implemented on the IndexedDb/
+  Memory backends for the migration flag) promoted onto the public interface;
+  `SupabaseGameStore` delegates both to its wrapped local store — deliberately
+  device-local, not cloud-synced (D6: this is "have I seen this" UI state, not gameplay
+  data). New bell icon in `TopNav` (`useNotices` hook) merges a hand-maintained changelog
+  (`src/data/whatsnew.ts`) with a synthetic "season complete" notice per newly-finished,
+  undismissed season.
+- Verified: `npm test` (217/217, 9 new cases in `tests/unit/season.test.ts` for
+  `getSeasonPhase`/`computeUserSeasonStats`), `tsc --noEmit`, `npm run lint` (0 errors)
+  clean, `npm run build` succeeds; live-verified in the browser against a real completed
+  season — phase pill/record on `/rosters`, locked banner + disabled editing on
+  `/roster/[id]`, bell dropdown with a dismissible season-complete notice, and the
+  profile-menu stats blurb all screenshotted working end to end.
+
 ## How to run everything
 
 ```bash
@@ -194,8 +173,9 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves` and
-`game_engine` are done, `mobile_responsive` is next up). The 2026-09-12 code review that
+What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
+and `season_lifecycle_notifications` are done, `mobile_responsive` is next up). The
+2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
 

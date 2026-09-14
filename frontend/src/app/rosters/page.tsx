@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Download, Pencil, Swords, Trash2, Upload } from 'lucide-react';
 import { getGameStore, SavedRoster, CURRENT_CARD_SET_VERSION } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
+import { getSeasonPhase, HUMAN_SEAT_ID, type Season, type SeasonPhase } from '@/engine/season';
 import {
   buildExportBundle,
   isLikelyExportBundle,
@@ -14,10 +15,23 @@ import {
   type MergeSummary,
 } from '@/storage/exportImport';
 
+const PHASE_LABEL: Record<SeasonPhase, string> = {
+  preseason: 'Pre-Season',
+  live: 'Live Season',
+  completed: 'Completed',
+};
+
+const PHASE_CLASS: Record<SeasonPhase, string> = {
+  preseason: 'bg-stone-100 text-stone-500',
+  live: 'bg-emerald-100 text-emerald-700',
+  completed: 'bg-blue-100 text-blue-700',
+};
+
 export default function RostersPage() {
   const router = useRouter();
   const ready = useStorageReady();
   const [rosters, setRosters] = useState<SavedRoster[]>([]);
+  const [seasonsByRoster, setSeasonsByRoster] = useState<Record<string, Season>>({});
   const [loaded, setLoaded] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<MergeSummary | null>(null);
@@ -27,7 +41,17 @@ export default function RostersPage() {
   const refresh = useCallback(async () => {
     const store = getGameStore();
     const saved = await store.listRosters();
-    setRosters(saved.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    const sorted = saved.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    setRosters(sorted);
+
+    const seasonEntries = await Promise.all(
+      sorted.map(async (r) => [r.id, await store.getSeasonByRoster(r.id)] as const)
+    );
+    const seasonsMap: Record<string, Season> = {};
+    for (const [rosterId, season] of seasonEntries) {
+      if (season) seasonsMap[rosterId] = season;
+    }
+    setSeasonsByRoster(seasonsMap);
     setLoaded(true);
   }, []);
 
@@ -177,7 +201,11 @@ export default function RostersPage() {
         <div className="space-y-8 pb-10">
           {rosters.map((rosterObj, i) => {
             const date = new Date(rosterObj.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-            
+            const season = seasonsByRoster[rosterObj.id] ?? null;
+            const phase = getSeasonPhase(season);
+            const humanStanding = season?.standings.find((s) => s.seatId === HUMAN_SEAT_ID);
+            const isLocked = phase === 'completed';
+
             return (
               <motion.div 
                 key={rosterObj.id} 
@@ -194,6 +222,16 @@ export default function RostersPage() {
                     </h2>
                     <div className="text-xs font-bold text-stone-500 uppercase tracking-widest mt-1 flex items-center gap-2">
                       {date}
+                      {season && (
+                        <span className={`px-2 py-0.5 rounded-full normal-case tracking-normal font-semibold ${PHASE_CLASS[phase]}`}>
+                          {PHASE_LABEL[phase]}
+                        </span>
+                      )}
+                      {humanStanding && (humanStanding.wins + humanStanding.losses > 0) && (
+                        <span className="normal-case tracking-normal font-semibold text-stone-600">
+                          {humanStanding.wins}-{humanStanding.losses}
+                        </span>
+                      )}
                       {rosterObj.cardSetVersion && rosterObj.cardSetVersion !== CURRENT_CARD_SET_VERSION && (
                         <span
                           className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 normal-case tracking-normal font-semibold"
@@ -208,7 +246,7 @@ export default function RostersPage() {
                     <Link
                       href={`/roster/${rosterObj.id}${rosterObj.sessionId ? `?sessionId=${rosterObj.sessionId}` : ''}`}
                       className="p-3 bg-white hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg transition-colors border border-stone-700"
-                      title="Edit Roster"
+                      title={isLocked ? 'View Roster (locked — season complete)' : 'Edit Roster'}
                     >
                       <Pencil className="w-5 h-5" />
                     </Link>
@@ -218,7 +256,7 @@ export default function RostersPage() {
                         onClick={() => router.push(`/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`)}
                         className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]"
                       >
-                        <Swords className="w-4 h-4" /> Play Season
+                        <Swords className="w-4 h-4" /> {isLocked ? 'View Season' : 'Play Season'}
                       </button>
                     )}
 

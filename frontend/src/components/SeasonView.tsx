@@ -8,7 +8,7 @@ import { useStorageReady } from './StorageProvider';
 import { useCurrentProfile } from './AuthProvider';
 import {
   Season, createSeason, playNextGame, normalizeSeason, humanMatchup,
-  teamInfoForSeat, resolveMatchupReplay, StoredGameResult,
+  teamInfoForSeat, resolveMatchupReplay, StoredGameResult, HUMAN_SEAT_ID, getSeasonPhase,
 } from '../engine/season';
 import type { DraftSession } from '../engine/deckbuilder';
 import { GameTheater, TeamInfo } from '../engine/game';
@@ -271,8 +271,8 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   }
 
   // Season hub: schedule + standings
-  const isSeasonComplete = season.currentGame >= 7;
-  const humanStanding = season.standings.find(s => s.seatId === 'human-0');
+  const isSeasonComplete = getSeasonPhase(season) === 'completed';
+  const humanStanding = season.standings.find(s => s.seatId === HUMAN_SEAT_ID);
   const champion = isSeasonComplete ? season.standings[0] : null;
 
   return (
@@ -311,10 +311,10 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
         {/* Champion Banner */}
         {isSeasonComplete && champion && (
-          <div className={`rounded-xl p-6 mb-6 text-center border ${champion.seatId === 'human-0' ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
-            <Trophy className={`w-10 h-10 mx-auto mb-2 ${champion.seatId === 'human-0' ? 'text-amber-500' : 'text-stone-400'}`} />
+          <div className={`rounded-xl p-6 mb-6 text-center border ${champion.seatId === HUMAN_SEAT_ID ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
+            <Trophy className={`w-10 h-10 mx-auto mb-2 ${champion.seatId === HUMAN_SEAT_ID ? 'text-amber-500' : 'text-stone-400'}`} />
             <div className="text-2xl font-black uppercase tracking-wider" style={{ fontFamily: 'var(--font-bebas)' }}>
-              {champion.seatId === 'human-0' ? '🏆 You are the Champion! 🏆' : `${champion.name} wins the league`}
+              {champion.seatId === HUMAN_SEAT_ID ? '🏆 You are the Champion! 🏆' : `${champion.name} wins the league`}
             </div>
             <div className="text-sm text-stone-500 mt-1">
               Final Record: {champion.wins}-{champion.losses} ({champion.pointDiff > 0 ? '+' : ''}{champion.pointDiff} pt diff)
@@ -404,7 +404,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
                 </thead>
                 <tbody>
                   {season.standings.map((entry, idx) => {
-                    const isHuman = entry.seatId === 'human-0';
+                    const isHuman = entry.seatId === HUMAN_SEAT_ID;
                     const hasPlayed = entry.wins + entry.losses > 0;
                     return (
                       <tr key={entry.seatId} className={`border-t border-stone-100 ${isHuman ? 'bg-blue-50 font-bold' : ''}`}>

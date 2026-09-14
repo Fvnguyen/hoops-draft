@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createSeason, playNextGame, recomputeStandingsFromSchedule } from '@/engine/season';
+import {
+  createSeason, playNextGame, recomputeStandingsFromSchedule, getSeasonPhase,
+  computeUserSeasonStats, HUMAN_SEAT_ID, type Season,
+} from '@/engine/season';
 import type { DraftSession } from '@/engine/deckbuilder';
 import { loadPlayers, PLAYS, runHeadlessDraft } from './helpers';
 
@@ -49,7 +52,7 @@ describe('seasonEngine', () => {
     const totalWL = season.standings.reduce((s, row) => s + row.wins + row.losses, 0);
     expect(totalWL).toBe(56);
 
-    const humanRow = season.standings.find((row) => row.seatId === 'human-0');
+    const humanRow = season.standings.find((row) => row.seatId === HUMAN_SEAT_ID);
     expect(humanRow).toBeDefined();
     expect((humanRow!.wins + humanRow!.losses)).toBe(7);
   });
@@ -79,5 +82,81 @@ describe('seasonEngine', () => {
     const recomputed = recomputeStandingsFromSchedule(season.schedule, session, season.humanTeam.name);
     expect(recomputed.every((row) => row.wins === 0 && row.losses === 0)).toBe(true);
     expect(recomputed).toHaveLength(8);
+  });
+});
+
+// season_lifecycle_notifications T1
+describe('getSeasonPhase', () => {
+  const players = loadPlayers();
+
+  function makeSession(): DraftSession {
+    const seats = runHeadlessDraft(players, PLAYS);
+    return { id: 'test-session', timestamp: new Date().toISOString(), seats, pickLog: [] };
+  }
+
+  it('reports preseason for no season at all', () => {
+    expect(getSeasonPhase(null)).toBe('preseason');
+    expect(getSeasonPhase(undefined)).toBe('preseason');
+  });
+
+  it('reports preseason before the first game, live mid-season, completed after game 7', () => {
+    const session = makeSession();
+    let season = createSeason(session, 'test-roster');
+    expect(getSeasonPhase(season)).toBe('preseason');
+
+    for (let i = 0; i < 3; i++) {
+      season = playNextGame(season, session)!.season;
+    }
+    expect(getSeasonPhase(season)).toBe('live');
+
+    for (let i = 0; i < 4; i++) {
+      season = playNextGame(season, session)!.season;
+    }
+    expect(getSeasonPhase(season)).toBe('completed');
+  });
+});
+
+describe('computeUserSeasonStats', () => {
+  const players = loadPlayers();
+
+  function makeSession(): DraftSession {
+    const seats = runHeadlessDraft(players, PLAYS);
+    return { id: 'test-session', timestamp: new Date().toISOString(), seats, pickLog: [] };
+  }
+
+  function playFullSeason(): Season {
+    const session = makeSession();
+    let season = createSeason(session, 'test-roster');
+    for (let i = 0; i < 7; i++) {
+      season = playNextGame(season, session)!.season;
+    }
+    return season;
+  }
+
+  it('reports all zeros for no seasons, avoiding division by zero', () => {
+    const stats = computeUserSeasonStats([]);
+    expect(stats).toEqual({ seasonsPlayed: 0, wins: 0, losses: 0, avgWins: '0.0', avgLosses: '0.0' });
+  });
+
+  it('ignores seasons still in preseason/live', () => {
+    const session = makeSession();
+    const preseason = createSeason(session, 'test-roster');
+    const live = playNextGame(createSeason(session, 'test-roster-2'), session)!.season;
+    const stats = computeUserSeasonStats([preseason, live]);
+    expect(stats.seasonsPlayed).toBe(0);
+  });
+
+  it('sums the human record across completed seasons and averages to one decimal', () => {
+    const a = playFullSeason();
+    const b = playFullSeason();
+    const humanA = a.standings.find((s) => s.seatId === HUMAN_SEAT_ID)!;
+    const humanB = b.standings.find((s) => s.seatId === HUMAN_SEAT_ID)!;
+
+    const stats = computeUserSeasonStats([a, b]);
+    expect(stats.seasonsPlayed).toBe(2);
+    expect(stats.wins).toBe(humanA.wins + humanB.wins);
+    expect(stats.losses).toBe(humanA.losses + humanB.losses);
+    expect(stats.avgWins).toBe(((humanA.wins + humanB.wins) / 2).toFixed(1));
+    expect(stats.avgLosses).toBe(((humanA.losses + humanB.losses) / 2).toFixed(1));
   });
 });

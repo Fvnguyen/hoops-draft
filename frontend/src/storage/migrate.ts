@@ -20,19 +20,6 @@ const OLD_SEASONS_KEY = 'hoops-draft-seasons';
 const OLD_ROSTERS_KEY = 'myRosters';
 const MIGRATED_META_KEY = 'migratedFromLocalStorage';
 
-/** Optional extra methods a store may implement to persist the migration flag. */
-interface MetaCapable {
-  getMeta(key: string): Promise<string | null>;
-  setMeta(key: string, value: string): Promise<void>;
-}
-
-function isMetaCapable(store: GameStore): store is GameStore & MetaCapable {
-  return (
-    typeof (store as Partial<MetaCapable>).getMeta === 'function' &&
-    typeof (store as Partial<MetaCapable>).setMeta === 'function'
-  );
-}
-
 function readAndParse<T>(key: string): T[] | null {
   let raw: string | null;
   try {
@@ -94,9 +81,7 @@ export async function migrateFromLocalStorage(store: GameStore): Promise<void> {
     }
   }
 
-  if (isMetaCapable(store)) {
-    await store.setMeta(MIGRATED_META_KEY, new Date().toISOString());
-  }
+  await store.setMeta(MIGRATED_META_KEY, new Date().toISOString());
 
   // Rename regardless of parse success so a corrupt/legacy value doesn't get
   // re-parsed (and fail) on every subsequent app load.

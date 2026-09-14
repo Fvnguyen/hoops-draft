@@ -7,6 +7,7 @@ import { DeckBuilder } from '@/components/DeckBuilder';
 import { useSearchParams, useParams } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
+import { getSeasonPhase } from '@/engine/season';
 
 function RosterPageInner() {
   const searchParams = useSearchParams();
@@ -23,6 +24,7 @@ function RosterPageInner() {
   const [initialArchetypes, setInitialArchetypes] = useState<ArchetypeSelection | undefined>();
   const [sessionId, setSessionId] = useState<string | undefined>(sessionIdParam ?? undefined);
   const [error, setError] = useState<string | null>(null);
+  const [readOnly, setReadOnly] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -42,6 +44,9 @@ function RosterPageInner() {
         setInitialPlayAssignments(savedRoster.playAssignments);
         setInitialArchetypes(savedRoster.archetypes);
         if (!sessionIdParam && savedRoster.sessionId) setSessionId(savedRoster.sessionId);
+
+        const season = await store.getSeasonByRoster(rosterId);
+        if (!cancelled) setReadOnly(getSeasonPhase(season) === 'completed');
         return;
       }
 
@@ -81,6 +86,7 @@ function RosterPageInner() {
         initialPlayAssignments={initialPlayAssignments}
         initialArchetypes={initialArchetypes}
         sessionId={sessionId}
+        readOnly={readOnly}
       />
     </div>
   );

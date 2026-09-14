@@ -4,6 +4,7 @@ import { DraftSeat, generateCubePool, getBotPick, type BotProfile } from '../eng
 import { DraftPickRecord } from '../engine/deckbuilder';
 import { createRng, pick, randomSeed, type Rng } from '../engine/rng';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { HUMAN_SEAT_ID } from '../engine/season';
 import { deadlineFor } from '../lib/draftTimer';
 
 const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
@@ -72,7 +73,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     // Round 1: packs 0-7
     // Seat 0: Human
     initialSeats.push({
-      id: 'human-0',
+      id: HUMAN_SEAT_ID,
       isBot: false,
       drafted: [],
       currentPack: allPacks[0] || [],

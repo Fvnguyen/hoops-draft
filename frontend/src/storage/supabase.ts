@@ -350,4 +350,6 @@ export class SupabaseGameStore implements GameStore {
   clearAll(): Promise<void> { return this.local.clearAll(); }
   usage(): ReturnType<GameStore['usage']> { return this.local.usage(); }
   getStorageMeta(): Promise<StorageMeta | null> { return this.local.getStorageMeta(); }
+  getMeta(key: string): Promise<string | null> { return this.local.getMeta(key); }
+  setMeta(key: string, value: string): Promise<void> { return this.local.setMeta(key, value); }
 }

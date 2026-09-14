@@ -13,6 +13,7 @@ import { PickTimerRing } from './PickTimerRing';
 import { RoundSummary } from './RoundSummary';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError } from '@/storage/types';
+import { HUMAN_SEAT_ID } from '@/engine/season';
 import { buildDraftSession } from '../lib/sessionBuilder';
 import { buildBotRoster } from '../engine/deckbuilder';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
@@ -65,7 +66,7 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
   const neighbourIds = new Set([seats[7]?.id, seats[1]?.id].filter(Boolean));
 
   const items = pickLog
-    .filter(r => r.seatId !== 'human-0' || r.autoPicked)
+    .filter(r => r.seatId !== HUMAN_SEAT_ID || r.autoPicked)
     .slice(-16)
     .sort((a, b) => {
       const aFirst = neighbourIds.has(a.seatId) ? 0 : 1;

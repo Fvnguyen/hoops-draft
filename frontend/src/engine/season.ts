@@ -89,6 +89,9 @@ export interface Season {
   seed: number;
 }
 
+/** The human player's seat id, fixed by `useDraftEngine` at draft creation. */
+export const HUMAN_SEAT_ID = 'human-0';
+
 // ── Season Creation ────────────────────────────────────────────────────────
 
 export function createSeason(
@@ -471,4 +474,52 @@ export function resolveMatchupReplay(
   }
   const theater = simulateGame(homeTeam, awayTeam, { rng: createRng(result.seed) });
   return { kind: 'theater', theater };
+}
+
+// ── Lifecycle status (season_lifecycle_notifications D1/D5) ────────────────
+
+export type SeasonPhase = 'preseason' | 'live' | 'completed';
+
+/**
+ * Derived, never stored: a roster with no season yet, or a season that hasn't played its
+ * first game, is `preseason` (deckbuilding still fully open); `1-6` is `live`; `>= 7`
+ * (`playNextGame`'s terminal value) is `completed` and read-only in the UI.
+ */
+export function getSeasonPhase(season: Season | null | undefined): SeasonPhase {
+  if (!season || season.currentGame <= 0) return 'preseason';
+  if (season.currentGame >= 7) return 'completed';
+  return 'live';
+}
+
+export interface UserSeasonStats {
+  seasonsPlayed: number;
+  wins: number;
+  losses: number;
+  avgWins: string;
+  avgLosses: string;
+}
+
+/**
+ * Aggregates the human seat's record across every Completed season. `avg*` are strings
+ * pre-formatted to one decimal (`toFixed(1)`) since they're display-only; 0 seasons
+ * reports all zeros rather than dividing by zero.
+ */
+export function computeUserSeasonStats(seasons: Season[]): UserSeasonStats {
+  const completed = seasons.filter((s) => getSeasonPhase(s) === 'completed');
+  let wins = 0;
+  let losses = 0;
+  for (const season of completed) {
+    const standing = season.standings.find((s) => s.seatId === HUMAN_SEAT_ID);
+    if (!standing) continue;
+    wins += standing.wins;
+    losses += standing.losses;
+  }
+  const seasonsPlayed = completed.length;
+  return {
+    seasonsPlayed,
+    wins,
+    losses,
+    avgWins: seasonsPlayed === 0 ? '0.0' : (wins / seasonsPlayed).toFixed(1),
+    avgLosses: seasonsPlayed === 0 ? '0.0' : (losses / seasonsPlayed).toFixed(1),
+  };
 }

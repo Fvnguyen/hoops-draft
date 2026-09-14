@@ -27,8 +27,9 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | 8 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2) | not yet planned | 7 | — | 2-3 days |
 
 Re-sequenced 2026-09-14: `accounts_cloud_saves` (was #3) is done — see Recently completed.
-`ui_draft_deckbuild_pack`, `ui_polish_small_fixes`, `playwright_auth_fixture` and
-`game_engine` are done too. card_balance keeps its hard dependency on draft_ai (needs
+`ui_draft_deckbuild_pack`, `ui_polish_small_fixes`, `playwright_auth_fixture`,
+`game_engine`, and `season_lifecycle_notifications` (was #2b, small/unblocked, inserted
+and finished same-day) are done too. card_balance keeps its hard dependency on draft_ai (needs
 contested-draft data to measure against) so draft_ai still lands first despite ranking
 lower in value. mobile_pwa is split into mobile_responsive (#3, layout only, cheap) and
 mobile_pwa_shell (#7, manifest/service worker), so the layout pass isn't gated behind
@@ -40,9 +41,9 @@ Android. Scope sketch for 3, 7-8 is proposals D, F, G in
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [season_lifecycle_notifications](completed/plan_season_lifecycle_notifications_2026-09-14.md) | 2026-09-14 | Derived Pre-Season/Live/Completed status, UI-enforced roster/season lock, per-roster records + user W/L stats, notification bell (changelog + season-complete) — all verified live in-browser |
 | [accounts_cloud_saves](completed/plan_accounts_cloud_saves_2026-09-14.md) | 2026-09-14 | Supabase-backed `GameStore` (`cas_upsert` optimistic-CAS RPC), type-specific auto-merge (`storage/merge.ts`), roster conflict UI, scoped `/api/analytics`+`/admin/analytics`; two-device merge and conflict paths verified live against production, not just mocks |
 | [game_engine](completed/plan_game_engine_2026-09-13.md) | 2026-09-14 | OT/home-court/spread/impact tuning fixed and measured; code review (T6) fixed dead-code lineup wiring; draft-impact + talent-vs-luck decomposition unified into `--report` and the Power Curve artifact |
-| [playwright_auth_fixture](completed/plan_playwright_auth_fixture_2026-09-14.md) | 2026-09-14 | Dedicated E2E Supabase account + `tests/auth.setup.ts` login fixture; `smoke.spec.ts`/`home.spec.ts` pass for the first time since `auth_approval` |
 
 ## Model tiers used in plans
 

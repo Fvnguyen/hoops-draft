@@ -91,6 +91,9 @@ export interface DeckBuilderProps {
   /** Draft session this roster belongs to. Enables "Save & play season" (D19). */
   sessionId?: string;
   podAverageIdentity?: RosterIdentity;
+  /** season_lifecycle_notifications D3: true when this roster's season is Completed —
+   *  view-only, depth chart/plays can't be rearranged and Save is disabled. */
+  readOnly?: boolean;
 }
 
 /** Mounts the toast layer the builder body needs (D15) around the real builder. */
@@ -111,7 +114,7 @@ interface BuilderSnapshot {
   rosterPlays: Play[];
 }
 
-function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity }: DeckBuilderProps) {
+function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity, readOnly = false }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
 
@@ -761,6 +764,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   /** D19: "Save" lands on `/rosters`; "Save & play season" jumps straight into the
    *  season for this draft session (only offered when there IS a session). */
   const handleSaveRoster = async (destination: 'rosters' | 'season' = 'rosters') => {
+    if (readOnly) return;
     try {
       setSaveError(null);
 
@@ -835,10 +839,15 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           <p className="text-sm text-red-700 font-semibold">{saveError}</p>
         </div>
       )}
+      {readOnly && (
+        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
+          <p className="text-sm text-blue-700 font-semibold">This season is complete — the roster is locked and view-only.</p>
+        </div>
+      )}
       {/* D17: the builder body is the container-query context — the plays column and
           the Roster sidebar are sized in `cqw` with clamps, and the whole band wraps
           to a column under a 1000px CONTAINER width (not viewport width). */}
-      <div className="flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative">
+      <div className={`flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative ${readOnly ? 'pointer-events-none opacity-75' : ''}`}>
         {/* ACTIVE ROSTER */}
         <div className="flex-1 flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0">
           <div className="flex justify-between items-start gap-3 mb-4 shrink-0 flex-wrap">

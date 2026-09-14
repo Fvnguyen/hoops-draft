@@ -11,7 +11,7 @@
 
 import type { DraftSession, DraftSessionSeat, BuiltRoster, DraftPickRecord } from '@/engine/deckbuilder';
 import type { Season, SeasonScheduleEntry } from '@/engine/season';
-import { teamInfoForSeat, resolveMatchupReplay } from '@/engine/season';
+import { teamInfoForSeat, resolveMatchupReplay, HUMAN_SEAT_ID } from '@/engine/season';
 import type { GameTheater, PossessionEvent, TeamInfo } from '@/engine/game';
 import type { PlayerCardData } from '@/engine/types';
 import {
@@ -289,8 +289,8 @@ export function computeOwnerSummary(sessions: DraftSession[], ownedGames: OwnedG
   const margins: number[] = [];
   ownedGames.forEach(({ theater }) => {
     const [h, a] = theater.finalScore ?? [0, 0];
-    const homeIsOwner = theater.homeTeam?.seatId === 'human-0';
-    const awayIsOwner = theater.awayTeam?.seatId === 'human-0';
+    const homeIsOwner = theater.homeTeam?.seatId === HUMAN_SEAT_ID;
+    const awayIsOwner = theater.awayTeam?.seatId === HUMAN_SEAT_ID;
     if (!homeIsOwner && !awayIsOwner) return;
     const won = homeIsOwner ? h > a : a > h;
     if (won) wins++;

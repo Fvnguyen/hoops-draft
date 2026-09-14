@@ -38,7 +38,6 @@ export class MemoryGameStore implements GameStore {
 
   private owned<T extends { ownerId?: string }>(rows: T[]): T[] { return this.ownerId ? rows.filter((row) => row.ownerId === this.ownerId) : rows; }
 
-  /** Not part of GameStore — used by migrate.ts to record the one-time migration flag. */
   async getMeta(key: string): Promise<string | null> {
     return this.meta.get(key) ?? null;
   }
