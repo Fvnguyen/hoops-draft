@@ -1,6 +1,6 @@
 # Plan: deckbuilder_ux
 
-File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: planned
+File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: in progress (wave 1 done 2026-09-15; T1 d-h awaiting sign-off)
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3, tokens + primitives).
 Blocks: mobile_responsive T6 (deck-builder rows). Files owned: `DeckBuilder.tsx`,
 `DepthSlotColumn.tsx`, `PlayPanel.tsx`, `AssignPopover.tsx`, `TopKPIBand.tsx`,
@@ -81,8 +81,10 @@ toggle UI. Any change to how plays resolve in `engine/game.ts`.
 ## Tasks
 
 - T1 **Design canvas** (top, driver). Files: canvas artifact; exports to
-  `docs/design/deckbuilder_ux/`. (a)(b)(c) signed 2026-09-15, PNGs committed. (d)(e)(f)
-  drafted the same day, sign-off pending; T4 starts only after it.
+  `docs/design/deckbuilder_ux/`. (a)(b)(c) signed 2026-09-15. Owner review of page 2
+  moved the actions into the band and made plays a sidebar too: (a)(b)(f) amended, (g)
+  plays sidebar and (h) everything-expanded added; (d)-(h) await sign-off; T4 starts
+  after it, and T3 gets a follow-up for the band actions (they are not built yet).
 - T2 **Assign helpers + click-to-assign** (mid). Files: `engine/deckbuilder.ts`,
   `DeckBuilder.tsx`, `AssignPopover.tsx`, `tests/unit/deckbuilder-assign.test.ts` (new).
   Done: unit tests for both helpers (legal, full, wrong side, duplicate); the click flows
