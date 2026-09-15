@@ -3,11 +3,13 @@ import { TopKPIBand } from '../../components/TopKPIBand';
 import { UiPrimitivesGallery } from './UiPrimitivesGallery';
 import { FranchiseDashboard } from '../../components/FranchiseDashboard';
 import { GameView } from '../../components/GameView';
-import { PlayerCardData } from '../../components/PlayerCard';
+import { PlayerCardData, Play } from '../../components/PlayerCard';
+import { PlayTile, PlayTileEmptySlot } from '../../components/PlayTile';
 import { TeamInfo, GameTheater } from '../../engine/game';
-import { emptyModifiers } from '../../engine/synergies';
+import { emptyModifiers, evaluatePlay } from '../../engine/synergies';
 import { PLAY_BUDGET_OFFENSE, PLAY_BUDGET_DEFENSE } from '../../engine/balance';
-import type { PlaybookStatus } from '../../engine/playbook';
+import { PLAYBOOK, evaluatePlayAssignment } from '../../engine/playbook';
+import type { PlaybookStatus, PlayAssignment } from '../../engine/playbook';
 import type { PlayerBio, SeasonStat } from '../../engine/types';
 
 const mockBio = (name: string, pos: string, id: string): PlayerBio => ({
@@ -125,16 +127,75 @@ const mockDepthChart: Record<string, PlayerCardData[]> = {
   C: [mockTeamInfo.players[4]],
 };
 
+// plan_deckbuilder_ux T5: fixture data for the play-tiles-test section — three slot
+// states (empty, ready, needs a role) plus the roster-list row, matching
+// docs/design/deckbuilder_ux/PlayTiles.dc.html.
+const withTraits = (player: PlayerCardData, traits: { name: string; level: number }[]): PlayerCardData => ({ ...player, traits });
+
+const playTileRoster: PlayerCardData[] = [
+  withTraits(mockPlayer('Draymond Green', 'PF', 78, 'fixture-p1'), [{ name: 'Glass Cleaner', level: 2 }]),
+  withTraits(mockPlayer('Kevin Durant', 'SF', 88, 'fixture-p2'), [{ name: 'Finisher', level: 3 }]),
+  withTraits(mockPlayer('Marcus Smart', 'PG', 76, 'fixture-p3'), [{ name: 'Lockdown Defender', level: 2 }]),
+];
+
+const hornsPlay: Play = {
+  type: 'Play', id: 'fixture-horns', playId: 'play-std-3', name: PLAYBOOK['play-std-3'].name,
+  rarity: 'Common', playCategory: 'system', badges: [], mechanicText: 'Elbow big screens for a cutter attacking the rim.',
+};
+const hornsStatus = evaluatePlayAssignment(
+  { cardId: 'fixture-horns', playId: 'play-std-3', roles: { elbow: 'fixture-p1', cutter: 'fixture-p2' } } as PlayAssignment,
+  playTileRoster,
+)!;
+
+const pressPlay: Play = {
+  type: 'Play', id: 'fixture-press', playId: 'play-std-4', name: PLAYBOOK['play-std-4'].name,
+  rarity: 'Common', playCategory: 'special', badges: [], mechanicText: 'Full-court ball pressure forces an early-clock possession.',
+};
+const pressStatus = evaluatePlayAssignment(
+  { cardId: 'fixture-press', playId: 'play-std-4', roles: { point: 'fixture-p3' } } as PlayAssignment,
+  playTileRoster,
+)!;
+
+const motionPlay: Play = {
+  type: 'Play', id: 'fixture-motion', playId: 'play-sys-4', name: PLAYBOOK['play-sys-4'].name,
+  rarity: 'Rare', playCategory: 'system', badges: [], mechanicText: PLAYBOOK['play-sys-4'].summary,
+};
+const motionEvaluation = evaluatePlay(motionPlay, {});
+
 export default function TestUI() {
   return (
     <div className="p-8 bg-stone-100 min-h-screen flex flex-col gap-8">
       <div id="kpi-band-test">
-         <h1 className="mb-2 font-bold text-stone-400">Top KPI Band</h1>
+         <h1 className="mb-2 font-bold text-stone-400">Top KPI Band (collapsed)</h1>
          <div className="border border-stone-200">
             <TopKPIBand
               identity={{ finishing: 85, midRange: 75, perimeter: 90, playmaking: 80, rebounding: 65, perDef: 70, postDef: 75 }}
               shotDiet={{ rim: 0.3, mid: 0.2, per: 0.5 }}
               depthChart={mockDepthChart}
+              playsAssigned={1}
+              playsTarget={3}
+              bonuses={{
+                offenseMods: emptyModifiers(),
+                defenseMods: emptyModifiers(),
+                possessionSwing: 0,
+                activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
+                activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
+                playstyle: [],
+              }}
+            />
+         </div>
+      </div>
+
+      <div id="kpi-band-expanded-test">
+         <h1 className="mb-2 font-bold text-stone-400">Top KPI Band (expanded)</h1>
+         <div className="border border-stone-200">
+            <TopKPIBand
+              defaultExpanded
+              identity={{ finishing: 85, midRange: 75, perimeter: 90, playmaking: 80, rebounding: 65, perDef: 70, postDef: 75 }}
+              shotDiet={{ rim: 0.3, mid: 0.2, per: 0.5 }}
+              depthChart={mockDepthChart}
+              playsAssigned={1}
+              playsTarget={3}
               bonuses={{
                 offenseMods: emptyModifiers(),
                 defenseMods: emptyModifiers(),
@@ -161,6 +222,36 @@ export default function TestUI() {
       <div id="ui-primitives-test">
          <h1 className="mb-2 font-bold text-stone-400">UI Primitives</h1>
          <UiPrimitivesGallery />
+      </div>
+
+      {/* plan_deckbuilder_ux T5: PlayTile's three slot states + the roster-list row,
+          matching docs/design/deckbuilder_ux/PlayTiles.dc.html — snapshotted as
+          play-tiles.png. */}
+      <div id="play-tiles-test" className="flex flex-col gap-6">
+        <h1 className="mb-2 font-bold text-stone-400">Play Tiles</h1>
+
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400">Play slots (72px, plays column)</h2>
+          <div className="flex gap-6 items-start flex-wrap">
+            <div className="w-[280px]">
+              <PlayTileEmptySlot side="offense" />
+            </div>
+            <div className="w-[280px]">
+              <PlayTile variant="slot" play={hornsPlay} status={hornsStatus} players={playTileRoster} />
+            </div>
+            <div className="w-[280px]">
+              <PlayTile variant="slot" play={pressPlay} status={pressStatus} players={playTileRoster} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400">Roster list rows (56px, roster sidebar)</h2>
+          <div className="w-[400px] flex flex-col gap-1.5">
+            <PlayTile variant="list" play={motionPlay} evaluation={motionEvaluation} />
+            <PlayTile variant="list" play={hornsPlay} status={hornsStatus} players={playTileRoster} assigned />
+          </div>
+        </div>
       </div>
     </div>
   );

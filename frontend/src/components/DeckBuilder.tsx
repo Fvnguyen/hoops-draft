@@ -20,10 +20,17 @@ import {
   MAX_ROSTER,
   countPlayers,
   moveWithinChart,
-  placeFromBench,
   removeFromChart,
   type DenseDepthChart,
 } from '@/engine/depthChart';
+import {
+  assignPlayToFirstOpenSlot,
+  placePlayerInSlot,
+  type AssignPlayFailureReason,
+  type PlaySlotsState,
+  type DepthChartState,
+  type PlacePlayerFailureReason,
+} from '@/engine/deckbuilder';
 import { DepthSlotColumn } from './DepthSlotColumn';
 import { RosterChecklist } from './RosterChecklist';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
@@ -31,6 +38,7 @@ import { ToastProvider, useToast } from './Toast';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Overlay } from './ui/Overlay';
+import { PlaySwapPopover } from './AssignPopover';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -149,6 +157,8 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   // Empty depth slot whose AssignPopover is open (D14). Cleared by any selection.
   const [openSlotPopover, setOpenSlotPopover] = useState<{ column: DepthColumn; slot: number } | null>(null);
+  // Active-play slot (index) whose Remove/Swap popover is open (deckbuilder_ux D3).
+  const [openPlaySlotPopover, setOpenPlaySlotPopover] = useState<number | null>(null);
 
   // Play-role assignment state: cardId -> assignment (roleId -> playerId). Kept in
   // sync with activePlays by the effect below. `assigning` is the role currently
@@ -274,6 +284,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         setSelectedRosterPlayer(null);
         setAssigning(null);
         setOpenSlotPopover(null);
+        setOpenPlaySlotPopover(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -284,6 +295,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     setSelectedRosterPlayer(null);
     setAssigning(null);
     setOpenSlotPopover(null);
+    setOpenPlaySlotPopover(null);
   };
 
   // ── Depth chart mutations (D12: every placement rule lives in engine/depthChart) ──
@@ -322,15 +334,33 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     toast.show(message, { actionLabel: 'Undo', durationMs: 5000, onAction: () => restoreSnapshot(snap) });
   };
 
-  /** Move a Roster (bench) player onto the chart. Engine refusals become error toasts. */
-  const placeFromRoster = (player: PlayerCardData, column: DepthColumn) => {
+  /** Bench players + their raw positions, in the shape `placePlayerInSlot` needs. */
+  const depthChartEngineState = (): DepthChartState => ({
+    chart: toIdChart(depthChart),
+    benchIds: rosterPlayers.map(p => p.id),
+    positionsById: Object.fromEntries(rosterPlayers.map(p => [p.id, p.player.position])),
+  });
+
+  const placePlayerFailureMessage: Record<PlacePlayerFailureReason, string> = {
+    ineligible: 'Not eligible for this position',
+    occupied: 'That slot is already filled',
+    unknown: 'Cannot place there',
+  };
+
+  /** Move a Roster (bench) player onto the chart. `slotIndex` defaults to the
+   *  column's next open slot — the only slot `DepthSlotColumn` ever lets a
+   *  click or drop target (plan deckbuilder_ux, D3/T2: shares `placePlayerInSlot`
+   *  with the drag path below so click and drag can never disagree). Engine
+   *  refusals become error toasts. */
+  const placeFromRoster = (player: PlayerCardData, column: DepthColumn, slotIndex?: number) => {
     const snap = takeSnapshot();
-    const result = placeFromBench(toIdChart(depthChart), player.id, player.player.position, column);
+    const idx = slotIndex ?? (depthChart[column]?.length ?? 0);
+    const result = placePlayerInSlot(depthChartEngineState(), player.id, column, idx);
     if (!result.ok) {
-      toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
+      toast.show(placePlayerFailureMessage[result.reason], { tone: 'error' });
       return;
     }
-    setDepthChart(fromIdChart(result.chart));
+    setDepthChart(fromIdChart(result.next.chart));
     setRosterPlayers(prev => prev.filter(p => p.id !== player.id));
     setSelectedRosterPlayer(null);
     setOpenSlotPopover(null);
@@ -449,10 +479,30 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     }
   };
 
-  /** Click handling for Play cards keeps its old immediate behaviour: click a
-   *  Roster play to fill the first empty slot, click a filled slot to send
-   *  it back to the Roster. (Only Player click behaviour changes to the new
-   *  select → highlight → place model below.) */
+  /** Every play the UI currently knows about (active + bench), in the shape
+   *  `assignPlayToFirstOpenSlot` needs. No `slotSides` — the builder has no
+   *  zoned play slots today, so every empty slot accepts any side. */
+  const playSlotsState = (): PlaySlotsState => ({
+    activeSlots: activePlays.map(p => (p ? p.id : null)),
+    playsById: Object.fromEntries(
+      [...activePlays.filter((p): p is Play => p !== null), ...rosterPlays]
+        .map(p => [p.id, { id: p.id, side: PLAYBOOK[getPlaybookId(p)]?.side ?? 'offense' }]),
+    ),
+  });
+
+  const assignPlayFailureMessage = (play: Play, reason: AssignPlayFailureReason): string => {
+    switch (reason) {
+      case 'full': return 'All play slots are full';
+      case 'wrong-side': return `${play.name} has no open slot for its side`;
+      case 'duplicate': return `${play.name} is already active`;
+      default: return 'Cannot activate that play';
+    }
+  };
+
+  /** Click handling for Play cards: click a filled slot opens Remove/Swap
+   *  (deckbuilder_ux D3); click a Roster play fills the first open slot via
+   *  the shared `assignPlayToFirstOpenSlot` rule (same one `handleDropOnZone`'s
+   *  ActivePlay drop target keeps using for its own, index-targeted drop). */
   const handlePlayClick = (play: Play, currentZone: string) => {
     setAssigning(null);
     if (currentZone.startsWith('ActivePlay')) {
@@ -460,19 +510,38 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       if (!play.id.startsWith('basic-')) {
         setRosterPlays(prev => [...prev, play]);
       }
-    } else {
-      const emptyIdx = activePlays.findIndex(p => p === null);
-      if (emptyIdx !== -1) {
-        removeCardFromSource(play.id, currentZone);
-        setActivePlays(prev => {
-          const next = [...prev];
-          next[emptyIdx] = play;
-          return next;
-        });
-      } else {
-        toast.show('Maximum 3 active plays — remove one first.', { tone: 'error' });
-      }
+      return;
     }
+    const result = assignPlayToFirstOpenSlot(playSlotsState(), play.id);
+    if (!result.ok) {
+      toast.show(assignPlayFailureMessage(play, result.reason), { tone: 'error' });
+      return;
+    }
+    removeCardFromSource(play.id, currentZone);
+    setActivePlays(prev => {
+      const next = [...prev];
+      next[result.slotIndex] = play;
+      return next;
+    });
+  };
+
+  /** Swap a bench play into an already-occupied active-play slot (the placed
+   *  play's Remove/Swap popover, opened by clicking the slot). The displaced
+   *  play returns to the Roster, same as a drag-swap onto that slot. */
+  const handlePlaySwap = (slotIndex: number, playId: string) => {
+    const incoming = rosterPlays.find(p => p.id === playId);
+    if (!incoming) return;
+    setRosterPlays(prev => prev.filter(p => p.id !== playId));
+    setActivePlays(prev => {
+      const next = [...prev];
+      const existing = next[slotIndex];
+      if (existing && !existing.id.startsWith('basic-')) {
+        setRosterPlays(g => [...g, existing]);
+      }
+      next[slotIndex] = incoming;
+      return next;
+    });
+    setOpenPlaySlotPopover(null);
   };
 
   const handleRosterPlayerClick = (player: PlayerCardData) => {
@@ -569,7 +638,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const handleEmptySlotClick = (column: DepthColumn, slotIndex: number) => {
     setAssigning(null);
     if (selectedRosterPlayer) {
-      placeFromRoster(selectedRosterPlayer, column);
+      placeFromRoster(selectedRosterPlayer, column, slotIndex);
       return;
     }
     setOpenSlotPopover(prev =>
@@ -836,7 +905,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         </div>
         <div ref={dragGhostNameRef} className="flex-1 min-w-0 px-1 text-xs font-bold uppercase truncate text-ink" />
       </div>
-      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} />
+      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} playsAssigned={activePlays.filter(Boolean).length} playsTarget={3} />
       {saveError && (
         <div className="bg-danger-soft border-b border-danger-line px-4 py-3">
           <p className="text-sm text-danger font-semibold">{saveError}</p>
@@ -944,6 +1013,17 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                       className="relative w-full"
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropOnZone(e, zoneId)}
+                      // A placed play's own clickable bits (role rows, the Remove X)
+                      // stop propagation, so a click that reaches here is a click on
+                      // the tile itself — open Remove/Swap (deckbuilder_ux D3) instead
+                      // of guessing which role the click meant.
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRosterPlayer(null);
+                        setAssigning(null);
+                        setOpenSlotPopover(null);
+                        setOpenPlaySlotPopover(prev => (prev === slotIndex ? null : slotIndex));
+                      }}
                     >
                       <motion.div
                         layoutId={`play-${play.id}`}
@@ -971,6 +1051,13 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                           onPick={handlePick}
                         />
                       </motion.div>
+                      {openPlaySlotPopover === slotIndex && (
+                        <PlaySwapPopover
+                          candidates={rosterPlays}
+                          onRemove={() => { handlePlayClick(play, zoneId); setOpenPlaySlotPopover(null); }}
+                          onSwap={(playId) => handlePlaySwap(slotIndex, playId)}
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -1116,10 +1203,19 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                           key={`${play.id}-${idx}`}
                           draggable
                           onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'RosterPlays')}
-                          onClick={(e) => { e.stopPropagation(); handlePlayClick(play, 'RosterPlays'); }}
+                          // Click lives on the PlayCard/PlayTile, not here: the tile's Add
+                          // button stops propagation before calling its own onClick, so a
+                          // wrapper handler never sees it — and a row click would otherwise
+                          // fire twice (tile row + wrapper).
+                          onClick={(e) => e.stopPropagation()}
                           className="cursor-grab active:cursor-grabbing w-full"
                         >
-                           <PlayCard play={play as Play} compact evaluation={evaluatePlay(play, badgeTotals)} />
+                           <PlayCard
+                             play={play as Play}
+                             compact
+                             evaluation={evaluatePlay(play, badgeTotals)}
+                             onClick={() => handlePlayClick(play, 'RosterPlays')}
+                           />
                         </div>
                       ))}
                       {rosterPlays.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No plays on bench.</div>}

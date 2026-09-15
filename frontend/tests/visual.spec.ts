@@ -3,9 +3,31 @@ import { test, expect } from '@playwright/test';
 test.describe('Synergy UI & Team Stats Visual Tests', () => {
   test('DeckBuilder Top KPI Band', async ({ page }) => {
     await page.goto('/test-ui');
+
+    // D2/T3 (plan_deckbuilder_ux): every chip and icon-button inside the band is a
+    // real 44px control, collapsed and expanded alike.
+    async function assertNoTinyControls(locator: import('@playwright/test').Locator) {
+      const boxes = await locator.locator('button, a').evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { label: el.textContent?.trim() || el.getAttribute('aria-label'), w: r.width, h: r.height };
+        }),
+      );
+      for (const b of boxes) {
+        expect(b.w, `${b.label} width`).toBeGreaterThanOrEqual(44);
+        expect(b.h, `${b.label} height`).toBeGreaterThanOrEqual(44);
+      }
+    }
+
     const kpiBand = page.locator('#kpi-band-test');
     await expect(kpiBand).toBeVisible();
+    await assertNoTinyControls(kpiBand);
     await expect(kpiBand).toHaveScreenshot('top-kpi-band.png', { maxDiffPixelRatio: 0.1 });
+
+    const kpiBandExpanded = page.locator('#kpi-band-expanded-test');
+    await expect(kpiBandExpanded).toBeVisible();
+    await assertNoTinyControls(kpiBandExpanded);
+    await expect(kpiBandExpanded).toHaveScreenshot('top-kpi-band-expanded.png', { maxDiffPixelRatio: 0.1 });
   });
 
   test('Season View Franchise Dashboard', async ({ page }) => {
@@ -48,5 +70,29 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
     await page.getByTestId('theme-flip').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
     await expect(gallery).toHaveScreenshot('ui-primitives-night.png', { maxDiffPixelRatio: 0.1 });
+  });
+
+  // plan_deckbuilder_ux T5: PlayTile's three slot states (empty, ready, needs-a-role)
+  // plus the roster-list row (unassigned + assigned), matching
+  // docs/design/deckbuilder_ux/PlayTiles.dc.html.
+  test('Play tiles', async ({ page }) => {
+    await page.goto('/test-ui');
+    const section = page.locator('#play-tiles-test');
+    await expect(section).toBeVisible();
+
+    // D7: no control under 44px on either axis. The "Add" button is the only true
+    // control here; the tiles themselves are >= 44px tall by construction (56/72px).
+    const controls = await section.locator('button, a').evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { label: el.textContent?.trim() || el.getAttribute('aria-label'), w: r.width, h: r.height };
+      }),
+    );
+    for (const c of controls) {
+      expect(c.w, `${c.label} width`).toBeGreaterThanOrEqual(44);
+      expect(c.h, `${c.label} height`).toBeGreaterThanOrEqual(44);
+    }
+
+    await expect(section).toHaveScreenshot('play-tiles.png', { maxDiffPixelRatio: 0.1 });
   });
 });

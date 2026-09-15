@@ -91,18 +91,18 @@ export function DonutChart({ data, size = 120, strokeWidth = 20 }: DonutChartPro
       </div>
 
       {/* Legend: rows highlight the matching segment */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         {segments.map(seg => {
           const isFocus = hovered === seg.label;
           return (
             <div
               key={seg.label}
               onMouseEnter={() => setHovered(seg.label)}
-              className={`flex items-center gap-2 rounded-md px-2 py-1 border transition-colors cursor-default ${isFocus ? 'bg-surface-sunken border-line' : 'border-transparent'}`}
+              className={`flex items-center gap-2 rounded-md px-2 py-1 border transition-colors cursor-default text-sm font-bold ${isFocus ? 'bg-surface-sunken border-line' : 'border-transparent'}`}
             >
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-              <span className="text-xs font-bold uppercase tracking-wide text-ink-muted w-8">{seg.label}</span>
-              <span className="text-xs font-black tabular-nums" style={{ color: seg.color }}>{(seg.share * 100).toFixed(0)}%</span>
+              <span className="text-ink w-9">{seg.label}</span>
+              <span className="font-black tabular-nums" style={{ color: seg.color }}>{(seg.share * 100).toFixed(0)}%</span>
             </div>
           );
         })}

@@ -17,7 +17,9 @@ setup('authenticate', async ({ page }) => {
   await page.getByLabel('Username or email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: /enter the league/i }).click();
-  await expect(page).not.toHaveURL(/\/login/);
+  // Supabase's sign-in round trip has been measured at 5.0s on a slow evening, which is
+  // exactly the default assertion timeout — give the redirect room instead of flaking.
+  await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
 
   await page.context().storageState({ path: authFile });
 });

@@ -37,6 +37,19 @@ function valuePoints(cx: number, cy: number, maxRadius: number, data: RosterIden
   }).join(' ');
 }
 
+/**
+ * Peak/valley axis labels for a team vs. a reference identity — the exact same
+ * (team - average) diff computation the chart itself uses for the emphasised vertex
+ * dots and axis labels (D2, plan_deckbuilder_ux). Exposed so the KPI band can show the
+ * same peak/valley as words without duplicating or diverging from the chart's math.
+ */
+export function peakValleyAxes(data: RosterIdentity, average: RosterIdentity): { peak: string; valley: string } {
+  const diffs = AXES.map(a => (data[a.key] ?? 0) - (average[a.key] ?? 0));
+  const peakIndex = diffs.indexOf(Math.max(...diffs));
+  const valleyIndex = diffs.indexOf(Math.min(...diffs));
+  return { peak: AXES[peakIndex].label, valley: AXES[valleyIndex].label };
+}
+
 interface RadarChartProps {
   /** This team's identity values (0-100 scale), never rendered as numbers — shape only. */
   data: RosterIdentity;

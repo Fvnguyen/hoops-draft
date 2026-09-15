@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import type { Play, PlayerCardData } from './PlayerCard';
-import { RarityGem, PositionIcon } from './PlayerCard';
+import { PositionIcon } from './PlayerCard';
 import type { PlayStatus, PlayRole } from '../engine/playbook';
 import { describeRoleRequirement } from '../engine/playbook';
 import { AssignPopover } from './AssignPopover';
-import { badgeConfig, defaultBadgeConfig, catColor } from './cardColors';
+import { badgeConfig, defaultBadgeConfig } from './cardColors';
 import { IconButton } from './ui/IconButton';
+import { PlayTile } from './PlayTile';
 
 function initialsFor(name: string): string {
   const words = name.split(/[\s-]+/).filter(Boolean);
@@ -40,8 +41,6 @@ function RoleBadgeIcon({ role }: { role: PlayRole }) {
     </div>
   );
 }
-
-const categoryLabel: Record<Play['playCategory'], string> = { system: 'SYSTEM', special: 'SPECIAL', basic: 'BASIC' };
 
 export interface PlayPanelProps {
   /** The roster card backing this slot — carries flavour text and category
@@ -181,28 +180,20 @@ export function PlayPanel({
   const firstUnfilled = status.roles.find(r => !r.filled);
   const allocationPct = Math.round(status.def.allocation * 100);
   const allocationLabel = status.def.side === 'offense' ? 'of possessions' : 'of opp. possessions';
-  const tooltip = `${status.def.summary}\n\n${play.mechanicText}`;
 
   return (
     <div className="w-full bg-surface-raised border border-line rounded-panel shadow-sm overflow-visible">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-2.5 min-h-control border-b border-line">
-        <RarityGem rarity={play.rarity} size="md" />
-        <div className="flex-1 min-w-0 leading-tight">
-          <div className="text-xs font-bold uppercase text-ink truncate">{play.name}</div>
-          <div className={`text-xs font-black uppercase tracking-wider ${catColor[play.playCategory]}`}>{categoryLabel[play.playCategory]}</div>
-        </div>
-        <span
-          title={tooltip}
-          className="shrink-0 w-5 h-5 rounded-full border border-line-strong text-ink-subtle text-xs font-bold flex items-center justify-center cursor-help select-none"
-        >
-          i
-        </span>
-        <div className="shrink-0 flex flex-col items-end leading-tight">
-          <span className={`px-1.5 py-[1px] rounded text-xs font-black uppercase tracking-wider ${status.active ? 'bg-positive-strong text-white' : 'bg-surface-muted text-ink-muted'}`}>
-            {status.active ? 'Active' : 'Inactive'}
-          </span>
-          <span className="text-xs text-ink-muted whitespace-nowrap">{allocationPct}% {allocationLabel}</span>
+      {/* Header — the play tile (plan_deckbuilder_ux D5) plus the allocation line and
+          remove control the tile itself doesn't carry. */}
+      <div className="flex items-start gap-1.5 p-1.5">
+        <div className="flex-1 min-w-0">
+          <PlayTile variant="slot" play={play} status={status} players={players} />
+          <div className="px-1 pt-1 flex items-center justify-between gap-1">
+            <span className={`text-xs font-black uppercase tracking-wider ${status.active ? 'text-positive' : 'text-ink-muted'}`}>
+              {status.active ? 'Active' : 'Inactive'}
+            </span>
+            <span className="text-xs text-ink-muted whitespace-nowrap">{allocationPct}% {allocationLabel}</span>
+          </div>
         </div>
         <IconButton
           label="Return to Roster"

@@ -170,6 +170,17 @@ export const roleTagColor: Record<'offense' | 'defense', { bg: string; text: str
   defense: { bg: 'bg-sky-500', text: 'text-sky-50' },
 };
 
+// plan_deckbuilder_ux D5: PlayTile's category bar + category chip, as hex. Applied only
+// via inline `style` (never a raw palette class) since this is the one file the style
+// gate (`scripts/check-styles.mjs`) excludes entirely. Mirrors the hues
+// `playCategoryTheme` already uses elsewhere (amber/teal/slate) so old and new play UI
+// read as one system.
+export const playCategoryHex: Record<PlayCategory, { bar: string; chipBg: string }> = {
+  system: { bar: '#f59e0b', chipBg: '#d97706' },
+  special: { bar: '#14b8a6', chipBg: '#0d9488' },
+  basic: { bar: '#64748b', chipBg: '#475569' },
+};
+
 // PlayBoardGraphic's per-category decorative accents (chalkboard dots, crosshair rings).
 export const playBoardAccent: Record<PlayCategory, { ring: string; dot: string; center: string }> = {
   system: { ring: 'border-amber-300/60', dot: 'bg-amber-300/40', center: 'bg-amber-300/50' },

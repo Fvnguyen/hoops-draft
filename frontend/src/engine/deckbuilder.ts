@@ -7,11 +7,12 @@
  */
 
 import { DraftCard, PlayerCardData, Play } from './types';
-import { getPlaybookId, getPlayDef, isEligibleForRole, type PlayAssignment } from './playbook';
+import { getPlaybookId, getPlayDef, isEligibleForRole, type PlayAssignment, type PlaySide } from './playbook';
 import { evaluateArchetypes, bestSelection, type ArchetypeSelection } from './archetypes';
 import { BotProfile } from './draft';
 import { TARGET_ROSTER } from './balance';
-import { DEPTH_COLUMNS, canPlaceAt } from './positions';
+import { DEPTH_COLUMNS, canPlaceAt, type DepthColumn } from './positions';
+import { placeFromBench, type DenseDepthChart } from './depthChart';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,98 @@ export function normalizeBuiltRoster(roster: BuiltRoster, cards: DraftCard[] = [
     return { cardId, playId, roles: {} };
   });
   return { ...roster, version: BUILT_ROSTER_VERSION, playAssignments, archetypes: roster.archetypes ?? {} };
+}
+
+// ── Click-to-assign helpers (plan deckbuilder_ux, T2/D3) ───────────────────
+// Pure rule functions shared by DeckBuilder's click handlers AND its native
+// HTML5 drag/drop handlers, so click and drag can never diverge.
+
+/** State `assignPlayToFirstOpenSlot` operates on: the 3 fixed active-play
+ *  slots (a card id or empty) plus enough about every known play (active or
+ *  benched) to check side/duplicates. */
+export interface PlaySlotsState {
+  /** Fixed 3 active-play slots; each holds a card id, or null when empty. */
+  activeSlots: (string | null)[];
+  /** Every play card the UI currently knows about (active + bench), by id. */
+  playsById: Record<string, { id: string; side: PlaySide }>;
+  /** Optional fixed side per slot index (undefined = the slot accepts either
+   *  side). The current UI has no zoned slots, so callers omit this and every
+   *  slot accepts any play — kept for a future zoned layout. */
+  slotSides?: (PlaySide | undefined)[];
+}
+
+export type AssignPlayFailureReason = 'full' | 'wrong-side' | 'duplicate' | 'unknown';
+
+export type AssignPlayResult =
+  | { ok: true; next: PlaySlotsState; slotIndex: number }
+  | { ok: false; reason: AssignPlayFailureReason };
+
+/** Put `playId` into the first empty active-play slot that accepts its side.
+ *  Refuses a play the caller doesn't know about, a play already active, or a
+ *  full/side-mismatched set of slots. */
+export function assignPlayToFirstOpenSlot(state: PlaySlotsState, playId: string): AssignPlayResult {
+  const play = state.playsById[playId];
+  if (!play) return { ok: false, reason: 'unknown' };
+  if (state.activeSlots.includes(playId)) return { ok: false, reason: 'duplicate' };
+
+  const emptyIndices = state.activeSlots
+    .map((id, i) => (id === null ? i : -1))
+    .filter(i => i !== -1);
+  if (emptyIndices.length === 0) return { ok: false, reason: 'full' };
+
+  const slotIndex = emptyIndices.find(i => !state.slotSides?.[i] || state.slotSides[i] === play.side);
+  if (slotIndex === undefined) return { ok: false, reason: 'wrong-side' };
+
+  const next = [...state.activeSlots];
+  next[slotIndex] = playId;
+  return { ok: true, next: { ...state, activeSlots: next }, slotIndex };
+}
+
+/** State `placePlayerInSlot` operates on: the dense depth chart, the bench
+ *  pool, and each bench player's raw position (for eligibility). */
+export interface DepthChartState {
+  chart: DenseDepthChart;
+  benchIds: string[];
+  positionsById: Record<string, string>;
+}
+
+export type PlacePlayerFailureReason = 'ineligible' | 'occupied' | 'unknown';
+
+export type PlacePlayerResult =
+  | { ok: true; next: DepthChartState }
+  | { ok: false; reason: PlacePlayerFailureReason };
+
+/** Place a bench player into a specific depth-chart slot. Slots fill in order
+ *  (index 0 = starter) — `slotIndex` must be the column's next open slot,
+ *  matching the disabled/enabled empty slots `DepthSlotColumn` renders.
+ *  Delegates the actual placement + position eligibility to
+ *  `depthChart.placeFromBench` — the same engine call `DeckBuilder`'s drag
+ *  path already uses — so click and drag can never disagree. */
+export function placePlayerInSlot(
+  state: DepthChartState,
+  playerId: string,
+  column: DepthColumn,
+  slotIndex: number,
+): PlacePlayerResult {
+  const rawPosition = state.positionsById[playerId];
+  if (rawPosition === undefined || !state.benchIds.includes(playerId)) return { ok: false, reason: 'unknown' };
+
+  const existing = state.chart[column] ?? [];
+  if (slotIndex !== existing.length) return { ok: false, reason: 'occupied' };
+
+  const result = placeFromBench(state.chart, playerId, rawPosition, column);
+  if (!result.ok) {
+    if (result.reason === 'Not eligible for this position') return { ok: false, reason: 'ineligible' };
+    return { ok: false, reason: 'unknown' };
+  }
+  return {
+    ok: true,
+    next: {
+      ...state,
+      chart: result.chart,
+      benchIds: state.benchIds.filter(id => id !== playerId),
+    },
+  };
 }
 
 /** A single pick record for draft replay / analytics */
@@ -296,7 +389,6 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
 }
 
 /** Best eligible archetype selection for a bot roster (greedy: gold if eligible, else best offense + defense). Also usable as a UI 'suggest'. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function chooseBotArchetypes(activePlayers: PlayerCardData[], starterIds: Set<string>): ArchetypeSelection {
   return bestSelection(evaluateArchetypes(activePlayers, starterIds));
 }

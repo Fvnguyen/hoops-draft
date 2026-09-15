@@ -11,6 +11,7 @@ import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation
 import type { PlayStatus } from '@/engine/playbook';
 import { getPlayDef, describeRoleRequirement } from '@/engine/playbook';
 import { IconButton } from './ui/IconButton';
+import { PlayTile } from './PlayTile';
 import {
   badgeConfig, defaultBadgeConfig, basePosColors, getPosColors, positionConicGradient,
   type GemRarity, gemPalettes, gemPixelSizes, rarityTextColor, rarityAccentColor,
@@ -803,8 +804,6 @@ export function RoleTag({ playName, roleName, side }: { playName: string; roleNa
 
 export function PlayCard({ play, onClick, isSelected = false, compact = false, evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
   const [isFlipped, setIsFlipped] = useState(false);
-  // Portalled hover preview needs real hover state — see PlayerCard's compact block.
-  const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
 
   // Requirements come from the synergy engine, never from the legacy `play.badges`
   // flavour text. Without an `evaluation` (draft room, home page) they render neutral;
@@ -823,58 +822,21 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
   const theme = playCategoryTheme[cat];
 
   if (compact) {
-    // Determine which roles to show: from status or from play definition
-    const playDef = status?.def || getPlayDef(play);
-    const roles = status?.roles || (playDef?.roles ?? []);
-    const showRoleDots = status !== undefined;
-
+    // plan_deckbuilder_ux D5: the roster-list row is a PlayTile (list variant), shared
+    // with PlayPanel's slot tile so the two never drift apart. No hover-only info here
+    // any more — the full mechanic text moves to PlayTile's `title`, and the rich
+    // flip-card hover popup this used to show is gone (that WAS the hard-to-read
+    // "hover to actually see it" problem D5 fixes).
     return (
-      <div
-        ref={hoverRef}
-        className={`relative w-full h-[60px] bg-surface-raised border border-line rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
+      <PlayTile
+        variant="list"
+        play={play}
+        status={status}
+        evaluation={evaluation}
+        players={players}
+        assigned={status !== undefined}
         onClick={onClick}
-        onMouseEnter={onHoverEnter}
-        onMouseLeave={onHoverLeave}
-      >
-        <div className={`h-full w-2 shrink-0 ${theme.barColor} rounded-l-[7px]`} />
-        <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5 overflow-hidden">
-           <div className="font-bold text-xs uppercase truncate text-ink-strong leading-tight" title={play.name}>
-             {play.name}
-           </div>
-           <div className="flex items-center gap-1.5 overflow-visible">
-             <span className={`text-xs font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
-             {roles && roles.length > 0 && (
-               <div className="flex items-center gap-0.5 shrink-0">
-                 {roles.map((roleOrStatus, i) => {
-                   const filled = 'filled' in roleOrStatus ? roleOrStatus.filled : false;
-                   const badge = ('role' in roleOrStatus ? roleOrStatus.role : roleOrStatus)?.badge;
-                   const badgeName = badge || 'Veteran Presence';
-                   return (
-                     <div key={i} className="relative">
-                       <BadgeIcon name={badgeName} level={1} size="xs" />
-                       {showRoleDots && (
-                         <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-inverse ${filled ? 'bg-positive-strong' : 'bg-surface-muted'}`} />
-                       )}
-                     </div>
-                   );
-                 })}
-               </div>
-             )}
-           </div>
-        </div>
-        {/* Screen-centred hover pop-up (D-hover), portalled to document.body — see
-            PlayerHoverPreview's doc comment for why it can't just be `fixed inset-0`
-            in place. This one keeps the full evaluated `PlayCard` (role fill status),
-            which `PlayCardFront` alone can't show, so it isn't `PlayHoverPreview`. */}
-        {isHovered && typeof document !== 'undefined' && createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/60">
-            <div className="w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl">
-              <PlayCard play={play} evaluation={evaluation} status={status} players={players} />
-            </div>
-          </div>,
-          document.body,
-        )}
-      </div>
+      />
     );
   }
 
