@@ -1310,7 +1310,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           </div>
           <div
             className={tier === 'compact'
-              ? 'flex-1 min-h-0 flex gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory pb-2'
+              ? 'flex-1 min-h-0 flex gap-2 overflow-x-auto overflow-y-auto snap-x snap-mandatory pb-2'
               : 'flex-1 min-h-0 grid grid-cols-5 gap-2 overflow-y-auto overflow-x-hidden pr-1 pb-4'}
           >
             {DEPTH_COLUMNS.map(col => (
