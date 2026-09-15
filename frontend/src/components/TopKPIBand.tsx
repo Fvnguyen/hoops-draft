@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RosterIdentity, LEAGUE_AVG_IDENTITY } from '../engine/rosterStats';
 import type { TeamBonuses } from '../engine/synergies';
 import type { TeamShotProfile } from '../engine/game';
@@ -176,12 +176,22 @@ export function TopKPIBand({
   actions?: KpiBandActions;
 }) {
   const [collapsed, setCollapsed] = useState(() => (defaultExpanded === undefined ? true : !defaultExpanded));
-  // Escape closes the open report (it is an overlay now).
+  // The open report is an overlay: Escape closes it, and so does any pointer-down
+  // outside the band (owner: clicking the depth chart must just work, not first
+  // dismiss the report) — same pattern as ui/Menu.
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (collapsed) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') toggleCollapsed(); };
+    const onPointer = (e: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) toggleCollapsed();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapsed]);
   useEffect(() => {
@@ -328,7 +338,7 @@ export function TopKPIBand({
     // Owner review: the expanded report must never push the workspace down (the depth
     // chart is sized to the space it has) — so the band stays 56px in flow and the
     // detail row drops OVER the workspace like a menu. Escape or the chevron closes it.
-    <div className="relative bg-surface-raised border-b border-line shrink-0 shadow-sm z-30">
+    <div ref={rootRef} className="relative bg-surface-raised border-b border-line shrink-0 shadow-sm z-30">
       {chipRow}
 
       {/* detail row: radar | shot diet | identity lanes — an overlay below the chip row */}
