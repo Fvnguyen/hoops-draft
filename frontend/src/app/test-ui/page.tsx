@@ -198,7 +198,8 @@ export default function TestUI() {
 
       <div id="kpi-band-expanded-test" className="@container">
          <h1 className="mb-2 font-bold text-stone-400">Top KPI Band (expanded)</h1>
-         <div className="border border-stone-200">
+         {/* the report is an overlay below the 56px row; reserve its height so the snapshot includes it */}
+         <div className="border border-stone-200 relative min-h-[300px]">
             <TopKPIBand
               defaultExpanded
               identity={{ finishing: 85, midRange: 75, perimeter: 90, playmaking: 80, rebounding: 65, perDef: 70, postDef: 75 }}

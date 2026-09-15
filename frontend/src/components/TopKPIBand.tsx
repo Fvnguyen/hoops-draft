@@ -176,6 +176,14 @@ export function TopKPIBand({
   actions?: KpiBandActions;
 }) {
   const [collapsed, setCollapsed] = useState(() => (defaultExpanded === undefined ? true : !defaultExpanded));
+  // Escape closes the open report (it is an overlay now).
+  useEffect(() => {
+    if (collapsed) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') toggleCollapsed(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed]);
   useEffect(() => {
     if (defaultExpanded === undefined) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -317,16 +325,19 @@ export function TopKPIBand({
   }
 
   return (
-    <div className="bg-surface-raised border-b border-line shrink-0 shadow-sm z-10 flex flex-col">
+    // Owner review: the expanded report must never push the workspace down (the depth
+    // chart is sized to the space it has) — so the band stays 56px in flow and the
+    // detail row drops OVER the workspace like a menu. Escape or the chevron closes it.
+    <div className="relative bg-surface-raised border-b border-line shrink-0 shadow-sm z-30">
       {chipRow}
 
-      {/* detail row: radar | shot diet | identity lanes */}
-      <div className="flex items-stretch gap-6 px-5 pr-16 py-3">
+      {/* detail row: radar | shot diet | identity lanes — an overlay below the chip row */}
+      <div className="absolute left-0 right-0 top-full z-30 flex items-stretch gap-6 px-5 pr-16 py-3 bg-surface-raised border-b border-line shadow-lg">
 
         {/* 1. Team identity radar, natural size (168 base -> 368x192 rendered). */}
         <div className="flex flex-col gap-1 shrink-0">
           <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Team identity</h3>
-          <RadarChart data={identity} average={referenceIdentity} size={168} />
+          <RadarChart data={identity} average={referenceIdentity} size={144} />
         </div>
 
         {/* 2. Shot diet. */}

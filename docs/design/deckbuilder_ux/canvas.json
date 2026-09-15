@@ -100,7 +100,7 @@
       "w": 320,
       "page": "page-2",
       "kind": "note",
-      "text": "Signed 2026-09-15. Owner decisions:\n\n• No validity row and no actions in the depth chart.\n• Plays and Roster are the same kind of sidebar: docked or a 48px strip.\n• Below 1440 the two sidebars are mutually exclusive — docking one collapses the other to its strip. From 1440 both may dock.\n\nBoard (h) is the 1280 worst case with both open; the rule above means it only occurs at 1440+, where the columns are wider."
+      "text": "Signed 2026-09-15; amended after the owner's laptop review:\n\n• No validity row and no actions in the depth chart.\n• Plays and Roster are the same kind of sidebar: docked or a 48px strip — and both may be open at once (dragging a play from the roster needs it). The earlier '< 1440 collapses the other' rule is withdrawn.\n• Depth-chart columns never drop below 148px; squeezed, the chart snap-scrolls sideways.\n• The expanded band is an overlay: it never pushes the workspace down.\n\nBoard (h) is therefore the real state whenever both sidebars are open."
     }
   ],
   "launch": {

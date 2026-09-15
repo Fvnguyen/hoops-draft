@@ -122,35 +122,24 @@ for (const { name: tier, width, height } of TIERS) {
 }
 
 /**
- * D4: regular tier (960-1439) keeps the two sidebars mutually exclusive — docking
- * one collapses the other to its 48px strip. Wide (>= 1440) lifts that rule and
- * lets both dock. Plays starts docked by default; Roster starts as a strip.
+ * D4 (amended after the owner's review): in every docked tier both sidebars may be
+ * open at once — dragging a play from the roster into a slot needs that. Plays starts
+ * docked by default; Roster starts as a strip.
  */
-test.describe('Deckbuilder @ D4 sidebar exclusivity', () => {
-  test('regular tier (1100): expanding Roster collapses Plays to its strip', async ({ page }) => {
-    await page.setViewportSize({ width: 1100, height: 800 });
-    await gotoDeckbuilder(page);
+test.describe('Deckbuilder @ D4 both sidebars dock', () => {
+  for (const { name, width, height } of [{ name: 'regular', width: 1100, height: 800 }, { name: 'wide', width: 1440, height: 900 }]) {
+    test(`${name} tier (${width}): Roster and Plays can both stay docked`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await gotoDeckbuilder(page);
 
-    await expect(page.getByRole('button', { name: 'Collapse plays' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Expand roster' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Collapse plays' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Expand roster' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Expand roster' }).click();
+      await page.getByRole('button', { name: 'Expand roster' }).click();
 
-    await expect(page.getByRole('button', { name: 'Collapse roster' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Expand plays' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Collapse plays' })).toHaveCount(0);
-  });
-
-  test('wide tier (1440): Roster and Plays can both stay docked at once', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await gotoDeckbuilder(page);
-
-    await expect(page.getByRole('button', { name: 'Collapse plays' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Expand roster' })).toBeVisible();
-
-    await page.getByRole('button', { name: 'Expand roster' }).click();
-
-    await expect(page.getByRole('button', { name: 'Collapse roster' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Collapse plays' })).toBeVisible();
-  });
+      await expect(page.getByRole('button', { name: 'Collapse roster' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Collapse plays' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    });
+  }
 });

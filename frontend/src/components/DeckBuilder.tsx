@@ -235,23 +235,17 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const [rosterDrawerOpen, setRosterDrawerOpen] = useState(false);
   const [playsDrawerOpen, setPlaysDrawerOpen] = useState(false);
 
-  /** regular tier (960-1439): docking one sidebar collapses the other to its
-   *  strip (owner call, D4) — wide (>= 1440) lets both dock at once. */
+  /** Both sidebars may dock at once in every docked tier (owner review 2026-09-15:
+   *  dragging a play from the roster into a slot needs both open; the earlier
+   *  "< 1440 collapses the other" rule is withdrawn). The depth chart scales to
+   *  whatever width is left. */
   const dockRoster = (next: boolean) => {
     setRosterDockedState(next);
     writeStoredDock(ROSTER_DOCK_KEY, next);
-    if (next && tier === 'regular') {
-      setPlaysDockedState(false);
-      writeStoredDock(PLAYS_DOCK_KEY, false);
-    }
   };
   const dockPlays = (next: boolean) => {
     setPlaysDockedState(next);
     writeStoredDock(PLAYS_DOCK_KEY, next);
-    if (next && tier === 'regular') {
-      setRosterDockedState(false);
-      writeStoredDock(ROSTER_DOCK_KEY, false);
-    }
   };
 
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -1235,8 +1229,8 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       {/* deckbuilder_ux D4: Plays and Roster are dockable sidebars, measured off the
           shell's own width (not viewport media queries) via the ResizeObserver above.
           compact (<960): both are overlay drawers, opened from the depth-chart title
-          row. regular (960-1439): mutually exclusive — docking one collapses the
-          other to its 48px strip. wide (>=1440): both may dock at once. */}
+          row. regular and wide (>= 960): each sidebar docks or collapses to its
+          48px strip independently; both may be open at once. */}
       <div className={`flex-1 p-4 flex flex-col @min-[960px]:flex-row gap-3 overflow-hidden relative ${readOnly ? 'pointer-events-none opacity-75' : ''}`}>
 
         {/* PLAYS sidebar (artboard g) — docked panel or 48px strip; compact tier
@@ -1309,9 +1303,10 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             )}
           </div>
           <div
-            className={tier === 'compact'
-              ? 'flex-1 min-h-0 flex gap-2 overflow-x-auto overflow-y-auto snap-x snap-mandatory pb-2'
-              : 'flex-1 min-h-0 grid grid-cols-5 gap-2 overflow-y-auto overflow-x-hidden pr-1 pb-4'}
+            // One layout for every tier: columns share the width but never drop below
+            // 148px — when both sidebars are docked and the chart is squeezed (53px
+            // columns at 1024 in the owner's review) it snap-scrolls sideways instead.
+            className="flex-1 min-h-0 flex gap-2 overflow-x-auto overflow-y-auto snap-x snap-mandatory pb-2"
           >
             {DEPTH_COLUMNS.map(col => (
               <DepthSlotColumn
@@ -1332,7 +1327,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                 onDragStart={(e, player, column, index) => handleDragStart(e, player, column, index)}
                 onDragOver={handleDragOver}
                 onDrop={handleDropOnSlot}
-                className={tier === 'compact' ? 'min-w-[148px] snap-start shrink-0' : undefined}
+                className="flex-1 min-w-[148px] snap-start"
               />
             ))}
           </div>

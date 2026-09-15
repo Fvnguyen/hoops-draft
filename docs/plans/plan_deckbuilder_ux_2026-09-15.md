@@ -40,7 +40,9 @@ and signed off by the owner before any agent implements it.
   Actions live in the band's right cluster (signed): Clear and Save as 44px
   `IconButton`s (label + disabled reason as tooltip) and one text primary `Save & play
   season` that never wraps; the next-action hint is the disabled Save's tooltip; the
-  shot-diet mini renders only from 1440 (container width). Each chip is a
+  shot-diet mini renders only from 1440 (container width). The expanded report is an
+  OVERLAY below the 56px row (owner review: it must never push the workspace down);
+  Escape or the chevron closes it. Each chip is a
   44px `Button variant=ghost` that expands the band to its section. Colours: tokens
   only; positive/danger for peak/valley; chart series from `cardColors`/CSS variables.
 - D3 **Click assigns, drag stays.** `engine/deckbuilder.ts` gains
@@ -58,9 +60,11 @@ and signed off by the owner before any agent implements it.
   (plays 280px; roster `clamp(280px,24cqw,400px)`) or a 48px strip with a 44px expand
   control, vertical label and count badges (the plays strip's three dots read slot
   state). compact: both are overlay drawers; the depth chart scrolls horizontally with
-  `snap-x`, columns min 148px. regular (< 1440): the sidebars are mutually exclusive —
-  docking one collapses the other to its strip (owner call); default plays docked,
-  roster strip. wide (>= 1440): both may dock. The user's toggle persists per sidebar. Starter card keeps
+  `snap-x`. Every docked tier (>= 960): each sidebar docks or collapses independently and
+  BOTH may be open (owner review: dragging a play from the roster into a slot needs
+  that; the earlier < 1440 exclusivity is withdrawn); default plays docked, roster strip.
+  The depth chart is one flex layout at every tier: columns share the width but never
+  drop below 148px — squeezed, it snap-scrolls sideways. Toggles persist per sidebar. Starter card keeps
   `aspect-[5/7]`; bench rows are exactly `h-control`. Card and tile type never drops
   below `text-xs`; what does not fit is dropped per ui_foundation D5, not shrunk.
 - D5 **Play tiles replace play cards inside the builder.** Per artboard (c): fixed
