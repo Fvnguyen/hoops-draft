@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #292524; }
+    a { color: #d97706; } a:hover { color: #b45309; }
+  </style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 320px; background: #f5f0ea; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px;">
+
+  <div style="background: #ffffff; border-bottom: 1px solid #e7e5e4; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; box-sizing: border-box;">
+
+    <!-- same 56px chip row as the collapsed band; the chevron now collapses -->
+    <div style="height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 64px 0 16px; box-sizing: border-box; border-bottom: 1px solid #e7e5e4;">
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span><span>Players</span><span style="color: #1c1917;">3/12</span>
+        </div>
+        <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span><span>Plays</span><span style="color: #1c1917;">1/3</span>
+        </div>
+        <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; background: #f5f5f4; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #292524;">
+          <span style="width: 8px; height: 8px; border-radius: 999px; border: 2px solid #a8a29e; box-sizing: border-box; display: inline-block;"></span><span>Identity</span><span style="color: #a8a29e; font-weight: 700; text-transform: none; letter-spacing: 0;">none</span>
+        </div>
+      </div>
+      <div style="width: 1px; height: 24px; background: #e7e5e4;"></div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 0 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;">
+        <span style="display: inline-flex; align-items: center; gap: 6px; color: #059669;"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2 L10.5 10 L1.5 10 Z" fill="#059669"></path></svg>Playmaking</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; color: #dc2626;"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 10 L1.5 2 L10.5 2 Z" fill="#dc2626"></path></svg>3PT</span>
+      </div>
+      <div style="width: 1px; height: 24px; background: #e7e5e4;"></div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; color: #78716c; text-transform: uppercase;">
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #dc2626; display: inline-block;"></span>Rim <strong style="color: #1c1917; font-weight: 900;">34</strong></span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span>Mid <strong style="color: #1c1917; font-weight: 900;">29</strong></span>
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb; display: inline-block;"></span>3PT <strong style="color: #1c1917; font-weight: 900;">37</strong></span>
+      </div>
+      <div style="flex: 1;"></div>
+      <span style="font-size: 12px; color: #a8a29e; font-weight: 500;">Need 5 starters</span>
+      <div style="width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: #78716c;" title="Collapse team report">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"></path></svg>
+      </div>
+    </div>
+
+    <!-- detail row: radar | shot diet | identity lanes -->
+    <div style="display: flex; align-items: stretch; gap: 24px; padding: 12px 64px 12px 20px; box-sizing: border-box;">
+
+      <!-- 1. radar at natural size: 368 x 192, labels a true 12px -->
+      <div style="display: flex; flex-direction: column; gap: 4px; flex-shrink: 0;">
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Team identity</div>
+        <svg width="368" height="192" viewBox="-100 -12 368 192" role="img" aria-label="Team identity radar" style="display: block;">
+          <polygon points="84,10 148,47 148,121 84,158 20,121 20,47" fill="none" stroke="#e7e5e4" stroke-width="1"></polygon>
+          <polygon points="84,34 127,58 127,110 84,134 41,110 41,58" fill="none" stroke="#e7e5e4" stroke-width="1"></polygon>
+          <polygon points="84,58 106,70 106,98 84,110 62,98 62,70" fill="none" stroke="#e7e5e4" stroke-width="1"></polygon>
+          <polygon points="84,22 132,52 138,118 84,146 40,112 30,52" fill="rgba(217,119,6,0.18)" stroke="#d97706" stroke-width="2"></polygon>
+          <circle cx="84" cy="146" r="4" fill="#059669"></circle>
+          <circle cx="138" cy="118" r="4" fill="#dc2626"></circle>
+          <text x="84" y="-2" text-anchor="middle" font-size="12" font-weight="700" fill="#78716c" letter-spacing="0.05em">FINISHING</text>
+          <text x="156" y="44" text-anchor="start" font-size="12" font-weight="700" fill="#78716c" letter-spacing="0.05em">MID-RANGE</text>
+          <text x="156" y="128" text-anchor="start" font-size="12" font-weight="800" fill="#dc2626" letter-spacing="0.05em">▼ 3PT</text>
+          <text x="84" y="176" text-anchor="middle" font-size="12" font-weight="800" fill="#059669" letter-spacing="0.05em">▲ PLAYMAKING</text>
+          <text x="12" y="128" text-anchor="end" font-size="12" font-weight="700" fill="#78716c" letter-spacing="0.05em">PERIMETER D</text>
+          <text x="12" y="44" text-anchor="end" font-size="12" font-weight="700" fill="#78716c" letter-spacing="0.05em">POST D</text>
+        </svg>
+      </div>
+
+      <!-- 2. shot diet -->
+      <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 24px; border-left: 1px solid #e7e5e4; flex-shrink: 0;">
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Shot diet</div>
+        <div style="flex: 1; display: flex; align-items: center; gap: 16px;">
+          <svg width="90" height="90" viewBox="0 0 90 90" aria-hidden="true">
+            <circle cx="45" cy="45" r="38" fill="none" stroke="#e7e5e4" stroke-width="14"></circle>
+            <circle cx="45" cy="45" r="38" fill="none" stroke="#dc2626" stroke-width="14" stroke-dasharray="81 158" transform="rotate(-90 45 45)"></circle>
+            <circle cx="45" cy="45" r="38" fill="none" stroke="#f59e0b" stroke-width="14" stroke-dasharray="69 170" stroke-dashoffset="-81" transform="rotate(-90 45 45)"></circle>
+            <circle cx="45" cy="45" r="38" fill="none" stroke="#2563eb" stroke-width="14" stroke-dasharray="88 151" stroke-dashoffset="-150" transform="rotate(-90 45 45)"></circle>
+            <text x="45" y="42" text-anchor="middle" font-size="12" font-weight="700" fill="#78716c">3PT</text>
+            <text x="45" y="60" text-anchor="middle" font-size="16" font-weight="900" fill="#2563eb">37%</text>
+          </svg>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 700;">
+            <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 999px; background: #dc2626;"></span><span style="width: 36px; color: #292524;">RIM</span><span style="color: #dc2626; font-weight: 900;">34%</span></div>
+            <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 999px; background: #f59e0b;"></span><span style="width: 36px; color: #292524;">MID</span><span style="color: #f59e0b; font-weight: 900;">29%</span></div>
+            <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 10px; height: 10px; border-radius: 999px; background: #2563eb;"></span><span style="width: 36px; color: #292524;">3PT</span><span style="color: #2563eb; font-weight: 900;">37%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. identity lanes -->
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding-left: 24px; border-left: 1px solid #e7e5e4;">
+        <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Identity</div>
+        <div style="display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 8px; border: 1px solid #e7e5e4; background: rgba(245,245,244,0.6); padding: 4px 8px;">
+          <span style="width: 56px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #dc2626;">Offense</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid #d6d3d1; background: #ffffff; font-size: 12px; font-weight: 700; color: #78716c;">Rim Pressure <span style="font-size: 12px; font-weight: 900; border-radius: 4px; padding: 0 4px; background: #d1fae5; color: #059669;">CORE</span></span>
+          <span style="font-size: 12px; font-style: italic; color: #a8a29e;">Pace &amp; Space locked — Sharpshooter: 1/3 carriers</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 8px; border: 1px dashed #e7e5e4; padding: 4px 8px;">
+          <span style="width: 56px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #2563eb;">Defense</span>
+          <span style="font-size: 12px; font-style: italic; color: #a8a29e;">No plan unlocked · No-Fly Zone locked — Lockdown Defender: 0/3 carriers</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; min-height: 44px; border-radius: 8px; border: 1px dashed #e7e5e4; padding: 4px 8px;">
+          <span style="width: 56px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #d97706;">Gold</span>
+          <span style="font-size: 12px; font-style: italic; color: #a8a29e;">No plan unlocked · 3-and-D Paradigm locked — Lockdown Defender: 0/4 carriers</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; right: 16px; top: 6px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e7e5e4; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center; color: #78716c;" title="Game menu">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+  </div>
+
+  <div style="padding: 0 16px; font-size: 12px; color: #a8a29e;">Expanded band. The chip row stays as the header; below it the radar at natural size, the shot diet, and the three identity lanes (Offense / Defense / Gold) with unlocked plans as buttons and one locked hint per lane.</div>
+</div>
+</x-dc>
+</body>
+</html>

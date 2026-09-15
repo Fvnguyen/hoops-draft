@@ -1,0 +1,11 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "(a) Collapsed band", "x": 0, "y": 0, "w": 1280, "h": 120 },
+    { "file": "ExpandedBand.dc.html", "title": "(b) Expanded band", "x": 0, "y": 260, "w": 1280, "h": 320 },
+    { "file": "PlayTiles.dc.html", "title": "(c) Play tiles", "x": 0, "y": 720, "w": 1280, "h": 440 }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 1360, "y": 0, "w": 300, "text": "deckbuilder_ux T1 — sign-off artboards.\n\nEverything uses the app's own tokens (court theme), 44px controls, 8px/12px radii, Inter + Bebas Neue.\n\nEdit anything in place; when it reads right, say so and the plan builds exactly this." }
+  ],
+  "launch": { "view": "canvas" }
+}

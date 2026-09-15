@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #292524; }
+    a { color: #d97706; } a:hover { color: #b45309; }
+  </style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 120px; background: #f5f0ea; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;">
+
+  <!-- Collapsed KPI band: 56px = --nav-h, so it lines up with the game-route gear at top-4 right-4 -->
+  <div style="height: 56px; background: #ffffff; border-bottom: 1px solid #e7e5e4; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 8px; padding: 0 64px 0 16px; box-sizing: border-box;">
+
+    <!-- validity chips: 44px ghost buttons, each expands the band to its section -->
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c;">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span>
+        <span>Players</span><span style="color: #1c1917;">3/12</span>
+      </div>
+      <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c;">
+        <span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span>
+        <span>Plays</span><span style="color: #1c1917;">1/3</span>
+      </div>
+      <div style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; border-radius: 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c;">
+        <span style="width: 8px; height: 8px; border-radius: 999px; border: 2px solid #a8a29e; box-sizing: border-box; display: inline-block;"></span>
+        <span>Identity</span><span style="color: #a8a29e; font-weight: 700; text-transform: none; letter-spacing: 0;">none</span>
+      </div>
+    </div>
+
+    <div style="width: 1px; height: 24px; background: #e7e5e4;"></div>
+
+    <!-- radar peak / valley as words -->
+    <div style="display: flex; align-items: center; gap: 16px; padding: 0 8px; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;">
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #059669;">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2 L10.5 10 L1.5 10 Z" fill="#059669"></path></svg>
+        Playmaking
+      </span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: #dc2626;">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 10 L1.5 2 L10.5 2 Z" fill="#dc2626"></path></svg>
+        3PT
+      </span>
+    </div>
+
+    <div style="width: 1px; height: 24px; background: #e7e5e4;"></div>
+
+    <!-- shot diet mini -->
+    <div style="display: flex; align-items: center; gap: 14px; padding: 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; color: #78716c; text-transform: uppercase;">
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #dc2626; display: inline-block;"></span>Rim <strong style="color: #1c1917; font-weight: 900;">34</strong></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #f59e0b; display: inline-block;"></span>Mid <strong style="color: #1c1917; font-weight: 900;">29</strong></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2563eb; display: inline-block;"></span>3PT <strong style="color: #1c1917; font-weight: 900;">37</strong></span>
+    </div>
+
+    <div style="flex: 1;"></div>
+
+    <!-- next-action hint, muted -->
+    <span style="font-size: 12px; color: #a8a29e; font-weight: 500;">Need 5 starters</span>
+
+    <!-- expand: 44px IconButton ghost -->
+    <div style="width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: #78716c;" title="Expand team report">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+    </div>
+  </div>
+
+  <!-- the game-route gear sits here in the app (fixed top-4 right-4), shown for alignment only -->
+  <div style="position: absolute; right: 16px; top: 6px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e7e5e4; background: #ffffff; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: inline-flex; align-items: center; justify-content: center; color: #78716c;" title="Game menu">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+  </div>
+
+  <div style="padding: 0 16px; font-size: 12px; color: #a8a29e;">Collapsed band, 1280 wide. Chips are 44px ghost buttons; clicking one opens the band to that section. The gear on the right is the app's own game-route menu, drawn here only so the heights line up.</div>
+</div>
+</x-dc>
+</body>
+</html>
