@@ -1,7 +1,7 @@
 # Plan: mobile_responsive
 
 File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: in progress (T1 done)
-Sequence: 3 in `docs/ROADMAP.md`. Depends on: none (vercel_deploy, accounts_cloud_saves done).
+Sequence: 4 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3) for T5/T6; T2-T4 may run alongside it.
 Files owned: `frontend/playwright.config.ts`, `frontend/tests/mobile-audit.spec.ts` (new),
 `frontend/tests/visual.spec.ts`, `frontend/src/app/layout.tsx`, `frontend/src/app/manifest.ts`
 (new), `frontend/public/icons/*` (new), `frontend/src/components/OrientationGate.tsx` (new),
@@ -110,7 +110,7 @@ mostly "general improvement" passes; the deck builder stays the only redesign (D
 
 | Screen | Project | Breaks | Severity | Fix | General / redesign |
 |---|---|---|---|---|---|
-| all | both | `WhatsNewSplash` panel has no max-height; at 385px it overflows, its Close button is off-screen, and it blocks every route (only the backdrop/CTA dismiss it) | blocker | `max-h-[90dvh] overflow-y-auto` on the panel | general — **adds `WhatsNewSplash.tsx` to files owned** |
+| all | both | `WhatsNewSplash` panel has no max-height; at 385px it overflows, its Close button is off-screen, and it blocks every route (only the backdrop/CTA dismiss it) | blocker | `max-h-[90dvh] overflow-y-auto` on the panel | general — fixed by ui_foundation D9 (`Overlay`), not here |
 | all | both | TopNav profile menu rows 238x36; "Back to Home" 34x34 | high | 44px min height on menu rows and icon buttons | general |
 | all | both | 8–11px text everywhere (7–34 instances per screen) | high | 12px floor on the type scale | general |
 | home, rosters | both | PlayerCard back face clips 122–285px of badges/season averages (`overflow:hidden`, no scroll) | high | scroll region or taller back face | general |
