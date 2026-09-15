@@ -74,6 +74,10 @@ export function MenuTrigger({
 }) {
   return (
     <summary
+      // Chromium exposes <summary> as a disclosure widget, not a button, so assistive
+      // tech and `getByRole('button')` would miss it. It behaves as a button, name it one.
+      role="button"
+      aria-haspopup="menu"
       aria-label={label}
       title={label}
       className={cn(

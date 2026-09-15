@@ -9,6 +9,8 @@ import { DeckBuilder } from './DeckBuilder';
 import { PackOpener } from './PackOpener';
 import { DraftSidebar } from './DraftSidebar';
 import { PackPassStage, passStaggerDelayMs } from './PackPassStage';
+import { ConfirmPickDock } from './ConfirmPickDock';
+import { IconButton } from './ui/IconButton';
 import { PickTimerRing } from './PickTimerRing';
 import { RoundSummary } from './RoundSummary';
 import { getGameStore } from '@/storage';
@@ -81,7 +83,7 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
   if (items.length === 0) return null;
 
   return (
-    <div className="w-full overflow-x-auto whitespace-nowrap px-8 py-1.5 bg-stone-100/70 border-b border-stone-200 text-[11px] text-stone-500 font-medium custom-scrollbar shrink-0">
+    <div className="w-full overflow-x-auto whitespace-nowrap px-8 py-1.5 bg-surface-sunken/70 border-b border-line text-xs text-ink-muted font-medium custom-scrollbar shrink-0">
       {items.map((text, i) => (
         <motion.span
           key={i}
@@ -89,7 +91,7 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: passStaggerDelayMs(i) / 1000, duration: 0.2 }}
         >
-          {i > 0 && <span className="mx-2 text-stone-300">·</span>}
+          {i > 0 && <span className="mx-2 text-ink-subtle">·</span>}
           {text}
         </motion.span>
       ))}
@@ -100,15 +102,15 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
 function SaveErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div className="fixed top-[56px] left-0 right-0 z-50 bg-red-50 border-b border-red-200 px-4 py-3">
-      <p className="text-sm text-red-700 font-semibold text-center">{message}</p>
+    <div className="fixed top-0 left-0 right-0 z-50 bg-danger-soft border-b border-danger-line px-4 py-3">
+      <p className="text-sm text-danger font-semibold text-center">{message}</p>
     </div>
   );
 }
 
 function ModePill({ mode }: { mode: 'quick' | 'premier' }) {
   return (
-    <span className="text-stone-500 font-black text-[9px] uppercase tracking-widest bg-white px-2.5 py-1 rounded-full border border-stone-200 shadow-sm">
+    <span className="text-ink-muted font-black text-xs uppercase tracking-widest bg-surface-raised px-2.5 py-1 rounded-full border border-line shadow-sm">
       {mode === 'premier' ? 'Premier' : 'Quick'}
     </span>
   );
@@ -127,15 +129,15 @@ function SfxToggle() {
   };
 
   return (
-    <button
-      type="button"
+    <IconButton
+      variant="raised"
       onClick={toggle}
-      title={enabled ? 'Mute sound' : 'Enable sound'}
       aria-pressed={enabled}
-      className="w-7 h-7 rounded-full border border-stone-200 bg-white flex items-center justify-center text-stone-400 hover:text-stone-700 hover:border-stone-300 transition-colors shadow-sm shrink-0"
+      label={enabled ? 'Mute sound' : 'Enable sound'}
+      className="shrink-0"
     >
-      {enabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-    </button>
+      {enabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+    </IconButton>
   );
 }
 
@@ -316,8 +318,8 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
 
   if (draftState === 'loading' || !humanSeat) {
     return (
-      <div className="flex h-screen items-center justify-center font-sans">
-        <div className="text-2xl font-semibold text-stone-400 animate-pulse">Generating Draft Pod...</div>
+      <div className="flex h-dvh items-center justify-center font-sans">
+        <div className="text-2xl font-semibold text-ink-subtle animate-pulse">Generating Draft Pod...</div>
       </div>
     );
   }
@@ -331,6 +333,15 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
     );
   }
 
+  const selectedCard = selectedCardId
+    ? humanSeat.currentPack.find(card => card.id === selectedCardId) ?? null
+    : null;
+  const selectedCardName = selectedCard
+    ? selectedCard.type === 'Play'
+      ? selectedCard.name
+      : selectedCard.player.name
+    : null;
+
   const packDirection = currentPackNumber === 2 ? 1 : -1;
   const isPackIntro = draftState === 'pack-intro';
   const isRoundSummary = draftState === 'round-summary';
@@ -340,7 +351,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   const backdropClass = isPackIntro ? 'blur-sm pointer-events-none select-none' : '';
 
   return (
-    <div className="flex flex-col md:flex-row h-screen text-stone-800 font-sans relative overflow-hidden pt-[56px]" style={{ background: '#F5F0EA' }}>
+    <div className="flex flex-col md:flex-row h-dvh bg-surface text-ink font-sans relative overflow-hidden">
       <SaveErrorBanner message={saveError} />
 
       {isRoundSummary && (
@@ -357,7 +368,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
       {/* Main Draft Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}
-        <header className={`px-8 py-4 flex justify-between items-center border-b border-stone-200 bg-white/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass}`}>
+        <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass}`}>
           <div className="w-64 hidden md:flex items-center gap-2">
             <ModePill mode={mode} />
             {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
@@ -373,30 +384,30 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 1 : 0) / 1000 }}
                className="flex flex-col items-center gap-1 opacity-80"
              >
-                <div className={`w-8 h-8 rounded-full bg-white border flex items-center justify-center text-sm ${currentPackNumber !== 2 ? 'border-stone-400 shadow-sm' : 'border-stone-200'}`}>🤖</div>
-                <span className={`text-[9px] uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-stone-600' : 'text-stone-400'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
+                <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber !== 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
+                <span className={`text-xs uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
              </motion.div>
 
              {/* Central Pass UI */}
              <div className="flex items-center gap-3 sm:gap-6">
-                {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
+                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden sm:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden sm:block" size={24} />}
                 <div className="flex flex-col items-center gap-1.5">
-                   <div className="text-stone-800 font-bold text-sm leading-none whitespace-nowrap">
-                     Pack {currentPackNumber} <span className="text-stone-400 font-medium">·</span> Pick {currentPickNumber} of {PICKS_PER_PACK}
+                   <div className="text-ink font-bold text-sm leading-none whitespace-nowrap">
+                     Pack {currentPackNumber} <span className="text-ink-subtle font-medium">·</span> Pick {currentPickNumber} of {PICKS_PER_PACK}
                    </div>
-                   <div className="w-56 sm:w-72 h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-[1.5px]">
+                   <div className="w-56 sm:w-72 h-1.5 rounded-full bg-surface-muted overflow-hidden flex gap-[1.5px]">
                      {Array.from({ length: TOTAL_PICKS }).map((_, i) => (
                        <div
                          key={i}
-                         className={`flex-1 rounded-[1px] ${i < overallPick - 1 ? 'bg-orange-500' : 'bg-stone-200'}`}
+                         className={`flex-1 rounded-[1px] ${i < overallPick - 1 ? 'bg-accent' : 'bg-surface-muted'}`}
                        />
                      ))}
                    </div>
-                   <div className="text-stone-400 font-medium uppercase tracking-widest text-[9px]">
+                   <div className="text-ink-subtle font-medium uppercase tracking-widest text-xs">
                      Overall Pick {overallPick} / {TOTAL_PICKS}
                    </div>
                 </div>
-                {currentPackNumber === 2 ? <ChevronRight className="text-stone-400 hidden sm:block" size={24} /> : <ChevronLeft className="text-stone-400 hidden sm:block" size={24} />}
+                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden sm:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden sm:block" size={24} />}
              </div>
 
              {/* Right Player (Seat 1) */}
@@ -407,13 +418,13 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 0 : 1) / 1000 }}
                className="flex flex-col items-center gap-1 opacity-80"
              >
-                <div className={`w-8 h-8 rounded-full bg-white border flex items-center justify-center text-sm ${currentPackNumber === 2 ? 'border-stone-400 shadow-sm' : 'border-stone-200'}`}>🤖</div>
-                <span className={`text-[9px] uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-stone-600' : 'text-stone-400'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
+                <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber === 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
+                <span className={`text-xs uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
              </motion.div>
           </div>
 
           <div className="w-64 hidden md:flex justify-end">
-            <div className="text-stone-500 font-medium text-[10px] uppercase tracking-widest bg-white px-3 py-1.5 rounded-full border border-stone-200 flex items-center gap-1.5 shadow-sm">
+            <div className="text-ink-muted font-medium text-xs uppercase tracking-widest bg-surface-raised px-3 py-1.5 rounded-full border border-line flex items-center gap-1.5 shadow-sm">
               Passing {currentPackNumber === 2 ? 'Right' : 'Left'} {currentPackNumber === 2 ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
             </div>
           </div>
@@ -447,7 +458,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
         ) : (
           <>
             {/* Cards Grid */}
-            <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-32 custom-scrollbar">
+            <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-6 custom-scrollbar">
               <PackPassStage passSeq={passSeq} direction={packDirection === 1 ? 'right' : 'left'}>
                 <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
                   <AnimatePresence>
@@ -472,7 +483,18 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                         }}
                         onDragEnd={() => setSelectedCardId(null)}
                       >
-                        <div className="relative w-full">
+                        <div
+                          className="relative w-full"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Select ${card.type === 'Play' ? card.name : card.player.name}`}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleCardClick(card.id);
+                            }
+                          }}
+                        >
                           {card.type === 'Play' ? (
                             <PlayCard
                               play={card as Play}
@@ -488,7 +510,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                             />
                           )}
                           {selectedCardId === card.id && (
-                            <span className="absolute -bottom-5 inset-x-0 text-center text-[9px] font-bold uppercase tracking-widest text-amber-600 whitespace-nowrap">
+                            <span className="absolute -bottom-5 inset-x-0 text-center text-xs font-bold uppercase tracking-widest text-accent whitespace-nowrap">
                               Double-click to pick
                             </span>
                           )}
@@ -500,29 +522,10 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
               </PackPassStage>
             </main>
 
-            {/* Confirm Button — the gradient wrapper only mounts while a card is
-                selected, so it no longer permanently darkens the last row of cards. */}
-            <AnimatePresence>
-              {selectedCardId && (
-                <motion.div
-                  key="confirm-bar"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-stone-950 via-stone-950/90 to-transparent flex justify-center pb-10 pointer-events-none z-30"
-                >
-                  <motion.button
-                    initial={{ y: 150 }}
-                    animate={{ y: 0 }}
-                    exit={{ y: 150 }}
-                    onClick={handleConfirmPick}
-                    className="pointer-events-auto px-16 py-4 bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-black text-xl rounded-full shadow-[0_0_40px_rgba(249,115,22,0.4)] transition-all transform hover:scale-105 active:scale-95 border-2 border-white/20 uppercase tracking-widest flex flex-col items-center leading-none"
-                  >
-                    <span>Confirm Pick</span>
-                  </motion.button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <ConfirmPickDock
+              cardName={selectedCardName}
+              onConfirm={handleConfirmPick}
+            />
           </>
         )}
       </div>

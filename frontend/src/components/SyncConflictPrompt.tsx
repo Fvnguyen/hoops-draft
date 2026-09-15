@@ -4,10 +4,15 @@
  * accounts_cloud_saves D7: the one conflict a human ever has to resolve — a roster
  * edited on two devices since they last agreed. Draft/season conflicts never reach this
  * (storage/merge.ts auto-merges them); only `mergeRoster` always returns `conflict: true`.
- * Reuses Toast's visual language (dark pill, amber accent) rather than a new component
- * style.
+ *
+ * plan_ui_foundation D9: a fixed bottom-right corner stack, NOT a modal (no Overlay —
+ * it must stay visible and non-blocking while the rest of the app is used), built from
+ * `Panel variant="inverse"` + `Button` so it matches the shared control language instead
+ * of one-off dark-pill markup.
  */
 import { getGameStore, type SyncConflict } from '@/storage';
+import { Panel } from './ui/Panel';
+import { Button } from './ui/Button';
 
 function labelFor(conflict: SyncConflict): string {
   const record = conflict.local as { name?: string } | undefined;
@@ -25,25 +30,25 @@ export function SyncConflictPrompt({ conflicts }: { conflicts: SyncConflict[] })
   return (
     <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-2 max-w-xs">
       {conflicts.map((conflict) => (
-        <div key={`${conflict.table}:${conflict.id}`} className="rounded-lg bg-stone-800 p-4 text-sm text-white shadow-lg">
+        <Panel key={`${conflict.table}:${conflict.id}`} variant="inverse" padding="md" className="text-sm shadow-lg">
           <p className="mb-2 font-semibold">&ldquo;{labelFor(conflict)}&rdquo; changed on another device</p>
           <div className="flex gap-2">
-            <button
-              type="button"
+            <Button
+              variant="inverse"
+              className="flex-1"
               onClick={() => resolve(conflict, 'local')}
-              className="flex-1 rounded bg-stone-700 px-3 py-1.5 text-xs font-bold uppercase tracking-wide hover:bg-stone-600"
             >
               Keep this device
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
               onClick={() => resolve(conflict, 'remote')}
-              className="flex-1 rounded bg-amber-600 px-3 py-1.5 text-xs font-bold uppercase tracking-wide hover:bg-amber-500"
             >
               Use cloud version
-            </button>
+            </Button>
           </div>
-        </div>
+        </Panel>
       ))}
     </div>
   );

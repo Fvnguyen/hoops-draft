@@ -1,16 +1,22 @@
 'use client';
 
-import { useState, type ReactNode, type JSX } from 'react';
+import { useRef, useState, type ReactNode, type JSX } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useHoverPreview } from './useHoverPreview';
-import { Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown, Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles, Wand2, X } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { ClipboardList, MoreHorizontal, X } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard, Trait } from '@/engine/types';
 import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation, type PlayRequirement, type PlayRequirementStatus } from '@/engine/synergies';
 import type { PlayStatus } from '@/engine/playbook';
 import { getPlayDef, describeRoleRequirement } from '@/engine/playbook';
+import { IconButton } from './ui/IconButton';
+import {
+  badgeConfig, defaultBadgeConfig, basePosColors, getPosColors, positionConicGradient,
+  type GemRarity, gemPalettes, gemPixelSizes, rarityTextColor, rarityAccentColor,
+  teamColors, teamIds, catColor, playCategoryTheme, roleTagColor, playBoardAccent,
+  defaultTeamColor, defaultTeamColorDark,
+} from './cardColors';
 
 // Re-exported so existing `from '@/components/PlayerCard'` type-only imports
 // elsewhere in the app keep working — the canonical definitions live in
@@ -24,28 +30,10 @@ export type Player = EnginePlayer;
 export type Play = EnginePlay;
 export type DraftCard = EngineDraftCard;
 
-// Badge icon + color mapping
-const badgeConfig: Record<string, { icon: LucideIcon; color: string; bg: string }> = {
-  'Finisher':            { icon: Flame,         color: '#F97316', bg: 'bg-orange-500/20' },
-  'Mid-Range Maestro':   { icon: Target,        color: '#3B82F6', bg: 'bg-blue-500/20' },
-  'Sharpshooter':        { icon: Crosshair,     color: '#8B5CF6', bg: 'bg-purple-500/20' },
-  'Floor General':       { icon: Brain,          color: '#14B8A6', bg: 'bg-teal-500/20' },
-  'Glass Cleaner':       { icon: Dumbbell,       color: '#22C55E', bg: 'bg-green-500/20' },
-  'Lockdown Defender':   { icon: Shield,         color: '#EF4444', bg: 'bg-red-500/20' },
-  'Paint Protector':     { icon: ShieldCheck,    color: '#DC2626', bg: 'bg-red-600/20' },
-  'Legend':              { icon: Crown,          color: '#F59E0B', bg: 'bg-amber-500/20' },
-  'League Leader':       { icon: Trophy,         color: '#F59E0B', bg: 'bg-amber-500/20' },
-  'Ironman':             { icon: Zap,            color: '#EAB308', bg: 'bg-yellow-500/20' },
-  'Efficiency Savant':   { icon: TrendingUp,     color: '#06B6D4', bg: 'bg-cyan-500/20' },
-  'Sniper':              { icon: Crosshair,      color: '#6366F1', bg: 'bg-indigo-500/20' },
-  'Volume Scorer':       { icon: Flame,          color: '#F97316', bg: 'bg-orange-500/20' },
-  'Young Phenom':        { icon: Sparkles,       color: '#F59E0B', bg: 'bg-amber-500/20' },
-  'Veteran Presence':    { icon: Bird,           color: '#78716C', bg: 'bg-stone-500/20' },
-  'Microwave':           { icon: Thermometer,    color: '#EF4444', bg: 'bg-red-500/20' },
-  'Two-Way Disruptor':   { icon: Swords,         color: '#8B5CF6', bg: 'bg-violet-500/20' },
-  'Stat Sheet Stuffer':  { icon: ClipboardList,  color: '#10B981', bg: 'bg-emerald-500/20' },
-  'Playmaking Maestro':  { icon: Wand2,          color: '#14B8A6', bg: 'bg-teal-500/20' },
-};
+// Game-data colours (position, rarity, team, badge, play category) live in
+// `./cardColors` — re-exported here so nothing that already imports them from
+// `@/components/PlayerCard` needs to change.
+export { basePosColors, getPosColors, rarityTextColor };
 
 // Plain-English badge tooltip copy (MTG-style keyword reminder text) — what it boosts
 // and, for the badges that gate a roster identity (the 7 mono colors + the 3 gold
@@ -77,8 +65,12 @@ const BADGE_DESCRIPTIONS: Record<string, string> = {
   'Stat Sheet Stuffer': 'Fills the box score everywhere. Flavor only — no team-wide boost.',
 };
 
+// D5 type floor: 'micro'/'xs'/'cqw' tiers are icon-only — no level digit, no text.
+// Only 'small'/'normal' (24px+ circles) are big enough to hold a 12px (text-xs) digit.
+const ICON_ONLY_BADGE_SIZES = new Set(['micro', 'xs', 'cqw']);
+
 function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' | 'xs' | 'cqw' | 'micro' }) {
-  const cfg = badgeConfig[name] || { icon: Star, color: '#9CA3AF', bg: 'bg-stone-500/20' };
+  const cfg = badgeConfig[name] ?? defaultBadgeConfig;
   const Icon = cfg.icon;
   const iconSize = size === 'micro' ? 7 : size === 'xs' ? 10 : size === 'small' ? 12 : size === 'cqw' ? 11 : 16;
   const containerSize = size === 'micro' ? 'w-[13px] h-[13px] border' : size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : size === 'cqw' ? 'border' : 'w-8 h-8';
@@ -86,18 +78,28 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
   // size, so it keeps shrinking as the card narrows below the 'xs'/'small' breakpoints
   // were designed for (D24) — a narrow starter card no longer needs badges overflowing it.
   const containerStyle = size === 'cqw' ? { width: 'clamp(14px, 13cqw, 22px)', height: 'clamp(14px, 13cqw, 22px)' } : undefined;
-  // 'micro' (bench cards) needs a smaller level-count bubble too — the 'xs' one (16px)
-  // is bigger than the whole 13px badge circle it would sit on.
-  const levelBadgeClass = size === 'micro'
-    ? 'absolute -top-0.5 -right-0.5 w-[9px] h-[9px] text-[6px] border'
-    : 'absolute -top-1 -right-1 w-4 h-4 text-[8px] border-2';
+  const showLevel = level > 1 && !ICON_ONLY_BADGE_SIZES.has(size);
+
+  // Tooltip is portalled to document.body (not a CSS group-hover child) — same reasoning
+  // as PlayerHoverPreview below: BadgeIcon renders inside cards that are frequently
+  // `overflow-hidden` (roster summaries, depth-chart slots), and an in-flow `absolute`
+  // tooltip gets visually clipped by (and inflates the scrollHeight of) the nearest such
+  // ancestor. Portalling escapes that entirely, positioned from the icon's own rect.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+
+  const showTooltip = () => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (rect) setTooltipPos({ top: rect.top, left: rect.left + rect.width / 2 });
+  };
+  const hideTooltip = () => setTooltipPos(null);
 
   return (
-    <div className="group/badge relative">
-      <div className={`${containerSize} rounded-full bg-stone-800 border-2 border-stone-500/60 flex items-center justify-center relative shadow-md`} style={containerStyle}>
+    <div ref={wrapRef} className="relative" onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
+      <div className={`${containerSize} rounded-full bg-surface-inverse border-line-inverse flex items-center justify-center relative shadow-md`} style={containerStyle}>
         <Icon size={iconSize} style={{ color: cfg.color }} strokeWidth={2.5} />
-        {level > 1 && (
-          <span className={`${levelBadgeClass} rounded-full bg-stone-800 border-white/40 flex items-center justify-center font-black text-white leading-none`}>
+        {showLevel && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-inverse-deep border-2 border-line-inverse flex items-center justify-center text-xs font-black text-ink-inverse leading-none">
             {level}
           </span>
         )}
@@ -105,29 +107,50 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
       {/* Keyword-style tooltip (MTG reminder-text box): icon + name + level on top,
           a plain-English line underneath explaining what it does and, if it gates a
           roster identity, which one — not just the bare badge name. */}
-      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-[168px] rounded-lg bg-stone-900 text-white p-2 opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-30 border border-white/15 shadow-xl">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.5} />
-          <span className="text-[9px] font-black uppercase tracking-wider leading-none">{name}{level > 1 ? ` (Lv.${level})` : ''}</span>
-        </div>
-        <p className="text-[8px] leading-snug text-stone-300 normal-case">{BADGE_DESCRIPTIONS[name] ?? 'A player trait.'}</p>
-      </div>
+      {tooltipPos && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed z-[120] w-[168px] rounded-lg bg-surface-inverse-deep text-ink-inverse p-2 pointer-events-none border border-line-inverse shadow-xl"
+          style={{ top: tooltipPos.top, left: tooltipPos.left, transform: 'translate(-50%, calc(-100% - 6px))' }}
+        >
+          <div className="flex items-center gap-1.5 mb-1">
+            <Icon size={12} style={{ color: cfg.color }} strokeWidth={2.5} />
+            <span className="text-xs font-black uppercase tracking-wider leading-none">{name}{level > 1 ? ` (Lv.${level})` : ''}</span>
+          </div>
+          <p className="text-xs leading-snug text-ink-inverse-muted normal-case">{BADGE_DESCRIPTIONS[name] ?? 'A player trait.'}</p>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
 
 // Overflow indicator for a badge row that had to cap how many BadgeIcons it shows
 // (D18: readability — small cards show 2 + "+N", list rows show 3 + "+N"). `names`
-// carries the hidden badges' names for the tooltip.
+// carries the hidden badges' names for the tooltip. D5: 'micro'/'xs'/'cqw' tiers can't
+// fit a 12px "+N" in their small circles, so they go icon-only and the count moves
+// entirely into the `title`.
 function BadgeOverflowIndicator({ count, names, size = 'small' }: { count: number; names: string[]; size?: 'normal' | 'small' | 'xs' | 'cqw' | 'micro' }) {
   if (count <= 0) return null;
-  const containerSize = size === 'micro' ? 'w-[13px] h-[13px] text-[6px]' : size === 'xs' ? 'w-[18px] h-[18px] text-[7px]' : size === 'small' ? 'w-6 h-6 text-[9px]' : size === 'cqw' ? 'text-[7px]' : 'w-8 h-8 text-[10px]';
+  const title = `+${count} more: ${names.join(', ')}`;
+  const containerSize = size === 'micro' ? 'w-[13px] h-[13px]' : size === 'xs' ? 'w-[18px] h-[18px]' : size === 'small' ? 'w-6 h-6 text-xs' : size === 'cqw' ? '' : 'w-8 h-8 text-xs';
   const containerStyle = size === 'cqw' ? { width: 'clamp(14px, 13cqw, 22px)', height: 'clamp(14px, 13cqw, 22px)' } : undefined;
+
+  if (ICON_ONLY_BADGE_SIZES.has(size)) {
+    return (
+      <div
+        className={`${containerSize} shrink-0 rounded-full bg-surface-inverse border border-line-inverse flex items-center justify-center text-ink-inverse-muted`}
+        style={containerStyle}
+        title={title}
+      >
+        <MoreHorizontal size={size === 'micro' ? 7 : 9} />
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`${containerSize} shrink-0 rounded-full bg-stone-700 border-2 border-stone-500/60 flex items-center justify-center font-black text-stone-200`}
-      style={containerStyle}
-      title={names.join(', ')}
+      className={`${containerSize} shrink-0 rounded-full bg-surface-inverse border-2 border-line-inverse flex items-center justify-center font-black text-ink-inverse-muted`}
+      title={title}
     >
       +{count}
     </div>
@@ -145,7 +168,9 @@ function isRequirementStatus(r: PlayRequirement | PlayRequirementStatus): r is P
  * Requirement icons for a play's Synergy Key. Exported so DeckBuilder can render the
  * same icons outside a full PlayCard. Pass plain `PlayRequirement[]` (from
  * `getPlayRequirements`) for a neutral state, or `PlayRequirementStatus[]` (from a
- * `PlayEvaluation`) to show met/unmet state.
+ * `PlayEvaluation`) to show met/unmet state. D5: the 'xs' tier's BadgeIcon is icon-only,
+ * so the have/met overlay text only renders at 'small' (24px, room for text-xs); the
+ * full status is always available via the container's `title`.
  */
 export function PlayRequirementIcons({ requirements, size = 'small' }: { requirements: PlayRequirementStatus[] | PlayRequirement[]; size?: 'xs' | 'small' }) {
   if (requirements.length === 0) return null;
@@ -161,18 +186,18 @@ export function PlayRequirementIcons({ requirements, size = 'small' }: { require
       {requirements.map((req, i) => {
         const status = isRequirementStatus(req) ? req : null;
         return (
-          <div key={i} className={`relative ${status ? (status.met ? 'ring-2 ring-emerald-400 rounded-full' : 'opacity-40 grayscale') : ''}`}>
+          <div key={i} className={`relative ${status ? (status.met ? 'ring-2 ring-positive rounded-full' : 'opacity-40 grayscale') : ''}`}>
             <BadgeIcon name={req.badge} level={1} size={size} />
             {status?.met && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-stone-900 flex items-center justify-center text-[6px] text-white leading-none">✓</span>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-positive-strong border border-surface-inverse-deep flex items-center justify-center text-ink-inverse leading-none" />
             )}
-            {status && !status.met && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-black text-stone-100 bg-stone-900 px-0.5 rounded-sm leading-none whitespace-nowrap">
+            {size === 'small' && status && !status.met && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs font-black text-ink-inverse bg-surface-inverse-deep px-0.5 rounded-sm leading-none whitespace-nowrap">
                 {status.have}/{status.levels}
               </span>
             )}
-            {!status && (
-              <span className="absolute -bottom-1 -right-1.5 text-[8px] font-black text-stone-100 bg-stone-900 px-0.5 rounded-sm leading-none">
+            {size === 'small' && !status && (
+              <span className="absolute -bottom-1 -right-1.5 text-xs font-black text-ink-inverse bg-surface-inverse-deep px-0.5 rounded-sm leading-none">
                 ×{req.levels}
               </span>
             )}
@@ -183,46 +208,18 @@ export function PlayRequirementIcons({ requirements, size = 'small' }: { require
   );
 }
 
-export const basePosColors = {
-  PG: '#3B82F6', // Blue
-  SG: '#8B5CF6', // Purple
-  SF: '#10B981', // Green
-  PF: '#F59E0B', // Orange
-  C:  '#EF4444', // Red
-};
-
-export function getPosColors(position: string): [string, string] {
-  const p = position.replace('-', '/');
-  
-  if (p === 'G') return [basePosColors.PG, basePosColors.SG];
-  if (p === 'F') return [basePosColors.SF, basePosColors.PF];
-  
-  if (p.includes('/')) {
-    const [p1, p2] = p.split('/');
-    const c1 = basePosColors[p1 as keyof typeof basePosColors] || '#6B7280';
-    const c2 = basePosColors[p2 as keyof typeof basePosColors] || '#6B7280';
-    return [c1, c2];
-  }
-
-  if (basePosColors[p as keyof typeof basePosColors]) {
-    const c = basePosColors[p as keyof typeof basePosColors];
-    return [c, c];
-  }
-  return ['#6B7280', '#6B7280']; // Fallback
-}
-
 // Position pill. Kept the historical name/props (`position`, `className`,
 // `borderClass`) since DraftRoom/DeckBuilder/rosters call this directly —
 // `borderClass` is accepted for compatibility but is no longer tied to
 // rarity (rarity communication moved to RarityGem; see UI brief).
-export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1 text-[10px]", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
+export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1 text-xs", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
   const p = position.replace('-', '/');
 
   if (p === 'ALL' || p === 'STAR') {
     return (
-      <div className={`relative rounded-md overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
-        <div className="absolute inset-0" style={{ background: 'conic-gradient(#3B82F6 0 72deg, #8B5CF6 72deg 144deg, #10B981 144deg 216deg, #F59E0B 216deg 288deg, #EF4444 288deg 360deg)' }} />
-        <Star size={10} className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" fill="currentColor" />
+      <div className={`relative rounded-md shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
+        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ background: positionConicGradient }} />
+        <Star2 />
       </div>
     );
   }
@@ -230,41 +227,28 @@ export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1
   const [c1, c2] = getPosColors(p);
 
   return (
-    <div className={`relative rounded-md overflow-hidden shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
+    <div className={`relative rounded-md shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
       {c1 !== c2 ? (
-        <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)` }} />
+        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)` }} />
       ) : (
-        <div className="absolute inset-0" style={{ backgroundColor: c1 }} />
+        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ backgroundColor: c1 }} />
       )}
-      <span className="relative z-10 font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] leading-none whitespace-nowrap" style={{ letterSpacing: '-0.3px', fontSize: p.length > 3 ? '9px' : '10px' }}>{p}</span>
+      <span className="relative z-10 font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] leading-none whitespace-nowrap" style={{ letterSpacing: '-0.3px' }}>{p}</span>
     </div>
   );
 }
 
-// MtG-inspired rarity gem: a faceted diamond, not a coloured frame/border.
-// Rarity reads from this + the (Rare/Mythic-only) top accent line / foil
-// overlay on the card, deliberately kept separate from position colour and
-// team stripe — see UI brief section 1.
-type GemRarity = 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
+// Star glyph for the ALL/STAR position pill — a tiny local component so PositionIcon
+// doesn't need to pull in the whole lucide Star import just for this one glyph.
+function Star2() {
+  return (
+    <svg viewBox="0 0 24 24" width={10} height={10} className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" fill="currentColor">
+      <path d="M12 2l2.9 6.4 7.1.7-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7-5.4-4.7 7.1-.7z" />
+    </svg>
+  );
+}
 
-const gemPalettes: Record<GemRarity, { base: string; light1: string; light2: string; dark1: string; dark2: string; stroke: string; glow?: string }> = {
-  Common:   { base: '#57534e', light1: '#78716c', light2: '#6b6560', dark1: '#3f3b38', dark2: '#2f2c2a', stroke: '#292524' },
-  Uncommon: { base: '#cbd5e1', light1: '#f8fafc', light2: '#e2e8f0', dark1: '#94a3b8', dark2: '#7d8ea3', stroke: '#94a3b8', glow: '0 0 3px rgba(203,213,225,0.65)' },
-  Rare:     { base: '#eab308', light1: '#fde68a', light2: '#fbbf24', dark1: '#b45309', dark2: '#92400e', stroke: '#a16207', glow: '0 0 6px rgba(234,179,8,0.65)' },
-  Mythic:   { base: '#f97316', light1: '#fed7aa', light2: '#fb923c', dark1: '#dc2626', dark2: '#991b1b', stroke: '#c2410c', glow: '0 0 8px rgba(249,115,22,0.8)' },
-};
-
-const gemPixelSizes: Record<'sm' | 'md' | 'lg', number> = { sm: 12, md: 16, lg: 22 };
-
-// Rarity-coloured text used on the card back header.
-export const rarityTextColor: Record<GemRarity, string> = {
-  Common: 'text-stone-400',
-  Uncommon: 'text-slate-300',
-  Rare: 'text-amber-400',
-  Mythic: 'text-orange-400',
-};
-
-export function RarityGem({ rarity, size = 'md' }: { rarity: 'Common' | 'Uncommon' | 'Rare' | 'Mythic'; size?: 'sm' | 'md' | 'lg' }) {
+export function RarityGem({ rarity, size = 'md' }: { rarity: GemRarity; size?: 'sm' | 'md' | 'lg' }) {
   const palette = gemPalettes[rarity] || gemPalettes.Common;
   const px = gemPixelSizes[size];
   const isMythic = rarity === 'Mythic';
@@ -299,7 +283,7 @@ export function RarityGem({ rarity, size = 'md' }: { rarity: 'Common' | 'Uncommo
 // [gem sm] [position pill] [headshot or play icon] [name] [badges or play
 // category] [trailing slot].
 export function CardListRow({ card, onClick, selected = false, trailing, className = '' }: { card: DraftCard; onClick?: () => void; selected?: boolean; trailing?: ReactNode; className?: string }) {
-  const rowClasses = `@container flex items-center gap-1.5 h-11 px-2 rounded-lg border transition-colors bg-white ${selected ? 'border-orange-500 ring-1 ring-orange-500 bg-orange-50/40' : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
+  const rowClasses = `@container flex items-center gap-1.5 h-11 px-2 rounded-lg border transition-colors bg-surface-raised ${selected ? 'border-accent ring-1 ring-accent bg-accent-soft/40' : 'border-line hover:border-line-strong hover:bg-surface-sunken'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
 
   if (card.type === 'Player') {
     const headshotUrl = `/headshots/${card.player.id}.png`;
@@ -310,10 +294,10 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
         <img
           src={headshotUrl}
           alt=""
-          className="w-7 h-7 rounded-full object-cover object-top border border-stone-200 shrink-0 bg-stone-100"
+          className="w-7 h-7 rounded-full object-cover object-top border border-line shrink-0 bg-surface-sunken"
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
         />
-        <span className="flex-1 min-w-[56px] font-bold text-[12px] text-stone-800 uppercase truncate">{card.player.name}</span>
+        <span className="flex-1 min-w-[56px] font-bold text-xs text-ink-strong uppercase truncate">{card.player.name}</span>
         {/* Badges only when the row is wide enough for the name to stay readable.
             D18: list-row variant caps at 3 badges + "+N" overflow. */}
         <div className="hidden @[230px]:flex items-center gap-0.5 shrink-0">
@@ -328,82 +312,70 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
   }
 
   const catLabel: Record<Play['playCategory'], string> = { system: 'SYSTEM', special: 'SPECIAL', basic: 'BASIC' };
-  const catColor: Record<Play['playCategory'], string> = { system: 'text-amber-600', special: 'text-teal-600', basic: 'text-slate-500' };
 
   return (
     <div className={rowClasses} onClick={onClick}>
       <RarityGem rarity={card.rarity} size="sm" />
       <PositionIcon position="STAR" />
-      <div className="w-7 h-7 rounded-full bg-stone-100 border border-stone-200 flex items-center justify-center shrink-0">
-        <ClipboardList size={14} className="text-stone-500" />
+      <div className="w-7 h-7 rounded-full bg-surface-sunken border border-line flex items-center justify-center shrink-0">
+        <ClipboardList size={14} className="text-ink-muted" />
       </div>
-      <span className="flex-1 min-w-0 font-bold text-[12px] text-stone-800 uppercase truncate">{card.name}</span>
-      <span className={`text-[9px] font-black uppercase shrink-0 ${catColor[card.playCategory]}`}>{catLabel[card.playCategory]}</span>
+      <span className="flex-1 min-w-0 font-bold text-xs text-ink-strong uppercase truncate">{card.name}</span>
+      <span className={`text-xs font-black uppercase shrink-0 ${catColor[card.playCategory]}`}>{catLabel[card.playCategory]}</span>
       {trailing && <div className="shrink-0 ml-1">{trailing}</div>}
     </div>
   );
 }
 
-// NBA team abbreviation to simple color mapping for team stripe
-const teamColors: Record<string, string> = {
-  ATL: '#E03A3E', BOS: '#007A33', BKN: '#000000', CHA: '#1D1160', CHI: '#CE1141',
-  CLE: '#860038', DAL: '#00538C', DEN: '#0E2240', DET: '#C8102E', GSW: '#1D428A',
-  HOU: '#CE1141', IND: '#002D62', LAC: '#C8102E', LAL: '#552583', MEM: '#5D76A9',
-  MIA: '#98002E', MIL: '#00471B', MIN: '#0C2340', NOP: '#0C2340', NYK: '#006BB6',
-  OKC: '#007AC1', ORL: '#0077C0', PHI: '#006BB6', PHX: '#1D1160', POR: '#E03A3E',
-  SAC: '#5A2D81', SAS: '#C4CED4', TOR: '#CE1141', UTA: '#002B5C', WAS: '#002B5C',
-};
-
-const teamIds: Record<string, string> = {
-  ATL: '1610612737', BOS: '1610612738', BKN: '1610612751', CHA: '1610612766', CHI: '1610612741',
-  CLE: '1610612739', DAL: '1610612742', DEN: '1610612743', DET: '1610612765', GSW: '1610612744',
-  HOU: '1610612745', IND: '1610612754', LAC: '1610612746', LAL: '1610612747', MEM: '1610612763',
-  MIA: '1610612748', MIL: '1610612749', MIN: '1610612750', NOP: '1610612740', NYK: '1610612752',
-  OKC: '1610612760', ORL: '1610612753', PHI: '1610612755', PHX: '1610612756', POR: '1610612757',
-  SAC: '1610612758', SAS: '1610612759', TOR: '1610612761', UTA: '1610612762', WAS: '1610612764',
-};
-
 // One cell of the front card's stats row.
 function StatCell({ label, value, border = true, className = '' }: { label: string; value: string; border?: boolean; className?: string }) {
   return (
-    <div className={`py-1.5 ${border ? 'border-r border-stone-100' : ''} ${className}`}>
-      <div className="text-[9px] text-stone-400 font-bold uppercase">{label}</div>
-      <div className="text-sm font-black text-stone-800 leading-none">{value}</div>
+    <div className={`py-1.5 ${border ? 'border-r border-line' : ''} ${className}`}>
+      <div className="text-xs text-ink-subtle font-bold uppercase">{label}</div>
+      <div className="text-sm font-black text-ink-strong leading-none">{value}</div>
     </div>
   );
 }
 
+// D5: MiniPlayerCard shows name, position icon, rarity gem and team stripe only — no
+// stat strip, no badge text (the depth-chart grid this sits in has no room for either).
 export function MiniPlayerCard({ player, className = "", onClick }: { player: PlayerCardData, className?: string, onClick?: () => void }) {
   const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
-  const tmColor = teamColors[player.player.team] || '#9ca3af';
+  const tmColor = teamColors[player.player.team] || defaultTeamColor;
   const headshotUrl = `/headshots/${player.player.id}.png`;
 
   return (
     <div
       ref={hoverRef}
-      className={`relative rounded border border-stone-300 bg-white cursor-pointer transition-transform hover:-translate-y-1 shadow-sm ${className}`}
-      style={{ width: '40px', height: '56px' }}
+      className={`relative rounded border border-line bg-surface-raised cursor-pointer transition-transform hover:-translate-y-1 shadow-sm overflow-visible ${className}`}
+      style={{ width: '48px', height: '72px' }}
       onMouseEnter={onHoverEnter}
       onMouseLeave={onHoverLeave}
       onClick={onClick}
     >
-      <div className="absolute top-0 w-full h-1.5 opacity-80" style={{ backgroundColor: tmColor }} />
-      <div className="absolute top-0.5 right-0.5 z-10">
+      <div className="absolute top-0 w-full h-1.5 opacity-80 rounded-t" style={{ backgroundColor: tmColor }} />
+      <div className="absolute top-1.5 left-0.5 z-10">
+        <PositionIcon position={player.player.position} className="min-w-0 h-3.5 px-0.5 text-xs" />
+      </div>
+      <div className="absolute top-1.5 right-0.5 z-10">
         <RarityGem rarity={player.rarity} size="sm" />
       </div>
-      <div className="w-full h-full p-[2px] pt-2 flex flex-col items-center justify-start overflow-hidden bg-stone-50">
-        <img 
-          src={headshotUrl} 
-          alt={player.player.name} 
-          className="w-[34px] h-[34px] object-cover object-top rounded-sm border border-stone-200 bg-white" 
+      <div className="w-full h-full p-[2px] pt-5 flex flex-col items-center justify-start overflow-hidden rounded bg-surface-sunken">
+        <img
+          src={headshotUrl}
+          alt={player.player.name}
+          className="w-[36px] h-[36px] object-cover object-top rounded-sm border border-line bg-surface-raised"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
                 target.src = 'https://www.transparenttextures.com/patterns/black-mamba.png';
-                target.className = "w-[34px] h-[34px] object-cover object-center opacity-20 rounded-sm border border-stone-200 bg-stone-100";
+                target.className = "w-[36px] h-[36px] object-cover object-center opacity-20 rounded-sm border border-line bg-surface-sunken";
             }
-          }} 
+          }}
         />
+        <span className="mt-0.5 w-full text-center text-xs font-bold uppercase truncate text-ink-strong leading-tight px-0.5">
+          {player.player.name}
+        </span>
       </div>
 
       {/* Screen-centred (D-hover) — was a fixed-offset popup below the card, which had
@@ -416,30 +388,30 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
 
 export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { player: PlayerCardData; isSelected?: boolean; size?: 'sm' | 'md' }) {
   const [c1, c2] = getPosColors(player.player.position);
-  const teamColor = teamColors[player.player.team] || '#374151';
+  const teamColor = teamColors[player.player.team] || defaultTeamColorDark;
   const teamId = teamIds[player.player.team];
   const headshotUrl = `/headshots/${player.player.id}.png`;
   const logoUrl = teamId ? `/logos/${teamId}.svg` : null;
   const isRareOrMythic = player.rarity === 'Rare' || player.rarity === 'Mythic';
-  const rarityAccentColor = player.rarity === 'Mythic' ? '#f97316' : '#eab308';
+  const accentColor = rarityAccentColor[player.rarity];
 
   return (
-    <div className={`absolute inset-0 bg-stone-100 rounded-xl overflow-hidden shadow-xl border border-stone-300 flex flex-col ${isSelected ? 'ring-2 ring-orange-500' : ''}`} style={{ background: `linear-gradient(135deg, #f5f5f4 0%, #e7e5e4 100%)` }}>
-      {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: rarityAccentColor }} />}
+    <div className={`absolute inset-0 bg-surface-sunken rounded-xl overflow-hidden shadow-xl border border-line-strong flex flex-col ${isSelected ? 'ring-2 ring-accent' : ''}`} style={{ background: 'linear-gradient(135deg, var(--surface-sunken) 0%, var(--surface-muted) 100%)' }}>
+      {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: accentColor }} />}
 
-      <div className="flex items-center gap-2 px-2.5 py-2 bg-white/50 backdrop-blur-sm shadow-sm">
+      <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-raised/50 backdrop-blur-sm shadow-sm">
         <RarityGem rarity={player.rarity} size="lg" />
         <div className="flex-1 min-w-0 flex flex-col leading-tight">
-          <span className={`font-bold tracking-tight text-stone-800 uppercase truncate ${player.player.name.length > 18 ? 'text-[11px]' : 'text-[13px]'}`}>{player.player.name}</span>
-          <span className="text-[10px] font-semibold text-stone-500 truncate">{player.player.team} · {player.player.age}Y</span>
+          <span className={`font-bold tracking-tight text-ink-strong uppercase truncate ${player.player.name.length > 18 ? 'text-xs' : 'text-sm'}`}>{player.player.name}</span>
+          <span className="text-xs font-semibold text-ink-muted truncate">{player.player.team} · {player.player.age}Y</span>
         </div>
         <PositionIcon position={player.player.position} />
       </div>
 
-      <div className="flex-1 relative overflow-hidden bg-stone-200">
+      <div className="flex-1 relative overflow-hidden bg-surface-muted">
         <div className="absolute top-0 right-0 w-9 h-full opacity-90 flex flex-col items-center pt-2" style={{ backgroundColor: teamColor }}>
           {logoUrl && (
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-md border border-stone-200 z-10">
+            <div className="w-8 h-8 rounded-full bg-surface-raised flex items-center justify-center shadow-md border border-line z-10">
               <img src={logoUrl} alt={player.player.team} className="w-6 h-6 object-contain" />
             </div>
           )}
@@ -484,7 +456,7 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
           row; the full stat grid stays on the "md" card everywhere else (bench,
           G-League, hover popups). */}
       {size !== 'sm' && (
-        <div className="grid text-center bg-white border-t border-stone-200 grid-cols-4 @[180px]:grid-cols-6">
+        <div className="grid text-center bg-surface-raised border-t border-line grid-cols-4 @[180px]:grid-cols-6">
           <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
           <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
           <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
@@ -507,20 +479,20 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
 function BadgePanel({ traits }: { traits: Trait[] }) {
   if (!traits || traits.length === 0) return null;
   return (
-    <div className="w-[190px] max-h-[70vh] overflow-y-auto rounded-xl bg-stone-900 border border-white/15 shadow-2xl p-3 flex flex-col gap-2.5">
+    <div className="w-[190px] max-h-[70vh] overflow-y-auto overscroll-contain rounded-xl bg-surface-inverse-deep border border-line-inverse shadow-2xl p-3 flex flex-col gap-2.5">
       {traits.map((trait, i) => {
-        const cfg = badgeConfig[trait.name] || { icon: Star, color: '#9CA3AF', bg: 'bg-stone-500/20' };
+        const cfg = badgeConfig[trait.name] ?? defaultBadgeConfig;
         const Icon = cfg.icon;
         return (
           <div key={i} className="flex items-start gap-2">
-            <div className="w-7 h-7 shrink-0 rounded-full bg-stone-800 border-2 border-stone-500/60 flex items-center justify-center">
+            <div className="w-7 h-7 shrink-0 rounded-full bg-surface-inverse border-2 border-line-inverse flex items-center justify-center">
               <Icon size={14} style={{ color: cfg.color }} strokeWidth={2.5} />
             </div>
             <div className="min-w-0">
-              <div className="text-[9px] font-black uppercase tracking-wide text-white leading-tight">
+              <div className="text-xs font-black uppercase tracking-wide text-ink-inverse leading-tight">
                 {trait.name}{trait.level > 1 ? ` (Lv.${trait.level})` : ''}
               </div>
-              <p className="text-[8px] leading-snug text-stone-300 mt-0.5">{BADGE_DESCRIPTIONS[trait.name] ?? 'A player trait.'}</p>
+              <p className="text-xs leading-snug text-ink-inverse-muted mt-0.5">{BADGE_DESCRIPTIONS[trait.name] ?? 'A player trait.'}</p>
             </div>
           </div>
         );
@@ -575,7 +547,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
     return (
       <div
         ref={hoverRef}
-        className={`relative w-full h-[36px] bg-white border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-orange-500' : 'border-stone-200 hover:border-stone-300'}`}
+        className={`relative w-full h-11 bg-surface-raised border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-accent' : 'border-line hover:border-line-strong'}`}
         onClick={onClick}
         onMouseEnter={onHoverEnter}
         onMouseLeave={onHoverLeave}
@@ -584,23 +556,23 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         <div className="h-full w-1.5 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
 
         {/* Headshot */}
-        <div className="w-9 h-full bg-stone-100 shrink-0 overflow-hidden relative border-r border-stone-200">
+        <div className="w-9 h-full bg-surface-sunken shrink-0 overflow-hidden relative border-r border-line">
           <img src={headshotUrl} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
 
         {/* Details — two-line header: name + position pill, then gem + badges */}
-        <div className="flex-1 min-w-0 px-1.5 flex flex-col justify-center gap-0">
+        <div className="flex-1 min-w-0 px-1.5 flex flex-col justify-center gap-0.5">
            <div className="flex items-center justify-between gap-1">
-             <div className="font-bold text-[9px] uppercase truncate text-stone-800 leading-tight">
+             <div className="font-bold text-xs uppercase truncate text-ink-strong leading-tight">
                {player.player.name}
              </div>
-             <PositionIcon position={player.player.position} className="min-w-[24px] h-[15px] px-1.5 text-[9px] shrink-0" />
+             <PositionIcon position={player.player.position} className="min-w-[22px] h-4 px-1 text-xs shrink-0" />
            </div>
 
            <div className="flex items-center gap-1">
              <RarityGem rarity={player.rarity} size="sm" />
              {/* D18: small card variant caps at 2 badges + "+N" overflow; 'micro' (even
-                 smaller than 'xs') keeps them from dominating a 36px-tall bench row. */}
+                 smaller than 'xs') keeps them from dominating a 44px-tall bench row. */}
              {player.traits.slice(0, 2).map(t => (
                <BadgeIcon key={t.name} name={t.name} level={t.level} size="micro" />
              ))}
@@ -637,33 +609,34 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
         {/* ===== BACK ===== */}
         <div
-          className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-stone-900 text-stone-100 border border-stone-700"
+          className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-surface-inverse text-ink-inverse border border-line-inverse"
           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' }}
         >
           {/* Top accent bar (same as front) */}
           <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
 
           {/* Header: gem + rarity text + position pill + flip control */}
-          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-stone-700 bg-stone-800/80 backdrop-blur">
+          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-line-inverse bg-surface-inverse/80 backdrop-blur">
             <RarityGem rarity={player.rarity} size="lg" />
-            <span className={`text-[11px] font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
+            <span className={`text-xs font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
             <div className="flex-1" />
             <PositionIcon position={player.player.position} />
           </div>
 
           {/* Back body: badges first (game-relevant), then accolades, then season averages.
-              No justify-center: centred flex content overflows at BOTH ends and hides the
-              badges on small cards; top-aligned content only ever clips at the bottom. */}
-          <div className="px-2.5 pt-1.5 pb-1 flex-1 flex flex-col overflow-hidden min-h-0">
+              D10: a scroll region, not a clipped box — small cards (bench/G-League) have
+              more content than height, so the back scrolls instead of hiding badges. */}
+          <div className="px-2.5 pt-1.5 pb-1 flex-1 flex flex-col overflow-y-auto overscroll-contain min-h-0">
             {player.traits && player.traits.length > 0 && (
               <div className="mb-1.5">
-                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
+                <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
                 <div className="flex flex-wrap justify-center gap-1">
                   {player.traits.map((trait, i) => {
                     const cfg = badgeConfig[trait.name];
+                    const color = cfg?.color ?? defaultBadgeConfig.color;
                     return (
-                      <span key={i} className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-white/10 flex items-center gap-0.5" style={{ color: cfg?.color || '#9CA3AF', backgroundColor: `${cfg?.color || '#9CA3AF'}15` }}>
-                        {trait.level > 1 && <span className="text-[8px] opacity-60">{trait.level}×</span>}
+                      <span key={i} className="px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider rounded border border-line-inverse flex items-center gap-0.5" style={{ color, backgroundColor: `${color}26` }}>
+                        {trait.level > 1 && <span className="text-xs opacity-70">{trait.level}×</span>}
                         {trait.name}
                       </span>
                     );
@@ -674,10 +647,10 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
             {player.awards && player.awards.length > 0 && (
               <div className="mb-1.5">
-                <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
+                <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
                 <div className="flex flex-wrap justify-center gap-1">
                   {player.awards.map((award, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[9px] font-black uppercase tracking-widest rounded border border-yellow-500/50">
+                    <span key={i} className="px-2 py-0.5 bg-accent-soft/20 text-accent text-xs font-black uppercase tracking-widest rounded border border-accent/50">
                       {award}
                     </span>
                   ))}
@@ -685,7 +658,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
               </div>
             )}
 
-            <div className="text-[9px] text-stone-500 font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
+            <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
             <div className="grid grid-cols-2 gap-x-1 gap-y-[2px]">
               {[
                 ['GP', String(player.stats.gp)],
@@ -703,15 +676,15 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
                 ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
                 ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
               ].map(([label, val]) => (
-                <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-stone-800 rounded border border-stone-700">
-                  <span className="text-[8px] text-stone-400 font-bold uppercase">{label}</span>
-                  <span className="text-[11px] font-black text-white">{val}</span>
+                <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-surface-inverse-deep rounded border border-line-inverse">
+                  <span className="text-xs text-ink-inverse-muted font-bold uppercase">{label}</span>
+                  <span className="text-xs font-black text-ink-inverse">{val}</span>
                 </div>
               ))}
             </div>
 
             {/* Bio — only when there is room */}
-            <div className="mt-auto pt-1 text-center text-[8px] text-stone-500 font-bold tracking-widest uppercase hidden @[200px]:block">
+            <div className="mt-auto pt-1 text-center text-xs text-ink-inverse-muted font-bold tracking-widest uppercase hidden @[200px]:block">
                 {player.player.height} • {player.player.weight} LBS • {player.player.age}Y
             </div>
           </div>
@@ -728,16 +701,17 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 // PlayCard's render) so it isn't recreated as a new component identity every
 // render.
 function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
+  const accent = playBoardAccent[cat];
   if (cat === 'system') {
     // Clipboard / chalkboard diagram style
     return (
       <>
         <div className="w-20 h-14 border-2 border-white/25 rounded-md absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-        <div className="absolute top-[20%] left-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
-        <div className="absolute top-[20%] right-[25%] w-3 h-3 rounded-full border-2 border-amber-300/60" />
-        <div className="absolute bottom-[25%] left-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
-        <div className="absolute bottom-[25%] right-[30%] w-3 h-3 rounded-full bg-amber-300/40" />
-        <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-amber-300/40" />
+        <div className={`absolute top-[20%] left-[25%] w-3 h-3 rounded-full border-2 ${accent.ring}`} />
+        <div className={`absolute top-[20%] right-[25%] w-3 h-3 rounded-full border-2 ${accent.ring}`} />
+        <div className={`absolute bottom-[25%] left-[30%] w-3 h-3 rounded-full ${accent.dot}`} />
+        <div className={`absolute bottom-[25%] right-[30%] w-3 h-3 rounded-full ${accent.dot}`} />
+        <div className={`absolute bottom-[15%] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full ${accent.dot}`} />
         <span className="text-white/50 font-black italic tracking-[0.3em] text-xs drop-shadow-md">SYSTEM</span>
       </>
     );
@@ -750,43 +724,39 @@ function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
         <div className="w-0 h-0 border-l-[6px] border-l-white/30 border-y-[4px] border-y-transparent absolute top-1/2 right-[30%] -translate-y-1/2" />
         <div className="w-8 h-[2px] bg-white/20 absolute top-[35%] left-[35%] rotate-[30deg]" />
         <div className="w-8 h-[2px] bg-white/20 absolute bottom-[35%] left-[35%] -rotate-[30deg]" />
-        <span className="text-white/40 font-bold tracking-[0.2em] text-[10px] mt-4">BASIC</span>
+        <span className="text-white/40 font-bold tracking-[0.2em] text-xs mt-4">BASIC</span>
       </>
     );
   }
   // Special play — target / crosshair
   return (
     <>
-      <div className="w-14 h-14 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      <div className="w-8 h-8 border-2 border-teal-300/30 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      <div className="w-[2px] h-10 bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      <div className="w-10 h-[2px] bg-teal-300/25 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-      <div className="w-2 h-2 bg-teal-300/50 rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+      <div className={`w-14 h-14 border-2 ${accent.ring} rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`} />
+      <div className={`w-8 h-8 border-2 ${accent.ring} rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`} />
+      <div className={`w-[2px] h-10 ${accent.dot} absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`} />
+      <div className={`w-10 h-[2px] ${accent.dot} absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`} />
+      <div className={`w-2 h-2 ${accent.center} rounded-full absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`} />
     </>
   );
 }
 
 export function PlayCardFront({ play }: { play: Play }) {
   const cat = play.playCategory || 'special';
-  const theme = {
-    system: { accent: 'bg-amber-500', accentDark: 'bg-amber-600', board: 'bg-amber-900', label: 'SYSTEM' },
-    special: { accent: 'bg-teal-500', accentDark: 'bg-teal-600', board: 'bg-teal-900', label: 'SPECIAL' },
-    basic: { accent: 'bg-slate-500', accentDark: 'bg-slate-600', board: 'bg-slate-800', label: 'BASIC' },
-  }[cat];
+  const theme = playCategoryTheme[cat];
   const requirements = getPlayRequirements(getPlayEffectId(play));
 
   return (
-    <div className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-100">
+    <div className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-surface-sunken">
       <div className={`h-1.5 w-full ${theme.accent}`} />
-      <div className="px-2 py-1 bg-white flex items-center gap-1 border-b border-stone-200">
+      <div className="px-2 py-1 bg-surface-raised flex items-center gap-1 border-b border-line">
         <RarityGem rarity={play.rarity} size="sm" />
         <div className="flex-1 min-w-0 ml-1">
-          <div className={`font-black uppercase leading-none tracking-tight text-stone-900 ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
+          <div className="font-black uppercase leading-none tracking-tight text-ink-strong text-xs">
             {play.name}
           </div>
-          <div className="text-[7px] text-stone-500 font-bold uppercase tracking-wider leading-tight mt-0.5">PLAY</div>
+          <div className="text-xs text-ink-muted font-bold uppercase tracking-wider leading-tight mt-0.5">PLAY</div>
         </div>
-        <div className={`text-[9px] font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>{theme.label}</div>
+        <div className={`text-xs font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>{theme.label}</div>
       </div>
       <div className={`flex-1 relative overflow-hidden ${theme.board} flex items-center justify-center p-2`}>
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
@@ -795,8 +765,8 @@ export function PlayCardFront({ play }: { play: Play }) {
         </div>
       </div>
       {requirements.length > 0 && (
-        <div className="px-2 py-2 bg-white flex flex-col items-center gap-1 border-t border-stone-200 min-h-[40px] justify-center">
-          <span className="text-[6px] text-stone-400 font-bold uppercase tracking-widest leading-none">Synergy Key</span>
+        <div className="px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center">
+          <span className="text-xs text-ink-subtle font-bold uppercase tracking-widest leading-none">Synergy Key</span>
           <PlayRequirementIcons requirements={requirements} size="small" />
         </div>
       )}
@@ -821,12 +791,11 @@ export function PlayHoverPreview({ play }: { play: Play }) {
 }
 
 export function RoleTag({ playName, roleName, side }: { playName: string; roleName: string; side: 'offense' | 'defense' }): JSX.Element {
-  const bgColor = side === 'offense' ? 'bg-amber-500' : 'bg-sky-500';
-  const textColor = side === 'offense' ? 'text-amber-50' : 'text-sky-50';
+  const colors = roleTagColor[side];
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-1 rounded-full text-[8px] font-bold uppercase ${bgColor} ${textColor} shrink-0 h-[18px]`}
+      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold uppercase ${colors.bg} ${colors.text} shrink-0 h-[18px]`}
       title={`${playName} — ${roleName}`}
     >
       {roleName}
@@ -847,17 +816,13 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
     : getPlayRequirements(getPlayEffectId(play));
   const effectSummary = evaluation?.summary ?? evaluatePlay(play, {}).summary;
   const stateLabel = !evaluation ? null
-    : evaluation.activation === 'full' ? { text: 'ACTIVE', color: 'text-emerald-400' }
-    : evaluation.activation === 'partial' ? { text: `PARTIAL ${evaluation.metCount}/${evaluation.total}`, color: 'text-amber-400' }
-    : { text: 'INACTIVE', color: 'text-stone-400' };
+    : evaluation.activation === 'full' ? { text: 'ACTIVE', color: 'text-positive' }
+    : evaluation.activation === 'partial' ? { text: `PARTIAL ${evaluation.metCount}/${evaluation.total}`, color: 'text-warn' }
+    : { text: 'INACTIVE', color: 'text-ink-muted' };
 
   // Category-driven theming
   const cat = play.playCategory || 'special';
-  const theme = {
-    system:  { accent: 'bg-amber-500',   accentDark: 'bg-amber-600',   board: 'bg-amber-900',  label: 'SYSTEM',  labelColor: 'text-amber-400',  ringColor: 'ring-amber-400',  hoverShadow: 'shadow-[0_0_10px_rgba(245,158,11,0.3)]', hoverBorder: 'hover:border-amber-500', barColor: 'bg-amber-500', mechLabel: 'text-amber-400', mechBorder: 'border-amber-500/30' },
-    special: { accent: 'bg-teal-500',    accentDark: 'bg-teal-600',    board: 'bg-teal-900',   label: 'SPECIAL', labelColor: 'text-teal-400',   ringColor: 'ring-teal-400',   hoverShadow: 'shadow-[0_0_10px_rgba(20,184,166,0.3)]',  hoverBorder: 'hover:border-teal-500',  barColor: 'bg-teal-500',  mechLabel: 'text-teal-400',  mechBorder: 'border-teal-500/30'  },
-    basic:   { accent: 'bg-slate-500',   accentDark: 'bg-slate-600',   board: 'bg-slate-800',  label: 'BASIC',   labelColor: 'text-slate-400',  ringColor: 'ring-slate-400',  hoverShadow: 'shadow-[0_0_10px_rgba(100,116,139,0.3)]', hoverBorder: 'hover:border-slate-500', barColor: 'bg-slate-500', mechLabel: 'text-slate-400', mechBorder: 'border-slate-500/30' },
-  }[cat];
+  const theme = playCategoryTheme[cat];
 
   if (compact) {
     // Determine which roles to show: from status or from play definition
@@ -868,18 +833,18 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
     return (
       <div
         ref={hoverRef}
-        className={`relative w-full h-[60px] bg-white border border-stone-200 rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
+        className={`relative w-full h-[60px] bg-surface-raised border border-line rounded-lg shadow-sm cursor-pointer ${theme.hoverBorder} overflow-visible flex items-center`}
         onClick={onClick}
         onMouseEnter={onHoverEnter}
         onMouseLeave={onHoverLeave}
       >
         <div className={`h-full w-2 shrink-0 ${theme.barColor} rounded-l-[7px]`} />
         <div className="flex-1 min-w-0 px-2 flex flex-col justify-center gap-0.5 overflow-hidden">
-           <div className="font-bold text-[10px] uppercase truncate text-stone-800 leading-tight" title={play.name}>
+           <div className="font-bold text-xs uppercase truncate text-ink-strong leading-tight" title={play.name}>
              {play.name}
            </div>
            <div className="flex items-center gap-1.5 overflow-hidden">
-             <span className={`text-[9px] font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
+             <span className={`text-xs font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
              {roles && roles.length > 0 && (
                <div className="flex items-center gap-0.5 shrink-0">
                  {roles.map((roleOrStatus, i) => {
@@ -890,7 +855,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                      <div key={i} className="relative">
                        <BadgeIcon name={badgeName} level={1} size="xs" />
                        {showRoleDots && (
-                         <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-stone-900 ${filled ? 'bg-emerald-400' : 'bg-stone-300'}`} />
+                         <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-surface-inverse ${filled ? 'bg-positive-strong' : 'bg-surface-muted'}`} />
                        )}
                      </div>
                    );
@@ -917,7 +882,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
   return (
     <div
-      className={`group relative w-full aspect-[5/7] cursor-pointer transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-stone-900 rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
+      className={`group relative w-full aspect-[5/7] cursor-pointer transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
@@ -934,22 +899,22 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
       >
         {/* ===== FRONT ===== */}
         <div
-          className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-100"
+          className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-surface-sunken"
           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', isolation: 'isolate' }}
         >
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
-          <div className="px-2 py-1 bg-white flex items-center gap-1 border-b border-stone-200">
+          <div className="px-2 py-1 bg-surface-raised flex items-center gap-1 border-b border-line">
             <RarityGem rarity={play.rarity} size="sm" />
             <div className="flex-1 min-w-0 ml-1">
-              <div className={`font-black uppercase leading-none tracking-tight text-stone-900 ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
+              <div className="font-black uppercase leading-none tracking-tight text-ink-strong text-xs">
                 {play.name}
               </div>
-              <div className="text-[7px] text-stone-500 font-bold uppercase tracking-wider leading-tight mt-0.5">
+              <div className="text-xs text-ink-muted font-bold uppercase tracking-wider leading-tight mt-0.5">
                 PLAY
               </div>
             </div>
-            <div className={`text-[9px] font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>
+            <div className={`text-xs font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>
               {theme.label}
             </div>
           </div>
@@ -957,11 +922,11 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
           {/* Playboard Image Area OR Role List (when status is present) */}
           {status ? (
             // NEW: Role list view
-            <div className="flex-1 flex flex-col overflow-hidden px-2 py-1.5 bg-white/50">
-              <div className="flex-1 overflow-y-auto space-y-1 mb-1">
+            <div className="flex-1 flex flex-col overflow-hidden px-2 py-1.5 bg-surface-raised/50">
+              <div className="flex-1 overflow-y-auto overscroll-contain space-y-1 mb-1">
                 {status.roles.map((roleStatus, i) => {
                   const playerFromRoster = players?.find(p => p.id === roleStatus.playerId);
-                  const isSelected = selectedRoleId === roleStatus.role.id;
+                  const isRoleSelected = selectedRoleId === roleStatus.role.id;
                   const isFilled = roleStatus.filled;
                   const headshotUrl = playerFromRoster ? `/headshots/${playerFromRoster.id}.png` : undefined;
 
@@ -970,24 +935,24 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                       key={i}
                       className={`flex items-start gap-1 p-1 rounded border transition-all ${
                         isFilled
-                          ? 'border-l-4 border-l-emerald-500 border-r border-r-stone-200 border-t border-t-stone-200 border-b border-b-stone-200 bg-emerald-50/30'
-                          : 'border border-stone-200 bg-stone-50/30'
-                      } ${isSelected ? 'ring-2 ring-amber-400' : ''}`}
-                      style={isSelected ? { animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' } : undefined}
+                          ? 'border-l-4 border-l-positive border-r border-r-line border-t border-t-line border-b border-b-line bg-positive-soft/30'
+                          : 'border border-line bg-surface-sunken/30'
+                      } ${isRoleSelected ? 'ring-2 ring-accent' : ''}`}
+                      style={isRoleSelected ? { animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' } : undefined}
                       onClick={(e) => {
                         e.stopPropagation();
                         onRoleClick?.(roleStatus.role.id);
                       }}
                       onDragOver={(e) => {
                         e.preventDefault();
-                        e.currentTarget.classList.add('bg-amber-100/50');
+                        e.currentTarget.classList.add('bg-accent-soft');
                       }}
                       onDragLeave={(e) => {
-                        e.currentTarget.classList.remove('bg-amber-100/50');
+                        e.currentTarget.classList.remove('bg-accent-soft');
                       }}
                       onDrop={(e) => {
                         e.preventDefault();
-                        e.currentTarget.classList.remove('bg-amber-100/50');
+                        e.currentTarget.classList.remove('bg-accent-soft');
                         e.stopPropagation();
                         const cardId = e.dataTransfer.getData('text/plain') || '';
                         if (cardId) {
@@ -1002,7 +967,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
                       {/* Role name + player assignment */}
                       <div className="flex-1 min-w-0">
-                        <div className="text-[9px] font-bold uppercase text-stone-800 leading-none truncate">
+                        <div className="text-xs font-bold uppercase text-ink-strong leading-none truncate">
                           {roleStatus.role.name}
                         </div>
                         {playerFromRoster && headshotUrl ? (
@@ -1010,20 +975,20 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                             <img
                               src={headshotUrl}
                               alt=""
-                              className="w-5 h-5 rounded-full object-cover object-top border border-stone-300 flex-shrink-0 bg-stone-100"
+                              className="w-5 h-5 rounded-full object-cover object-top border border-line-strong flex-shrink-0 bg-surface-sunken"
                               onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
                             />
-                            <span className="text-[8px] text-stone-700 font-semibold truncate">
+                            <span className="text-xs text-ink font-semibold truncate">
                               {playerFromRoster.player.name}
                             </span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-0.5 mt-0.5 px-1 py-0.5 border border-dashed border-stone-300 rounded text-[8px] text-stone-500 font-semibold">
+                          <div className="flex items-center gap-0.5 mt-0.5 px-1 py-0.5 border border-dashed border-line-strong rounded text-xs text-ink-muted font-semibold">
                             Assign
                           </div>
                         )}
                         {!isFilled && roleStatus.reason && (
-                          <div className="text-[8px] text-red-600 font-semibold leading-none mt-0.5">
+                          <div className="text-xs text-danger font-semibold leading-none mt-0.5">
                             {roleStatus.reason}
                           </div>
                         )}
@@ -1031,15 +996,17 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
                       {/* Clear button */}
                       {playerFromRoster && (
-                        <button
-                          className="flex-shrink-0 p-0.5 hover:bg-red-100 rounded transition-colors"
+                        <IconButton
+                          label="Remove player from role"
+                          variant="ghost"
+                          className="size-5 shrink-0 rounded hover:bg-danger-soft"
                           onClick={(e) => {
                             e.stopPropagation();
                             onRoleClear?.(roleStatus.role.id);
                           }}
                         >
-                          <X size={12} className="text-red-600" />
-                        </button>
+                          <X size={12} className="text-danger" />
+                        </IconButton>
                       )}
                     </div>
                   );
@@ -1047,11 +1014,11 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
               </div>
 
               {/* Status line */}
-              <div className="flex items-center justify-between gap-1 px-1 py-1 border-t border-stone-200 bg-white/60">
-                <span className={`text-[8px] font-black uppercase tracking-wider ${status.active ? 'text-emerald-600' : 'text-stone-500'}`}>
+              <div className="flex items-center justify-between gap-1 px-1 py-1 border-t border-line bg-surface-raised/60">
+                <span className={`text-xs font-black uppercase tracking-wider ${status.active ? 'text-positive' : 'text-ink-muted'}`}>
                   {status.active ? 'ACTIVE' : 'INACTIVE'}
                 </span>
-                <span className="text-[8px] text-stone-600 font-semibold">
+                <span className="text-xs text-ink-muted font-semibold">
                   {Math.round(status.allocation * 100)}% of {status.def.side === 'offense' ? 'possessions' : 'opp. possessions'}
                 </span>
               </div>
@@ -1069,11 +1036,11 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
           {/* Requirement icons — only when there's no status (legacy) */}
           {!status && requirements.length > 0 && (
-            <div className="px-2 py-2 bg-white flex flex-col items-center gap-1 border-t border-stone-200 min-h-[40px] justify-center">
-                <span className="text-[6px] text-stone-400 font-bold uppercase tracking-widest leading-none">Synergy Key</span>
+            <div className="px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center">
+                <span className="text-xs text-ink-subtle font-bold uppercase tracking-widest leading-none">Synergy Key</span>
                 <PlayRequirementIcons requirements={requirements} size="small" />
                 {stateLabel && (
-                  <span className={`text-[8px] font-black uppercase tracking-widest ${stateLabel.color}`}>{stateLabel.text}</span>
+                  <span className={`text-xs font-black uppercase tracking-widest ${stateLabel.color}`}>{stateLabel.text}</span>
                 )}
             </div>
           )}
@@ -1083,13 +1050,13 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
             (() => {
               const playDef = getPlayDef(play);
               return playDef && playDef.roles.length > 0 ? (
-                <div className="px-2 py-2 bg-white flex flex-col gap-1 border-t border-stone-200">
+                <div className="px-2 py-2 bg-surface-raised flex flex-col gap-1 border-t border-line">
                   {playDef.roles.map((role, i) => (
-                    <div key={i} className="flex items-center gap-1 text-[8px]">
+                    <div key={i} className="flex items-center gap-1 text-xs">
                       <BadgeIcon name={role.badge || 'Veteran Presence'} level={role.minLevel ?? 1} size="xs" />
                       <div className="flex-1">
-                        <div className="font-bold text-stone-800 uppercase">{role.name}</div>
-                        <div className="text-stone-600">{describeRoleRequirement(role)}</div>
+                        <div className="font-bold text-ink-strong uppercase">{role.name}</div>
+                        <div className="text-ink-muted">{describeRoleRequirement(role)}</div>
                       </div>
                     </div>
                   ))}
@@ -1103,39 +1070,39 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
         {/* ===== BACK ===== */}
         <div
-          className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-stone-900"
+          className="absolute inset-0 flex flex-col rounded-lg shadow-lg overflow-hidden bg-surface-inverse"
           style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' }}
         >
           <div className={`h-1.5 w-full ${theme.accent}`} />
 
-          <div className="px-2 py-1 bg-stone-800 flex items-center gap-1 border-b border-stone-700">
+          <div className="px-2 py-1 bg-surface-inverse flex items-center gap-1 border-b border-line-inverse">
             <RarityGem rarity={play.rarity} size="sm" />
             <div className="flex-1 min-w-0 ml-1">
-              <div className={`font-black uppercase leading-none tracking-tight text-white ${play.name.length > 16 ? 'text-[9px]' : play.name.length > 12 ? 'text-[10px]' : 'text-xs'}`}>
+              <div className="font-black uppercase leading-none tracking-tight text-ink-inverse text-xs">
                 {play.name}
               </div>
-              <div className="text-[7px] text-stone-400 font-bold uppercase tracking-wider leading-tight mt-0.5">
+              <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-wider leading-tight mt-0.5">
                 PLAY
               </div>
             </div>
-            <div className={`text-[9px] font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>
+            <div className={`text-xs font-black text-white px-1.5 py-0.5 rounded-sm shrink-0 ${theme.accentDark}`}>
               {theme.label}
             </div>
           </div>
 
           {/* Mechanic Explanation */}
-          <div className="flex-1 p-3 flex flex-col items-center justify-center text-center bg-stone-800 gap-2 overflow-hidden">
+          <div className="flex-1 p-3 flex flex-col items-center justify-center text-center bg-surface-inverse gap-2 overflow-y-auto overscroll-contain">
             <div>
-              <span className={`text-[8px] ${theme.mechLabel} font-bold uppercase tracking-widest mb-2 border-b ${theme.mechBorder} pb-1 block`}>Play Mechanic</span>
-              <p className="text-white text-[10px] leading-relaxed font-medium">
+              <span className={`text-xs ${theme.mechLabel} font-bold uppercase tracking-widest mb-2 border-b ${theme.mechBorder} pb-1 block`}>Play Mechanic</span>
+              <p className="text-ink-inverse text-xs leading-relaxed font-medium">
                 {play.mechanicText}
               </p>
             </div>
 
             {(status?.def.summary || effectSummary) && (
-              <div className="w-full px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/30">
-                <span className="text-[7px] text-emerald-400 font-black uppercase tracking-widest block mb-0.5">Effect</span>
-                <span className="text-emerald-200 text-[9px] font-bold leading-snug block">{status?.def.summary || effectSummary}</span>
+              <div className="w-full px-2 py-1 rounded bg-positive-soft/10 border border-positive/30">
+                <span className="text-xs text-positive font-black uppercase tracking-widest block mb-0.5">Effect</span>
+                <span className="text-positive text-xs font-bold leading-snug block">{status?.def.summary || effectSummary}</span>
               </div>
             )}
 
@@ -1143,9 +1110,9 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
             {status ? (
               <div className="w-full flex flex-col gap-0.5">
                 {status.def.roles.map((role, i) => (
-                  <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
-                    <span className="font-bold text-stone-300 uppercase truncate">{role.name}</span>
-                    <span className="text-stone-400 text-[7px]">{describeRoleRequirement(role)}</span>
+                  <div key={i} className="flex items-center justify-between gap-1 text-xs px-1.5 py-0.5 rounded bg-surface-inverse-deep/60 border border-line-inverse">
+                    <span className="font-bold text-ink-inverse-muted uppercase truncate">{role.name}</span>
+                    <span className="text-ink-inverse-muted text-xs">{describeRoleRequirement(role)}</span>
                   </div>
                 ))}
               </div>
@@ -1156,9 +1123,9 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                   {requirements.map((req, i) => {
                     const reqStatus = isRequirementStatus(req) ? req : null;
                     return (
-                      <div key={i} className="flex items-center justify-between gap-1 text-[8px] px-1.5 py-0.5 rounded bg-stone-900/60 border border-stone-700">
-                        <span className="font-bold text-stone-300 uppercase truncate">{req.badge}</span>
-                        <span className={`font-black shrink-0 ${reqStatus ? (reqStatus.met ? 'text-emerald-400' : 'text-red-400') : 'text-stone-400'}`}>
+                      <div key={i} className="flex items-center justify-between gap-1 text-xs px-1.5 py-0.5 rounded bg-surface-inverse-deep/60 border border-line-inverse">
+                        <span className="font-bold text-ink-inverse-muted uppercase truncate">{req.badge}</span>
+                        <span className={`font-black shrink-0 ${reqStatus ? (reqStatus.met ? 'text-positive' : 'text-danger') : 'text-ink-inverse-muted'}`}>
                           {reqStatus ? `${reqStatus.have}/${reqStatus.levels} ${reqStatus.met ? '✓' : '✗'}` : `×${req.levels}`}
                         </span>
                       </div>

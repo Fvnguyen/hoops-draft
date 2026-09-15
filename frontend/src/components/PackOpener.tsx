@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Image from 'next/image';
+import { Volume2, VolumeX } from 'lucide-react';
 import { PackRevealCard } from './PackRevealCard';
+import { ConfirmPickDock } from './ConfirmPickDock';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
 import type { DraftCard } from '@/engine/types';
 import {
   buildRevealTimeline,
@@ -53,8 +57,8 @@ const OPEN_MS = 650;
 const DEAL_MS = 450;
 
 const RARITY_GLOW: Record<string, { ring: string; shadow: string }> = {
-  Rare: { ring: '#eab308', shadow: 'rgba(234,179,8,0.75)' },
-  Mythic: { ring: '#f97316', shadow: 'rgba(249,115,22,0.85)' },
+  Rare: { ring: 'rgb(234,179,8)', shadow: 'rgba(234,179,8,0.75)' },
+  Mythic: { ring: 'rgb(249,115,22)', shadow: 'rgba(249,115,22,0.85)' },
 };
 
 // Reduced motion and the SFX opt-in are read through useSyncExternalStore so the
@@ -251,35 +255,34 @@ export function PackOpener({
   const flipDuration = reducedMotion ? REDUCED_FADE_MS / 1000 : REVEAL_FLIP_MS / 1000;
 
   const shell = embedded
-    ? `relative flex w-full flex-col items-center justify-center px-4 py-6 text-stone-800 ${className}`
-    : `relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-8 text-stone-800 ${
-        backdrop ? 'bg-[#F5F0EA]/25 backdrop-blur-[2px]' : 'bg-[#F5F0EA]'
+    ? `relative flex w-full flex-col items-center justify-center px-4 py-6 text-ink ${className}`
+    : `relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-8 text-ink ${
+        backdrop ? 'bg-surface/25 backdrop-blur-[2px]' : 'bg-surface'
       } ${className}`;
 
   const body = (
     <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-5">
       <div className="flex w-full max-w-4xl items-start justify-between gap-4">
         <div className="flex-1 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-amber-700/70">
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-accent-hover/70">
             {mode === 'quick' ? 'Quick Draft' : 'Premier Draft'}
           </p>
           <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] sm:text-4xl">
             Pack {packNumber} of {totalPacks}
           </h1>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-ink-muted">
             {phase === 'picking' ? 'Click a card, then take it.' : 'Reveal the cards waiting in your draft.'}
           </p>
         </div>
-        <button
-          type="button"
+        <IconButton
+          variant="raised"
           onClick={toggleSfx}
           aria-pressed={sfxOn}
-          title={sfxOn ? 'Sound on' : 'Sound off'}
-          className="shrink-0 rounded-lg border border-stone-300 px-2.5 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-stone-500 transition-colors hover:border-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+          label={sfxOn ? 'Mute sound' : 'Enable sound'}
+          className="shrink-0"
         >
-          <span aria-hidden="true">{sfxOn ? '🔊' : '🔇'}</span>
-          <span className="sr-only">{sfxOn ? 'Turn sound off' : 'Turn sound on'}</span>
-        </button>
+          {sfxOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        </IconButton>
       </div>
 
       <AnimatePresence mode="wait">
@@ -292,12 +295,12 @@ export function PackOpener({
             transition={{ duration: reducedMotion ? 0 : phase === 'opening' ? 0.55 : 0.35 }}
             className="w-44 sm:w-52"
           >
-            <button
+            <Button
               ref={openButtonRef}
-              type="button"
               onClick={beginOpening}
               disabled={phase !== 'sealed'}
-              className="block w-full rounded-2xl outline-none focus-visible:outline-none focus-visible:ring-0 disabled:cursor-default"
+              variant="ghost"
+              className="block h-auto w-full rounded-2xl bg-transparent p-0 normal-case tracking-normal font-normal hover:bg-transparent disabled:cursor-default focus-visible:ring-offset-0"
               aria-label={`Open pack ${packNumber} of ${totalPacks}`}
             >
               <Image
@@ -308,9 +311,9 @@ export function PackOpener({
                 priority
                 className="w-full rounded-2xl"
               />
-            </button>
+            </Button>
             {phase === 'sealed' && (
-              <p className="mt-4 text-center text-xs font-bold uppercase tracking-[0.2em] text-amber-700/80">
+              <p className="mt-4 text-center text-xs font-bold uppercase tracking-[0.2em] text-accent-hover/80">
                 Press Enter or click to open
               </p>
             )}
@@ -365,12 +368,12 @@ export function PackOpener({
                         setSelectedId(card.id);
                       }
                     }}
-                    className="relative rounded-xl outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-amber-600"
+                    className="relative rounded-xl outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-focus"
                     style={{
                       boxShadow: holding && glow
                         ? `0 0 0 3px ${glow.ring}, 0 0 26px 6px ${glow.shadow}`
                         : isSelected
-                          ? '0 0 0 3px #b45309, 0 0 18px 2px rgba(180,83,9,0.45)'
+                          ? '0 0 0 3px rgb(180,83,9), 0 0 18px 2px rgba(180,83,9,0.45)'
                           : undefined,
                     }}
                   >
@@ -405,26 +408,18 @@ export function PackOpener({
 
       <div className="flex min-h-10 items-center justify-center gap-3">
         {phase !== 'sealed' && phase !== 'picking' && (
-          <button
-            type="button"
-            onClick={skipToSpread}
-            className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-stone-500 transition-colors hover:border-amber-600 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
-          >
+          <Button variant="ghost" onClick={skipToSpread}>
             Skip reveal (Esc)
-          </button>
-        )}
-        {phase === 'picking' && (
-          <button
-            ref={takeButtonRef}
-            type="button"
-            onClick={confirmPick}
-            disabled={!selectedCard}
-            className="rounded-lg bg-amber-700 px-5 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
-          >
-            {selectedCard ? `Take ${cardName(selectedCard)}` : 'Select a card'}
-          </button>
+          </Button>
         )}
       </div>
+      {phase === 'picking' && (
+        <ConfirmPickDock
+          ref={takeButtonRef}
+          cardName={selectedCard ? cardName(selectedCard) : null}
+          onConfirm={confirmPick}
+        />
+      )}
     </div>
   );
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 
 const EXIT_MS = 280;
 const ENTER_MS = 280;
@@ -20,88 +20,83 @@ export interface PackPassStageProps {
   children: React.ReactNode;
 }
 
-/** D10: on each pass, the current pack slides 140px toward the passing side
- *  and exits while the next pack slides in from the other side (280ms each,
- *  ~600ms total). Any click or key finishes it instantly. Keyed off
- *  `passSeq` rather than pack contents. */
+/**
+ * plan_ui_foundation D8: two elements, no timers. The live pack is a single
+ * `motion.div` keyed by `passSeq` (`data-pass-node`) that animates in from
+ * the opposite side and then KEEPS THE SAME KEY forever for that pass — no
+ * "settled" remount once the enter animation finishes. The outgoing pack is
+ * an absolutely positioned ghost snapshot that animates out and unmounts on
+ * its own `onAnimationComplete`. A click or keydown mid-pass collapses both
+ * animations to duration 0 instead of skipping ahead with a timer.
+ */
 export function PackPassStage({ passSeq, direction, children }: PackPassStageProps) {
-  const [phase, setPhase] = useState<'idle' | 'exiting' | 'entering'>('idle');
-  const [exitSnapshot, setExitSnapshot] = useState<React.ReactNode>(null);
-  const prevChildren = useRef<React.ReactNode>(children);
-  const prevSeq = useRef(passSeq);
-  const timers = useRef<number[]>([]);
-
-  const clearTimers = () => {
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
-  };
+  const reducedMotion = useReducedMotion();
+  // Refs only ever get written from an effect (after commit), never during
+  // render — they just carry "what was showing last" across passSeq bumps.
+  const prevChildrenRef = useRef<React.ReactNode>(children);
+  const prevSeqRef = useRef(passSeq);
+  // The outgoing snapshot, or null once its exit animation has finished (or
+  // there is nothing to animate out yet).
+  const [ghost, setGhost] = useState<{ seq: number; node: React.ReactNode } | null>(null);
+  const [finished, setFinished] = useState(false);
 
   useEffect(() => {
-    if (passSeq === prevSeq.current) {
-      prevChildren.current = children;
-      return;
+    if (passSeq !== prevSeqRef.current) {
+      setGhost({ seq: prevSeqRef.current, node: prevChildrenRef.current });
+      setFinished(false);
+      prevSeqRef.current = passSeq;
     }
-    prevSeq.current = passSeq;
-    setExitSnapshot(prevChildren.current);
-    setPhase('exiting');
-    clearTimers();
-    timers.current.push(
-      window.setTimeout(() => setPhase('entering'), EXIT_MS),
-      window.setTimeout(() => setPhase('idle'), EXIT_MS + ENTER_MS)
-    );
-    prevChildren.current = children;
-    return clearTimers;
-    // Only passSeq should retrigger the animation — `children` is captured
-    // via the ref above so a re-render mid-animation doesn't restart it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passSeq]);
-
-  useEffect(() => clearTimers, []);
-
-  const finishNow = () => {
-    if (phase === 'idle') return;
-    clearTimers();
-    setPhase('idle');
-  };
-
-  useEffect(() => {
-    if (phase === 'idle') return;
-    const handleKey = () => finishNow();
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    prevChildrenRef.current = children;
+  }, [passSeq, children]);
 
   const exitX = direction === 'left' ? -EXIT_DISTANCE : EXIT_DISTANCE;
   const enterX = -exitX;
 
+  const finishNow = () => setFinished(true);
+
+  // A keypress anywhere finishes the pass instantly, mirroring the click
+  // handler on the stage itself — no timer, just a state flip that collapses
+  // both in-flight transitions to duration 0.
+  useEffect(() => {
+    if (!ghost) return;
+    window.addEventListener('keydown', finishNow);
+    return () => window.removeEventListener('keydown', finishNow);
+  }, [ghost]);
+
+  const enterTransition = reducedMotion || finished
+    ? { duration: 0 }
+    : { duration: ENTER_MS / 1000, ease: 'easeOut' as const };
+  const exitTransition = reducedMotion || finished
+    ? { duration: 0 }
+    : { duration: EXIT_MS / 1000, ease: 'easeIn' as const };
+
   return (
-    <div className="relative w-full" onClick={phase !== 'idle' ? finishNow : undefined}>
-      <AnimatePresence mode="wait" initial={false}>
-        {phase === 'exiting' ? (
-          <motion.div
-            key={`exit-${passSeq}`}
-            initial={{ x: 0, opacity: 1 }}
-            animate={{ x: exitX, opacity: 0 }}
-            transition={{ duration: EXIT_MS / 1000, ease: 'easeIn' }}
-          >
-            {exitSnapshot}
-          </motion.div>
-        ) : phase === 'entering' ? (
-          <motion.div
-            key={`enter-${passSeq}`}
-            initial={{ x: enterX, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: ENTER_MS / 1000, ease: 'easeOut' }}
-          >
-            {children}
-          </motion.div>
-        ) : (
-          <motion.div key={`settled-${passSeq}`} initial={false} animate={{ opacity: 1 }}>
-            {children}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div
+      className="relative w-full"
+      onClick={ghost ? finishNow : undefined}
+      onKeyDown={ghost ? finishNow : undefined}
+    >
+      {ghost && (
+        <motion.div
+          key={`ghost-${ghost.seq}`}
+          className="absolute inset-0 pointer-events-none"
+          initial={{ x: 0, opacity: 1 }}
+          animate={{ x: exitX, opacity: 0 }}
+          transition={exitTransition}
+          onAnimationComplete={() => setGhost(current => (current?.seq === ghost.seq ? null : current))}
+        >
+          {ghost.node}
+        </motion.div>
+      )}
+      <motion.div
+        key={`pass-${passSeq}`}
+        data-pass-node
+        initial={reducedMotion ? false : { x: enterX, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={enterTransition}
+      >
+        {children}
+      </motion.div>
     </div>
   );
 }

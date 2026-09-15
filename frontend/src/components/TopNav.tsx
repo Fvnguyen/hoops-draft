@@ -1,114 +1,194 @@
 'use client';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
-import { useCurrentProfile, type CurrentProfile } from './AuthProvider';
+import { useRouter, usePathname } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, Settings, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
+import { useAuthStatus, useCurrentProfile, type CurrentProfile } from './AuthProvider';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
-import { useNotices } from '@/hooks/useNotices';
+import { useNotices, type Notice } from '@/hooks/useNotices';
 import { useUserSeasonStats } from '@/hooks/useUserSeasonStats';
 import { SyncConflictPrompt } from './SyncConflictPrompt';
+import { isBareRoute, isGameRoute } from '@/lib/routes';
+import { cn } from '@/lib/cn';
+import { Button, IconButton, Menu, MenuItem, MenuLabel, MenuPanel, MenuSection, MenuTrigger, Panel } from '@/components/ui';
+
+const LEAVE_CONFIRM_MESSAGE = 'Are you sure you want to leave? Unsaved edits or ongoing drafts will be lost.';
 
 /** accounts_cloud_saves D7: a small non-blocking pill next to the profile menu — never a
  *  spinner that blocks interaction. Conflicts are surfaced separately by
- *  SyncConflictPrompt, not folded into this label. */
-function SyncIndicator({ dark = false }: { dark?: boolean }) {
+ *  SyncConflictPrompt, not folded into this label. `inverse` is for the dark home hero,
+ *  which has no opaque bar behind it to provide contrast. */
+function SyncIndicator({ inverse = false }: { inverse?: boolean }) {
   const status = useSyncStatus();
-  const textClass = dark ? 'text-white/70' : 'text-stone-500';
+  const mutedClass = inverse ? 'text-ink-inverse-muted' : 'text-ink-muted';
 
   if (status.state === 'offline') {
     return (
-      <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${textClass}`} title="No connection — changes will sync when you're back online">
+      <span className={cn('flex items-center gap-1 text-xs font-bold uppercase tracking-wide', mutedClass)} title="No connection — changes will sync when you're back online">
         <CloudOff className="h-3.5 w-3.5" /> Offline{status.pending > 0 ? `, ${status.pending} pending` : ''}
       </span>
     );
   }
   if (status.conflicts.length > 0) {
     return (
-      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-500" title="A roster changed on another device">
+      <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-warn" title="A roster changed on another device">
         <RefreshCw className="h-3.5 w-3.5" /> {status.conflicts.length} conflict{status.conflicts.length > 1 ? 's' : ''}
       </span>
     );
   }
   if (status.state === 'syncing') {
     return (
-      <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${textClass}`}>
+      <span className={cn('flex items-center gap-1 text-xs font-bold uppercase tracking-wide', mutedClass)}>
         <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Syncing…
       </span>
     );
   }
   return (
-    <span className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${textClass}`}>
+    <span className={cn('flex items-center gap-1 text-xs font-bold uppercase tracking-wide', mutedClass)}>
       <Cloud className="h-3.5 w-3.5" /> Synced
     </span>
   );
 }
 
-/** season_lifecycle_notifications D8: bell next to the profile menu, its own dropdown
- *  (not folded into ProfileMenu's) listing changelog + season-complete notices. */
-function NotificationBell({ dark = false }: { dark?: boolean }) {
-  const { notices, unreadCount, markChangelogSeen, dismissNotice } = useNotices();
-
+/** season_lifecycle_notifications D8: the notice rows shared by the standalone
+ *  NotificationBell dropdown and the game route's combined menu. */
+function NoticesList({ notices, dismissNotice }: { notices: Notice[]; dismissNotice: (id: string) => void }) {
+  if (notices.length === 0) {
+    return <p className="px-3 py-4 text-center text-sm text-ink-subtle">You&apos;re all caught up.</p>;
+  }
   return (
-    <details className="relative group" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) markChangelogSeen(); }}>
-      <summary
-        className={`relative flex cursor-pointer list-none items-center justify-center rounded-full p-2 hover:bg-white/10 ${dark ? 'text-white' : 'text-stone-600 hover:bg-white'}`}
-        title="Notifications"
-      >
-        <Bell className="h-5 w-5" />
-        {unreadCount > 0 && (
-          <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-red-500" />
-        )}
-      </summary>
-      <div className="absolute right-0 top-12 w-80 max-h-96 overflow-y-auto border border-stone-200 bg-white p-2 text-stone-700 shadow-xl">
-        {notices.length === 0 ? (
-          <p className="px-3 py-4 text-center text-sm text-stone-400">You&apos;re all caught up.</p>
-        ) : (
-          notices.map((notice) => (
-            <div key={notice.id} className="border-b border-stone-100 px-3 py-2 last:border-0">
-              <div className="flex items-start justify-between gap-2">
-                <p className="font-bold text-sm">{notice.title}</p>
-                {notice.kind === 'season-complete' && (
-                  <button onClick={() => dismissNotice(notice.id)} className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-stone-400 hover:text-stone-600">Dismiss</button>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs text-stone-500">{notice.body}</p>
-            </div>
-          ))
-        )}
-      </div>
-    </details>
+    <>
+      {notices.map((notice) => (
+        <div key={notice.id} className="min-h-control px-3 py-2">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-bold text-ink">{notice.title}</p>
+            {notice.kind === 'season-complete' && (
+              <Button
+                variant="ghost"
+                onClick={() => dismissNotice(notice.id)}
+                // Keeps the 44px control height (D2); only the type is toned down.
+                className="-my-2 shrink-0 px-2 text-xs font-bold normal-case tracking-normal text-ink-subtle hover:text-ink"
+              >
+                Dismiss
+              </Button>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-ink-muted">{notice.body}</p>
+        </div>
+      ))}
+    </>
   );
 }
 
-/** The dropdown itself — name/email, season record, admin tools when applicable, sign out.
- *  `dark` swaps to light text for use over the home page's dark hero, where
- *  there's no opaque bar behind it to provide contrast. */
-function ProfileMenu({ profile, onSignOut, dark = false }: { profile: CurrentProfile; onSignOut: () => void; dark?: boolean }) {
+/** season_lifecycle_notifications D8: bell with its own dropdown, built on the Menu
+ *  primitive. `inverse` for the home hero. */
+function NotificationBell({ notices, unreadCount, markChangelogSeen, dismissNotice, inverse = false }: {
+  notices: Notice[];
+  unreadCount: number;
+  markChangelogSeen: () => void;
+  dismissNotice: (id: string) => void;
+  inverse?: boolean;
+}) {
+  return (
+    <Menu onOpen={markChangelogSeen}>
+      <MenuTrigger label="Notifications" inverse={inverse} className="relative">
+        <Bell className="h-5 w-5" />
+        {unreadCount > 0 && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-danger" />}
+      </MenuTrigger>
+      <MenuPanel width="w-80">
+        <NoticesList notices={notices} dismissNotice={dismissNotice} />
+      </MenuPanel>
+    </Menu>
+  );
+}
+
+/** The dropdown itself — name/email, season record, admin tools when applicable, sign
+ *  out. `inverse` swaps to light text for use over the home page's dark hero. */
+function ProfileMenu({ profile, onSignOut, inverse = false }: { profile: CurrentProfile; onSignOut: () => void; inverse?: boolean }) {
   const stats = useUserSeasonStats();
   return (
-    <details className="relative group">
-      <summary
-        className={`flex cursor-pointer list-none items-center gap-2 rounded-full p-1.5 hover:bg-white/10 ${dark ? 'text-white' : 'text-stone-600 hover:bg-white'}`}
-        title="Profile menu"
-      >
+    <Menu>
+      <MenuTrigger label="Profile menu" inverse={inverse}>
         <UserCircle className="h-7 w-7" />
         <span className="hidden max-w-32 truncate text-xs font-bold uppercase tracking-wider sm:block">{profile.display_name}</span>
-      </summary>
-      <div className="absolute right-0 top-12 w-64 border border-stone-200 bg-white p-2 text-stone-700 shadow-xl">
-        <div className="border-b border-stone-100 px-3 py-2">
-          <p className="font-bold">{profile.display_name}</p>
-          <p className="truncate text-xs text-stone-400">{profile.email}</p>
+      </MenuTrigger>
+      <MenuPanel>
+        <MenuSection>
+          <p className="px-3 py-2 font-bold text-ink">{profile.display_name}</p>
+          <p className="truncate px-3 text-xs text-ink-subtle">{profile.email}</p>
           {stats.seasonsPlayed > 0 && (
-            <p className="mt-1 text-[11px] text-stone-500">
+            <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
               {stats.seasonsPlayed} season{stats.seasonsPlayed === 1 ? '' : 's'} · {stats.wins}-{stats.losses} · {stats.avgWins} W avg
             </p>
           )}
-        </div>
-        <div className="mt-1 border-b border-stone-100 pb-1"><Link href="/debug" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Debug export</Link></div>
-        {profile.role === 'ADMIN' && <div className="mt-1 border-b border-stone-100 pb-1"><p className="px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-yellow-600"><ShieldCheck className="mr-1 inline h-3 w-3" /> Admin tools</p><Link href="/admin/users" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><ShieldCheck className="h-4 w-4" /> Account approvals</Link><Link href="/admin/analytics" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><BarChart3 className="h-4 w-4" /> Analytics</Link><Link href="/data" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Data viewer</Link><Link href="/deckbuilder-test" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Deckbuilder sandbox</Link><Link href="/test-ui" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Test UI</Link><Link href="/pack-opener-preview" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-stone-100"><Wrench className="h-4 w-4" /> Pack opener preview</Link></div>}
-        <button onClick={onSignOut} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"><LogOut className="h-4 w-4" /> Sign out</button>
-      </div>
-    </details>
+        </MenuSection>
+        <MenuSection>
+          <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
+        </MenuSection>
+        {profile.role === 'ADMIN' && (
+          <MenuSection>
+            <MenuLabel>Admin tools</MenuLabel>
+            <MenuItem href="/admin/users" icon={<ShieldCheck className="h-4 w-4" />}>Account approvals</MenuItem>
+            <MenuItem href="/admin/analytics" icon={<BarChart3 className="h-4 w-4" />}>Analytics</MenuItem>
+            <MenuItem href="/data" icon={<Wrench className="h-4 w-4" />}>Data viewer</MenuItem>
+            <MenuItem href="/deckbuilder-test" icon={<Wrench className="h-4 w-4" />}>Deckbuilder sandbox</MenuItem>
+            <MenuItem href="/test-ui" icon={<Wrench className="h-4 w-4" />}>Test UI</MenuItem>
+            <MenuItem href="/pack-opener-preview" icon={<Wrench className="h-4 w-4" />}>Pack opener preview</MenuItem>
+          </MenuSection>
+        )}
+        <MenuItem tone="danger" onClick={onSignOut} icon={<LogOut className="h-4 w-4" />}>Sign out</MenuItem>
+      </MenuPanel>
+    </Menu>
+  );
+}
+
+/** Fixed-width slot so the loading placeholder and the real control occupy exactly the
+ *  same space — the point of D6 is that nothing shifts when the profile arrives. */
+function ClusterSlot({ width, children }: { width: string; children: ReactNode }) {
+  return <div className={cn('flex shrink-0 items-center justify-end', width)}>{children}</div>;
+}
+
+function ClusterPlaceholders({ inverse = false }: { inverse?: boolean }) {
+  return (
+    <div aria-hidden data-testid="top-nav-cluster" className="flex items-center gap-3">
+      <ClusterSlot width="w-20">
+        <Panel variant={inverse ? 'inverse' : 'sunken'} padding="none" className="h-4 w-full animate-pulse" />
+      </ClusterSlot>
+      <ClusterSlot width="w-11">
+        <Panel variant={inverse ? 'inverse' : 'sunken'} padding="none" className="size-control animate-pulse rounded-full" />
+      </ClusterSlot>
+      <ClusterSlot width="w-11 sm:w-36">
+        <Panel variant={inverse ? 'inverse' : 'sunken'} padding="none" className="size-control animate-pulse rounded-full" />
+      </ClusterSlot>
+    </div>
+  );
+}
+
+/** The auth cluster region (D6): always the same shape regardless of auth status, so the
+ *  bar never reflows once the `/api/auth/me` fetch settles. `loading` reserves the same
+ *  space `signed-in` will use; `signed-out` renders nothing. */
+function AuthCluster({ profile, status, notices, onSignOut, inverse = false }: {
+  profile: CurrentProfile | null;
+  status: ReturnType<typeof useAuthStatus>;
+  notices: ReturnType<typeof useNotices>;
+  onSignOut: () => void;
+  inverse?: boolean;
+}) {
+  if (status === 'loading') return <ClusterPlaceholders inverse={inverse} />;
+  if (status !== 'signed-in' || !profile) return null;
+  return (
+    <div data-testid="top-nav-cluster" className="flex items-center gap-3">
+      <ClusterSlot width="w-20"><SyncIndicator inverse={inverse} /></ClusterSlot>
+      <ClusterSlot width="w-11">
+        <NotificationBell
+          notices={notices.notices}
+          unreadCount={notices.unreadCount}
+          markChangelogSeen={notices.markChangelogSeen}
+          dismissNotice={notices.dismissNotice}
+          inverse={inverse}
+        />
+      </ClusterSlot>
+      <ClusterSlot width="w-11 sm:w-36"><ProfileMenu profile={profile} onSignOut={onSignOut} inverse={inverse} /></ClusterSlot>
+    </div>
   );
 }
 
@@ -116,30 +196,16 @@ export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const profile = useCurrentProfile();
+  const status = useAuthStatus();
   const syncStatus = useSyncStatus();
-  // Full-bleed dark layouts with their own "HOOPS DRAFT" home link and no room
-  // for an opaque bar: the home hero and every (auth) page (login/signup/pending
-  // share AuthLayout's bg-stone-950 shell). The standard cream bar left a hard
-  // seam against these and duplicated the in-page home link.
-  const isBareLayout = pathname === '/' || pathname === '/login' || pathname === '/signup' || pathname === '/pending';
+  const notices = useNotices();
+  const seasonStats = useUserSeasonStats();
+  const isGame = isGameRoute(pathname);
 
-  const handleHomeClick = (e: React.MouseEvent) => {
-    if (pathname.includes('/draft') || pathname.includes('/deckbuilder')) {
-      const isConfirmed = window.confirm('Are you sure you want to leave? Unsaved edits or ongoing drafts will be lost.');
-      if (!isConfirmed) {
-        e.preventDefault();
-      }
-    }
-  };
-
-  const getPageTitle = () => {
-    if (pathname.includes('/draft')) return 'Draft Room';
-    if (pathname.includes('/deckbuilder')) return 'Deck Builder';
-    if (pathname.includes('/season')) return 'Season';
-    if (pathname.includes('/rosters')) return 'My Rosters';
-    if (pathname.includes('/data')) return 'Database';
-    return '';
-  };
+  function goHome() {
+    if (isGame && !window.confirm(LEAVE_CONFIRM_MESSAGE)) return;
+    router.push('/');
+  }
 
   async function signOut() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -147,45 +213,89 @@ export function TopNav() {
     router.refresh();
   }
 
-  if (isBareLayout) {
-    if (!profile) return null;
+  const getPageTitle = () => {
+    if (pathname.includes('/rosters')) return 'My Rosters';
+    if (pathname.includes('/data')) return 'Database';
+    return '';
+  };
+
+  // Login/signup/pending: AuthLayout's own dark shell, no room for a bar (unchanged).
+  if (isBareRoute(pathname) && pathname !== '/') return null;
+
+  if (isGame) {
     return (
       <>
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-          <SyncIndicator dark />
-          <NotificationBell dark />
-          <ProfileMenu profile={profile} onSignOut={signOut} dark />
+        <Menu onOpen={notices.markChangelogSeen} className="fixed right-4 top-4 z-50">
+          <MenuTrigger
+            label="Game menu"
+            className="rounded-full border border-line bg-surface-raised text-ink-muted shadow-sm hover:bg-surface-sunken hover:text-ink"
+          >
+            <Settings className="h-5 w-5" />
+          </MenuTrigger>
+          <MenuPanel align="right" width="w-80">
+            <MenuSection>
+              <MenuItem onClick={goHome} icon={<Home className="h-4 w-4" />}>Home</MenuItem>
+            </MenuSection>
+            <MenuSection>
+              <div className="flex min-h-control items-center px-3"><SyncIndicator /></div>
+            </MenuSection>
+            <MenuSection>
+              <MenuLabel>Notifications</MenuLabel>
+              <NoticesList notices={notices.notices} dismissNotice={notices.dismissNotice} />
+            </MenuSection>
+            {status === 'signed-in' && profile && (
+              <MenuSection>
+                <p className="px-3 py-2 font-bold text-ink">{profile.display_name}</p>
+                <p className="truncate px-3 text-xs text-ink-subtle">{profile.email}</p>
+                {seasonStats.seasonsPlayed > 0 && (
+                  <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+                    {seasonStats.seasonsPlayed} season{seasonStats.seasonsPlayed === 1 ? '' : 's'} · {seasonStats.wins}-{seasonStats.losses} · {seasonStats.avgWins} W avg
+                  </p>
+                )}
+                <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
+                {profile.role === 'ADMIN' && (
+                  <>
+                    <MenuLabel>Admin tools</MenuLabel>
+                    <MenuItem href="/admin/users" icon={<ShieldCheck className="h-4 w-4" />}>Account approvals</MenuItem>
+                    <MenuItem href="/admin/analytics" icon={<BarChart3 className="h-4 w-4" />}>Analytics</MenuItem>
+                    <MenuItem href="/data" icon={<Wrench className="h-4 w-4" />}>Data viewer</MenuItem>
+                  </>
+                )}
+              </MenuSection>
+            )}
+            {status === 'signed-in' && profile && (
+              <MenuItem tone="danger" onClick={signOut} icon={<LogOut className="h-4 w-4" />}>Sign out</MenuItem>
+            )}
+          </MenuPanel>
+        </Menu>
+        {status === 'signed-in' && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
+      </>
+    );
+  }
+
+  if (pathname === '/') {
+    return (
+      <>
+        <div className="fixed right-4 top-4 z-50">
+          <AuthCluster profile={profile} status={status} notices={notices} onSignOut={signOut} inverse />
         </div>
-        <SyncConflictPrompt conflicts={syncStatus.conflicts} />
+        {status === 'signed-in' && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
       </>
     );
   }
 
   return (
     <>
-      <div className="fixed top-0 left-0 w-full h-14 bg-[#F5F0EA]/90 backdrop-blur-md border-b border-stone-200 z-50 flex items-center px-4 shadow-sm">
-        <Link
-          href="/"
-          onClick={handleHomeClick}
-          className="p-2 bg-white border border-stone-200 rounded-lg hover:bg-stone-50 hover:border-stone-300 transition-colors flex items-center justify-center group shrink-0"
-          title="Back to Home"
-        >
-          <Home className="w-4 h-4 text-stone-400 group-hover:text-stone-600 transition-colors" />
-        </Link>
+      <div data-testid="top-nav-bar" className="fixed left-0 top-0 z-50 flex h-nav w-full items-center border-b border-line bg-surface/90 px-4 shadow-sm backdrop-blur-md">
+        <IconButton label="Back to Home" variant="raised" onClick={goHome}>
+          <Home className="h-4 w-4" />
+        </IconButton>
         <div className="ml-4 flex-1">
-          <h1 className="text-xl tracking-tight text-stone-800 uppercase" style={{ fontFamily: 'var(--font-bebas)' }}>
-            {getPageTitle()}
-          </h1>
+          <h1 className="font-display text-xl uppercase tracking-tight text-ink">{getPageTitle()}</h1>
         </div>
-        {profile && (
-          <div className="flex items-center gap-3">
-            <SyncIndicator />
-            <NotificationBell />
-            <ProfileMenu profile={profile} onSignOut={signOut} />
-          </div>
-        )}
+        <AuthCluster profile={profile} status={status} notices={notices} onSignOut={signOut} />
       </div>
-      {profile && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
+      {status === 'signed-in' && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
     </>
   );
 }
