@@ -5,7 +5,7 @@
  * add new entries at the end. Not auto-generated from git log — keep entries short and
  * user-facing, not commit messages.
  */
-export type ChangelogIcon = 'cloud' | 'activity' | 'trophy' | 'chart' | 'bell';
+export type ChangelogIcon = 'cloud' | 'activity' | 'trophy' | 'chart' | 'bell' | 'palette' | 'layout' | 'pointer' | 'zap';
 
 export interface ChangelogHighlight {
   icon: ChangelogIcon;
@@ -36,6 +36,21 @@ export const WHATS_NEW: ChangelogEntry[] = [
       { icon: 'trophy', title: 'Champions, preserved', body: 'A Completed season locks in place, view-only, forever.' },
       { icon: 'chart', title: 'Records on the board', body: 'W-L on every roster card, career stats in your profile menu.' },
       { icon: 'bell', title: 'A bell for the buzzer', body: 'Get notified on season wraps and updates like this one.' },
+    ],
+    cta: 'Back to the court',
+  },
+  {
+    id: 'deckbuilder-hud-2026-09-15',
+    date: '2026-09-15',
+    eyebrow: 'Patch notes',
+    title: 'New court, same game',
+    subtitle: 'The whole app got one look, and the deck builder got a rebuild.',
+    highlights: [
+      { icon: 'palette', title: 'One look, everywhere', body: 'Every screen shares one design system now: bigger buttons, readable text, no more clipped cards.' },
+      { icon: 'layout', title: 'Deck builder HUD', body: 'Players, plays and identity at a glance in a slim top bar. Open it for the full team report; click anywhere to close it.' },
+      { icon: 'pointer', title: 'Click to build', body: 'Click a play or a player to place it. Dragging still works.' },
+      { icon: 'activity', title: 'Sidebars that get out of the way', body: 'Plays and roster dock or fold to a strip; the depth chart scrolls when squeezed.' },
+      { icon: 'zap', title: 'Draft room tidy-up', body: 'One Confirm pick button that stays put, smoother pack passes, and a gear menu instead of a website bar.' },
     ],
     cta: 'Back to the court',
   },

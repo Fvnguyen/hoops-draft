@@ -13,7 +13,7 @@
  * there for free (the previous hand-rolled scrim couldn't be dismissed on a short
  * viewport, D5/mobile-audit `undismissable splash`).
  */
-import { Activity, BarChart3, Bell, Cloud, Trophy, type LucideIcon } from 'lucide-react';
+import { Activity, BarChart3, Bell, Cloud, Trophy, type LucideIcon, Palette, LayoutDashboard, MousePointerClick, Zap } from 'lucide-react';
 import { useCurrentProfile } from './AuthProvider';
 import { useNotices } from '@/hooks/useNotices';
 import type { ChangelogIcon } from '@/data/whatsnew';
@@ -27,6 +27,10 @@ const ICONS: Record<ChangelogIcon, LucideIcon> = {
   trophy: Trophy,
   chart: BarChart3,
   bell: Bell,
+  palette: Palette,
+  layout: LayoutDashboard,
+  pointer: MousePointerClick,
+  zap: Zap,
 };
 
 const TITLE_ID = 'whats-new-splash-title';
@@ -59,7 +63,9 @@ export function WhatsNewSplash() {
             {latestUnseenEntry.highlights.map((h) => {
               const Icon = ICONS[h.icon];
               return (
-                <Panel key={h.title} variant="sunken" padding="sm" className="flex items-start gap-3">
+                // Dark rows on the dark dialog (the sunken variant is a LIGHT well — it
+                // made the white titles vanish, measured live 2026-09-15).
+                <Panel key={h.title} variant="inverse" padding="sm" className="flex items-start gap-3 bg-surface-inverse-deep/60 border-line-inverse shadow-none">
                   <div className="w-7 h-7 rounded-full bg-surface-inverse-deep border border-accent/30 flex items-center justify-center shrink-0 mt-0.5">
                     <Icon className="w-3.5 h-3.5 text-accent" />
                   </div>
