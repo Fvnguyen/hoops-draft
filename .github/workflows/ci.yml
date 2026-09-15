@@ -33,6 +33,12 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      - name: Style gate
+        run: npm run check:styles
+        working-directory: frontend
+        continue-on-error: true
+        # plan_ui_foundation T7: flip to blocking once the migration lands
+
       - name: Unit tests
         run: npm test
         working-directory: frontend

@@ -1,25 +1,179 @@
 @import "tailwindcss";
 
-:root {
-  --background: #F5F0EA;
-  --foreground: #1A1A1A;
-  --muted: #6B6560;
+/*
+ * plan_ui_foundation D1/D2: the design tokens.
+ *
+ * Components never name a colour. They use the semantic utilities Tailwind derives from
+ * the `@theme inline` block below (`bg-surface`, `text-ink-muted`, `border-line`,
+ * `bg-accent`, ...). Because the mapping is `inline`, each utility references the CSS
+ * variable at use time, so a theme is nothing more than an attribute on <html>:
+ *
+ *   <html data-theme="court">   the cream court (default)
+ *   <html data-theme="night">   the dark shell
+ *
+ * Game data colours (position, rarity, team) are NOT theme and live in
+ * `components/cardColors.ts`. Raw palette classes in product code fail
+ * `npm run check:styles` (D4).
+ */
+
+/* ---- theme: court (default) ------------------------------------------------------ */
+:root,
+[data-theme="court"] {
+  /* surfaces */
+  --surface: #f5f0ea;            /* page */
+  --surface-raised: #ffffff;     /* panels, cards, menus */
+  --surface-sunken: #f5f5f4;     /* wells, table stripes, inputs (stone-100) */
+  --surface-muted: #e7e5e4;      /* chips, disabled fills (stone-200) */
+  --surface-inverse: #1c1917;    /* dark hero / game shell (stone-900) */
+  --surface-inverse-deep: #0c0a09; /* deepest dark (stone-950) */
+  --surface-scrim: rgb(12 10 9 / 0.8); /* overlay backdrop */
+
+  /* text */
+  --ink: #292524;                /* body (stone-800) */
+  --ink-strong: #1c1917;         /* headings (stone-900) */
+  --ink-muted: #78716c;          /* secondary (stone-500) */
+  --ink-subtle: #a8a29e;         /* labels, eyebrows (stone-400) */
+  --ink-inverse: #fafaf9;        /* on inverse surfaces (stone-50) */
+  --ink-inverse-muted: #a8a29e;  /* muted on inverse (stone-400) */
+
+  /* lines */
+  --line: #e7e5e4;               /* stone-200 */
+  --line-strong: #d6d3d1;        /* stone-300 */
+  --line-inverse: #44403c;       /* stone-700 */
+
+  /* accent: the amber/orange brand */
+  --accent: #d97706;             /* amber-600 */
+  --accent-hover: #b45309;       /* amber-700 */
+  --accent-soft: #fef3c7;        /* amber-100 */
+  --accent-ink: #ffffff;
+  --brand-from: #eab308;         /* hero CTA gradient (yellow-500) */
+  --brand-to: #ea580c;           /* orange-600 */
+  --focus: #f59e0b;              /* focus ring (amber-500) */
+
+  /* status */
+  --positive: #059669;           /* emerald-600 */
+  --positive-strong: #10b981;    /* emerald-500 bars */
+  --positive-soft: #d1fae5;      /* emerald-100 */
+  --warn: #f59e0b;               /* amber-500 */
+  --warn-soft: #fef3c7;
+  --danger: #dc2626;             /* red-600 */
+  --danger-soft: #fef2f2;        /* red-50 */
+  --danger-line: #fecaca;        /* red-200 */
+  --info: #2563eb;               /* blue-600 */
+  --info-soft: #eff6ff;          /* blue-50 */
+
+  color-scheme: light;
 }
 
+/* ---- theme: night ----------------------------------------------------------------- */
+[data-theme="night"] {
+  --surface: #0c0a09;
+  --surface-raised: #1c1917;
+  --surface-sunken: #292524;
+  --surface-muted: #44403c;
+  --surface-inverse: #f5f0ea;
+  --surface-inverse-deep: #ffffff;
+  --surface-scrim: rgb(0 0 0 / 0.75);
+
+  --ink: #e7e5e4;
+  --ink-strong: #fafaf9;
+  --ink-muted: #a8a29e;
+  --ink-subtle: #78716c;
+  --ink-inverse: #1c1917;
+  --ink-inverse-muted: #57534e;
+
+  --line: #292524;
+  --line-strong: #44403c;
+  --line-inverse: #d6d3d1;
+
+  --accent: #fbbf24;
+  --accent-hover: #f59e0b;
+  --accent-soft: #451a03;
+  --accent-ink: #1c1917;
+  --brand-from: #facc15;
+  --brand-to: #f97316;
+  --focus: #fbbf24;
+
+  --positive: #34d399;
+  --positive-strong: #10b981;
+  --positive-soft: #064e3b;
+  --warn: #fbbf24;
+  --warn-soft: #451a03;
+  --danger: #f87171;
+  --danger-soft: #450a0a;
+  --danger-line: #7f1d1d;
+  --info: #60a5fa;
+  --info-soft: #172554;
+
+  color-scheme: dark;
+}
+
+/* ---- Tailwind mapping ------------------------------------------------------------ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* colours -> bg-*, text-*, border-*, ring-*, from-*, to-* ... */
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-surface-inverse-deep: var(--surface-inverse-deep);
+  --color-surface-scrim: var(--surface-scrim);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-inverse: var(--ink-inverse);
+  --color-ink-inverse-muted: var(--ink-inverse-muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-line-inverse: var(--line-inverse);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
+  --color-focus: var(--focus);
+  --color-positive: var(--positive);
+  --color-positive-strong: var(--positive-strong);
+  --color-positive-soft: var(--positive-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-line: var(--danger-line);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  /* legacy names still referenced by body below */
+  --color-background: var(--surface);
+  --color-foreground: var(--ink);
+
+  /* fonts */
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-bebas);
 }
 
+/* D2 scale tokens. Not `inline`: these are constants, and Tailwind can inline them.
+ *   --spacing-*  -> h-control, min-h-control, pt-nav, top-nav, size-control ...
+ *   --radius-*   -> rounded-panel, rounded-control
+ * `text-xs` is Tailwind's own 0.75rem = 12px and is the type floor; `text-[Npx]` is banned. */
+@theme {
+  --spacing-control: 44px;     /* every interactive control */
+  --spacing-control-lg: 52px;  /* primary CTAs */
+  --spacing-nav: 56px;         /* the one nav-bar height; replaces pt-[56|60|70px] */
+  --radius-panel: 12px;
+  --radius-control: 8px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--surface);
+  color: var(--ink);
   font-family: var(--font-inter), system-ui, sans-serif;
 }
 
+/* (auth) pages. Migrated to tokens in T7 group D; kept here so nothing regresses now. */
 .auth-input {
   width: 100%;
   border: 1px solid rgb(120 113 108 / 0.7);

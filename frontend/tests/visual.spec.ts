@@ -23,4 +23,30 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
     // Default is matchup tab due to currentPoss < 0
     await expect(gameView).toHaveScreenshot('game-view-matchup.png', { maxDiffPixelRatio: 0.1 });
   });
+
+  // plan_ui_foundation T2: every primitive in every variant, both themes. The gallery
+  // flips `data-theme` on <html> itself, so the second shot proves the theme switch is
+  // one attribute and not a component change.
+  test('UI primitives gallery, court and night', async ({ page }) => {
+    await page.goto('/test-ui');
+    const gallery = page.locator('#ui-primitives-test');
+    await expect(gallery).toBeVisible();
+
+    // D2: nothing interactive in the gallery is under 44px on either axis.
+    const boxes = await gallery.locator('button, a, summary').evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { label: el.textContent?.trim() || el.getAttribute('aria-label'), w: r.width, h: r.height };
+      }),
+    );
+    for (const b of boxes) {
+      expect(b.w, `${b.label} width`).toBeGreaterThanOrEqual(44);
+      expect(b.h, `${b.label} height`).toBeGreaterThanOrEqual(44);
+    }
+
+    await expect(gallery).toHaveScreenshot('ui-primitives-court.png', { maxDiffPixelRatio: 0.1 });
+    await page.getByTestId('theme-flip').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'night');
+    await expect(gallery).toHaveScreenshot('ui-primitives-night.png', { maxDiffPixelRatio: 0.1 });
+  });
 });

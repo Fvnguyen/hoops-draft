@@ -1,5 +1,6 @@
 'use client';
 import { TopKPIBand } from '../../components/TopKPIBand';
+import { UiPrimitivesGallery } from './UiPrimitivesGallery';
 import { FranchiseDashboard } from '../../components/FranchiseDashboard';
 import { GameView } from '../../components/GameView';
 import { PlayerCardData } from '../../components/PlayerCard';
@@ -154,6 +155,12 @@ export default function TestUI() {
       <div id="game-view-test" className="h-[600px]">
          <h1 className="mb-2 font-bold text-stone-400">Game View (Matchup)</h1>
          <GameView game={mockGameTheater} />
+      </div>
+
+      {/* plan_ui_foundation T2: primitives gallery, snapshotted as ui-primitives.png */}
+      <div id="ui-primitives-test">
+         <h1 className="mb-2 font-bold text-stone-400">UI Primitives</h1>
+         <UiPrimitivesGallery />
       </div>
     </div>
   );

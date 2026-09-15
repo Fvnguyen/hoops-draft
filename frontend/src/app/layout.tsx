@@ -31,6 +31,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      // plan_ui_foundation D1: the theme is this one attribute. Every semantic colour
+      // utility resolves against it (see globals.css); "night" is the other value.
+      data-theme="court"
       className={`${inter.variable} ${bebasNeue.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
