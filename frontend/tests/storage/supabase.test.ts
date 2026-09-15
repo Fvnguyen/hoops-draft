@@ -172,6 +172,30 @@ describe('SupabaseGameStore', () => {
     expect(await freshLogin.listConflicts()).toEqual([]);
   });
 
+  it('does not report a conflict on login just because the pushed roster omitted cardSetVersion', async () => {
+    // Regression: indexedDb.ts/memory.ts stamp `cardSetVersion` onto the LOCAL record on
+    // save, but saveRoster/saveDraftSession used to push the caller's pre-stamp object to
+    // the cloud. That permanently desynced local vs. remote content for any roster saved
+    // without cardSetVersion pre-set, so every later login saw a false "changed on another
+    // device" conflict for it — reported for a user (teomads/"Swagger") on every roster.
+    const roster = makeSavedRoster();
+    expect(roster.cardSetVersion).toBeUndefined();
+    await store.saveRoster(roster);
+    await flush();
+
+    // Second "device": same owner set BEFORE saving, so its local record is directly
+    // comparable to what the first device pushed (avoids the ownerId-mismatch path in the
+    // test above, which short-circuits straight to "adopt cloud row" either way).
+    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    await local.setOwnerId(OWNER);
+    await local.saveRoster(roster);
+    const freshLogin = new SupabaseGameStore(local, cloud);
+    await freshLogin.setOwnerId(OWNER);
+    await flush();
+
+    expect(await freshLogin.listConflicts()).toEqual([]);
+  });
+
   it('auto-merges a draft session pushed further on another device (no conflict)', async () => {
     const session = makeDraftSession({ pickLog: [] });
     await store.saveDraftSession(session);

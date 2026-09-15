@@ -313,8 +313,8 @@ export function PackOpener({
               <Image
                 src="/pack_2025_2026.png"
                 alt="Magic Ball 2025-26 draft pack"
-                width={448}
-                height={624}
+                width={1024}
+                height={1536}
                 priority
                 className="w-full rounded-2xl"
               />

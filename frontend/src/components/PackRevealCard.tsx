@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import type { DraftCard } from '@/engine/types';
 import { PlayerCard, PlayCard } from './PlayerCard';
 
@@ -15,11 +16,14 @@ export function PackRevealCard({ card, revealed }: { card: DraftCard; revealed: 
   if (!revealed) {
     return (
       <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl border border-line-strong bg-surface-sunken shadow-md">
-        <div className="absolute inset-2 rounded-lg border border-line-strong bg-surface-muted/70" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-muted">
-          <span className="text-3xl" aria-hidden="true">◈</span>
-          <span className="text-xs font-black uppercase tracking-[0.24em]">Magic Ball</span>
-        </div>
+        <Image
+          src="/cardback.jpg"
+          alt=""
+          fill
+          sizes="(min-width: 640px) 25vw, 50vw"
+          className="object-cover"
+          priority
+        />
       </div>
     );
   }
