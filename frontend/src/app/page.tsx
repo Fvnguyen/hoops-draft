@@ -168,14 +168,21 @@ export default function Home() {
         </div>
 
         {/* RIGHT COLUMN: Pack Preview */}
-        {/* game_canvas T0: 320 + 300 + 450px columns never fit under 1134px; the fan is
-            decorative, so it yields first instead of being clipped by overflow-x-hidden. */}
-        <div className="z-20 hidden w-[450px] shrink-0 flex-col items-center justify-center pt-8 lg:flex">
+        {/* game_canvas T1: 320 + 300 + 450px columns never fit under 1134px on a non-touch
+            narrow window, so the fan stays lg-only there. On a touch phone below lg (where
+            zoom:0.7 gives ~1186 CSS px at 830 real, ~1114 at 780 real) show it too, shrunk
+            to a 380px column — 320+300+380+64=1064, fits both. The fan cards themselves are
+            scaled from 170px to 130px (0.7647x) so the rotated-fan footprint, which scales
+            linearly with card width (card height, and the 300%-of-height pivot distance,
+            are both derived from the width via the fixed 5/7 aspect ratio), shrinks from
+            ≤450px-wide at 170px to ≤450*0.7647≈344px at 130px — comfortably inside the
+            380px column with margin to spare. */}
+        <div className="z-20 hidden w-[450px] shrink-0 flex-col items-center justify-center pt-8 lg:flex pointer-coarse:max-lg:flex! pointer-coarse:max-lg:w-[380px]! pointer-coarse:max-lg:min-w-0!">
           <h2 className="z-20 mb-8 whitespace-nowrap bg-gradient-to-b from-ink-inverse to-info-soft bg-clip-text pr-2 text-5xl font-black italic tracking-tight text-transparent drop-shadow-md" style={{ fontFamily: 'var(--font-bebas)' }}>
             DRAFT PACK
           </h2>
 
-          <div className="relative mt-4 flex h-[280px] w-full items-center justify-center">
+          <div className="relative mt-4 flex h-[280px] w-full items-center justify-center pointer-coarse:max-lg:h-[220px]!">
             {packPlayers.map((p, i) => {
               // Fan the cards out with a visible spread; hovering lifts just
               // that card above its neighbours so its name/stats are legible.
@@ -186,7 +193,7 @@ export default function Home() {
               return (
                 <div
                   key={p.id}
-                  className="absolute top-0 w-[170px] cursor-pointer transition-all duration-500 hover:z-50 hover:-translate-y-8 drop-shadow-xl"
+                  className="absolute top-0 w-[170px] cursor-pointer transition-all duration-500 hover:z-50 hover:-translate-y-8 drop-shadow-xl pointer-coarse:max-lg:w-[130px]!"
                   style={{
                     transform: `rotate(${angle}deg)`,
                     transformOrigin: '50% 300%',

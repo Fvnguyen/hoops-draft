@@ -196,8 +196,10 @@ What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `ga
 `season_lifecycle_notifications`, `ui_foundation`, and `deckbuilder_ux` are done;
 `mobile_responsive` is superseded by `game_canvas`, built 2026-09-16: phones get CSS
 `zoom: 0.7` (`globals.css`), full-height shells use `h-dvh-z`, Home/draft fit with no
-scroll, and `tests/mobile-audit.spec.ts` encodes the per-screen rules — only T5, the
-owner's real-device pass, is open (judge the small later-pick cards there, plan D4); the
+scroll, `tests/mobile-audit.spec.ts` encodes the per-screen rules, and the owner's first
+feedback round is in (plan D6: side-by-side season, tap-to-slot basic plays, long-press
+card preview, two-line names, static reveal face). Open: T2 phone-card design (canvas
+sign-off first) and T5, the owner's real-device pass; the
 Supabase dashboard refresh-token setting is still an owner action). The 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.

@@ -1,7 +1,8 @@
 # Plan: game_canvas
 
 File: `docs/plans/plan_game_canvas_2026-09-15.md`. Status: **built 2026-09-16 (zoom
-mechanism + fit-to-screen rules); open: T5 owner real-device pass.**
+mechanism + fit-to-screen rules + feedback round 1); open: T2 phone card design, T5
+owner real-device pass.**
 Sequence: 3 in `docs/ROADMAP.md` (replaces the remaining scope of `mobile_responsive`;
 its T1-T4/T6 work and tests are kept as-is). Depends on: `ui_foundation` (done),
 `deckbuilder_ux` (done). Files owned: `frontend/src/app/globals.css` (zoom rule, `dvh-z`
@@ -61,6 +62,23 @@ three buttons on a 385px-tall phone. That reopened the idea as scaling, not clip
   phones (mobile-only UI, needs a design pass).
 - D5 **Draft header:** both 256px side blocks appear from `lg` together, seats never
   shrink, bot names truncate at 96px, bar and chevrons scale under `lg`.
+- D6 **Owner feedback round 1 (2026-09-16), what landed:** season schedule + standings
+  side by side from `md` (`md:grid-cols-[3fr_2fr]`, one-line rows at `min-h-control`);
+  Basic Offense/Defense tiles click/tap to auto-slot via the engine's
+  `assignPlayToFirstOpenSlot` (drag kept, drag never double-fires the click); home fan
+  shown on phones (380px column, 130px cards); card names wrap to two lines at the 12px
+  floor on cards under 200px (`@max-[200px]:line-clamp-2`); long-press (450ms, held
+  still) opens the screen-centred preview on Player and Play cards and swallows the
+  following click, short tap keeps its flip/select meaning; pack reveal renders the
+  STATIC front while the outer flip animates (the nested flippable card's own 3D context
+  is what painted text through the card backs) and swaps to the interactive card in the
+  picking phase. Merged `claude/swagger-cloud-version-chip-b28092` (cloud save fix, card
+  back art, new pack image).
+- D7 **Phone card (open, design-first).** The owner wants a wider "phone card" for the
+  draft room so the unused horizontal space carries the name and badges. That is a new
+  card variant, not a class tweak: it goes through a canvas mock-up and sign-off before
+  implementation (see memory/workflow: design-first). Until then the two-row 5/7 grid
+  stands.
 
 ## History
 
@@ -75,7 +93,10 @@ three buttons on a 385px-tall phone. That reopened the idea as scaling, not clip
 - T1 zoom + `dvh-z` + fit-to-screen — **done 2026-09-16**: audit 0 findings on
   `phone-landscape`, `phone-narrow`, `tablet-landscape`; chromium 40/40; desktop
   snapshots unchanged.
-- T5 **Real-device pass** (owner) — the only open task. S24+/S26+ in-browser and
+- T2 **Phone card design** (owner + design canvas) — mock the wider draft-room card at
+  830x385, sign off, then implement as a `PlayerCard` variant used by the pack spread
+  and draft grid on phones. Blocks nothing else.
+- T5 **Real-device pass** (owner) — the only open verification task. S24+/S26+ in-browser and
   installed: Home, Draft (intro, pick 1, pick 2+), Deck builder, Game, Season. Judge D4
   on the device. Clean = `/roadmap done game_canvas`.
 

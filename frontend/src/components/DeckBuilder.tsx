@@ -210,6 +210,9 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // Measured via ResizeObserver (not viewport media queries) on the builder's own
   // `@container` shell so the tiers match whatever the shell is actually given.
   const shellRef = useRef<HTMLDivElement>(null);
+  // Basic-play tiles are draggable (pointer devices) AND clickable (touch, keyboard);
+  // this guards the click path from also firing right after a genuine drag+drop.
+  const basicPlayDragRef = useRef(false);
   const [containerWidth, setContainerWidth] = useState(1600);
   useEffect(() => {
     const el = shellRef.current;
@@ -584,6 +587,37 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       return;
     }
     removeCardFromSource(play.id, currentZone);
+    setActivePlays(prev => {
+      const next = [...prev];
+      next[result.slotIndex] = play;
+      return next;
+    });
+  };
+
+  /** Tap/click path for the Basic Offense / Basic Defense tiles (no drag-and-drop
+   *  on touch devices). Builds the same synthetic Play `handleDragStart` builds for
+   *  these tiles, then goes through the shared `assignPlayToFirstOpenSlot` rule —
+   *  same first-open-slot placement and "slots full" toast as `handlePlayClick`
+   *  uses for a Roster play. The synthetic id is minted fresh per click, so it
+   *  isn't in `playSlotsState()`'s `playsById` yet; it's added inline. */
+  const handleBasicPlayClick = (kind: 'offense' | 'defense') => {
+    const play: Play = {
+      type: 'Play',
+      id: `basic-${kind}-${Date.now()}`,
+      name: kind === 'offense' ? 'Basic Offense' : 'Basic Defense',
+      rarity: 'Common',
+      playCategory: 'basic',
+      mechanicText: kind === 'offense' ? 'Minor boost to all Offensive Badges.' : 'Minor boost to all Defensive Badges.',
+      badges: [],
+      imageUrl: '',
+    } as Play;
+    const state = playSlotsState();
+    state.playsById[play.id] = { id: play.id, side: kind };
+    const result = assignPlayToFirstOpenSlot(state, play.id);
+    if (!result.ok) {
+      toast.show(assignPlayFailureMessage(play, result.reason), { tone: 'error' });
+      return;
+    }
     setActivePlays(prev => {
       const next = [...prev];
       next[result.slotIndex] = play;
@@ -1160,8 +1194,25 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         <h3 className="text-sm font-bold uppercase tracking-widest text-ink-muted mb-3">Basic Plays</h3>
         <div className="flex gap-2">
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Add Basic Offense to the first open play slot"
             draggable
-            onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+            onDragStart={(e) => {
+              basicPlayDragRef.current = true;
+              handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays');
+            }}
+            onDragEnd={() => { setTimeout(() => { basicPlayDragRef.current = false; }, 0); }}
+            onClick={() => {
+              if (basicPlayDragRef.current) return;
+              handleBasicPlayClick('offense');
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleBasicPlayClick('offense');
+              }
+            }}
             title="Adds a basic play card with no requirements"
             className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-accent hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
           >
@@ -1169,8 +1220,25 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Offense</span>
           </div>
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Add Basic Defense to the first open play slot"
             draggable
-            onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+            onDragStart={(e) => {
+              basicPlayDragRef.current = true;
+              handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays');
+            }}
+            onDragEnd={() => { setTimeout(() => { basicPlayDragRef.current = false; }, 0); }}
+            onClick={() => {
+              if (basicPlayDragRef.current) return;
+              handleBasicPlayClick('defense');
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleBasicPlayClick('defense');
+              }
+            }}
             title="Adds a basic play card with no requirements"
             className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-info hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
           >

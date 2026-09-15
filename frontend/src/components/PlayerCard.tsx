@@ -4,6 +4,32 @@ import { useRef, useState, type ReactNode, type JSX } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { useHoverPreview } from './useHoverPreview';
+
+/** game_canvas (owner): touch devices have no hover, so a long-press (held still for
+ *  `LONG_PRESS_MS`) shows the screen-centred preview while the finger stays down; a
+ *  short tap keeps its existing meaning (flip / select). Any movement cancels it, and a
+ *  press that opened the preview swallows the following click so it never also picks. */
+const LONG_PRESS_MS = 450;
+function useLongPressPreview() {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+  const fired = useRef(false);
+  const clear = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
+  const onTouchStart = () => {
+    fired.current = false;
+    clear();
+    timer.current = window.setTimeout(() => { timer.current = null; fired.current = true; setOpen(true); }, LONG_PRESS_MS);
+  };
+  const onTouchMove = () => { clear(); setOpen(false); };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    clear();
+    if (fired.current) { e.preventDefault(); setOpen(false); }
+  };
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (fired.current) { e.stopPropagation(); e.preventDefault(); fired.current = false; }
+  };
+  return { open, fired, handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchMove, onClickCapture } };
+}
 import { ClipboardList, MoreHorizontal, X } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard, Trait } from '@/engine/types';
@@ -401,7 +427,9 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
       <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-raised/50 backdrop-blur-sm shadow-sm">
         <RarityGem rarity={player.rarity} size="lg" />
         <div className="flex-1 min-w-0 flex flex-col leading-tight">
-          <span className={`font-bold tracking-tight text-ink-strong uppercase truncate ${player.player.name.length > 18 ? 'text-xs' : 'text-sm'}`}>{player.player.name}</span>
+          {/* game_canvas (owner): on a narrow card the name wraps to two lines at the
+              12px floor instead of truncating to two letters; wide cards keep one line. */}
+          <span className={`font-bold tracking-tight text-ink-strong uppercase truncate @max-[200px]:text-xs @max-[200px]:whitespace-normal @max-[200px]:line-clamp-2 @max-[200px]:leading-tight ${player.player.name.length > 18 ? 'text-xs' : 'text-sm'}`}>{player.player.name}</span>
           <span className="text-xs font-semibold text-ink-muted truncate">{player.player.team} · {player.player.age}Y</span>
         </div>
         <PositionIcon position={player.player.position} />
@@ -532,6 +560,7 @@ export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
 }
 
 export function PlayerCard({ player, onClick, isSelected = false, compact = false, size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; size?: 'sm' | 'md' }) {
+  const longPress = useLongPressPreview();
   const [isFlipped, setIsFlipped] = useState(false);
   // Portalled hover preview needs real hover state, not CSS `group-hover` — a portal
   // renders outside this element's DOM subtree so the CSS selector can't reach it.
@@ -595,8 +624,13 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
       onMouseLeave={() => setIsFlipped(false)}
-      onTouchStart={() => setIsFlipped(f => !f)}
+      onTouchStart={longPress.handlers.onTouchStart}
+      onTouchMove={longPress.handlers.onTouchMove}
+      onTouchCancel={longPress.handlers.onTouchCancel}
+      onTouchEnd={(e) => { const wasLong = longPress.fired.current; longPress.handlers.onTouchEnd(e); if (!wasLong) setIsFlipped(f => !f); }}
+      onClickCapture={longPress.handlers.onClickCapture}
     >
+      {longPress.open && <PlayerHoverPreview player={player} />}
       <motion.div
         className="w-full h-full relative"
         style={{ transformStyle: 'preserve-3d' }}
@@ -804,6 +838,7 @@ export function RoleTag({ playName, roleName, side }: { playName: string; roleNa
 
 export function PlayCard({ play, onClick, isSelected = false, compact = false, evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
   const [isFlipped, setIsFlipped] = useState(false);
+  const longPress = useLongPressPreview();
 
   // Requirements come from the synergy engine, never from the legacy `play.badges`
   // flavour text. Without an `evaluation` (draft room, home page) they render neutral;
@@ -847,8 +882,13 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
       onMouseLeave={() => setIsFlipped(false)}
-      onTouchStart={() => setIsFlipped(f => !f)}
+      onTouchStart={longPress.handlers.onTouchStart}
+      onTouchMove={longPress.handlers.onTouchMove}
+      onTouchCancel={longPress.handlers.onTouchCancel}
+      onTouchEnd={(e) => { const wasLong = longPress.fired.current; longPress.handlers.onTouchEnd(e); if (!wasLong) setIsFlipped(f => !f); }}
+      onClickCapture={longPress.handlers.onClickCapture}
     >
+      {longPress.open && <PlayHoverPreview play={play} />}
 
       <motion.div
         className="w-full h-full relative"

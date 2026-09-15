@@ -323,11 +323,11 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-6">
           {/* Schedule */}
-          <div className="lg:col-span-2">
+          <div>
             <h2 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-3">Schedule</h2>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5">
               {season.schedule.map((entry, idx) => {
                 const humanMatch = humanMatchup(entry);
                 if (!humanMatch) return null;
@@ -349,39 +349,39 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
                 return (
                   <div
                     key={idx}
-                    className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                    className={`flex items-center gap-2 min-h-control px-3 py-1.5 rounded-lg border transition-colors ${
                       isNext ? 'border-positive bg-positive-soft' :
                       entry.played ? 'border-line bg-surface-raised' :
                       'border-line bg-surface-sunken opacity-60'
                     } ${(entry.played || isPlayable) ? 'cursor-pointer hover:border-line-strong' : ''}`}
                     onClick={() => (entry.played || isPlayable) ? handlePlayGame(idx) : null}
                   >
-                    <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold text-ink-muted">
+                    <div className="shrink-0 w-6 h-6 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold text-ink-muted">
                       {idx + 1}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-ink-strong">
+                    <div className="flex-1 min-w-0 flex items-baseline gap-2 truncate">
+                      <span className="text-xs font-bold text-ink-strong truncate">
                         {isHome ? 'vs' : '@'} {oppName}
-                      </div>
-                      <div className="text-xs text-ink-subtle uppercase">
+                      </span>
+                      <span className="text-xs text-ink-subtle uppercase shrink-0">
                         Game {idx + 1} • {isHome ? 'Home' : 'Away'}
-                      </div>
+                      </span>
                     </div>
                     {entry.played && result ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         <span className={`text-xs font-black uppercase px-2 py-0.5 rounded ${won ? 'bg-positive-soft text-positive' : 'bg-danger-soft text-danger'}`}>
                           {won ? 'W' : 'L'}
                         </span>
-                        <span className="text-sm font-bold text-ink-muted font-mono">
+                        <span className="text-xs font-bold text-ink-muted font-mono">
                           {humanScore}-{oppScore}
                         </span>
                       </div>
                     ) : isPlayable ? (
-                      <div className="flex items-center gap-1 text-positive font-bold text-sm">
-                        <Swords className="w-4 h-4" /> Play <ArrowRight className="w-3 h-3" />
+                      <div className="flex items-center gap-1 text-positive font-bold text-xs shrink-0">
+                        <Swords className="w-3.5 h-3.5" /> Play <ArrowRight className="w-3 h-3" />
                       </div>
                     ) : (
-                      <span className="text-xs text-ink-subtle uppercase font-bold">Upcoming</span>
+                      <span className="text-xs text-ink-subtle uppercase font-bold shrink-0">Upcoming</span>
                     )}
                   </div>
                 );

@@ -402,7 +402,7 @@ export function PackOpener({
                         <PackRevealCard card={card} revealed={false} />
                       </div>
                       <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
-                        <PackRevealCard card={card} revealed />
+                        <PackRevealCard card={card} revealed interactive={phase === 'picking'} />
                       </div>
                     </motion.div>
                   </div>

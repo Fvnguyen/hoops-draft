@@ -168,6 +168,9 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
         // A textless box is art (object-cover headshots, gradient/CSS-drawn court art):
         // a crop there loses the player nothing.
         if (!(el.textContent || '').trim()) continue;
+        // A line-clamped name is a deliberate truncation (like text-overflow: ellipsis).
+        const clamp = (style as CSSStyleDeclaration & { webkitLineClamp?: string }).webkitLineClamp;
+        if (clamp && clamp !== 'none') continue;
         if (el.scrollHeight > el.clientHeight + 4 && el.clientHeight > 0) {
           findings.push({
             screen,
