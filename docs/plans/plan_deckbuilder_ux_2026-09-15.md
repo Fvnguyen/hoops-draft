@@ -1,6 +1,6 @@
 # Plan: deckbuilder_ux
 
-File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: in progress (wave 1 done 2026-09-15; T1 d-h awaiting sign-off)
+File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: in progress (waves 0-1 done 2026-09-15; all artboards signed; wave 2 running)
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3, tokens + primitives).
 Blocks: mobile_responsive T6 (deck-builder rows). Files owned: `DeckBuilder.tsx`,
 `DepthSlotColumn.tsx`, `PlayPanel.tsx`, `AssignPopover.tsx`, `TopKPIBand.tsx`,
@@ -36,9 +36,11 @@ and signed off by the owner before any agent implements it.
   `Identity: <name|none>`; the radar's peak and valley as words (`▲ Playmaking`,
   `▼ 3PT`); a shot-diet mini (`RIM 34 · MID 29 · 3PT 37`); one 44px expand control.
   Band height 56px (`h-nav`) so it lines up with the game-route gear. The counts now
-  live here, so the depth chart's "ACTIVE ROSTER · Players n/12 · …" header row goes;
-  its actions (Clear, Save, Save & play season) move to the depth-chart title row
-  (artboard d). Each chip is a
+  live here, so the depth chart's "ACTIVE ROSTER · Players n/12 · …" header row goes.
+  Actions live in the band's right cluster (signed): Clear and Save as 44px
+  `IconButton`s (label + disabled reason as tooltip) and one text primary `Save & play
+  season` that never wraps; the next-action hint is the disabled Save's tooltip; the
+  shot-diet mini renders only from 1440 (container width). Each chip is a
   44px `Button variant=ghost` that expands the band to its section. Colours: tokens
   only; positive/danger for peak/valley; chart series from `cardColors`/CSS variables.
 - D3 **Click assigns, drag stays.** `engine/deckbuilder.ts` gains
@@ -52,11 +54,13 @@ and signed off by the owner before any agent implements it.
   empty space clears. Double-click never opens or resizes any panel.
 - D4 **Three container tiers, no viewport media queries.** On DeckBuilder's existing
   `@container`: `compact` < 960px, `regular` 960-1279px, `wide` >= 1280px (cqw-based via
-  `@min-[...]`). compact: plays panel is a 44px-tabbed drawer over the depth chart,
-  depth chart scrolls horizontally with `snap-x`, columns min 148px, roster sidebar is an
-  overlay drawer. regular: plays panel docked `w-[clamp(200px,20cqw,280px)]` (as now),
-  depth chart 5 columns, roster sidebar collapsed to its 48px strip by default. wide:
-  everything docked, roster `w-[clamp(280px,24cqw,400px)]`. Starter card keeps
+  `@min-[...]`). Plays and Roster are the same kind of sidebar (artboards e, g): docked
+  (plays 280px; roster `clamp(280px,24cqw,400px)`) or a 48px strip with a 44px expand
+  control, vertical label and count badges (the plays strip's three dots read slot
+  state). compact: both are overlay drawers; the depth chart scrolls horizontally with
+  `snap-x`, columns min 148px. regular (< 1440): the sidebars are mutually exclusive —
+  docking one collapses the other to its strip (owner call); default plays docked,
+  roster strip. wide (>= 1440): both may dock. The user's toggle persists per sidebar. Starter card keeps
   `aspect-[5/7]`; bench rows are exactly `h-control`. Card and tile type never drops
   below `text-xs`; what does not fit is dropped per ui_foundation D5, not shrunk.
 - D5 **Play tiles replace play cards inside the builder.** Per artboard (c): fixed
@@ -89,11 +93,14 @@ toggle UI. Any change to how plays resolve in `engine/game.ts`.
   `DeckBuilder.tsx`, `AssignPopover.tsx`, `tests/unit/deckbuilder-assign.test.ts` (new).
   Done: unit tests for both helpers (legal, full, wrong side, duplicate); the click flows
   of D3 work in the browser; drag still passes existing tests.
-- T3 **Collapsed + expanded band** (mid). Files: `TopKPIBand.tsx`, `DonutChart.tsx`,
-  `RadarChart.tsx`. Done: matches artboards (a)/(b); band is 56px collapsed; chips
-  expand to their section; snapshot on `/test-ui`.
-- T4 **Container tiers** (mid). Files: `DeckBuilder.tsx`, `DepthSlotColumn.tsx`. Done:
-  D4 tiers verified by `deckbuilder.spec.ts` at 900/1100/1440; screenshots at each.
+- T3 **Collapsed + expanded band** (mid). Done 2026-09-15 (wave 1). T3b (wave 2): the
+  band takes `actions` (`{ onClear, onSave, onSaveAndPlay, canSave, canPlay,
+  disabledReason? }`) and renders them per the amended (a)/(b); shot-diet mini gated to
+  >= 1440 by container query. Done: snapshots updated; every control >= 44px.
+- T4 **Tiers, sidebars, depth chart** (mid). Files: `DeckBuilder.tsx`,
+  `DepthSlotColumn.tsx`, `tests/deckbuilder.spec.ts` (new). Builds artboards (d)-(h):
+  removes the ACTIVE ROSTER row, wires the band's `actions`, plays sidebar + strips,
+  D4 tiers with the < 1440 exclusivity. Done: spec green at 900/1100/1440.
 - T5 **Play tiles** (mid). Files: `PlayerCard.tsx` (play sections), `PlayPanel.tsx`.
   Done: matches artboard (c); roster-list and slot variants; snapshot on `/test-ui`.
 - T6 **Spec, snapshots, re-audit** (driver). Files: `tests/deckbuilder.spec.ts`,
@@ -102,7 +109,8 @@ toggle UI. Any change to how plays resolve in `engine/game.ts`.
 ## Parallelization
 
 Wave 0: T1 (driver + owner sign-off; nothing else starts before it). Wave 1 (parallel,
-disjoint files): T2, T3, T5. Wave 2: T4 (needs T2's DeckBuilder refactor landed).
+disjoint files): T2, T3, T5. Wave 2 (parallel): T3b (TopKPIBand) and T4 (DeckBuilder,
+DepthSlotColumn) against the `actions` prop contract fixed by the driver.
 Wave 3: T6. Agents never run git; the driver verifies and commits each wave.
 
 ## Recommended model tier
