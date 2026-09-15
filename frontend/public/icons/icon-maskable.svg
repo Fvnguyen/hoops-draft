@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable variant: full-bleed background, basketball inset inside the ~80% safe-zone circle -->
+  <defs>
+    <linearGradient id="ballMask" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#facc15" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="#0c0a09" />
+  <circle cx="256" cy="256" r="150" fill="url(#ballMask)" />
+  <g fill="none" stroke="#1c1917" stroke-width="10" stroke-linecap="round">
+    <path d="M256 106 V406" />
+    <path d="M106 256 H406" />
+    <path d="M138 154 C 202 202, 202 310, 138 358" />
+    <path d="M374 154 C 310 202, 310 310, 374 358" />
+  </g>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#451a03" stroke-width="4" opacity="0.4" />
+</svg>

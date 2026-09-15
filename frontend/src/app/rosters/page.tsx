@@ -287,11 +287,11 @@ export default function RostersPage() {
                     {/* Starting Lineup */}
                     <div className="min-w-[320px] flex-1">
                       <h3 className="mb-4 text-center text-xs font-bold uppercase tracking-widest text-ink-muted">Starting Lineup</h3>
-                      <div className="grid grid-cols-5 gap-4">
+                      <div className="flex gap-4">
                         {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
                           const starter = getStarter(rosterObj, pos);
                           return (
-                            <div key={pos} className="relative flex flex-col gap-2">
+                            <div key={pos} className="relative flex flex-1 min-w-[148px] flex-col gap-2">
                               <div className="text-center text-sm font-black text-ink">{pos}</div>
                               {starter ? (
                                 <PlayerCard player={starter} />

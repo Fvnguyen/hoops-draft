@@ -1,10 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Bebas_Neue, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { TopNav } from '@/components/TopNav';
 import { WhatsNewSplash } from '@/components/WhatsNewSplash';
 import { StorageProvider } from '@/components/StorageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
+import { OrientationGate } from '@/components/OrientationGate';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -25,6 +26,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Hoops Draft",
   description: "The Ultimate Basketball TCG Experience",
+  icons: {
+    apple: '/icons/icon.svg',
+  },
+  appleWebApp: {
+    title: 'Hoops Draft',
+    statusBarStyle: 'black-translucent',
+  },
+  // plan_mobile_responsive D3: iOS Safari only honours the legacy `apple-*` names,
+  // not the standard mobile-web-app-capable tag appleWebApp above already emits.
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
+};
+
+// Next 16 already emits `width=device-width, initial-scale=1` by default; only add
+// what that default is missing (safe-area insets for notches/gesture bars on install).
+export const viewport: Viewport = {
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -41,6 +60,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <StorageProvider>
             <TopNav />
             <WhatsNewSplash />
+            <OrientationGate />
             {children}
           </StorageProvider>
         </AuthProvider>
