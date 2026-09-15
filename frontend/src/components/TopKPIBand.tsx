@@ -12,10 +12,25 @@ import {
   type ArchetypeSelection,
   type ArchetypeTier,
 } from '../engine/archetypes';
+import { Trash2, Save as SaveIcon } from 'lucide-react';
 import { DonutChart } from './DonutChart';
 import { RadarChart, peakValleyAxes } from './RadarChart';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
+
+/** D2 wave 2 (plan_deckbuilder_ux T3b): the band's right-cluster actions, wired by the
+ *  caller (DeckBuilder, T4). Fixed contract — names must match exactly. */
+export interface KpiBandActions {
+  onClear: () => void;
+  onSave: () => void;
+  onSaveAndPlay: () => void;
+  /** Save enabled. */
+  canSave: boolean;
+  /** Save & play season enabled. */
+  canPlay: boolean;
+  /** e.g. "Need 5 starters" — shown as a tooltip on the disabled controls. */
+  disabledReason?: string;
+}
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
 
@@ -133,6 +148,7 @@ export function TopKPIBand({
   playsAssigned,
   playsTarget = 3,
   defaultExpanded,
+  actions,
 }: {
   identity: RosterIdentity;
   shotDiet: TeamShotProfile;
@@ -154,6 +170,10 @@ export function TopKPIBand({
   /** Test-only override of the initial expanded state, bypassing localStorage (used by
    *  /test-ui to snapshot both the collapsed and expanded band). Leave unset in product code. */
   defaultExpanded?: boolean;
+  /** D2 wave 2: the band's right-cluster actions (Clear / Save / Save & play season).
+   *  Renders in both the collapsed row and the expanded band's header row; absent = the
+   *  cluster renders nothing (existing callers keep working). */
+  actions?: KpiBandActions;
 }) {
   const [collapsed, setCollapsed] = useState(() => (defaultExpanded === undefined ? true : !defaultExpanded));
   useEffect(() => {
@@ -209,16 +229,6 @@ export function TopKPIBand({
   const playsDot = playsAssigned !== undefined ? countDotState(playsAssigned, playsTarget) : 'hollow';
   const identityDot: DotState = selectedIds.size > 0 ? 'positive' : 'hollow';
 
-  // First incomplete item, in fixed priority order (D2: "one muted next-action hint").
-  let nextActionHint: string | undefined;
-  if (activePlayers.length < ROSTER_SIZE) {
-    nextActionHint = `Need ${ROSTER_SIZE - activePlayers.length} more players`;
-  } else if (playsAssigned !== undefined && playsAssigned < playsTarget) {
-    nextActionHint = `Need ${playsTarget - playsAssigned} more plays`;
-  } else if (selectedIds.size === 0) {
-    nextActionHint = 'Pick an identity';
-  }
-
   const chipRow = (
     <div className="h-nav shrink-0 flex items-center gap-2 pl-4 pr-16 box-border">
       <div className="flex items-center gap-1">
@@ -242,17 +252,50 @@ export function TopKPIBand({
         <span className="inline-flex items-center gap-1.5 text-danger">▼ {valley}</span>
       </div>
 
-      <Divider />
-
-      <div className="flex items-center gap-3.5 px-2 text-xs font-bold uppercase tracking-wide text-ink-muted">
-        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-danger shrink-0" aria-hidden="true" />Rim <strong className="text-ink-strong font-black">{rimPct}</strong></span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn shrink-0" aria-hidden="true" />Mid <strong className="text-ink-strong font-black">{midPct}</strong></span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-info shrink-0" aria-hidden="true" />3PT <strong className="text-ink-strong font-black">{perPct}</strong></span>
+      {/* D2: the shot-diet mini renders only from a 1440px container — below that it
+          lives in the expanded band's detail row instead. */}
+      <div className="hidden @min-[1440px]:flex items-center shrink-0">
+        <Divider />
+        <div className="flex items-center gap-3.5 px-2 text-xs font-bold uppercase tracking-wide text-ink-muted">
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-danger shrink-0" aria-hidden="true" />Rim <strong className="text-ink-strong font-black">{rimPct}</strong></span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn shrink-0" aria-hidden="true" />Mid <strong className="text-ink-strong font-black">{midPct}</strong></span>
+          <span className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-info shrink-0" aria-hidden="true" />3PT <strong className="text-ink-strong font-black">{perPct}</strong></span>
+        </div>
       </div>
 
       <div className="flex-1" />
 
-      {nextActionHint && <span className="text-xs text-ink-subtle font-medium">{nextActionHint}</span>}
+      {actions && (
+        <>
+          <IconButton
+            label="Clear roster"
+            variant="ghost"
+            onClick={actions.onClear}
+            className="shrink-0"
+          >
+            <Trash2 size={20} aria-hidden="true" />
+          </IconButton>
+          <IconButton
+            label={actions.canSave ? 'Save' : `Save — ${actions.disabledReason}`}
+            variant="raised"
+            disabled={!actions.canSave}
+            onClick={actions.onSave}
+            className="shrink-0"
+          >
+            <SaveIcon size={20} aria-hidden="true" />
+          </IconButton>
+          <Button
+            variant="primary"
+            size="md"
+            className="whitespace-nowrap shrink-0"
+            disabled={!actions.canPlay}
+            title={!actions.canPlay ? actions.disabledReason : undefined}
+            onClick={actions.onSaveAndPlay}
+          >
+            Save &amp; play season
+          </Button>
+        </>
+      )}
 
       <IconButton
         label={collapsed ? 'Expand team report' : 'Collapse team report'}

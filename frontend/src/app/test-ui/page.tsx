@@ -1,5 +1,5 @@
 'use client';
-import { TopKPIBand } from '../../components/TopKPIBand';
+import { TopKPIBand, type KpiBandActions } from '../../components/TopKPIBand';
 import { UiPrimitivesGallery } from './UiPrimitivesGallery';
 import { FranchiseDashboard } from '../../components/FranchiseDashboard';
 import { GameView } from '../../components/GameView';
@@ -162,10 +162,19 @@ const motionPlay: Play = {
 };
 const motionEvaluation = evaluatePlay(motionPlay, {});
 
+const mockKpiBandActions: KpiBandActions = {
+  onClear: () => {},
+  onSave: () => {},
+  onSaveAndPlay: () => {},
+  canSave: false,
+  canPlay: false,
+  disabledReason: 'Need 5 starters',
+};
+
 export default function TestUI() {
   return (
     <div className="p-8 bg-stone-100 min-h-screen flex flex-col gap-8">
-      <div id="kpi-band-test">
+      <div id="kpi-band-test" className="@container">
          <h1 className="mb-2 font-bold text-stone-400">Top KPI Band (collapsed)</h1>
          <div className="border border-stone-200">
             <TopKPIBand
@@ -174,6 +183,7 @@ export default function TestUI() {
               depthChart={mockDepthChart}
               playsAssigned={1}
               playsTarget={3}
+              actions={mockKpiBandActions}
               bonuses={{
                 offenseMods: emptyModifiers(),
                 defenseMods: emptyModifiers(),
@@ -186,7 +196,7 @@ export default function TestUI() {
          </div>
       </div>
 
-      <div id="kpi-band-expanded-test">
+      <div id="kpi-band-expanded-test" className="@container">
          <h1 className="mb-2 font-bold text-stone-400">Top KPI Band (expanded)</h1>
          <div className="border border-stone-200">
             <TopKPIBand
@@ -196,6 +206,7 @@ export default function TestUI() {
               depthChart={mockDepthChart}
               playsAssigned={1}
               playsTarget={3}
+              actions={mockKpiBandActions}
               bonuses={{
                 offenseMods: emptyModifiers(),
                 defenseMods: emptyModifiers(),

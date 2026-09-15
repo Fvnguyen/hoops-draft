@@ -48,6 +48,9 @@ export interface DepthSlotRoleTag {
 
 export interface DepthSlotColumnProps {
   column: DepthColumn;
+  /** Extra classes on the column's own root (deckbuilder_ux D4: the compact tier
+   *  sizes columns for horizontal snap-scrolling instead of a 5-up grid). */
+  className?: string;
   /** Occupants in slot order; index 0 is the starter. At most `SLOTS_PER_COLUMN`. */
   players: PlayerCardData[];
   /** True while a bench player is selected or a player card is being dragged. */
@@ -80,6 +83,7 @@ const SLOT_LABELS = ['Starter', 'Bench 1', 'Bench 2', 'Bench 3'];
 
 export function DepthSlotColumn({
   column,
+  className,
   players,
   selectionActive = false,
   pendingFit,
@@ -111,14 +115,14 @@ export function DepthSlotColumn({
   return (
     <div
       data-testid={`depth-column-${column}`}
-      className={`flex flex-col gap-1.5 rounded-panel p-1.5 border transition-colors min-h-[300px] min-w-0 ${tint}`}
+      className={`flex flex-col gap-2 rounded-panel px-2 pb-2 border transition-colors min-h-[300px] min-w-0 ${tint} ${className ?? ''}`}
     >
-      {/* 3px position-colour accent + column header */}
+      {/* 6px position-colour bar (deckbuilder_ux artboard d) + column header */}
       <div
-        className="h-[3px] w-full rounded-full shrink-0 pointer-events-none"
+        className="h-1.5 w-[calc(100%+16px)] -mx-2 shrink-0 pointer-events-none rounded-b"
         style={{ background: `linear-gradient(to right, ${posC1}, ${posC2})` }}
       />
-      <div className="text-center font-black text-ink-muted text-sm pb-1 pointer-events-none shrink-0">
+      <div className="text-center font-black text-ink text-sm tracking-widest pointer-events-none shrink-0">
         {column}
       </div>
 
@@ -135,17 +139,32 @@ export function DepthSlotColumn({
           const blockedReason = rosterFull ? 'Roster full (12)' : undefined;
           const disabled = !isNextFree;
           const popoverOpen = openPopoverSlot === slotIndex;
+          // deckbuilder_ux artboard d: a pending placement highlights an eligible
+          // slot (positive for a natural fit, warn for an adjacent one) or fades
+          // one it can't land in (opacity-50) instead of just leaving it at rest.
+          const isNatural = pendingFit === 'natural';
+          const isAdjacent = pendingFit === 'adjacent';
+          const eligible = isNextFree && !columnFull && !blockedReason && (isNatural || isAdjacent);
+          const ineligibleWhileSelecting = selectionActive && isNextFree && !eligible;
           const tone = disabled
             ? 'border-line text-ink-subtle bg-surface-sunken cursor-not-allowed'
             : blockedReason
               ? 'border-line-strong text-ink-subtle bg-surface-raised hover:border-danger hover:text-danger cursor-pointer'
-              : 'border-line-strong text-ink-muted bg-surface-raised hover:border-positive hover:text-positive hover:bg-positive-soft cursor-pointer';
+              : eligible
+                ? isNatural
+                  ? 'border-positive bg-positive-soft text-positive cursor-pointer'
+                  : 'border-warn bg-warn-soft text-warn cursor-pointer'
+                : 'border-line-strong text-ink-muted bg-surface-raised hover:border-positive hover:text-positive hover:bg-positive-soft cursor-pointer';
 
           return (
             <div key={`empty-${slotIndex}`} className="relative shrink-0">
-              <div className="text-center text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1 pointer-events-none">
-                {SLOT_LABELS[slotIndex]}
-              </div>
+              {/* Artboard (d): the starter keeps a label line over a 5/7 placeholder;
+                  an empty bench slot is ONE 44px row reading "Bench N · Add PG". */}
+              {slotIndex === 0 && (
+                <div className="text-center text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1 pointer-events-none">
+                  {SLOT_LABELS[slotIndex]}
+                </div>
+              )}
               <Button
                 variant="secondary"
                 size="md"
@@ -160,9 +179,14 @@ export function DepthSlotColumn({
                   e.stopPropagation();
                   if (!disabled) onDrop(e, column, slotIndex);
                 }}
-                className={`w-full whitespace-normal border-2 border-dashed p-2 text-center text-xs font-bold normal-case tracking-wide shadow-none ${slotIndex === 0 ? 'h-auto aspect-[5/7]' : ''} ${tone}`}
+                // Inline style: the primitive's fixed control height would otherwise win
+                // over an `aspect-[5/7]` utility and flatten the starter to 44px.
+                style={slotIndex === 0 ? { aspectRatio: '5 / 7', height: 'auto' } : undefined}
+                className={`w-full whitespace-normal border-2 border-dashed p-2 text-center text-xs font-bold normal-case tracking-wide shadow-none ${ineligibleWhileSelecting ? 'opacity-50' : ''} ${tone}`}
               >
-                {blockedReason ?? (selectionActive ? `Place in ${column}` : `Add ${column}`)}
+                {slotIndex === 0
+                  ? (blockedReason ?? (eligible ? 'Place here' : `Add ${column}`))
+                  : `${SLOT_LABELS[slotIndex]} · ${blockedReason ?? (eligible ? 'place here' : `Add ${column}`)}`}
               </Button>
               {popoverOpen && (
                 <AssignPopover

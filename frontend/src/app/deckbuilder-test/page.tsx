@@ -89,7 +89,10 @@ function DeckbuilderTestInner() {
   if (!ready || cards.length === 0) return <div className="p-8 text-white">Loading Deckbuilder...</div>;
 
   return (
-    <div className="bg-black">
+    // Dev page, not a game route: TopNav still renders its fixed 56px bar here, so the
+    // builder (which no longer pads for a bar) needs the nav offset or its band hides
+    // under it.
+    <div className="bg-black pt-nav">
       <DeckBuilder
         draftedCards={cards}
         existingRosterName={rosterName}

@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { DraftCard, PlayerHoverPreview, PlayCard, CardListRow, Play, PlayerCardData, getPosColors } from './PlayerCard';
+import { DraftCard, PlayerHoverPreview, CardListRow, Play, PlayerCardData, getPosColors } from './PlayerCard';
 import { useHoverPreview } from './useHoverPreview';
 import { PlayPanel } from './PlayPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft, X } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
-import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
+import { calcTeamBonuses } from '../engine/synergies';
 import { PLAYBOOK, evaluatePlaybook, getPlaybookId, isEligibleForRole, type PlayAssignment, type PlayStatus, type PlaySide } from '../engine/playbook';
 import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from '../engine/archetypes';
 import { TopKPIBand } from './TopKPIBand';
@@ -32,13 +32,36 @@ import {
   type PlacePlayerFailureReason,
 } from '@/engine/deckbuilder';
 import { DepthSlotColumn } from './DepthSlotColumn';
-import { RosterChecklist } from './RosterChecklist';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
 import { ToastProvider, useToast } from './Toast';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Overlay } from './ui/Overlay';
+import { Panel } from './ui/Panel';
 import { PlaySwapPopover } from './AssignPopover';
+import { PlayTile, PlayTileEmptySlot } from './PlayTile';
+
+// deckbuilder_ux D4: each sidebar's own docked/strip toggle persists per browser,
+// same pattern TopKPIBand's collapse toggle already uses.
+const ROSTER_DOCK_KEY = 'deckbuilder.rosterDocked';
+const PLAYS_DOCK_KEY = 'deckbuilder.playsDocked';
+
+function readStoredDock(key: string, fallback: boolean): boolean {
+  try {
+    const stored = window.localStorage.getItem(key);
+    return stored === null ? fallback : stored === '1';
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredDock(key: string, value: boolean): void {
+  try {
+    window.localStorage.setItem(key, value ? '1' : '0');
+  } catch {
+    // best-effort persistence only
+  }
+}
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -74,6 +97,7 @@ function RosterPlayerRow({ player, selected, onDragStart, onClick }: {
   return (
     <div
       ref={hoverRef}
+      data-testid="roster-player-row"
       draggable
       onDragStart={onDragStart}
       onClick={onClick}
@@ -181,7 +205,55 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // Roster still accepts drops, it just shows as a thin bar instead of the full list.
   // Starts collapsed: the depth chart (5 columns) needs the width more than
   // the Roster list needs to be open by default; one click still reopens it.
-  const [isRosterCollapsed, setIsRosterCollapsed] = useState(true);
+  // ── deckbuilder_ux D4: container-query tiers (compact < 960, regular < 1440,
+  // wide >= 1440) drive whether the Plays/Roster sidebars can dock side by side.
+  // Measured via ResizeObserver (not viewport media queries) on the builder's own
+  // `@container` shell so the tiers match whatever the shell is actually given.
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(1600);
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width !== undefined) setContainerWidth(width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const tier: 'compact' | 'regular' | 'wide' = containerWidth < 960 ? 'compact' : containerWidth < 1440 ? 'regular' : 'wide';
+
+  const [rosterDocked, setRosterDockedState] = useState(false);
+  const [playsDocked, setPlaysDockedState] = useState(true);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRosterDockedState(readStoredDock(ROSTER_DOCK_KEY, false));
+    setPlaysDockedState(readStoredDock(PLAYS_DOCK_KEY, true));
+  }, []);
+  // Compact tier has no docked/strip state at all — both sidebars are overlay
+  // drawers, closed by default regardless of the docked toggle above.
+  const [rosterDrawerOpen, setRosterDrawerOpen] = useState(false);
+  const [playsDrawerOpen, setPlaysDrawerOpen] = useState(false);
+
+  /** regular tier (960-1439): docking one sidebar collapses the other to its
+   *  strip (owner call, D4) — wide (>= 1440) lets both dock at once. */
+  const dockRoster = (next: boolean) => {
+    setRosterDockedState(next);
+    writeStoredDock(ROSTER_DOCK_KEY, next);
+    if (next && tier === 'regular') {
+      setPlaysDockedState(false);
+      writeStoredDock(PLAYS_DOCK_KEY, false);
+    }
+  };
+  const dockPlays = (next: boolean) => {
+    setPlaysDockedState(next);
+    writeStoredDock(PLAYS_DOCK_KEY, next);
+    if (next && tier === 'regular') {
+      setRosterDockedState(false);
+      writeStoredDock(ROSTER_DOCK_KEY, false);
+    }
+  };
+
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
@@ -548,6 +620,9 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     setAssigning(null);
     setOpenSlotPopover(null);
     setSelectedRosterPlayer(prev => (prev?.id === player.id ? null : player));
+    // Compact tier (D4): picking a player closes the drawer so the depth chart
+    // underneath — now showing the eligible-slot highlight — is visible again.
+    setRosterDrawerOpen(false);
   };
 
   /** Click on a placed player (D-remove): mid-role-assignment it assigns them to the
@@ -685,16 +760,12 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   // Mechanics validation
-  const playersInRoster = Object.values(depthChart).reduce((acc, col) => acc + col.length, 0);
   const activePlaysCount = activePlays.filter(p => p !== null).length;
   const validActivePlays = activePlays.filter(p => p !== null) as Play[];
   const identity = calcRosterIdentity(depthChart);
   const shotDiet = calcRosterShotDiet(depthChart, validActivePlays);
   const allPlayers = Object.values(depthChart).flat();
   // Badge totals across the current depth chart (starters + bench), recomputed
-  // whenever the roster changes — feeds evaluatePlay() so play cards can show
-  // live requirement status without exposing any OVR/rating numbers.
-  const badgeTotals = useMemo(() => countBadges(Object.values(depthChart).flat()), [depthChart]);
   const bonuses = calcTeamBonuses(allPlayers, validActivePlays, new Map());
   const rosterFull = countPlayers(toIdChart(depthChart)) >= MAX_ROSTER;
 
@@ -720,6 +791,16 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     playbookStatus.plays.forEach(s => map.set(s.assignment.cardId, s));
     return map;
   }, [playbookStatus]);
+
+  /** Plays-sidebar strip dot state (deckbuilder_ux artboard g): empty slot, needs
+   *  more roles filled, or every role filled. */
+  const playSlotDot = (slotIndex: number): 'ready' | 'warn' | 'empty' => {
+    const play = activePlays[slotIndex];
+    if (!play) return 'empty';
+    const status = playStatusByCardId.get(play.id);
+    if (!status) return 'empty';
+    return status.roles.every(r => r.filled) ? 'ready' : 'warn';
+  };
 
   // playerId -> every role they currently hold, across every equipped play — feeds
   // the RoleTag overlay on depth-chart cards.
@@ -891,8 +972,224 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     }
   };
 
+  // ── Plays sidebar body: the three active-play slots (deckbuilder_ux artboard g).
+  //    Shared between the docked panel and the compact-tier drawer. ──────────────
+  const renderPlaySlots = () => (
+    <>
+      {[0, 1, 2].map(slotIndex => {
+        const play = activePlays[slotIndex];
+        const zoneId = `ActivePlay-${slotIndex}`;
+        const roleStatus = play ? playStatusByCardId.get(play.id) : undefined;
+        const selectedRoleId = play && assigning?.cardId === play.id ? assigning.roleId : undefined;
+        if (!play || !roleStatus) {
+          // No zoned play slots (any empty slot accepts either side) — the empty
+          // tile's side hint points at whichever side still has budget room.
+          const side: 'offense' | 'defense' =
+            playbookStatus.offenseAllocation < playbookStatus.offenseBudget ? 'offense' : 'defense';
+          return (
+            <div key={slotIndex} onDragOver={handleDragOver} onDrop={(e) => handleDropOnZone(e, zoneId)}>
+              <PlayTileEmptySlot
+                side={side}
+                className={draggedItem?.card.type === 'Play' ? 'border-info bg-info-soft' : undefined}
+              />
+            </div>
+          );
+        }
+        return (
+          <div
+            key={slotIndex}
+            className="relative w-full"
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDropOnZone(e, zoneId)}
+            // A placed play's own clickable bits (role rows, the Remove X) stop
+            // propagation, so a click that reaches here is a click on the tile
+            // itself — open Remove/Swap (deckbuilder_ux D3) instead of guessing
+            // which role the click meant.
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedRosterPlayer(null);
+              setAssigning(null);
+              setOpenSlotPopover(null);
+              setOpenPlaySlotPopover(prev => (prev === slotIndex ? null : slotIndex));
+            }}
+          >
+            <motion.div
+              layoutId={`play-${play.id}`}
+              initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+              className="w-full cursor-grab active:cursor-grabbing"
+              draggable
+              // framer-motion's motion.div overloads onDragStart for its own drag
+              // gesture (PointerEvent/MouseEvent/TouchEvent), which conflicts with the
+              // native HTML5 DragEvent this handler actually needs — `any` bridges that.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
+            >
+              <PlayPanel
+                play={play}
+                status={roleStatus}
+                players={allPlayers}
+                selectedRoleId={selectedRoleId}
+                draggingPlayerId={draggingPlayerId}
+                isEligible={(roleId, playerId) => isRoleEligible(play.id, roleId, playerId)}
+                onRoleClick={(roleId) => { handleRoleClick(play.id, roleId); }}
+                onRoleClear={(roleId) => { handleRoleClear(play.id, roleId); }}
+                onRoleDrop={(roleId, droppedId) => { handleRoleDrop(play.id, roleId, droppedId); }}
+                onRemove={() => handlePlayClick(play, zoneId)}
+                pickerCandidates={selectedRoleId ? pickerCandidates : undefined}
+                onPick={handlePick}
+              />
+            </motion.div>
+            {openPlaySlotPopover === slotIndex && (
+              <PlaySwapPopover
+                candidates={rosterPlays}
+                onRemove={() => { handlePlayClick(play, zoneId); setOpenPlaySlotPopover(null); }}
+                onSwap={(playId) => handlePlaySwap(slotIndex, playId)}
+              />
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+
+  const playsBudgetLine = `Off ${Math.round(playbookStatus.offenseAllocation * 100)}/${Math.round(playbookStatus.offenseBudget * 100)} · Def ${Math.round(playbookStatus.defenseAllocation * 100)}/${Math.round(playbookStatus.defenseBudget * 100)}`;
+
+  // ── Roster sidebar header + body: bench Players/Plays lanes (deckbuilder_ux
+  //    artboard e). Shared between the docked panel and the compact-tier drawer. ──
+  const renderRosterHeader = (onCollapse: () => void, icon: React.ReactNode, label: string) => (
+    <div className="flex items-center gap-2 min-h-control shrink-0">
+      <h2 className="font-display text-2xl uppercase tracking-wide text-ink-strong shrink-0">Roster</h2>
+      <span className="text-xs font-bold uppercase tracking-widest text-ink-subtle truncate">
+        {rosterPlayers.length} players &middot; {rosterPlays.length} plays
+      </span>
+      <div className="flex-1" />
+      <IconButton label={label} variant="ghost" onClick={(e) => { e.stopPropagation(); onCollapse(); }}>
+        {icon}
+      </IconButton>
+    </div>
+  );
+
+  const renderRosterBody = () => (
+    <div className="flex-1 overflow-y-auto pr-2 space-y-4 min-h-0">
+      {/* Players lane */}
+      <div
+        className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-accent bg-accent-soft' : 'border-line bg-surface-raised'}`}
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDropOnZone(e, 'RosterPlayers')}
+      >
+        <Button
+          variant="ghost"
+          size="md"
+          onClick={(e) => { e.stopPropagation(); setIsPlayersOpen(!isPlayersOpen); }}
+          className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
+        >
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Players ({rosterPlayers.length}) &middot; click to place</h3>
+          {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
+        </Button>
+
+        <AnimatePresence>
+          {isPlayersOpen && (
+            <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+              <div className="px-3 pt-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
+                {(['All', 'G', 'F', 'C'] as const).map(f => (
+                  <Button
+                    key={f}
+                    variant={posFilter === f ? 'primary' : 'secondary'}
+                    size="md"
+                    onClick={() => setPosFilter(f)}
+                    className={`h-auto min-h-control min-w-control px-2 py-0.5 text-xs ${posFilter === f ? 'bg-surface-inverse border-surface-inverse text-ink-inverse hover:bg-surface-inverse' : 'bg-surface-raised text-ink-muted border-line hover:border-line-strong'}`}
+                  >
+                    {f}
+                  </Button>
+                ))}
+              </div>
+              <div className="p-3 pt-2 flex flex-col gap-2 min-h-[80px]">
+                {filteredRosterPlayers.map(player => (
+                  <RosterPlayerRow
+                    key={player.id}
+                    player={player}
+                    selected={selectedRosterPlayer?.id === player.id}
+                    onDragStart={(e) => handleDragStart(e, player, 'RosterPlayers')}
+                    onClick={(e) => { e.stopPropagation(); handleRosterPlayerClick(player); }}
+                  />
+                ))}
+                {filteredRosterPlayers.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No players match this filter.</div>}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Plays lane — PlayTile's 'list' variant (deckbuilder_ux D5), not PlayCard. */}
+      <div
+        className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-info bg-info-soft' : 'border-line bg-surface-raised'}`}
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDropOnZone(e, 'RosterPlays')}
+      >
+        <Button
+          variant="ghost"
+          size="md"
+          onClick={(e) => { e.stopPropagation(); setIsPlaysOpen(!isPlaysOpen); }}
+          className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
+        >
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Plays ({rosterPlays.length}) &middot; click to add</h3>
+          {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
+        </Button>
+
+        <AnimatePresence>
+          {isPlaysOpen && (
+            <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
+              <div className="p-3 flex flex-col gap-2 min-h-[80px]">
+                {rosterPlays.map((play, idx) => (
+                  <div
+                    key={`${play.id}-${idx}`}
+                    draggable
+                    onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'RosterPlays')}
+                    // Click lives on PlayTile, not here: its own Add button stops
+                    // propagation before calling onClick, so a wrapper handler never
+                    // sees it — and a row click would otherwise fire twice.
+                    onClick={(e) => e.stopPropagation()}
+                    className="cursor-grab active:cursor-grabbing w-full"
+                  >
+                    <PlayTile variant="list" play={play as Play} onClick={() => handlePlayClick(play, 'RosterPlays')} />
+                  </div>
+                ))}
+                {rosterPlays.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No plays on bench.</div>}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Basic Plays */}
+      <div className="shrink-0 pt-2 border-t border-line">
+        <h3 className="text-sm font-bold uppercase tracking-widest text-ink-muted mb-3">Basic Plays</h3>
+        <div className="flex gap-2">
+          <div
+            draggable
+            onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+            title="Adds a basic play card with no requirements"
+            className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-accent hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+          >
+            <span className="text-accent font-black pointer-events-none">+</span>
+            <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Offense</span>
+          </div>
+          <div
+            draggable
+            onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
+            title="Adds a basic play card with no requirements"
+            className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-info hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+          >
+            <span className="text-info font-black pointer-events-none">+</span>
+            <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Defense</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="@container h-dvh text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
+    <div ref={shellRef} className="@container h-dvh text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
       {/* Hidden bench-sized HTML5 drag image (D24) — see handleDragStart. */}
       <div
         ref={dragGhostRef}
@@ -905,7 +1202,26 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         </div>
         <div ref={dragGhostNameRef} className="flex-1 min-w-0 px-1 text-xs font-bold uppercase truncate text-ink" />
       </div>
-      <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} playsAssigned={activePlays.filter(Boolean).length} playsTarget={3} />
+      <TopKPIBand
+        identity={identity}
+        shotDiet={shotDiet}
+        bonuses={bonuses}
+        depthChart={depthChart}
+        average={podAverageIdentity}
+        starterIds={starterIds}
+        archetypes={archetypes}
+        onArchetypesChange={setArchetypes}
+        playsAssigned={activePlays.filter(Boolean).length}
+        playsTarget={3}
+        actions={{
+          onClear: () => setShowClearConfirm(true),
+          onSave: () => { setSaveDestination('rosters'); setShowSaveModal(true); },
+          onSaveAndPlay: () => { setSaveDestination('season'); setShowSaveModal(true); },
+          canSave: isComplete && !readOnly,
+          canPlay: isComplete && !readOnly && !!sessionId,
+          disabledReason: isComplete ? undefined : statusText,
+        }}
+      />
       {saveError && (
         <div className="bg-danger-soft border-b border-danger-line px-4 py-3">
           <p className="text-sm text-danger font-semibold">{saveError}</p>
@@ -916,345 +1232,164 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           <p className="text-sm text-info font-semibold">This season is complete — the roster is locked and view-only.</p>
         </div>
       )}
-      {/* D17: the builder body is the container-query context — the plays column and
-          the Roster sidebar are sized in `cqw` with clamps, and the whole band wraps
-          to a column under a 1000px CONTAINER width (not viewport width). */}
-      <div className={`flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative ${readOnly ? 'pointer-events-none opacity-75' : ''}`}>
-        {/* ACTIVE ROSTER */}
-        <div className="flex-1 flex flex-col bg-surface-raised rounded-panel border border-line shadow-sm p-4 min-h-0">
-          <div className="flex justify-between items-start gap-3 mb-4 shrink-0 flex-wrap">
-            <div className="flex flex-col gap-1.5 min-w-0">
-              <div className="flex items-center gap-4">
-                 <h2 className="text-lg font-bold uppercase text-ink-strong tracking-wider flex items-center gap-2">
-                   <span className="w-2 h-2 rounded-full bg-positive-strong"></span>
-                   Active Roster
-                 </h2>
-                 <div className="flex gap-2">
-                    <span className={`px-2 py-1 rounded bg-surface-sunken border text-xs font-bold uppercase tracking-widest ${playersInRoster === MAX_ROSTER ? 'border-positive/50 text-positive' : 'border-warn/50 text-warn'}`}>
-                      Players {playersInRoster}/{MAX_ROSTER}
-                    </span>
-                    <span className={`px-2 py-1 rounded bg-surface-sunken border text-xs font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-positive/50 text-positive' : 'border-warn/50 text-warn'}`}>
-                      Plays {activePlaysCount}/3
-                    </span>
-                 </div>
-              </div>
-              {/* D15: the save blockers are VISIBLE, not a tooltip on a dead button. */}
-              <RosterChecklist result={checklist} />
-            </div>
+      {/* deckbuilder_ux D4: Plays and Roster are dockable sidebars, measured off the
+          shell's own width (not viewport media queries) via the ResizeObserver above.
+          compact (<960): both are overlay drawers, opened from the depth-chart title
+          row. regular (960-1439): mutually exclusive — docking one collapses the
+          other to its 48px strip. wide (>=1440): both may dock at once. */}
+      <div className={`flex-1 p-4 flex flex-col @min-[960px]:flex-row gap-3 overflow-hidden relative ${readOnly ? 'pointer-events-none opacity-75' : ''}`}>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={(e) => { e.stopPropagation(); setShowClearConfirm(true); }}
-                className="hover:text-danger hover:border-danger-line"
-              >
-                Clear
-              </Button>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={(e) => { e.stopPropagation(); setSaveDestination('rosters'); setShowSaveModal(true); }}
-                disabled={!isComplete}
-                title={isComplete ? undefined : statusText}
-                className={isComplete
-                  ? 'bg-positive-strong border-positive-strong text-white hover:bg-positive'
-                  : 'bg-surface-sunken text-ink-subtle border-line'}
-              >
-                Save
-              </Button>
-              {/* D19: only offered when this roster belongs to a draft session. */}
-              {sessionId && (
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={(e) => { e.stopPropagation(); setSaveDestination('season'); setShowSaveModal(true); }}
-                  disabled={!isComplete}
-                  title={isComplete ? undefined : statusText}
-                  className={isComplete ? '' : 'bg-surface-sunken text-ink-subtle'}
-                >
-                  Save &amp; play season
-                </Button>
-              )}
+        {/* PLAYS sidebar (artboard g) — docked panel or 48px strip; compact tier
+            renders neither (it opens as a drawer, see below). */}
+        {tier !== 'compact' && (playsDocked ? (
+          <Panel variant="raised" padding="none" className="w-full @min-[960px]:w-[280px] shrink-0 flex flex-col gap-2 p-2 @min-[960px]:p-3 min-h-0">
+            <div className="flex items-center gap-2 min-h-control shrink-0">
+              <IconButton label="Collapse plays" variant="ghost" onClick={(e) => { e.stopPropagation(); dockPlays(false); }} className="-ml-2">
+                <ChevronLeft className="w-4 h-4" />
+              </IconButton>
+              <h2 className="font-display text-2xl uppercase tracking-wide text-ink-strong shrink-0">Plays</h2>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-subtle truncate">{playsBudgetLine}</span>
             </div>
-          </div>
-
-          <div className="flex flex-row gap-3 flex-1 min-h-0">
-            {/* Left Column: Active Plays — full-size cards so requirements/mechanics
-                are actually readable (was a 60px compact row). */}
-            <div className="w-[clamp(200px,20cqw,280px)] shrink-0 flex flex-col min-h-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-ink-muted mb-1 shrink-0">Plays (Max 3)</h3>
-              <div className={`text-xs font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-warn' : 'text-ink-subtle'}`}>
-                Offense {Math.round(playbookStatus.offenseAllocation * 100)}% / {Math.round(playbookStatus.offenseBudget * 100)}%
-                {' · '}
-                Defense {Math.round(playbookStatus.defenseAllocation * 100)}% / {Math.round(playbookStatus.defenseBudget * 100)}%
-              </div>
-              <div className="flex flex-col gap-3 overflow-y-auto px-1 pb-1">
-                {[0, 1, 2].map(slotIndex => {
-                  const play = activePlays[slotIndex];
-                  const zoneId = `ActivePlay-${slotIndex}`;
-                  const roleStatus = play ? playStatusByCardId.get(play.id) : undefined;
-                  const selectedRoleId = play && assigning?.cardId === play.id ? assigning.roleId : undefined;
-                  if (!play || !roleStatus) {
-                    return (
-                      <div
-                        key={slotIndex}
-                        className={`w-full h-[90px] rounded-panel border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-info/50 bg-info-soft' : 'border-line-strong/50 bg-surface-sunken'} flex items-center justify-center relative transition-colors`}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDropOnZone(e, zoneId)}
-                      >
-                        <span className="text-ink-muted font-bold uppercase text-xs pointer-events-none text-center px-2">Empty play slot — drag a play here</span>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div
-                      key={slotIndex}
-                      className="relative w-full"
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDropOnZone(e, zoneId)}
-                      // A placed play's own clickable bits (role rows, the Remove X)
-                      // stop propagation, so a click that reaches here is a click on
-                      // the tile itself — open Remove/Swap (deckbuilder_ux D3) instead
-                      // of guessing which role the click meant.
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedRosterPlayer(null);
-                        setAssigning(null);
-                        setOpenSlotPopover(null);
-                        setOpenPlaySlotPopover(prev => (prev === slotIndex ? null : slotIndex));
-                      }}
-                    >
-                      <motion.div
-                        layoutId={`play-${play.id}`}
-                        initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                        className="w-full cursor-grab active:cursor-grabbing"
-                        draggable
-                        // framer-motion's motion.div overloads onDragStart for its own drag
-                        // gesture (PointerEvent/MouseEvent/TouchEvent), which conflicts with the
-                        // native HTML5 DragEvent this handler actually needs — `any` bridges that.
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        onDragStart={(e: any) => handleDragStart(e, play, zoneId)}
-                      >
-                        <PlayPanel
-                          play={play}
-                          status={roleStatus}
-                          players={allPlayers}
-                          selectedRoleId={selectedRoleId}
-                          draggingPlayerId={draggingPlayerId}
-                          isEligible={(roleId, playerId) => isRoleEligible(play.id, roleId, playerId)}
-                          onRoleClick={(roleId) => { handleRoleClick(play.id, roleId); }}
-                          onRoleClear={(roleId) => { handleRoleClear(play.id, roleId); }}
-                          onRoleDrop={(roleId, droppedId) => { handleRoleDrop(play.id, roleId, droppedId); }}
-                          onRemove={() => handlePlayClick(play, zoneId)}
-                          pickerCandidates={selectedRoleId ? pickerCandidates : undefined}
-                          onPick={handlePick}
-                        />
-                      </motion.div>
-                      {openPlaySlotPopover === slotIndex && (
-                        <PlaySwapPopover
-                          candidates={rosterPlays}
-                          onRemove={() => { handlePlayClick(play, zoneId); setOpenPlaySlotPopover(null); }}
-                          onSwap={(playId) => handlePlaySwap(slotIndex, playId)}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="flex flex-col gap-2 overflow-y-auto pr-0.5 pb-1 flex-1 min-h-0">
+              {renderPlaySlots()}
             </div>
-
-            {/* Right Area: Depth Chart — starters get the full card at the top of
-                each column, 2nd/3rd string are medium compact cards below. */}
-            <div className="flex-1 flex flex-col min-w-0 min-h-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-ink-muted mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
-              <div className="grid grid-cols-5 gap-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
-                {DEPTH_COLUMNS.map(col => (
-                  <DepthSlotColumn
-                    key={col}
-                    column={col}
-                    players={depthChart[col] ?? []}
-                    selectionActive={!!pendingPlayer}
-                    pendingFit={pendingPlayer ? positionFit(pendingPlayer.player.position, col) : undefined}
-                    rosterFull={rosterFull}
-                    rolesByPlayer={rolesByPlayer}
-                    assigning={!!assigning}
-                    isAssignEligible={isAssignEligible}
-                    openPopoverSlot={openSlotPopover?.column === col ? openSlotPopover.slot : undefined}
-                    popoverCandidates={openSlotPopover?.column === col ? slotCandidates(col) : undefined}
-                    onEmptySlotClick={handleEmptySlotClick}
-                    onPopoverPick={handleSlotPopoverPick}
-                    onPlayerClick={handlePlacedPlayerClick}
-                    onDragStart={(e, player, column, index) => handleDragStart(e, player, column, index)}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDropOnSlot}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ROSTER / SIDEBOARD — collapses to a thin bar so the Active Roster
-            column (and its 5-across depth chart) can claim the freed width. */}
-        <div
-          className={`flex flex-col bg-surface-raised rounded-panel border border-line shadow-sm min-h-0 transition-[width] ${
-            isRosterCollapsed ? 'w-12 shrink-0 items-center py-3' : 'w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] shrink-0 p-4'
-          }`}
-        >
-          {isRosterCollapsed ? (
-            <IconButton
-              label="Expand Roster"
-              variant="ghost"
-              onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(false); }}
-              className="flex-col gap-3 h-auto min-h-control"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span className="text-xs font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">Roster</span>
-            </IconButton>
-          ) : (
-          <>
-          <h2 className="text-xl font-bold italic uppercase text-ink-subtle mb-4 tracking-wider flex items-center gap-2 shrink-0">
-            <span className="w-2 h-2 rounded-full bg-ink-muted"></span>
-            Roster
-            <div className="flex-1" />
-            <IconButton
-              label="Collapse Roster"
-              variant="ghost"
-              onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(true); }}
-            >
+          </Panel>
+        ) : (
+          <Panel variant="raised" padding="none" className="w-12 shrink-0 flex flex-col items-center gap-3 py-3">
+            <IconButton label="Expand plays" variant="ghost" onClick={(e) => { e.stopPropagation(); dockPlays(true); }}>
               <ChevronRight className="w-4 h-4" />
             </IconButton>
-          </h2>
-
-          <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-
-            {/* Roster Players Lane (Moved above Plays) */}
-            <div
-              className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-accent bg-accent-soft' : 'border-line bg-surface-raised'}`}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDropOnZone(e, 'RosterPlayers')}
+            <span className="text-xs font-bold italic uppercase tracking-wider text-ink-muted [writing-mode:vertical-rl]">Plays</span>
+            <div className="flex-1" />
+            <div className="flex flex-col gap-1.5 items-center">
+              {[0, 1, 2].map(i => {
+                const dot = playSlotDot(i);
+                const play = activePlays[i];
+                return (
+                  <span
+                    key={i}
+                    title={play ? `${play.name} · ${dot === 'ready' ? 'ready' : 'needs roles'}` : `Slot ${i + 1} · empty`}
+                    className={`w-3 h-3 rounded-full shrink-0 box-border ${
+                      dot === 'ready' ? 'bg-positive' : dot === 'warn' ? 'bg-warn' : 'border-2 border-dashed border-ink-subtle'
+                    }`}
+                  />
+                );
+              })}
+            </div>
+            <span
+              className="w-8 h-8 mt-1 rounded-full bg-surface-sunken border border-line flex items-center justify-center text-xs font-black text-ink-strong shrink-0"
+              title={`${activePlaysCount} of 3 plays`}
             >
-              <Button
-                variant="ghost"
-                size="md"
-                onClick={(e) => { e.stopPropagation(); setIsPlayersOpen(!isPlayersOpen); }}
-                className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
-              >
-                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Players ({rosterPlayers.length})</h3>
-                {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
-              </Button>
+              {activePlaysCount}
+            </span>
+          </Panel>
+        ))}
 
-              <AnimatePresence>
-                {isPlayersOpen && (
-                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
-                    <div className="px-3 pt-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      {(['All', 'G', 'F', 'C'] as const).map(f => (
-                        <Button
-                          key={f}
-                          variant={posFilter === f ? 'primary' : 'secondary'}
-                          size="md"
-                          onClick={() => setPosFilter(f)}
-                          className={`h-auto min-h-control px-2 py-0.5 text-xs ${posFilter === f ? 'bg-surface-inverse border-surface-inverse text-ink-inverse hover:bg-surface-inverse' : 'bg-surface-raised text-ink-muted border-line hover:border-line-strong'}`}
-                        >
-                          {f}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="p-3 pt-2 flex flex-col gap-2 min-h-[80px]">
-                      {filteredRosterPlayers.map(player => (
-                        <RosterPlayerRow
-                          key={player.id}
-                          player={player}
-                          selected={selectedRosterPlayer?.id === player.id}
-                          onDragStart={(e) => handleDragStart(e, player, 'RosterPlayers')}
-                          onClick={(e) => { e.stopPropagation(); handleRosterPlayerClick(player); }}
-                        />
-                      ))}
-                      {filteredRosterPlayers.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No players match this filter.</div>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+        {/* DEPTH CHART (artboard d) — no more validity row or actions, both live in
+            the band now. */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 gap-2">
+          <div className="flex items-center gap-3 min-h-control shrink-0">
+            <div className="flex items-baseline gap-2.5">
+              <h2 className="font-display text-2xl uppercase tracking-wide text-ink-strong">Depth chart</h2>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Starters at top</span>
             </div>
-
-            {/* Roster Plays Lane */}
-            <div
-              className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-info bg-info-soft' : 'border-line bg-surface-raised'}`}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDropOnZone(e, 'RosterPlays')}
-            >
-              <Button
-                variant="ghost"
-                size="md"
-                onClick={(e) => { e.stopPropagation(); setIsPlaysOpen(!isPlaysOpen); }}
-                className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
-              >
-                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Plays ({rosterPlays.length})</h3>
-                {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
-              </Button>
-
-              <AnimatePresence>
-                {isPlaysOpen && (
-                  <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
-                    <div className="p-3 flex flex-col gap-2 min-h-[80px]">
-                      {rosterPlays.map((play, idx) => (
-                        <div
-                          key={`${play.id}-${idx}`}
-                          draggable
-                          onDragStart={(e: React.DragEvent) => handleDragStart(e, play, 'RosterPlays')}
-                          // Click lives on the PlayCard/PlayTile, not here: the tile's Add
-                          // button stops propagation before calling its own onClick, so a
-                          // wrapper handler never sees it — and a row click would otherwise
-                          // fire twice (tile row + wrapper).
-                          onClick={(e) => e.stopPropagation()}
-                          className="cursor-grab active:cursor-grabbing w-full"
-                        >
-                           <PlayCard
-                             play={play as Play}
-                             compact
-                             evaluation={evaluatePlay(play, badgeTotals)}
-                             onClick={() => handlePlayClick(play, 'RosterPlays')}
-                           />
-                        </div>
-                      ))}
-                      {rosterPlays.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No plays on bench.</div>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-          </div>
-
-          {/* Basic Plays */}
-          <div className="shrink-0 mt-4 pt-4 border-t border-line">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-ink-muted mb-3">Basic Plays</h3>
-            <div className="flex gap-2">
-              <div
-                draggable
-                onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
-                title="Adds a basic play card with no requirements"
-                className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-accent hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
-              >
-                <span className="text-accent font-black pointer-events-none">+</span>
-                <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Offense</span>
+            <div className="flex-1" />
+            {/* Compact tier has no docked sidebars to click into — these two open
+                the equivalent drawer instead (not in the signed artboards, which
+                only show the >=960 tiers; a compact-only affordance is needed). */}
+            {tier === 'compact' && (
+              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <IconButton label={`Plays, ${activePlaysCount} of 3`} variant="raised" onClick={() => setPlaysDrawerOpen(true)}>
+                  <span className="text-xs font-black">{activePlaysCount}</span>
+                </IconButton>
+                <IconButton label={`Roster, ${rosterPlayers.length} players`} variant="raised" onClick={() => setRosterDrawerOpen(true)}>
+                  <span className="text-xs font-black">{rosterPlayers.length}</span>
+                </IconButton>
               </div>
-              <div
-                draggable
-                onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
-                title="Adds a basic play card with no requirements"
-                className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-info hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
-              >
-                <span className="text-info font-black pointer-events-none">+</span>
-                <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Defense</span>
-              </div>
-            </div>
+            )}
           </div>
-          </>
-          )}
+          <div
+            className={tier === 'compact'
+              ? 'flex-1 min-h-0 flex gap-2 overflow-x-auto overflow-y-hidden snap-x snap-mandatory pb-2'
+              : 'flex-1 min-h-0 grid grid-cols-5 gap-2 overflow-y-auto overflow-x-hidden pr-1 pb-4'}
+          >
+            {DEPTH_COLUMNS.map(col => (
+              <DepthSlotColumn
+                key={col}
+                column={col}
+                players={depthChart[col] ?? []}
+                selectionActive={!!pendingPlayer}
+                pendingFit={pendingPlayer ? positionFit(pendingPlayer.player.position, col) : undefined}
+                rosterFull={rosterFull}
+                rolesByPlayer={rolesByPlayer}
+                assigning={!!assigning}
+                isAssignEligible={isAssignEligible}
+                openPopoverSlot={openSlotPopover?.column === col ? openSlotPopover.slot : undefined}
+                popoverCandidates={openSlotPopover?.column === col ? slotCandidates(col) : undefined}
+                onEmptySlotClick={handleEmptySlotClick}
+                onPopoverPick={handleSlotPopoverPick}
+                onPlayerClick={handlePlacedPlayerClick}
+                onDragStart={(e, player, column, index) => handleDragStart(e, player, column, index)}
+                onDragOver={handleDragOver}
+                onDrop={handleDropOnSlot}
+                className={tier === 'compact' ? 'min-w-[148px] snap-start shrink-0' : undefined}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* ROSTER sidebar (artboard e) — docked panel or 48px strip; compact tier
+            renders neither (it opens as a drawer, see below). */}
+        {tier !== 'compact' && (rosterDocked ? (
+          <Panel variant="raised" padding="none" className="w-full @min-[960px]:w-[clamp(280px,24cqw,400px)] shrink-0 flex flex-col gap-3 p-3 min-h-0">
+            {renderRosterHeader(() => dockRoster(false), <ChevronRight className="w-4 h-4" />, 'Collapse roster')}
+            {renderRosterBody()}
+          </Panel>
+        ) : (
+          <Panel variant="raised" padding="none" className="w-12 shrink-0 flex flex-col items-center gap-3 py-3">
+            <IconButton label="Expand roster" variant="ghost" onClick={(e) => { e.stopPropagation(); dockRoster(true); }}>
+              <ChevronLeft className="w-4 h-4" />
+            </IconButton>
+            <span className="text-xs font-bold italic uppercase tracking-wider text-ink-muted [writing-mode:vertical-rl]">Roster</span>
+            <div className="flex-1" />
+            <span className="w-8 h-8 rounded-full bg-surface-sunken border border-line flex items-center justify-center text-xs font-black text-ink-strong" title={`${rosterPlayers.length} players`}>
+              {rosterPlayers.length}
+            </span>
+            <span className="w-8 h-8 rounded-full bg-surface-sunken border border-line flex items-center justify-center text-xs font-black text-ink-strong" title={`${rosterPlays.length} plays`}>
+              {rosterPlays.length}
+            </span>
+          </Panel>
+        ))}
       </div>
+
+      {/* Compact-tier drawers (D4): fixed, right-anchored, scrim behind. The depth
+          chart stays visible (and interactive) underneath. */}
+      {tier === 'compact' && playsDrawerOpen && (
+        <div className="fixed inset-0 z-[60] flex justify-end" onClick={(e) => { e.stopPropagation(); setPlaysDrawerOpen(false); }}>
+          <div className="absolute inset-0 bg-surface-scrim" aria-hidden="true" />
+          <Panel variant="raised" padding="none" className="relative w-80 max-w-[85vw] h-full flex flex-col gap-2 p-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 min-h-control shrink-0">
+              <h2 className="font-display text-2xl uppercase tracking-wide text-ink-strong flex-1">Plays</h2>
+              <IconButton label="Close" variant="ghost" onClick={() => setPlaysDrawerOpen(false)}>
+                <X className="w-4 h-4" />
+              </IconButton>
+            </div>
+            <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle shrink-0">{playsBudgetLine}</div>
+            <div className="flex flex-col gap-2 overflow-y-auto pb-1 flex-1 min-h-0">
+              {renderPlaySlots()}
+            </div>
+          </Panel>
+        </div>
+      )}
+      {tier === 'compact' && rosterDrawerOpen && (
+        <div className="fixed inset-0 z-[60] flex justify-end" onClick={(e) => { e.stopPropagation(); setRosterDrawerOpen(false); }}>
+          <div className="absolute inset-0 bg-surface-scrim" aria-hidden="true" />
+          <Panel variant="raised" padding="none" className="relative w-80 max-w-[85vw] h-full flex flex-col gap-3 p-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            {renderRosterHeader(() => setRosterDrawerOpen(false), <X className="w-4 h-4" />, 'Close')}
+            {renderRosterBody()}
+          </Panel>
+        </div>
+      )}
 
       {/* Save Modal */}
       <Overlay open={showSaveModal} onClose={() => setShowSaveModal(false)} labelledBy="save-roster-heading">
