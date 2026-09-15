@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Image from 'next/image';
 import { Volume2, VolumeX } from 'lucide-react';
 import { PackRevealCard } from './PackRevealCard';
+import { isCoarsePointer } from './useHoverPreview';
 import { ConfirmPickDock } from './ConfirmPickDock';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
@@ -300,14 +301,16 @@ export function PackOpener({
             animate={{ opacity: 1, scale: phase === 'opening' ? 1.08 : 1 }}
             exit={{ opacity: 0, scale: 0.8, rotate: 5 }}
             transition={{ duration: reducedMotion ? 0 : phase === 'opening' ? 0.55 : 0.35 }}
-            className="w-44 sm:w-52 pointer-coarse:max-lg:w-32!"
+            className="w-44 sm:w-52"
           >
             <Button
               ref={openButtonRef}
               onClick={beginOpening}
               disabled={phase !== 'sealed'}
               variant="ghost"
-              className="block h-auto w-full rounded-2xl bg-transparent p-0 normal-case tracking-normal font-normal hover:bg-transparent disabled:cursor-default focus-visible:ring-offset-0"
+              // `h-auto!`: the Button size class otherwise pins this to 40px and the 1.5:1 pack
+              // image overflows it, which is why the caption below sat on top of the pack.
+              className="block h-auto! min-h-0 w-full rounded-2xl bg-transparent p-0 normal-case tracking-normal font-normal hover:bg-transparent disabled:cursor-default focus-visible:ring-offset-0"
               aria-label={`Open pack ${packNumber} of ${totalPacks}`}
             >
               <Image
@@ -367,7 +370,14 @@ export function PackOpener({
                     tabIndex={pickable ? 0 : -1}
                     aria-pressed={pickable ? isSelected : undefined}
                     aria-label={pickable ? `Select ${cardName(card)}` : undefined}
-                    onClick={() => pickable && setSelectedId(card.id)}
+                    // Touch (game_canvas, owner): tap selects, tapping the selected card again
+                    // deselects, only the dock's "Take" confirms. Pointer: click selects and a
+                    // second click on the selected card picks — same as the draft room.
+                    onClick={() => {
+                      if (!pickable) return;
+                      if (isSelected) { if (isCoarsePointer()) setSelectedId(null); else confirmPick(); return; }
+                      setSelectedId(card.id);
+                    }}
                     onKeyDown={event => {
                       if (!pickable) return;
                       if (event.key === 'Enter' || event.key === ' ') {

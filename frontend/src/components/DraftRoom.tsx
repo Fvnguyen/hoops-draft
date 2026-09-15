@@ -7,6 +7,7 @@ import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
 import { DeckBuilder } from './DeckBuilder';
 import { PackOpener } from './PackOpener';
+import { isCoarsePointer } from './useHoverPreview';
 import { DraftSidebar } from './DraftSidebar';
 import { PackPassStage, passStaggerDelayMs } from './PackPassStage';
 import { ConfirmPickDock } from './ConfirmPickDock';
@@ -289,8 +290,12 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   // immediately; otherwise a 2s auto-confirm timer covers the single-click
   // baseline (MTG-style pick flow, D3). The timer resets whenever the
   // selection changes and is cleared once a pick is confirmed.
+  // game_canvas (owner): on a touch device a second tap DESELECTS (there is no hover
+  // to preview with, so the player taps to look); the dock's Confirm button is the only
+  // way to pick, and the 2s auto-pick below is off. Pointer keeps double-click-to-pick.
   const handleCardClick = (cardId: string) => {
     if (selectedCardId === cardId) {
+      if (isCoarsePointer()) { setSelectedCardId(null); return; }
       processPickAndPass(cardId);
       setSelectedCardId(null);
     } else {
@@ -300,6 +305,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
 
   useEffect(() => {
     if (!selectedCardId) return;
+    if (isCoarsePointer()) return;
     const timer = window.setTimeout(() => {
       processPickAndPass(selectedCardId);
       setSelectedCardId(null);
@@ -518,7 +524,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                             />
                           )}
                           {selectedCardId === card.id && (
-                            <span className="absolute -bottom-5 inset-x-0 text-center text-xs font-bold uppercase tracking-widest text-accent whitespace-nowrap">
+                            <span className="absolute -bottom-5 inset-x-0 text-center text-xs font-bold uppercase tracking-widest text-accent whitespace-nowrap pointer-coarse:hidden">
                               Double-click to pick
                             </span>
                           )}

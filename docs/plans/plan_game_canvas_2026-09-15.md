@@ -74,6 +74,13 @@ three buttons on a 385px-tall phone. That reopened the idea as scaling, not clip
   is what painted text through the card backs) and swaps to the interactive card in the
   picking phase. Merged `claude/swagger-cloud-version-chip-b28092` (cloud save fix, card
   back art, new pack image).
+- D6b **Round 2 (2026-09-16):** sealed pack shows at the desktop size on phones (the
+  32-unit cap is gone) and its Button is `h-auto!` so the caption sits under the pack
+  instead of over it (the size class pinned the button to 40px). **Touch tap contract**
+  (`isCoarsePointer()` in `useHoverPreview.ts`): tap selects, tapping the selected card
+  deselects, no flip on tap (long-press preview shows the card), no double-tap pick, no
+  2s auto-pick — the dock's Confirm/Take is the only way to pick. Pointer keeps hover
+  flip, click-select and double-click-to-pick, now in the pack opener too (it had none).
 - D7 **Phone card (open, design-first).** The owner wants a wider "phone card" for the
   draft room so the unused horizontal space carries the name and badges. That is a new
   card variant, not a class tweak: it goes through a canvas mock-up and sign-off before

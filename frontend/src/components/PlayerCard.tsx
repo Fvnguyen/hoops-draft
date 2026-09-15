@@ -627,7 +627,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
       onTouchStart={longPress.handlers.onTouchStart}
       onTouchMove={longPress.handlers.onTouchMove}
       onTouchCancel={longPress.handlers.onTouchCancel}
-      onTouchEnd={(e) => { const wasLong = longPress.fired.current; longPress.handlers.onTouchEnd(e); if (!wasLong) setIsFlipped(f => !f); }}
+      onTouchEnd={longPress.handlers.onTouchEnd}
       onClickCapture={longPress.handlers.onClickCapture}
     >
       {longPress.open && <PlayerHoverPreview player={player} />}
@@ -885,7 +885,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
       onTouchStart={longPress.handlers.onTouchStart}
       onTouchMove={longPress.handlers.onTouchMove}
       onTouchCancel={longPress.handlers.onTouchCancel}
-      onTouchEnd={(e) => { const wasLong = longPress.fired.current; longPress.handlers.onTouchEnd(e); if (!wasLong) setIsFlipped(f => !f); }}
+      onTouchEnd={longPress.handlers.onTouchEnd}
       onClickCapture={longPress.handlers.onClickCapture}
     >
       {longPress.open && <PlayHoverPreview play={play} />}

@@ -36,6 +36,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * dismisses an already-visible preview immediately, so a click that begins a drag or a
  * pick never has a preview sitting on top of it.
  */
+/** True on a touch device (no hover). Decides tap semantics: select/deselect toggles,
+ *  no flip-on-tap, no double-tap-to-pick, no auto-pick timer — the dock CTA confirms. */
+export function isCoarsePointer(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+}
+
 export const HOVER_PREVIEW_AUTO_DISMISS_MS = 1500;
 export const HOVER_PREVIEW_DELAY_MS = 800;
 
