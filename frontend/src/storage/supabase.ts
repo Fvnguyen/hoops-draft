@@ -335,7 +335,11 @@ export class SupabaseGameStore implements GameStore {
   getDraftSession(id: string): Promise<DraftSession | null> { return this.local.getDraftSession(id); }
   async saveDraftSession(s: DraftSession): Promise<void> {
     await this.local.saveDraftSession(s);
-    await this.push('draft_sessions', s.id, s);
+    // Push what actually landed locally (indexedDb.ts stamps cardSetVersion on write) —
+    // pushing the caller's pre-stamp `s` would permanently desync local vs. remote and
+    // make every later login look like a genuine cross-device conflict.
+    const stored = await this.local.getDraftSession(s.id);
+    await this.push('draft_sessions', s.id, stored ?? s);
   }
   async deleteDraftSession(id: string): Promise<void> {
     await this.local.deleteDraftSession(id);
@@ -348,7 +352,9 @@ export class SupabaseGameStore implements GameStore {
   getRoster(id: string): Promise<SavedRoster | null> { return this.local.getRoster(id); }
   async saveRoster(r: SavedRoster): Promise<void> {
     await this.local.saveRoster(r);
-    await this.push('rosters', r.id, r);
+    // See saveDraftSession: push the stamped local record, not the pre-stamp input.
+    const stored = await this.local.getRoster(r.id);
+    await this.push('rosters', r.id, stored ?? r);
   }
   async deleteRoster(id: string): Promise<void> {
     await this.local.deleteRoster(id);
