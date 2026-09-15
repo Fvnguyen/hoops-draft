@@ -1,6 +1,6 @@
 # Plan: mobile_responsive
 
-File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: planned
+File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: in progress (T1 done)
 Sequence: 3 in `docs/ROADMAP.md`. Depends on: none (vercel_deploy, accounts_cloud_saves done).
 Files owned: `frontend/playwright.config.ts`, `frontend/tests/mobile-audit.spec.ts` (new),
 `frontend/tests/visual.spec.ts`, `frontend/src/app/layout.tsx`, `frontend/src/app/manifest.ts`
@@ -76,8 +76,8 @@ snapshots. Draft bot behaviour (draft_ai). Any engine or balance change.
   assert-and-report `document.scrollWidth <= innerWidth`, every `button, a, [role=button]`
   bounding box >= 44x44, no computed font-size < 12 px. Done when the spec runs green
   or red on both projects and the failures are transcribed into the "Audit findings"
-  table below (one row per screen: what breaks, severity, proposed fix, general vs
-  redesign). Owner reviews the table before T6 starts.
+  table below. **Done 2026-09-15** — harness runs both projects red; table filled.
+  Owner reviews the table before T6 starts.
 - T2 **Manifest, icons, meta** (low). Files: `app/manifest.ts`, `public/icons/`,
   `app/layout.tsx` (`viewport`, apple meta). Done when Chrome on the S24+ offers "Install
   app" and the installed app launches standalone in landscape (owner photo/screenshot).
@@ -102,11 +102,29 @@ snapshots. Draft bot behaviour (draft_ai). Any engine or balance change.
   loop draft → deck → game → season, installed and in-browser. Findings go back into
   the table; exit when the owner signs off.
 
-## Audit findings (filled by T1)
+## Audit findings (T1, measured 2026-09-15)
+
+Both projects, 8 screens. Phone 200 findings, tablet 201 — near-identical, so these are
+absolute-px hit-area and type-scale defects, **not** width breakpoints. T6 is therefore
+mostly "general improvement" passes; the deck builder stays the only redesign (D5).
 
 | Screen | Project | Breaks | Severity | Fix | General / redesign |
 |---|---|---|---|---|---|
-| _pending T1_ | | | | | |
+| all | both | `WhatsNewSplash` panel has no max-height; at 385px it overflows, its Close button is off-screen, and it blocks every route (only the backdrop/CTA dismiss it) | blocker | `max-h-[90dvh] overflow-y-auto` on the panel | general — **adds `WhatsNewSplash.tsx` to files owned** |
+| all | both | TopNav profile menu rows 238x36; "Back to Home" 34x34 | high | 44px min height on menu rows and icon buttons | general |
+| all | both | 8–11px text everywhere (7–34 instances per screen) | high | 12px floor on the type scale | general |
+| home, rosters | both | PlayerCard back face clips 122–285px of badges/season averages (`overflow:hidden`, no scroll) | high | scroll region or taller back face | general |
+| deck-builder | both | "Expand team report" 14x14, "Return to Roster" 20x20 | high | 44px hit areas | general |
+| deck-builder | both | depth slots 89x36 (11 sub-44px controls total) | med | taller rows; feeds T5 tap-to-place | redesign (pre-approved) |
+| game | both | Exit Game / Tip Off / Pause / End / Matchup all 34–36px tall | med | 44px control height | general |
+| draft | both | sound toggles 26–28px; "Turn sound on" label clips 15px | med | 44px hit areas | general |
+| season | both | "Back to Rosters" 105x16; 8px SVG chart labels | med | 44px target; chart min font | general |
+| home | both | footer dev links 44x16 (Deckbuilder, Debug) | low | pad to 44px or hide on touch | general |
+| all | both | **No horizontal overflow** — `scrollWidth == innerWidth` on all 8 screens, both projects | — | none needed | — |
+
+Vertical extent at phone-landscape (scrolling is allowed, listed for T6 context): season
+1239px, game-tipoff 766px, home 664px, rosters 614px, game-live 572px; draft and deck
+builder already fit 385px.
 
 ## Parallelization
 

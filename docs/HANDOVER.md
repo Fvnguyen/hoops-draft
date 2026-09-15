@@ -10,13 +10,14 @@ archetype identities and assigned-player plays. Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
-— see the milestones below. 217 Vitest tests pass, type-check is clean, `npm run lint` is
+— see the milestones below. 217/218 Vitest tests pass (one engine-minutes failure, open
+issue 5), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
 screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
 
-Finished design docs live in `docs/completed/`; a plan still being worked on stays in
+Finished design docs live in `docs/completed/`; a plan being worked on stays in
 `docs/plans/` and moves there when its milestone lands.
 
 ## History
@@ -70,18 +71,10 @@ Finished design docs live in `docs/completed/`; a plan still being worked on sta
   (`SyncConflictPrompt`), scoped `/api/analytics`+`/admin/analytics`; two real post-deploy
   bugs (dead `.catch` on a `PostgrestBuilder`, CAS-vs-deleted-row retry) found and fixed
   live against production; two-device merge/conflict paths verified live, not mocked.
-
-## game-results-visibility (merged, not this session's own plan) — 2026-09-14
-
-Single-commit fix from a separate Claude session/branch
-(`claude/game-results-visibility-season-atxivj`, merged `2cd44e5`): `SeasonView` used to
-commit a freshly-played game's result to `season` state/the store the instant `playNextGame`
-ran, so leaving mid-playback (or before a single possession rendered) already revealed the
-final score and updated standings. Now `playNextGame` runs against a cloned `Season`, and
-the result only commits once the user watches `GameView` to completion and hits "Continue
-to Schedule"; a still-running fresh game shows a destructive "Exit Game" control with a
-"this won't be saved" confirmation instead. Replays of already-played days are unaffected.
-No test shipped with the original commit — `tests/season.spec.ts` (above) covers it now.
+- **game-results-visibility** (merged 2026-09-14, `2cd44e5`, from branch
+  `claude/game-results-visibility-season-atxivj`): `playNextGame` now runs against a cloned
+  `Season` and a fresh result commits only when the user watches `GameView` to the end and
+  hits "Continue to Schedule"; leaving early discards it. Covered by `tests/season.spec.ts`.
 
 ## game_engine — done 2026-09-14
 
@@ -152,6 +145,35 @@ sequence #2b, ahead of `mobile_responsive`). All 6 tasks done in one session.
   `/roster/[id]`, bell dropdown with a dismissible season-complete notice, and the
   profile-menu stats blurb all screenshotted working end to end.
 
+## mobile_responsive T1 (audit harness) — 2026-09-15
+
+Merged the docs-only branch `claude/mobile-relevant-plans-y794q8` (fast-forward, `2f820ef`):
+the plan now carries the manifest/icons/auto-login work, drops the service worker
+(`mobile_pwa_shell` is gone), and makes `android_twa` conditional.
+
+Then built T1, the audit harness. `playwright.config.ts` gains two `isMobile`+`hasTouch`
+projects — `phone-landscape` (830x385, dpr 3) and `tablet-landscape` (1244x778, dpr 2.25)
+— scoped to `tests/mobile-audit.spec.ts` (T6/D9 widens them to smoke+visual); `chromium`
+ignores that spec so the desktop gate stays clean. It walks all four flows in ONE test
+(8 screens: home, draft entry, live pick spread, rosters, deck builder, season, game at
+tip-off and live), screenshots each full-page, and measures four things in one
+`page.evaluate`: horizontal overflow, sub-44px tap targets, sub-12px text, containers that
+clip with no scroll. `expect.soft` means a run always measures all 8 and still ends red;
+T6's exit criterion is this spec going green on both projects.
+
+Result: **200 findings on phone, 201 on tablet**, in the plan's "Audit findings" table.
+Headline: the viewports agree almost exactly and there is **no horizontal overflow
+anywhere**, so these are absolute-px hit-area and type-scale defects, not width
+breakpoints — T6 is mostly "general improvement" passes, not bespoke phone layouts.
+Biggest find is a blocker the mechanical checks missed: `WhatsNewSplash` has no
+max-height, so at 385px its Close button is off-screen and it blocks every route (only a
+backdrop/CTA tap dismisses it) — adds `WhatsNewSplash.tsx` to the plan's owned files.
+
+Harness gotchas: the splash mounts only after `useCurrentProfile`/`useNotices` resolve (so
+dismissal waits for it once); a leftover fixture roster raises a "changed on another
+device" toast over later screens, so the run deletes it first; `networkidle` never arrives
+on a live draft, so that wait is bounded.
+
 ## How to run everything
 
 ```bash
@@ -174,7 +196,7 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done, `mobile_responsive` is next up). The
+and `season_lifecycle_notifications` are done, `mobile_responsive` is in progress — T1 done, T2-T5 next). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
@@ -184,13 +206,10 @@ banner-marked stale, generated by the retired `scripts/analyze_game_data.js`) �
 `docs/analytics/report_2026-09.md` is the current tool's output but has no fresh
 draft/season data yet; re-run `npm run analyze` after playing a session.
 
-1. **Offense-too-powerful / turnover-rate / synergy-frequency findings (pre-Phase-0,
-   stale)** — PPP 1.290 and a suspected compounding per-channel edge, ~0.8% turnover rate
-   (likely apples-to-oranges vs NBA — turnovers are flavor text, not a modeled stat), and
-   uneven synergy/play-card activation rates. All measured against the old `gameEngine.ts`/
-   `PLAY_EFFECTS` pre-Phase-0/pre-plays-and-archetypes; PPP is now ≈1.06 and neither file
-   exists anymore. Re-run `npm run analyze` on a fresh session before treating any of this
-   as current.
+1. **Offense-too-powerful / turnover-rate / synergy-frequency findings (stale)** — PPP
+   1.290, a suspected compounding per-channel edge, ~0.8% turnover rate, uneven synergy/
+   play activation. All measured against the old `gameEngine.ts`/`PLAY_EFFECTS`, which no
+   longer exist; PPP is now ≈1.06. Re-run `npm run analyze` before treating as current.
 2. **Cube draft duplicate bug — likely already resolved, unverified.** One early session
    log showed 113/264 unique cards; `game.db` now has 448 players (needs ≥264 for a
    duplicate-free cube) and every later session shows 264/264 unique. Worth a targeted
@@ -198,12 +217,17 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
 4. **Two `visual.spec.ts` snapshots fail with no known cause.** "Season View Franchise
-   Dashboard" (expects 234px tall, gets 226px) and "Game View Matchup Header and Tape"
-   (600px vs 601px) — neither touches any file changed in `ui_draft_deckbuild_pack` or
-   `ui_polish_small_fixes`. First time these could even run since `auth_approval` gated
-   Playwright out; the drift may predate that plan entirely. Worth a `git bisect` against
-   the visual-snapshot history, or just re-baseline once someone confirms the current
-   render is correct by eye.
+   Dashboard" (234px expected vs 226px) and "Game View Matchup Header and Tape" (600 vs
+   601px); drift may predate `auth_approval`, which gated Playwright out until recently.
+   Re-baseline once someone confirms the current render is right by eye.
+5. **`game.test.ts` "every box-score starter has minutes between 18 and 48" fails**
+   (expected 17.5 >= 18) — 217/218 Vitest tests pass. Pre-existing on `main` at `2f820ef`;
+   confirmed not caused by the mobile_responsive work, which touches no runtime code.
+   Either the minutes floor drifted below the test's assumption or the test is too strict.
+6. **`tests/season.spec.ts` fails on chromium** — "Loading Rosters..." never clears within
+   5s. Also pre-existing (reproduced on a clean stash of `main`); likely the rosters list
+   now waits on a slower cloud pull than the assertion allows. Needs a real wait condition,
+   not a longer timeout.
 
 ## Where to look
 
