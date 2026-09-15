@@ -1,21 +1,110 @@
 {
   "pages": [
-    { "id": "page-1", "name": "Signed: band + tiles" },
-    { "id": "page-2", "name": "For sign-off: layout" }
+    {
+      "id": "page-1",
+      "name": "Signed: band + tiles"
+    },
+    {
+      "id": "page-2",
+      "name": "Signed: depth chart, sidebars, layout"
+    }
   ],
   "artboards": [
-    { "file": "Main.dc.html", "title": "(a) Collapsed band — signed, actions added", "x": 0, "y": 0, "w": 1280, "h": 120, "page": "page-1" },
-    { "file": "ExpandedBand.dc.html", "title": "(b) Expanded band — signed, actions added", "x": 0, "y": 260, "w": 1280, "h": 320, "page": "page-1" },
-    { "file": "PlayTiles.dc.html", "title": "(c) Play tiles — signed", "x": 0, "y": 720, "w": 1280, "h": 440, "page": "page-1" },
-    { "file": "DepthChart.dc.html", "title": "(d) Depth chart", "x": 0, "y": 0, "w": 1280, "h": 740, "page": "page-2" },
-    { "file": "RosterSidebar.dc.html", "title": "(e) Roster sidebar", "x": 0, "y": 880, "w": 1280, "h": 560, "page": "page-2" },
-    { "file": "PlaysSidebar.dc.html", "title": "(g) Plays sidebar", "x": 0, "y": 1580, "w": 1280, "h": 480, "page": "page-2" },
-    { "file": "FullLayout.dc.html", "title": "(f) Full layout at 1280, sidebars as strips", "x": 0, "y": 2200, "w": 1280, "h": 800, "page": "page-2" },
-    { "file": "Everything.dc.html", "title": "(h) Everything expanded at 1280", "x": 0, "y": 3140, "w": 1280, "h": 940, "page": "page-2" }
+    {
+      "file": "Main.dc.html",
+      "title": "(a) Collapsed band — signed",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 120,
+      "page": "page-1"
+    },
+    {
+      "file": "ExpandedBand.dc.html",
+      "title": "(b) Expanded band — signed",
+      "x": 0,
+      "y": 260,
+      "w": 1280,
+      "h": 320,
+      "page": "page-1"
+    },
+    {
+      "file": "PlayTiles.dc.html",
+      "title": "(c) Play tiles — signed",
+      "x": 0,
+      "y": 720,
+      "w": 1280,
+      "h": 440,
+      "page": "page-1"
+    },
+    {
+      "file": "DepthChart.dc.html",
+      "title": "(d) Depth chart — signed",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 740,
+      "page": "page-2"
+    },
+    {
+      "file": "RosterSidebar.dc.html",
+      "title": "(e) Roster sidebar — signed",
+      "x": 0,
+      "y": 880,
+      "w": 1280,
+      "h": 560,
+      "page": "page-2"
+    },
+    {
+      "file": "PlaysSidebar.dc.html",
+      "title": "(g) Plays sidebar — signed",
+      "x": 0,
+      "y": 1580,
+      "w": 1280,
+      "h": 480,
+      "page": "page-2"
+    },
+    {
+      "file": "FullLayout.dc.html",
+      "title": "(f) Full layout at 1280, sidebars as strips — signed",
+      "x": 0,
+      "y": 2200,
+      "w": 1280,
+      "h": 800,
+      "page": "page-2"
+    },
+    {
+      "file": "Everything.dc.html",
+      "title": "(h) Everything expanded at 1280 — signed",
+      "x": 0,
+      "y": 3140,
+      "w": 1280,
+      "h": 940,
+      "page": "page-2"
+    }
   ],
   "annotations": [
-    { "id": "brief", "x": 1360, "y": 0, "w": 300, "page": "page-1", "text": "deckbuilder_ux T1 — signed 2026-09-15.\n\nAmended after page-2 feedback: Clear / Save / Save & play season now live in the band's right cluster (they left the depth chart). The muted next-action hint became the disabled Save's tooltip. Please re-confirm (a) and (b).", "kind": "note" },
-    { "id": "brief-2", "x": 1360, "y": 0, "w": 320, "page": "page-2", "text": "For sign-off.\n\n(d) Depth chart: no validity row, no actions — both live in the band.\n\n(e) Roster and (g) Plays are the same kind of sidebar: docked, or a 48px strip. The plays strip's three dots read slot state (ready / needs roles / empty).\n\n(f) Full layout at 1280 with both sidebars as strips: five ~172px depth columns.\n\n(h) Everything expanded at 1280: band open, both sidebars docked at their 280px minimum — the depth chart gets ~640px, five ~125px columns, starter cards ~175px tall. That is the honest worst case at this width; it is what tier rules have to protect. Say whether that is acceptable or whether opening one sidebar should collapse the other below 1440.", "kind": "note" }
+    {
+      "id": "brief",
+      "x": 1360,
+      "y": 0,
+      "w": 300,
+      "page": "page-1",
+      "kind": "note",
+      "text": "deckbuilder_ux T1 — all signed 2026-09-15.\n\nApp tokens (court), 44px controls, 8px/12px radii, Inter + Bebas Neue. Actions live in the band (Clear/Save as icons, one text primary); the shot-diet mini appears from 1440."
+    },
+    {
+      "id": "brief-2",
+      "x": 1360,
+      "y": 0,
+      "w": 320,
+      "page": "page-2",
+      "kind": "note",
+      "text": "Signed 2026-09-15. Owner decisions:\n\n• No validity row and no actions in the depth chart.\n• Plays and Roster are the same kind of sidebar: docked or a 48px strip.\n• Below 1440 the two sidebars are mutually exclusive — docking one collapses the other to its strip. From 1440 both may dock.\n\nBoard (h) is the 1280 worst case with both open; the rule above means it only occurs at 1440+, where the columns are wider."
+    }
   ],
-  "launch": { "view": "canvas", "page": "page-2" }
+  "launch": {
+    "view": "canvas",
+    "page": "page-2"
+  }
 }
