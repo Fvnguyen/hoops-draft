@@ -75,44 +75,15 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
 - **game_engine** (done 2026-09-14, `docs/completed/plan_game_engine_2026-09-13.md`): OT/
   home-court/spread/impact tuning fixed and measured; dead-code lineup wiring fixed in
   review; draft-impact + talent-vs-luck decomposition unified into `--report`.
+- **season_lifecycle_notifications** (done 2026-09-14,
+  `docs/completed/plan_season_lifecycle_notifications_2026-09-14.md`): derived
+  Pre-Season/Live/Completed status (`getSeasonPhase`), UI-side lock of completed
+  rosters/seasons, per-roster W-L + `computeUserSeasonStats`, notification bell on
+  device-local `getMeta/setMeta` (changelog + season-complete notices).
 - **game-results-visibility** (merged 2026-09-14, `2cd44e5`, from branch
   `claude/game-results-visibility-season-atxivj`): `playNextGame` now runs against a cloned
   `Season` and a fresh result commits only when the user watches `GameView` to the end and
   hits "Continue to Schedule"; leaving early discards it. Covered by `tests/season.spec.ts`.
-
-## season_lifecycle_notifications — done 2026-09-14
-
-Design: `docs/completed/plan_season_lifecycle_notifications_2026-09-14.md` (inserted as
-sequence #2b, ahead of `mobile_responsive`). All 6 tasks done in one session.
-
-- **Lifecycle status is derived, not stored**: `getSeasonPhase()` (`engine/season.ts`)
-  maps `Season.currentGame` to `'preseason' | 'live' | 'completed'` — no new persisted
-  field, no migration, no merge changes. `HUMAN_SEAT_ID` const added to replace 8 raw
-  `'human-0'` literals across `useDraftEngine.ts`/`analyzeStats.ts`/`DraftRoom.tsx`/
-  `SeasonView.tsx`.
-- **Locking**: a Completed roster/season is enforced UI-side only (no storage
-  write-guard). `app/roster/[id]/page.tsx` computes `readOnly` from the linked season and
-  passes it into `DeckBuilder`, which shows a banner and wraps the whole editing surface
-  in `pointer-events-none` (Save is also no-op guarded). `SeasonView`'s existing
-  `isSeasonComplete` now calls the shared helper instead of its own inline check.
-- **Records + stats**: `computeUserSeasonStats()` sums the human standings row across
-  every Completed season (`seasonsPlayed`/`wins`/`losses`/`avgWins`/`avgLosses`, 1
-  decimal, 0-season case handled). `app/rosters/page.tsx` shows a phase pill + W-L per
-  roster card; the profile menu (`TopNav.tsx`) shows a one-line blurb via the shared
-  `useUserSeasonStats` hook.
-- **Notifications**: `GameStore.getMeta/setMeta` (already implemented on the IndexedDb/
-  Memory backends for the migration flag) promoted onto the public interface;
-  `SupabaseGameStore` delegates both to its wrapped local store — deliberately
-  device-local, not cloud-synced (D6: this is "have I seen this" UI state, not gameplay
-  data). New bell icon in `TopNav` (`useNotices` hook) merges a hand-maintained changelog
-  (`src/data/whatsnew.ts`) with a synthetic "season complete" notice per newly-finished,
-  undismissed season.
-- Verified: `npm test` (217/217, 9 new cases in `tests/unit/season.test.ts` for
-  `getSeasonPhase`/`computeUserSeasonStats`), `tsc --noEmit`, `npm run lint` (0 errors)
-  clean, `npm run build` succeeds; live-verified in the browser against a real completed
-  season — phase pill/record on `/rosters`, locked banner + disabled editing on
-  `/roster/[id]`, bell dropdown with a dismissible season-complete notice, and the
-  profile-menu stats blurb all screenshotted working end to end.
 
 ## mobile_responsive T1 (audit harness) — 2026-09-15
 
