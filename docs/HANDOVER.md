@@ -194,8 +194,9 @@ from `data/`).
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
 `season_lifecycle_notifications`, `ui_foundation`, and `deckbuilder_ux` are done;
-`mobile_responsive` T1-T4/T6 done, only owner-side T7 (real-device pass) and the Supabase
-dashboard refresh-token setting are left). The 2026-09-12 code review that
+`mobile_responsive` is superseded by `game_canvas`, whose T4 audit rule + T0 layout fixes
+are done and uncommitted — the owner's D0 checkpoint (canvas yes/no) is the next step; the
+Supabase dashboard refresh-token setting is still an owner action). The 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
 
@@ -214,7 +215,11 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
    test rather than assuming fixed.
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-4. **`game.test.ts` minutes assertion is flaky.** Failed once on 2026-09-15 (17.5 < 18),
+4. **`mobile-audit` deck-builder step flakes when several touch projects run in one
+   invocation** (the three projects share one fixture roster; the "Edit Roster" click
+   sometimes fails `toHaveURL(/roster/)` on the second project). Always `--workers=1`,
+   and rerun a single project if it hits; never seen on a solo run.
+5. **`game.test.ts` minutes assertion is flaky.** Failed once on 2026-09-15 (17.5 < 18),
    passed every run since (5+). Seeded test, so likely a real edge in `game.ts` minutes
    distribution for one seed; worth pinning the failing seed before it bites CI.
 

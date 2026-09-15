@@ -1,129 +1,146 @@
 # Plan: game_canvas
 
-File: `docs/plans/plan_game_canvas_2026-09-15.md`. Status: planned
-Sequence: 3 in `docs/ROADMAP.md` (replaces the remaining scope of `mobile_responsive`,
-which is folded into this plan's History; its T1-T4/T6 work and tests are kept as-is).
-Depends on: `ui_foundation` (done), `deckbuilder_ux` (done). Files owned:
-`frontend/src/components/GameCanvas.tsx` (new), `frontend/src/app/layout.tsx`,
-`frontend/src/components/OrientationGate.tsx` (merges into GameCanvas), every route under
-`frontend/src/app/**/page.tsx` and its screen component (`DraftRoom.tsx`, `DeckBuilder.tsx`,
-`GameView.tsx`, `SeasonView.tsx`, `app/rosters/page.tsx`, `app/page.tsx`) for `dvh`/`vh`
-unit removal, `frontend/tests/mobile-audit.spec.ts`, `frontend/playwright.config.ts`.
-Excluded: `/data`, `/debug`, `/admin/*` (dev/admin tools, not part of the game canvas).
+File: `docs/plans/plan_game_canvas_2026-09-15.md`. Status: **D0 decided 2026-09-15: no canvas.** T4 + T0 done and
+committed; T1-T3 dropped; only T5 (owner real-device pass) is open, and it is the one
+thing that could reopen the canvas (see D0).
+Sequence: 3 in `docs/ROADMAP.md` (replaces the remaining scope of `mobile_responsive`;
+its T1-T4/T6 work and tests are kept as-is). Depends on: `ui_foundation` (done),
+`deckbuilder_ux` (done). Files owned: `frontend/src/components/GameCanvas.tsx` (new),
+`frontend/src/app/layout.tsx`, `frontend/src/components/OrientationGate.tsx` (merges into
+GameCanvas), `DraftRoom.tsx`, `DeckBuilder.tsx`, `TopKPIBand.tsx`, `FranchiseDashboard.tsx`,
+`SeasonView.tsx`, `app/page.tsx`, `app/rosters/page.tsx` (T0 fixes + `dvh` removal), `TopNav.tsx` (T1 mount),
+`frontend/tests/mobile-audit.spec.ts`, `frontend/playwright.config.ts`.
+Excluded: `/data`, `/debug`, `/admin/*`, and the auth routes `/login`, `/signup`, `/pending`.
 
 ## Goal
 
-On a touch device (phone or tablet, landscape), the app behaves like a game client
-(MTG Arena, not a responsive website): every non-admin screen renders at one fixed
-reference resolution and is uniformly scaled to fit the real viewport via CSS
-`transform: scale()`. There is no horizontal or vertical scrolling and nothing is ever
-clipped, by construction — the DOM never reflows per device, only its rendered pixels
-change size. Desktop/mouse users are unaffected and keep the fluid, breakpoint-based
-layouts already built by `ui_foundation`/`deckbuilder_ux`. This replaces the fluid-width
-approach `mobile_responsive` T6 was pursuing, which today's real-device test proved
-brittle: `DraftRoom`'s header overflowed and was silently clipped (`overflow-hidden`,
-not scrollable) at 780px wide even though the automated audit was green at 830px — one
-pixel of "target viewport" is not the same as actually responsive.
+On a phone in landscape, the app behaves like a game client (MTG Arena, not a responsive
+website): every game screen renders at one fixed reference resolution and is uniformly
+scaled to fit the real viewport via CSS `transform: scale()`, so nothing can clip by
+construction. Desktop, mouse and tablet users keep the fluid, breakpoint-based layouts
+already built by `ui_foundation`/`deckbuilder_ux`.
+
+## What the audit actually found (T4, run first, 2026-09-15)
+
+The original plan assumed 830x385 was "audited clean" and only 780px broke. The audit's
+overflow check used `scrollWidth`, which never sees leftward overflow and ignores anything
+inside an `overflow-hidden` box. Replaced by a rule that measures where text actually
+lands ("own text outside the viewport, no scrollable ancestor, not inside a translated
+drawer") and added a `phone-narrow` 780x360 project. Result, identical at 830x385 and 780x360:
+
+| Screen | Clipped content | Cause |
+|---|---|---|
+| home | "DRAFT PACK" column at x=792 | `app/page.tsx` right column `w-[450px] shrink-0` |
+| draft (entry + pack) | left opponent seat at x=-35 (830) / -60 (780) | `DraftRoom.tsx` header centres three children in too little room; the uncommitted `hidden lg:flex` + `min-w-0` edit does not fix it |
+| deck builder | plays pill "3 active plays" at x=786 | HUD band's right group pushed behind the gear menu |
+| season | "Shot Diet", "Active Mechanics" at x=800..1219 | `FranchiseDashboard.tsx` `flex gap-8` of `shrink-0` blocks inside SeasonView's `overflow-hidden` panel |
+| rosters, game tip-off, game live | none | — |
+
+So the reference layout itself has four real bugs, all width-independent. They must be
+fixed whichever approach wins; after them, a canvas is insurance for widths nobody has
+audited, not the fix for a known defect. That is the owner's call (D0).
 
 ## Decisions (locked)
 
-- D1 **Scope: touch devices only, all non-admin routes.** The canvas activates exactly
-  when `(pointer: coarse)` matches (same signal `OrientationGate` already uses) —
-  phone and tablet, portrait or landscape. It applies to every route except `/data`,
-  `/debug`, `/admin/*`. Mouse/desktop users always get the existing fluid layout,
-  unscaled, unchanged.
-- D2 **Reference resolution: 830x385** (the phone-landscape number `mobile_responsive`
-  D1 already targeted and audited against). Reusing it means today's layout — already
-  fixed to have zero audit findings at exactly this size — becomes the canvas's
-  ground truth with no re-design; only tablet and other real widths get scaled instead
-  of re-verified pixel-by-pixel.
-- D3 **Letterboxing: themed color bar.** Where the device aspect ratio doesn't match
-  830:385, the leftover margin (top/bottom or left/right, whichever axis has slack) is
-  painted with the current theme's `--surface-inverse-deep` token — a plain bar, not
-  stretched/blurred background art.
-- D4 **Scale floor: 0.85.** `k = min(vw/830, vh/385)`, clamped to >= 0.85. Below that
-  (a device narrower than ~706px landscape — not a target device per D1, but a safety
-  floor) the canvas stops shrinking further and lets more of the frame letterbox
-  instead of shrinking tap targets below ~37px.
-- D5 **Mechanism:** `GameCanvas.tsx` (client component) replaces `OrientationGate`'s
-  mount point in `layout.tsx` (keeps D2's rotate-overlay behavior — that still applies
-  independent of scale). It listens via `matchMedia('(pointer: coarse)')` +
-  `ResizeObserver` on `window`, computes `k` per D4, and renders: `pointer:fine` ->
-  `{children}` unchanged; `pointer:coarse` -> a fixed `830x385` (or route's natural
-  height if taller — see D6) inner box, `transform: scale(k)`, `transform-origin: center`,
-  centered in a `--surface-inverse-deep` full-viewport backdrop.
-- D6 **Taller-than-385 screens (rosters, season) keep native vertical scroll inside the
-  canvas.** The inner box is `830px` wide (fixed) but its height is `min-height: 385px`
-  with normal document flow and `overflow-y: auto` — so the *width* never causes
-  clipping (the actual bug this plan fixes) while a content-heavy list screen still
-  scrolls vertically inside its scaled frame, exactly like it would on desktop. Only
-  width is rigid; unbounded vertical content was never the complaint.
-- D7 **`dvh`/`vh`/`100vw` audit.** Any element sized against the real viewport
-  (`h-dvh`, `min-h-dvh`, raw `vh`/`vw`) inside a canvas-wrapped route must switch to a
-  size relative to the 830px canvas box instead — otherwise it lays out against the
-  unscaled device viewport before the transform applies and no longer matches the
-  830x385 reference. `DraftRoom.tsx`'s `h-dvh` is the known instance from today; T2
-  greps for the rest.
-- D8 **`mobile_responsive`'s finished work is kept, not redone.** T1's audit harness,
-  T2 (manifest/icons), T3 (`OrientationGate`'s rotate-check, merged into `GameCanvas`),
-  T4 (auto-login), and T6's fluid-width fixes (rosters flex row, `DraftRoom` header
-  breakpoint) all stay — they're what make the 830x385 reference render correctly,
-  which is now the only width that has to.
+- D0 **No canvas (owner, 2026-09-15).** With the four T0 bugs fixed and the audit clean
+  at 780x360, 830x385 and 1244x778, a scale transform would add a second rendering mode
+  (nine `position: fixed` components re-based, 44px controls at 41px real, nav/toasts
+  moved inside a wrapper, softer text) to insure against widths the harness can now
+  cover with a five-line project. Reopen only if T5 finds a screen usable in the
+  emulator but not in the hand (URL bar / keyboard eating height) — that is the case a
+  canvas answers and breakpoints cannot. D1-D7 below are kept as the design of record
+  for that case, not as work to do.
+- D1 **Activation: phone width, coarse pointer, game routes only.** The canvas is on
+  when `(pointer: coarse)` matches AND the viewport is under 1000px wide. Tablet
+  (1244x778) already passes the audit at native size and would only lose real estate to
+  a 1.5x blown-up phone UI with 100px bars; touch laptops must never get it. The auth
+  routes stay portrait-usable (mobile_responsive D2) and are excluded along with
+  `/data`, `/debug`, `/admin/*`. Desktop and tablet keep the fluid layout, unchanged.
+- D2 **Reference resolution: 830x385**, taken as ground truth only once T0 has it at
+  zero findings under the new text-position rule.
+- D3 **Letterboxing: themed bar** (`--surface-inverse-deep`) on whichever axis has slack.
+- D4 **No scale floor.** `k = min(vw/830, vh/385)`, no clamp. A floor cannot letterbox
+  (there is no slack below it), it can only overflow, which is the bug the plan exists to
+  remove. Consequence stated plainly: at k < 1 every 44px control shrinks in real pixels
+  (41px at 780x360). The audit measures tap targets in *canvas* space (divide by k), so the
+  44px floor is a design invariant, not a device promise; T5 is where the owner feels it.
+- D5 **Mechanism and what moves inside the box.** `GameCanvas.tsx` wraps `TopNav`,
+  `Toast`, `WhatsNewSplash`, `SyncConflictPrompt` AND `{children}` — everything below
+  `StorageProvider` — so the 56px nav and the pages' `pt-nav` scale together (otherwise
+  they differ by 56·(1−k) and overlap). The box is `830px` by `385px`, `overflow: hidden`,
+  `transform: scale(k)`, origin top-left, centred by margin in a full-viewport backdrop
+  that also carries the safe-area insets (`viewportFit: cover`). Known consequence: a
+  transformed ancestor is the containing block for every `position: fixed` descendant
+  (Overlay, RoundSummary, SeasonView modal, DeckBuilder drawers, PlayerCard modals and
+  its clientX/Y tooltip, DraftRoom save banner). That is the wanted behaviour for a game
+  client (modals live in the canvas); the tooltip divides pointer coordinates by k. The
+  wrapper always renders (no hydration branch); activation is a `data-canvas` attribute
+  set in a `useLayoutEffect` from `matchMedia` + `ResizeObserver`, with styles keyed on
+  it, so desktop has the same DOM and a snapshot-clean result. Rotate overlay from
+  `OrientationGate` moves into the same component, unchanged.
+- D6 **Vertical: fixed 385px box, each screen scrolls its own region.** No `min-height`
+  growth (a transformed box that grows leaks a scrollbar onto the outer page, which
+  contradicts the goal). Rosters and season already scroll inside; the others are
+  full-height apps.
+- D7 **`dvh`/`vh` audit.** Every `h-dvh`/`min-h-dvh` in a canvas route becomes `h-full`
+  / `min-h-full`, and the height comes from the wrapper in both modes (`100dvh` on
+  desktop, `385px` in the canvas). One code path, no `--canvas-h` custom property, desktop
+  visually unchanged. `DraftRoom`, `DeckBuilder`, `SeasonView`, `rosters`, `page.tsx`,
+  `PackOpener`, `ErrorRecovery`. `(auth)/layout.tsx` is excluded and keeps `dvh`.
+- D8 **`mobile_responsive`'s finished work is kept, not redone.**
 
 ## Out of scope
 
-Re-tuning the reference resolution's own layout (it's already audited clean). A second
-reference size for tablet specifically — tablet gets letterboxed instead, revisit only
-if the owner's real-device pass (T7, still pending) finds it unacceptably small.
-Desktop/mouse behavior — untouched. `/data`, `/debug`, `/admin/*`.
+A tablet reference size (tablet stays fluid, D1). Desktop/mouse behaviour. Re-tuning the
+830x385 layout beyond T0. `/data`, `/debug`, `/admin/*`, auth routes.
 
 ## Tasks
 
-- T1 **`GameCanvas` component + mount** (top; the scaling math and dvh interaction are
-  the risky part). Files: `components/GameCanvas.tsx` (new, absorbs
-  `OrientationGate`'s rotate-check), `app/layout.tsx`. Done when a Playwright test at
-  780x360 (today's failing width) and 830x385 shows the canvas box laid out at a fixed
-  830px CSS width regardless of device width, scaled to fit, no scrollbar on the outer
-  page, and desktop (`chromium`, no touch) renders `{children}` with zero wrapper
-  (snapshot-diff clean).
-- T2 **`dvh`/`vh` audit + fix** (mid). Grep `frontend/src` for `h-dvh|min-h-dvh|100vh|vw\b`
-  inside routes covered by D1; replace with canvas-relative sizing (a `--canvas-h: 385px`
-  custom property, or plain fixed px) inside the wrapped subtree. `DraftRoom.tsx` is the
-  known instance. Done when no canvas-wrapped route uses a real-viewport unit.
-- T3 **Letterboxing + scale floor** (low). D3/D4 in `GameCanvas.tsx`. Done when a
-  Playwright test at an extreme aspect ratio (e.g. 400x800 portrait-forced or 2000x400
-  ultra-wide) shows themed bars, not stretched content, and scale never drops under 0.85.
-- T4 **Re-run + extend the mobile audit** (mid). `tests/mobile-audit.spec.ts` gains the
-  780x360 width (today's real-device number) alongside 830x385/1244x778; the overflow
-  check adds "any descendant with `scrollWidth > clientWidth` and `overflow: hidden`"
-  (not just the document-level check, which is what missed today's bug) as a hard
-  failure, not just soft-reported. Done when all three widths are green.
-- T5 **Real-device pass** (owner) — supersedes `mobile_responsive` T7. S24+/S25/S26+ and
-  Tab S10+, installed and in-browser: confirm the canvas fills usefully (letterbox bars
-  aren't excessive on the actual tablet aspect ratio — if they are, that's the trigger
-  to revisit D2/the "out of scope" tablet-reference note above) and one full
-  draft -> deck -> game -> season loop has zero clipped/unreachable content.
+- T4 **Audit: text-position rule + 780x360 project** — **done 2026-09-15** (uncommitted:
+  `tests/mobile-audit.spec.ts` rule 5 `clipped-x`, `playwright.config.ts` `phone-narrow`).
+  Note: the three touch projects share one fixture roster, so run them with `--workers=1`
+  or the deck-builder step races. Remaining: measure tap targets in canvas space once
+  D5 lands (divide by the wrapper's `k`), and drop the old `scrollWidth` rule's
+  `position !== 'fixed'` exclusion comment, which no longer describes the check.
+- T0 **Fix the four reference-layout bugs** — **done 2026-09-15** (uncommitted). Home:
+  the 450px pack fan is `hidden lg:flex` (decorative; 320+300+450 never fit under 1134px).
+  DraftRoom header: both 256px side blocks appear from `lg` together, seats `shrink-0`
+  with `max-w-24 truncate` names, progress bar `w-40/56/72` and chevrons from `lg`.
+  `TopKPIBand.tsx` (not DeckBuilder — the pill lives in the band): peak/valley pair and the
+  "Save & play season" label hide under an 1100px container, a Play icon stands in.
+  FranchiseDashboard: `flex-wrap` below `lg`, `lg:flex-nowrap` keeps the desktop row and
+  its snapshot byte-identical. Verified: `mobile-audit` 0 findings at 780x360, 830x385,
+  1244x778; chromium 40/40 (one run had the deck-builder fixture time out, green on rerun).
+- **Owner checkpoint (D0) — done: no canvas.** T1, T2, T3 below are dropped.
+- T1 **`GameCanvas` component + mount** (top). D5/D6/D7 in one change: wrapper in
+  `layout.tsx` around nav + overlays + children, `OrientationGate` folded in. Done when a
+  Playwright test at 780x360 and 830x385 with `hasTouch` sees the box at exactly 830 CSS
+  px wide, scaled, no outer scrollbar, and 1280x800 chromium + 1244x778 tablet render
+  with `data-canvas` off and unchanged snapshots.
+- T2 **`dvh` -> `h-full`** (mid). D7. Done when no canvas route sizes against the real
+  viewport and desktop snapshots are unchanged.
+- T3 **Letterboxing** (low). D3. Done when a 2000x400 and a 400x800 viewport show themed
+  bars and the box never exceeds the viewport on either axis.
+- T5 **Real-device pass** (owner) — the only open task. S24+/S25/S26+ in-browser and
+  installed, Tab S10+: one full draft -> deck -> game -> season loop, zero clipped or
+  unreachable content. Clean = `/roadmap done game_canvas`; a height-only failure = reopen
+  D0 and schedule T1-T3.
 
 ## Parallelization
 
-Wave 0 (driver, top tier): T1 — every other task depends on the component existing and
-its scaling contract being settled. Wave 1 (parallel, disjoint files): T2, T3, T4.
-Wave 2: T5 owner.
+Done: T4, T0. Open: T5 (owner). If D0 is reopened: T1 (driver), then T2 + T3 in parallel.
 
 ## Recommended model tier
 
-T1: top (Fable 5.1 / Opus 5) — the transform-scale + dvh interaction is easy to get
-subtly wrong and hard to unit-test, needs careful real-browser verification. T2-T4: mid
-(Sonnet 5).
+T0, T2, T3: mid (Sonnet 5). T1: top — the transform + fixed-descendant + nav-inside-box
+interaction is where this fails subtly.
 
 ## Verification / exit criteria
 
-- `npm test`, `tsc --noEmit`, `npm run lint` clean; `npm run test:e2e` green including
-  the new 780x360 audit width.
-- Live-browser check (not just the audit spec) at 780x360 and 830x385: draft pack,
-  deck builder, game view, season, rosters all show zero clipped content, canvas box
-  visibly letterboxed where aspect ratio doesn't match, no page-level scrollbar except
-  the intentional vertical scroll inside taller screens (D6).
-- Desktop (chromium, 1280x800) visual snapshots unchanged from before this plan.
-- Owner sign-off from T5; then `/roadmap done game_canvas` (and `mobile_responsive` is
-  marked superseded, not separately "done").
+- `npm test`, `tsc --noEmit`, `npm run lint` clean; `mobile-audit` 0 findings on all
+  three touch projects (`--workers=1`); chromium `test:e2e` green with unchanged 1280x800
+  snapshots.
+- If the canvas ships: live check at 780x360 and 830x385 in a touch-emulated tab shows
+  the letterboxed box, modals inside it, nav scaled with the page; tablet shows no box.
+- Owner sign-off from T5; then `/roadmap done game_canvas`, `mobile_responsive` stays
+  marked superseded.
