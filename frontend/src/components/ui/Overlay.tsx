@@ -59,7 +59,7 @@ export function Overlay({
         padding="none"
         variant="inverse"
         className={cn(
-          'relative w-full max-h-[90dvh] overflow-y-auto overscroll-contain shadow-2xl',
+          'relative w-full max-h-[calc(90dvh/var(--zoom))] overflow-y-auto overscroll-contain shadow-2xl',
           size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-2xl' : 'max-w-md',
           className,
         )}
