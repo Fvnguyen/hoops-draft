@@ -143,9 +143,9 @@ every fresh context shows it — `tests/helpers/splash.ts` is the shared dismiss
 Gotchas: `Button href=` forwards data-*/aria-*; `Menu`'s `<summary>` carries `role=button`;
 `sr-only` text and image crops are excluded from the audit's clipped rule.
 
-## deckbuilder_ux waves 0-2 — 2026-09-15 (open: owner click-through, then `/roadmap done`)
+## deckbuilder_ux — done 2026-09-15
 
-Plan: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Design-first: eight artboards on the
+Plan: `docs/completed/plan_deckbuilder_ux_2026-09-15.md`. Design-first: eight artboards on the
 canvas "Deck Builder HUD" (https://claude.ai/artifact/Vixm9Jj2yx6xwzbHGVc22K), sources and
 2x PNGs in `docs/design/deckbuilder_ux/`, all signed by the owner the same day. Commits
 `9f036b3` (wave 1), `7e98612` (wave 2) + fixes. What changed: the builder's top band is
@@ -188,7 +188,8 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done; `ui_foundation` and `deckbuilder_ux` done except the owner click-through, `mobile_responsive` T1 done). The
+and `season_lifecycle_notifications` are done; `ui_foundation` and `deckbuilder_ux` done (owner laptop review signed; three review
+fixes landed: overlay report, both sidebars dock, 148px column floor), `mobile_responsive` T1 done). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
