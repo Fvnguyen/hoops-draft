@@ -13,7 +13,7 @@
  * there for free (the previous hand-rolled scrim couldn't be dismissed on a short
  * viewport, D5/mobile-audit `undismissable splash`).
  */
-import { Activity, BarChart3, Bell, Cloud, Trophy, type LucideIcon, Palette, LayoutDashboard, MousePointerClick, Zap } from 'lucide-react';
+import { Activity, BarChart3, Bell, Cloud, Trophy, type LucideIcon, Palette, LayoutDashboard, MousePointerClick, Zap, Smartphone, Hand, LayoutGrid, Sparkles } from 'lucide-react';
 import { useCurrentProfile } from './AuthProvider';
 import { useNotices } from '@/hooks/useNotices';
 import type { ChangelogIcon } from '@/data/whatsnew';
@@ -31,6 +31,10 @@ const ICONS: Record<ChangelogIcon, LucideIcon> = {
   layout: LayoutDashboard,
   pointer: MousePointerClick,
   zap: Zap,
+  phone: Smartphone,
+  hand: Hand,
+  grid: LayoutGrid,
+  sparkles: Sparkles,
 };
 
 const TITLE_ID = 'whats-new-splash-title';
