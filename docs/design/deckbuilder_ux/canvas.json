@@ -1,11 +1,92 @@
 {
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Signed: band + tiles"
+    },
+    {
+      "id": "page-2",
+      "name": "For sign-off: depth chart, roster, layout"
+    }
+  ],
   "artboards": [
-    { "file": "Main.dc.html", "title": "(a) Collapsed band", "x": 0, "y": 0, "w": 1280, "h": 120 },
-    { "file": "ExpandedBand.dc.html", "title": "(b) Expanded band", "x": 0, "y": 260, "w": 1280, "h": 320 },
-    { "file": "PlayTiles.dc.html", "title": "(c) Play tiles", "x": 0, "y": 720, "w": 1280, "h": 440 }
+    {
+      "file": "Main.dc.html",
+      "title": "(a) Collapsed band — signed",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 120,
+      "page": "page-1"
+    },
+    {
+      "file": "ExpandedBand.dc.html",
+      "title": "(b) Expanded band — signed",
+      "x": 0,
+      "y": 260,
+      "w": 1280,
+      "h": 320,
+      "page": "page-1"
+    },
+    {
+      "file": "PlayTiles.dc.html",
+      "title": "(c) Play tiles — signed",
+      "x": 0,
+      "y": 720,
+      "w": 1280,
+      "h": 440,
+      "page": "page-1"
+    },
+    {
+      "file": "DepthChart.dc.html",
+      "title": "(d) Depth chart",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 740,
+      "page": "page-2"
+    },
+    {
+      "file": "RosterSidebar.dc.html",
+      "title": "(e) Roster sidebar",
+      "x": 0,
+      "y": 880,
+      "w": 1280,
+      "h": 560,
+      "page": "page-2"
+    },
+    {
+      "file": "FullLayout.dc.html",
+      "title": "(f) Full layout at 1280",
+      "x": 0,
+      "y": 1580,
+      "w": 1280,
+      "h": 800,
+      "page": "page-2"
+    }
   ],
   "annotations": [
-    { "id": "brief", "x": 1360, "y": 0, "w": 300, "text": "deckbuilder_ux T1 — sign-off artboards.\n\nEverything uses the app's own tokens (court theme), 44px controls, 8px/12px radii, Inter + Bebas Neue.\n\nEdit anything in place; when it reads right, say so and the plan builds exactly this." }
+    {
+      "id": "brief",
+      "x": 1360,
+      "y": 0,
+      "w": 300,
+      "page": "page-1",
+      "text": "deckbuilder_ux T1 — signed 2026-09-15.\n\nApp tokens (court), 44px controls, 8px/12px radii, Inter + Bebas Neue. These three are the spec for the band and the play tiles; implementation is under way.",
+      "kind": "note"
+    },
+    {
+      "id": "brief-2",
+      "x": 1360,
+      "y": 0,
+      "w": 320,
+      "page": "page-2",
+      "text": "Three more for sign-off.\n\n(d) The validity row is gone from the depth chart — the counts live in the band. Clear / Save / Save & play season move to the title row. SG shows the assigning state after clicking a roster player.\n\n(e) Roster sidebar: docked 400px, the 48px strip, and the compact-tier overlay drawer. Rows are 56px; a selected player says what to do next; a placed player reads muted.\n\n(f) Full layout at exactly 1280. One decision for you: with the roster DOCKED at 1280, the depth chart gets ~624px (five 117px columns) — the squeeze you flagged. This board shows the roster as the strip at 1280 and proposes docking only from 1440. Say if you'd rather dock at 1280 and accept narrower columns.",
+      "kind": "note"
+    }
   ],
-  "launch": { "view": "canvas" }
+  "launch": {
+    "view": "canvas",
+    "page": "page-2"
+  }
 }

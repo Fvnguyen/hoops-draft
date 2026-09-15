@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #292524; }
+    a { color: #d97706; } a:hover { color: #b45309; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 740px; background: #f5f0ea; box-sizing: border-box; padding: 16px 24px; display: flex; flex-direction: column; gap: 12px;">
+
+  <!-- title row: the old ACTIVE ROSTER validity row is gone (counts live in the band); actions sit here -->
+  <div style="display: flex; align-items: center; gap: 12px; min-height: 44px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-family: 'Bebas Neue', Inter, sans-serif; font-size: 24px; letter-spacing: 0.04em; color: #1c1917; text-transform: uppercase;">Depth chart</span>
+      <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Starters at top</span>
+    </div>
+    <div style="flex: 1;"></div>
+    <div style="display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 8px; border: 1px solid #d6d3d1; background: #ffffff; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #292524;">Clear</div>
+    <div style="display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 8px; border: 1px solid #e7e5e4; background: #f5f5f4; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Save</div>
+    <div style="display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 8px; background: #d97706; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #ffffff;">Save &amp; play season</div>
+  </div>
+
+  <!-- five columns, 8px gap; each column is a sunken panel with its position bar -->
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; flex: 1;">
+
+    <!-- PG: starter + bench 1 filled -->
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; border-radius: 12px; background: #f5f5f4; border: 1px solid #e7e5e4; box-sizing: border-box;">
+      <div style="height: 6px; border-radius: 0 0 4px 4px; background: #3B82F6; margin: 0 -8px;"></div>
+      <div style="text-align: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; color: #292524;">PG</div>
+      <div style="aspect-ratio: 5 / 7; border-radius: 12px; background: #ffffff; border: 1px solid #d6d3d1; box-shadow: 0 1px 2px rgba(0,0,0,0.05); overflow: hidden; display: flex; flex-direction: column;">
+        <div style="display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: rgba(255,255,255,0.5); border-bottom: 1px solid #e7e5e4;">
+          <span style="width: 12px; height: 12px; background: #a8a29e; transform: rotate(45deg); border-radius: 2px;"></span>
+          <span style="flex: 1; font-size: 14px; font-weight: 900; text-transform: uppercase; color: #1c1917; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">J. Brunson</span>
+          <span style="font-size: 12px; font-weight: 900; color: #ffffff; background: #3B82F6; border-radius: 6px; padding: 1px 6px;">G</span>
+        </div>
+        <div style="flex: 1; background: #e7e5e4; display: flex; align-items: center; justify-content: center; color: #a8a29e; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;">headshot</div>
+        <div style="display: flex; justify-content: center; gap: 6px; padding: 8px;">
+          <span style="width: 24px; height: 24px; border-radius: 999px; background: #ffffff; border: 1px solid #d6d3d1;"></span>
+          <span style="width: 24px; height: 24px; border-radius: 999px; background: #ffffff; border: 1px solid #d6d3d1;"></span>
+          <span style="width: 24px; height: 24px; border-radius: 999px; background: #ffffff; border: 1px solid #d6d3d1;"></span>
+        </div>
+      </div>
+      <div style="height: 44px; border-radius: 8px; background: #ffffff; border: 1px solid #e7e5e4; display: flex; align-items: center; gap: 8px; padding: 0 8px; box-sizing: border-box;">
+        <span style="width: 28px; height: 28px; border-radius: 6px; background: #e7e5e4; flex-shrink: 0;"></span>
+        <span style="flex: 1; font-size: 12px; font-weight: 900; text-transform: uppercase; color: #1c1917; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">I. Quickley</span>
+        <span style="font-size: 12px; font-weight: 900; color: #ffffff; background: #3B82F6; border-radius: 6px; padding: 1px 6px;">G</span>
+      </div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 2 · Add PG</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 3 · Add PG</div>
+    </div>
+
+    <!-- SG: empty, in "assigning" mode (eligible highlight) -->
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; border-radius: 12px; background: #f5f5f4; border: 1px solid #e7e5e4; box-sizing: border-box;">
+      <div style="height: 6px; border-radius: 0 0 4px 4px; background: #8B5CF6; margin: 0 -8px;"></div>
+      <div style="text-align: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; color: #292524;">SG</div>
+      <div style="aspect-ratio: 5 / 7; border-radius: 12px; border: 2px dashed #059669; background: #d1fae5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
+        <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Starter</span>
+        <span style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #059669;">Place here</span>
+      </div>
+      <div style="height: 44px; border-radius: 8px; border: 2px dashed #059669; background: #d1fae5; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #059669; box-sizing: border-box;">Bench 1 · place here</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e; opacity: 0.5;">Bench 2</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e; opacity: 0.5;">Bench 3</div>
+    </div>
+
+    <!-- SF / PF / C: empty, resting -->
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; border-radius: 12px; background: #f5f5f4; border: 1px solid #e7e5e4; box-sizing: border-box;">
+      <div style="height: 6px; border-radius: 0 0 4px 4px; background: #10B981; margin: 0 -8px;"></div>
+      <div style="text-align: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; color: #292524;">SF</div>
+      <div style="aspect-ratio: 5 / 7; border-radius: 12px; border: 2px dashed #d6d3d1; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
+        <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Starter</span>
+        <span style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #78716c;">Add SF</span>
+      </div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 1 · Add SF</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 2 · Add SF</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 3 · Add SF</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; border-radius: 12px; background: #f5f5f4; border: 1px solid #e7e5e4; box-sizing: border-box;">
+      <div style="height: 6px; border-radius: 0 0 4px 4px; background: #F59E0B; margin: 0 -8px;"></div>
+      <div style="text-align: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; color: #292524;">PF</div>
+      <div style="aspect-ratio: 5 / 7; border-radius: 12px; border: 2px dashed #d6d3d1; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
+        <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Starter</span>
+        <span style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #78716c;">Add PF</span>
+      </div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 1 · Add PF</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 2 · Add PF</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 3 · Add PF</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; border-radius: 12px; background: #f5f5f4; border: 1px solid #e7e5e4; box-sizing: border-box;">
+      <div style="height: 6px; border-radius: 0 0 4px 4px; background: #EF4444; margin: 0 -8px;"></div>
+      <div style="text-align: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; color: #292524;">C</div>
+      <div style="aspect-ratio: 5 / 7; border-radius: 12px; border: 2px dashed #d6d3d1; background: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box;">
+        <span style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #a8a29e;">Starter</span>
+        <span style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #78716c;">Add C</span>
+      </div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 1 · Add C</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 2 · Add C</div>
+      <div style="height: 44px; border-radius: 8px; border: 1px dashed #d6d3d1; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;">Bench 3 · Add C</div>
+    </div>
+  </div>
+
+  <div style="font-size: 12px; color: #a8a29e;">Depth chart on its own, 1280 wide. No validity row any more; Clear / Save / Save &amp; play season sit in the title row. PG shows a filled starter and bench 1; SG shows the "assigning" state after a roster player was clicked (eligible slots highlight, ineligible fade); SF/PF/C are empty. Bench rows are exactly 44px.</div>
+</div>
+</x-dc>
+</body>
+</html>
