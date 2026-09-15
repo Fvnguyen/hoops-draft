@@ -44,7 +44,10 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
   const activePlays = playbookStatus.plays.filter(p => p.active);
 
   return (
-    <div className="bg-surface-raised border-b border-line px-6 py-4 flex gap-8 items-start shadow-sm w-full">
+    // game_canvas T0: below lg the four blocks do not fit one row and the SeasonView
+    // panel around this is overflow-hidden, so they wrap there; from lg the row is the
+    // same single line as before (desktop snapshot unchanged).
+    <div className="bg-surface-raised border-b border-line px-6 py-4 flex flex-wrap lg:flex-nowrap gap-x-8 gap-y-4 items-start shadow-sm w-full">
 
       {/* Left: Starters */}
       <div className="shrink-0 flex flex-col items-center">
@@ -63,10 +66,10 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
         </div>
       </div>
 
-      <div className="w-px bg-line self-stretch" />
+      <div className="hidden w-px bg-line self-stretch lg:block" />
 
       {/* Center: Team identity radar + shot diet as a plain list */}
-      <div className="shrink-0 flex gap-8">
+      <div className="flex flex-wrap gap-8 lg:flex-nowrap lg:shrink-0">
         <div className="flex flex-col gap-1">
           <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Team Identity</h3>
           <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={150} />
@@ -90,10 +93,10 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
         </div>
       </div>
 
-      <div className="w-px bg-line self-stretch" />
+      <div className="hidden w-px bg-line self-stretch lg:block" />
 
       {/* Right: Active Mechanics — selected archetype(s) + active plays with assigned players */}
-      <div className="flex-1 min-w-[250px] max-w-[350px]">
+      <div className="flex-1 min-w-[250px] max-w-[350px] basis-[250px]">
         <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">Active Mechanics</h3>
         <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[100px] pr-2 custom-scrollbar">
           {selectedArchetypes.map(s => (

@@ -164,7 +164,9 @@ export default function Home() {
         </div>
 
         {/* RIGHT COLUMN: Pack Preview */}
-        <div className="z-20 flex w-[450px] shrink-0 flex-col items-center justify-center pt-8">
+        {/* game_canvas T0: 320 + 300 + 450px columns never fit under 1134px; the fan is
+            decorative, so it yields first instead of being clipped by overflow-x-hidden. */}
+        <div className="z-20 hidden w-[450px] shrink-0 flex-col items-center justify-center pt-8 lg:flex">
           <h2 className="z-20 mb-8 whitespace-nowrap bg-gradient-to-b from-ink-inverse to-info-soft bg-clip-text pr-2 text-5xl font-black italic tracking-tight text-transparent drop-shadow-md" style={{ fontFamily: 'var(--font-bebas)' }}>
             DRAFT PACK
           </h2>

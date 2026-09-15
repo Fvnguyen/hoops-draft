@@ -370,33 +370,35 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}
         <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass}`}>
-          <div className="w-64 hidden md:flex items-center gap-2">
+          <div className="w-64 hidden lg:flex items-center gap-2">
             <ModePill mode={mode} />
             {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
             <SfxToggle />
           </div>
 
-          <div className="flex-1 flex justify-center items-center gap-4 sm:gap-8">
+          {/* game_canvas T0: the seats are shrink-0 and the bar/chevrons scale with the
+              breakpoint, so this row fits 830px without pushing a seat past x=0. */}
+          <div className="min-w-0 flex-1 flex justify-center items-center gap-4 lg:gap-8">
              {/* Left Player (Seat 7) */}
              <motion.div
                key={`left-${passSeq}`}
                initial={{ scale: 1 }}
                animate={{ scale: [1, 1.15, 1] }}
                transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 1 : 0) / 1000 }}
-               className="flex flex-col items-center gap-1 opacity-80"
+               className="flex shrink-0 flex-col items-center gap-1 opacity-80"
              >
                 <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber !== 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
-                <span className={`text-xs uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
+                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
              </motion.div>
 
              {/* Central Pass UI */}
-             <div className="flex items-center gap-3 sm:gap-6">
-                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden sm:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden sm:block" size={24} />}
+             <div className="flex min-w-0 items-center gap-3 lg:gap-6">
+                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden lg:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden lg:block" size={24} />}
                 <div className="flex flex-col items-center gap-1.5">
                    <div className="text-ink font-bold text-sm leading-none whitespace-nowrap">
                      Pack {currentPackNumber} <span className="text-ink-subtle font-medium">·</span> Pick {currentPickNumber} of {PICKS_PER_PACK}
                    </div>
-                   <div className="w-56 sm:w-72 h-1.5 rounded-full bg-surface-muted overflow-hidden flex gap-[1.5px]">
+                   <div className="w-40 sm:w-56 lg:w-72 h-1.5 rounded-full bg-surface-muted overflow-hidden flex gap-[1.5px]">
                      {Array.from({ length: TOTAL_PICKS }).map((_, i) => (
                        <div
                          key={i}
@@ -408,7 +410,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                      Overall Pick {overallPick} / {TOTAL_PICKS}
                    </div>
                 </div>
-                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden sm:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden sm:block" size={24} />}
+                {currentPackNumber === 2 ? <ChevronRight className="text-ink-subtle hidden lg:block" size={24} /> : <ChevronLeft className="text-ink-subtle hidden lg:block" size={24} />}
              </div>
 
              {/* Right Player (Seat 1) */}
@@ -417,14 +419,14 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
                initial={{ scale: 1 }}
                animate={{ scale: [1, 1.15, 1] }}
                transition={{ duration: 0.3, delay: passStaggerDelayMs(currentPackNumber === 2 ? 0 : 1) / 1000 }}
-               className="flex flex-col items-center gap-1 opacity-80"
+               className="flex shrink-0 flex-col items-center gap-1 opacity-80"
              >
                 <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber === 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
-                <span className={`text-xs uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
+                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
              </motion.div>
           </div>
 
-          <div className="w-64 hidden md:flex justify-end">
+          <div className="w-64 hidden lg:flex justify-end">
             <div className="text-ink-muted font-medium text-xs uppercase tracking-widest bg-surface-raised px-3 py-1.5 rounded-full border border-line flex items-center gap-1.5 shadow-sm">
               Passing {currentPackNumber === 2 ? 'Right' : 'Left'} {currentPackNumber === 2 ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
             </div>

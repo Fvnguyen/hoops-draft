@@ -12,7 +12,7 @@ import {
   type ArchetypeSelection,
   type ArchetypeTier,
 } from '../engine/archetypes';
-import { Trash2, Save as SaveIcon } from 'lucide-react';
+import { Trash2, Save as SaveIcon, Play as PlayIcon } from 'lucide-react';
 import { DonutChart } from './DonutChart';
 import { RadarChart, peakValleyAxes } from './RadarChart';
 import { Button } from './ui/Button';
@@ -265,7 +265,9 @@ export function TopKPIBand({
 
       <Divider />
 
-      <div className="flex items-center gap-4 px-2 text-xs font-black uppercase tracking-wide">
+      {/* game_canvas T0: below an 1100px container the row cannot hold the chips, this
+          pair and the three actions — the pair lives in the expanded report too. */}
+      <div className="hidden @min-[1100px]:flex items-center gap-4 px-2 text-xs font-black uppercase tracking-wide">
         <span className="inline-flex items-center gap-1.5 text-positive">▲ {peak}</span>
         <span className="inline-flex items-center gap-1.5 text-danger">▼ {valley}</span>
       </div>
@@ -310,7 +312,9 @@ export function TopKPIBand({
             title={!actions.canPlay ? actions.disabledReason : undefined}
             onClick={actions.onSaveAndPlay}
           >
-            Save &amp; play season
+            <PlayIcon size={18} aria-hidden="true" className="@min-[1100px]:hidden" />
+            <span className="hidden @min-[1100px]:inline">Save &amp; play season</span>
+            <span className="sr-only @min-[1100px]:hidden">Save &amp; play season</span>
           </Button>
         </>
       )}

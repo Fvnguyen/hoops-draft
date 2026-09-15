@@ -58,6 +58,21 @@ export default defineConfig({
       },
       dependencies: ['setup'],
     },
+    // game_canvas T4: the owner's real S24+ in-browser reported 780x360 (URL bar showing),
+    // 50px narrower than the D1 target — the width where DraftRoom's header clipped.
+    {
+      name: 'phone-narrow',
+      testMatch: /mobile-audit\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 780, height: 360 },
+        deviceScaleFactor: 3,
+        isMobile: true,
+        hasTouch: true,
+        storageState: 'tests/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
     {
       name: 'tablet-landscape',
       testMatch: /mobile-audit\.spec\.ts$/,

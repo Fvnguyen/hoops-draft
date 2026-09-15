@@ -29,7 +29,7 @@ const FIXTURE_PATH = path.resolve(__dirname, 'fixtures', 'season-fixture.json');
 
 type Finding = {
   screen: string;
-  kind: 'overflow-x' | 'tap-target' | 'font-size' | 'clipped';
+  kind: 'overflow-x' | 'tap-target' | 'font-size' | 'clipped' | 'clipped-x';
   detail: string;
 };
 
@@ -157,6 +157,42 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
             detail: `${describe(el)} [${el.className.toString().slice(0, 70)}] clips ${el.scrollHeight - el.clientHeight}px of content (overflow hidden, no scroll)`,
           });
         }
+      }
+
+      // --- 5. text pushed outside the viewport ---------------------------------------
+      // game_canvas T4: the checks above missed the real-device bug — DraftRoom's header
+      // centred three children in too little room and the left seat ended up at x=-60.
+      // `scrollWidth` never sees leftward overflow, so this rule looks at where text
+      // actually landed instead: any element with its own text whose box leaves the
+      // viewport on either side is unreachable unless something scrolls it back. Skipped:
+      // descendants of a horizontal scroll container (reachable), and of an element
+      // translated by a transform (a collapsed drawer peeking in from the edge is
+      // off-screen on purpose).
+      const hasOwnText = (el: Element) =>
+        [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent || '').trim());
+      const reachable = (el: Element) => {
+        for (let a: Element | null = el; a; a = a.parentElement) {
+          const s = getComputedStyle(a);
+          if (s.position === 'fixed') return true;
+          if (s.overflowX === 'auto' || s.overflowX === 'scroll') return true;
+          if (s.transform !== 'none' && s.transform !== 'matrix(1, 0, 0, 1, 0, 0)') return true;
+        }
+        return false;
+      };
+      const seenX = new Set<string>();
+      for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+        if (!hasOwnText(el) || !visible(el)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.left >= -1 && r.right <= innerWidth + 1) continue;
+        if (reachable(el)) continue;
+        const key = describe(el);
+        if (seenX.has(key)) continue;
+        seenX.add(key);
+        findings.push({
+          screen,
+          kind: 'clipped-x',
+          detail: `${key} sits at x ${Math.round(r.left)}..${Math.round(r.right)} (viewport 0..${innerWidth}), nothing scrolls it into reach`,
+        });
       }
 
       return {
