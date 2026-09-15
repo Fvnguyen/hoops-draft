@@ -34,6 +34,14 @@ against — treat as a spot-check, not a verification:
   `npm run analyze` / `npm run feasibility` against the regenerated `cards.json` before
   treating any of this as evidence toward D2/D3.
 
+**2026-09-16** — full-pool (448 players) win-side bootstrap, not a draft spot-check: see
+[analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md)
+for method + full findings. Headline: `corr(OVR, winSharesPerGame) = 0.617`; finishing/
+interior badges (Finisher, Paint Protector, Glass Cleaner) predict winning 2-3x better
+than Sharpshooter/Floor General despite rating volume-scoring more heavily; 204/448 cards
+(45.5%) are clipped at the OVR-40 floor despite a real 3x win-shares spread within that
+group — the highest-leverage target for T2's rating retune.
+
 ## Decisions (locked)
 
 - D1 Positions: `data/fetch_players.py` keeps basketball-reference `Pos` as primary and
