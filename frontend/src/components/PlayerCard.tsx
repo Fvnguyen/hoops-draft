@@ -546,6 +546,102 @@ function BadgePanel({ traits }: { traits: Trait[] }) {
  * (`{isHovered && <PlayerHoverPreview .../>}`) — a portaled node is no longer a DOM
  * descendant of a `.group` wrapper, so CSS `group-hover` can no longer reach it.
  */
+/**
+ * The card's back face: badges, accolades, season averages, bio. Lives inside
+ * `PlayerCard`'s flip (`flipped`, rotated 180° with its backface hidden) and, un-rotated,
+ * in `PlayerHoverPreview` — on a phone there is no hover-flip, so the long-press
+ * preview is the only way to read these stats (game_canvas, owner).
+ */
+export function PlayerCardBack({ player, flipped = true }: { player: PlayerCardData; flipped?: boolean }) {
+  const [c1, c2] = getPosColors(player.player.position);
+  return (
+    <div
+      className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-surface-inverse text-ink-inverse border border-line-inverse"
+      style={flipped ? { backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' } : { isolation: 'isolate' }}
+    >
+      {/* Top accent bar (same as front) */}
+      <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
+
+      {/* Header: gem + rarity text + position pill + flip control */}
+      <div className="px-3 py-1.5 flex items-center gap-2 border-b border-line-inverse bg-surface-inverse/80 backdrop-blur">
+        <RarityGem rarity={player.rarity} size="lg" />
+        <span className={`text-xs font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
+        <div className="flex-1" />
+        <PositionIcon position={player.player.position} />
+      </div>
+
+      {/* Back body: badges first (game-relevant), then accolades, then season averages.
+          D10: a scroll region, not a clipped box — small cards (bench/G-League) have
+          more content than height, so the back scrolls instead of hiding badges. */}
+      <div className="px-2.5 pt-1.5 pb-1 flex-1 flex flex-col overflow-y-auto overscroll-contain min-h-0">
+        {player.traits && player.traits.length > 0 && (
+          <div className="mb-1.5">
+            <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
+            <div className="flex flex-wrap justify-center gap-1">
+              {player.traits.map((trait, i) => {
+                const cfg = badgeConfig[trait.name];
+                const color = cfg?.color ?? defaultBadgeConfig.color;
+                return (
+                  <span key={i} className="px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider rounded border border-line-inverse flex items-center gap-0.5" style={{ color, backgroundColor: `${color}26` }}>
+                    {trait.level > 1 && <span className="text-xs opacity-70">{trait.level}×</span>}
+                    {trait.name}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {player.awards && player.awards.length > 0 && (
+          <div className="mb-1.5">
+            <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
+            <div className="flex flex-wrap justify-center gap-1">
+              {player.awards.map((award, i) => (
+                <span key={i} className="px-2 py-0.5 bg-accent-soft/20 text-accent text-xs font-black uppercase tracking-widest rounded border border-accent/50">
+                  {award}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
+        <div className="grid grid-cols-2 gap-x-1 gap-y-[2px]">
+          {[
+            ['GP', String(player.stats.gp)],
+            ['MPG', player.stats.mpg.toFixed(1)],
+            ['PTS', player.stats.pts.toFixed(1)],
+            ['FGA', (player.stats.fga || 0).toFixed(1)],
+            ['TRB', player.stats.trb.toFixed(1)],
+            ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
+            ['AST', player.stats.ast.toFixed(1)],
+            ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
+            ['STL', player.stats.stl.toFixed(1)],
+            ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
+            ['BLK', player.stats.blk.toFixed(1)],
+            ['3PA', (player.stats.fg3a || 0).toFixed(1)],
+            ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
+            ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
+          ].map(([label, val]) => (
+            <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-surface-inverse-deep rounded border border-line-inverse">
+              <span className="text-xs text-ink-inverse-muted font-bold uppercase">{label}</span>
+              <span className="text-xs font-black text-ink-inverse">{val}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Bio — only when there is room */}
+        <div className="mt-auto pt-1 text-center text-xs text-ink-inverse-muted font-bold tracking-widest uppercase hidden @[200px]:block">
+            {player.player.height} • {player.player.weight} LBS • {player.player.age}Y
+        </div>
+      </div>
+
+      {/* Bottom accent bar */}
+      <div className="h-1.5" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
+    </div>
+  );
+}
+
 export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
   if (typeof document === 'undefined') return null;
   return createPortal(
@@ -553,6 +649,10 @@ export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
       <BadgePanel traits={player.traits} />
       <div className="relative w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl" style={{ aspectRatio: '5 / 7' }}>
         <PlayerCardFront player={player} />
+      </div>
+      {/* The back face, un-rotated: season averages, badge levels, accolades, bio. */}
+      <div className="@container relative w-[280px] rounded-xl ring-4 ring-white/15 drop-shadow-2xl" style={{ aspectRatio: '5 / 7' }}>
+        <PlayerCardBack player={player} flipped={false} />
       </div>
     </div>,
     document.body,
@@ -641,90 +741,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         <PlayerCardFront player={player} isSelected={isSelected} size={size} />
 
         {/* ===== BACK ===== */}
-        <div
-          className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-surface-inverse text-ink-inverse border border-line-inverse"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', isolation: 'isolate' }}
-        >
-          {/* Top accent bar (same as front) */}
-          <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
-
-          {/* Header: gem + rarity text + position pill + flip control */}
-          <div className="px-3 py-1.5 flex items-center gap-2 border-b border-line-inverse bg-surface-inverse/80 backdrop-blur">
-            <RarityGem rarity={player.rarity} size="lg" />
-            <span className={`text-xs font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
-            <div className="flex-1" />
-            <PositionIcon position={player.player.position} />
-          </div>
-
-          {/* Back body: badges first (game-relevant), then accolades, then season averages.
-              D10: a scroll region, not a clipped box — small cards (bench/G-League) have
-              more content than height, so the back scrolls instead of hiding badges. */}
-          <div className="px-2.5 pt-1.5 pb-1 flex-1 flex flex-col overflow-y-auto overscroll-contain min-h-0">
-            {player.traits && player.traits.length > 0 && (
-              <div className="mb-1.5">
-                <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Badges</div>
-                <div className="flex flex-wrap justify-center gap-1">
-                  {player.traits.map((trait, i) => {
-                    const cfg = badgeConfig[trait.name];
-                    const color = cfg?.color ?? defaultBadgeConfig.color;
-                    return (
-                      <span key={i} className="px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider rounded border border-line-inverse flex items-center gap-0.5" style={{ color, backgroundColor: `${color}26` }}>
-                        {trait.level > 1 && <span className="text-xs opacity-70">{trait.level}×</span>}
-                        {trait.name}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {player.awards && player.awards.length > 0 && (
-              <div className="mb-1.5">
-                <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Accolades</div>
-                <div className="flex flex-wrap justify-center gap-1">
-                  {player.awards.map((award, i) => (
-                    <span key={i} className="px-2 py-0.5 bg-accent-soft/20 text-accent text-xs font-black uppercase tracking-widest rounded border border-accent/50">
-                      {award}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
-            <div className="grid grid-cols-2 gap-x-1 gap-y-[2px]">
-              {[
-                ['GP', String(player.stats.gp)],
-                ['MPG', player.stats.mpg.toFixed(1)],
-                ['PTS', player.stats.pts.toFixed(1)],
-                ['FGA', (player.stats.fga || 0).toFixed(1)],
-                ['TRB', player.stats.trb.toFixed(1)],
-                ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
-                ['AST', player.stats.ast.toFixed(1)],
-                ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
-                ['STL', player.stats.stl.toFixed(1)],
-                ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
-                ['BLK', player.stats.blk.toFixed(1)],
-                ['3PA', (player.stats.fg3a || 0).toFixed(1)],
-                ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
-                ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
-              ].map(([label, val]) => (
-                <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-surface-inverse-deep rounded border border-line-inverse">
-                  <span className="text-xs text-ink-inverse-muted font-bold uppercase">{label}</span>
-                  <span className="text-xs font-black text-ink-inverse">{val}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Bio — only when there is room */}
-            <div className="mt-auto pt-1 text-center text-xs text-ink-inverse-muted font-bold tracking-widest uppercase hidden @[200px]:block">
-                {player.player.height} • {player.player.weight} LBS • {player.player.age}Y
-            </div>
-          </div>
-
-          {/* Bottom accent bar */}
-          <div className="h-1.5" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
-        </div>
+        <PlayerCardBack player={player} />
       </motion.div>
     </div>
   );
