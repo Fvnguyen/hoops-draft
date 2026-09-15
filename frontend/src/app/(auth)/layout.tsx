@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function AuthLayout({ children }: LayoutProps<'/'>) {
   return (
-    <main className="min-h-dvh bg-surface-inverse-deep px-6 py-14 text-ink-inverse">
+    <main className="min-h-dvh-z bg-surface-inverse-deep px-6 py-14 text-ink-inverse">
       <div className="mx-auto max-w-md">
         <Link
           href="/"

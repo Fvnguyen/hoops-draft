@@ -64,7 +64,7 @@ function RosterPageInner() {
   if (!ready || cards.length === 0) {
     if (error) {
       return (
-        <div className="flex min-h-dvh items-center justify-center bg-surface-inverse-deep p-8 text-ink-inverse">
+        <div className="flex min-h-dvh-z items-center justify-center bg-surface-inverse-deep p-8 text-ink-inverse">
           <div className="text-center">
             <h1 className="mb-4 text-2xl font-bold">Error</h1>
             <p className="text-ink-inverse-muted">{error}</p>
@@ -72,7 +72,7 @@ function RosterPageInner() {
         </div>
       );
     }
-    return <div className="min-h-dvh bg-surface-inverse-deep p-8 text-ink-inverse">Loading Roster...</div>;
+    return <div className="min-h-dvh-z bg-surface-inverse-deep p-8 text-ink-inverse">Loading Roster...</div>;
   }
 
   return (
@@ -94,7 +94,7 @@ function RosterPageInner() {
 
 export default function RosterPage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh bg-surface-inverse-deep p-8 text-ink-inverse">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-dvh-z bg-surface-inverse-deep p-8 text-ink-inverse">Loading...</div>}>
       <RosterPageInner />
     </Suspense>
   );

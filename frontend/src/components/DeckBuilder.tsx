@@ -1183,7 +1183,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   );
 
   return (
-    <div ref={shellRef} className="@container h-dvh text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
+    <div ref={shellRef} className="@container h-dvh-z text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
       {/* Hidden bench-sized HTML5 drag image (D24) — see handleDragStart. */}
       <div
         ref={dragGhostRef}

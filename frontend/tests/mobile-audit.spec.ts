@@ -25,11 +25,21 @@ const MIN_TAP_PX = 44;
 const MIN_FONT_PX = 12;
 
 const ROSTER_NAME = 'E2E Season Fixture';
+
+/** game_canvas D2 (owner): these screens show everything without any page scroll on a
+ *  phone. Game view and season are lists and scroll vertically by decision. */
+const NO_SCROLL_SCREENS = new Set(['home', 'draft-entry', 'draft-pack', 'deck-builder']);
+/** ...and on these three nothing at all scrolls, not even an inner region: the pack is
+ *  one row. The deck builder's depth-chart columns may scroll (12 players never fit). */
+const STRICT_NO_SCROLL_SCREENS = new Set(['home', 'draft-entry', 'draft-pack']);
+/** Owner: "minor vertical scrolling would be okay" for the two-row pack — a tenth of the
+ *  viewport, no more. */
+const MINOR_SCROLL_FRACTION = 0.1;
 const FIXTURE_PATH = path.resolve(__dirname, 'fixtures', 'season-fixture.json');
 
 type Finding = {
   screen: string;
-  kind: 'overflow-x' | 'tap-target' | 'font-size' | 'clipped' | 'clipped-x';
+  kind: 'overflow-x' | 'tap-target' | 'font-size' | 'clipped' | 'clipped-x' | 'scroll-y';
   detail: string;
 };
 
@@ -58,8 +68,13 @@ const reports: ScreenReport[] = [];
  */
 async function measure(page: Page, screen: string): Promise<ScreenReport> {
   return page.evaluate(
-    ({ screen, MIN_TAP_PX, MIN_FONT_PX }) => {
+    ({ screen, MIN_TAP_PX, MIN_FONT_PX, noScroll, strictNoScroll, MINOR_SCROLL_FRACTION }) => {
       const findings: { screen: string; kind: Finding['kind']; detail: string }[] = [];
+      // game_canvas: under the phone `zoom` rule, client rects come back in real (zoomed)
+      // pixels while the 44px/12px floors are design-space CSS px. `currentCSSZoom` is
+      // the element's effective zoom (1 on desktop); divide rect sizes by it. Computed
+      // font-size is already in CSS px and needs no correction.
+      const zoomOf = (el: Element) => (el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || 1;
 
       const describe = (el: Element) => {
         const tag = el.tagName.toLowerCase();
@@ -105,9 +120,12 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
       for (const el of controls) {
         if (!visible(el)) continue;
         if ((el as HTMLButtonElement).disabled) continue;
-        const r = el.getBoundingClientRect();
+        const rr = el.getBoundingClientRect();
+        const z = zoomOf(el);
+        const r = { width: rr.width / z, height: rr.height / z };
         // An anchor wrapping a whole card is not the tap-target problem we're hunting.
-        if (r.width >= MIN_TAP_PX && r.height >= MIN_TAP_PX) continue;
+        // Half-pixel tolerance: 30.8 real px / 0.7 is 43.9999.
+        if (r.width >= MIN_TAP_PX - 0.5 && r.height >= MIN_TAP_PX - 0.5) continue;
         const key = `${describe(el)}|${Math.round(r.width)}x${Math.round(r.height)}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -147,9 +165,9 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
         if (!visible(el)) continue;
         const style = getComputedStyle(el);
         if (style.overflowY !== 'hidden' && style.overflow !== 'hidden') continue;
-        // A textless box whose overflow is an image/svg is a deliberate crop
-        // (object-cover headshots, gradient art), not content the player loses.
-        if (!(el.textContent || '').trim() && el.querySelector('img, svg, video')) continue;
+        // A textless box is art (object-cover headshots, gradient/CSS-drawn court art):
+        // a crop there loses the player nothing.
+        if (!(el.textContent || '').trim()) continue;
         if (el.scrollHeight > el.clientHeight + 4 && el.clientHeight > 0) {
           findings.push({
             screen,
@@ -195,6 +213,40 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
         });
       }
 
+      // --- 6. no page scroll on the fit-to-screen screens ------------------------------
+      if (noScroll) {
+        if (document.documentElement.scrollHeight > innerHeight + 1) {
+          findings.push({
+            screen,
+            kind: 'scroll-y',
+            detail: `page scrolls vertically: scrollHeight ${document.documentElement.scrollHeight} > innerHeight ${innerHeight} — this screen must fit without scrolling (owner UAT)`,
+          });
+        }
+        // A scroll container that spans the whole viewport IS the page for the player
+        // (home's <main>, a full-height shell). Smaller regions (a pack grid, a depth-chart
+        // column) may scroll — that is the vertical-scroll option the owner accepted.
+        for (const el of document.querySelectorAll<HTMLElement>('body *')) {
+          const s = getComputedStyle(el);
+          if (s.overflowY !== 'auto' && s.overflowY !== 'scroll') continue;
+          const r = el.getBoundingClientRect();
+          // Strict screens: any region taller than half the screen counts (the pack
+          // grid); a card's flipped back face (a small detail well) does not.
+          if (!strictNoScroll && r.height < innerHeight - 2) continue;
+          if (strictNoScroll && r.height < innerHeight * 0.5) continue;
+          // A well inside a transformed (flipped) card face is a detail view, not the page.
+          if (strictNoScroll && (() => { for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { if (getComputedStyle(a).transform !== 'none') return true; } return false; })()) continue;
+          if (!visible(el)) continue;
+          const tolerated = strictNoScroll ? innerHeight * MINOR_SCROLL_FRACTION / zoomOf(el) : 1;
+          if (el.scrollHeight > el.clientHeight + tolerated) {
+            findings.push({
+              screen,
+              kind: 'scroll-y',
+              detail: `${describe(el)} [${el.className.toString().slice(0, 60)}] fills the viewport and scrolls ${el.scrollHeight - el.clientHeight}px (CSS px) — this screen must fit without scrolling (owner UAT)`,
+            });
+          }
+        }
+      }
+
       return {
         screen,
         url: location.pathname + location.search,
@@ -205,7 +257,7 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
         findings: findings.slice(0, 40),
       };
     },
-    { screen, MIN_TAP_PX, MIN_FONT_PX },
+    { screen, MIN_TAP_PX, MIN_FONT_PX, noScroll: NO_SCROLL_SCREENS.has(screen), strictNoScroll: STRICT_NO_SCROLL_SCREENS.has(screen), MINOR_SCROLL_FRACTION },
   );
 }
 
@@ -225,12 +277,17 @@ async function audit(page: Page, testInfo: TestInfo, screen: string) {
   await dismissSplash(page);
   await page.waitForTimeout(400);
 
-  const dir = path.join(testInfo.config.rootDir, '..', 'test-results', 'mobile-audit', testInfo.project.name);
-  fs.mkdirSync(dir, { recursive: true });
-  await page.screenshot({ path: path.join(dir, `${screen}.png`), fullPage: true });
-
+  // Measure first: a full-page screenshot resizes the viewport to the content box and,
+  // under the phone `zoom` rule, the document's scrollHeight reads wrong afterwards.
   const report = await measure(page, screen);
   reports.push(report);
+
+  const dir = path.join(testInfo.config.rootDir, '..', 'test-results', 'mobile-audit', testInfo.project.name);
+  fs.mkdirSync(dir, { recursive: true });
+  // Fit-to-screen screens are captured as the player sees them; scrolling screens
+  // full-page (Playwright's full-page capture is imprecise under `zoom`, but still shows
+  // everything).
+  await page.screenshot({ path: path.join(dir, `${screen}.png`), fullPage: !NO_SCROLL_SCREENS.has(screen) });
 
   // Soft: every screen still gets measured and screenshotted in one run (that is the
   // point of an audit), but the run ends red while anything is outstanding. T6's exit

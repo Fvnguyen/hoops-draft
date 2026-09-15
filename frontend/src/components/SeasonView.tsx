@@ -195,7 +195,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
   if (error) {
     return (
-      <div className="min-h-dvh p-8 flex items-center justify-center">
+      <div className="min-h-dvh-z p-8 flex items-center justify-center">
         <div className="bg-surface-raised rounded-panel border border-line p-8 text-center max-w-md">
           <div className="text-4xl mb-4">⚠️</div>
           <h2 className="text-lg font-bold text-ink-strong mb-2">Session Not Found</h2>
@@ -210,7 +210,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
   if (!ready || dataLoading || !season || !session) {
     return (
-      <div className="min-h-dvh flex items-center justify-center">
+      <div className="min-h-dvh-z flex items-center justify-center">
         <div className="text-xl font-semibold text-ink-subtle animate-pulse">Loading season...</div>
       </div>
     );
@@ -223,7 +223,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
     // plain "Continue"/"Schedule" CTA since there's nothing left to lose.
     const exitIsDestructive = isFreshPlay && !gameFinished;
     return (
-      <div className="min-h-dvh p-4 flex flex-col">
+      <div className="min-h-dvh-z p-4 flex flex-col">
         <div className="mb-3 flex items-center gap-3">
           {exitIsDestructive ? (
             <Button onClick={handleExitGame} variant="danger" className="bg-danger-soft border border-danger-line text-danger hover:opacity-80" icon={<LogOut className="w-4 h-4" />}>
@@ -277,7 +277,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const champion = isSeasonComplete ? season.standings[0] : null;
 
   return (
-    <div className="min-h-dvh p-6">
+    <div className="min-h-dvh-z p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

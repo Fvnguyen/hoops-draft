@@ -167,6 +167,31 @@
   --radius-control: 8px;
 }
 
+/* plan_game_canvas D1/D5 (rewritten): on a coarse-pointer device narrower than 1000px the
+ * whole document is proportionally scaled with CSS `zoom` — layout, type and hit areas
+ * all shrink together, the way Chrome zooms a non-responsive desktop page to fit a phone,
+ * but at a fixed, chosen factor. `zoom` (unlike `transform`) reflows, so fixed positioning,
+ * internal scroll regions and hit-testing keep working. Viewport units DO shrink with the
+ * root zoom (100dvh renders as 70% of the screen), so the app sizes full-height shells with
+ * `h-dvh-z` below, never bare `h-dvh`. Desktop and tablet: --zoom is 1, nothing changes. */
+:root {
+  --zoom: 1;
+}
+@media (pointer: coarse) and (max-width: 999px) {
+  :root {
+    --zoom: 0.7;
+  }
+}
+html {
+  zoom: var(--zoom);
+}
+@utility h-dvh-z {
+  height: calc(100dvh / var(--zoom));
+}
+@utility min-h-dvh-z {
+  min-height: calc(100dvh / var(--zoom));
+}
+
 body {
   background: var(--surface);
   color: var(--ink);

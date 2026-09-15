@@ -28,7 +28,7 @@ export function ErrorRecovery({ error, reset }: { error: Error & { digest?: stri
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-surface px-6 py-16 text-center text-ink">
+    <div className="flex min-h-dvh-z flex-col items-center justify-center gap-6 bg-surface px-6 py-16 text-center text-ink">
       <div className="text-6xl">🏀</div>
       <h1 className="text-2xl font-black uppercase tracking-widest">Something went wrong</h1>
       <p className="max-w-md text-sm text-ink-muted">

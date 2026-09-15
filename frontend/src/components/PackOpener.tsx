@@ -255,13 +255,18 @@ export function PackOpener({
   const flipDuration = reducedMotion ? REDUCED_FADE_MS / 1000 : REVEAL_FLIP_MS / 1000;
 
   const shell = embedded
-    ? `relative flex w-full flex-col items-center justify-center px-4 py-6 text-ink ${className}`
-    : `relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-4 py-8 text-ink ${
+    // game_canvas D2 (owner): on a phone (coarse pointer under lg) the spread is two rows
+    // of four scaled to the height left once the draft room hides its inert header —
+    // the grid's max-width is derived from the viewport height (two 5/7 rows in what is
+    // left under the heading), so both rows fit on any phone; the tablet cap (3xl) does
+    // the same at 778px.
+    ? `relative flex w-full flex-col items-center justify-center px-4 py-6 pointer-coarse:max-lg:py-2! text-ink ${className}`
+    : `relative flex min-h-dvh-z flex-col items-center justify-center overflow-hidden px-4 py-8 text-ink ${
         backdrop ? 'bg-surface/25 backdrop-blur-[2px]' : 'bg-surface'
       } ${className}`;
 
   const body = (
-    <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-5">
+    <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-5 pointer-coarse:max-lg:gap-2!">
       {/* z-20: the dealt cards animate in with transforms (their own stacking contexts)
           and used to pass over / under this text mid-flight; the heading always wins. */}
       <div className="relative z-20 flex w-full max-w-4xl items-start justify-between gap-4">
@@ -269,7 +274,7 @@ export function PackOpener({
           <p className="text-xs font-black uppercase tracking-[0.32em] text-accent-hover/70">
             {mode === 'quick' ? 'Quick Draft' : 'Premier Draft'}
           </p>
-          <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] sm:text-4xl">
+          <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] sm:text-4xl pointer-coarse:max-lg:mt-0! pointer-coarse:max-lg:text-2xl!">
             Pack {packNumber} of {totalPacks}
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
@@ -295,7 +300,7 @@ export function PackOpener({
             animate={{ opacity: 1, scale: phase === 'opening' ? 1.08 : 1 }}
             exit={{ opacity: 0, scale: 0.8, rotate: 5 }}
             transition={{ duration: reducedMotion ? 0 : phase === 'opening' ? 0.55 : 0.35 }}
-            className="w-44 sm:w-52"
+            className="w-44 sm:w-52 pointer-coarse:max-lg:w-32!"
           >
             <Button
               ref={openButtonRef}
@@ -325,7 +330,7 @@ export function PackOpener({
             key="cards"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4"
+            className="grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-128px)*10/7+24px)]! pointer-coarse:max-lg:gap-2! pointer-coarse:lg:max-w-3xl!"
           >
             {displayOrder.map((card) => {
               const index = revealIndexOf.get(card.id)!;
@@ -421,7 +426,7 @@ export function PackOpener({
   // The dock is `absolute` and must anchor to a viewport-tall box, never to the
   // scrolling content: embedded, that is DraftRoom's main column (its <main> is
   // deliberately not positioned), so the dock is a sibling of the section, outside
-  // `body`; standalone, the shell itself is min-h-dvh and positioned.
+  // `body`; standalone, the shell itself is min-h-dvh-z and positioned.
   const dock = phase === 'picking' && (
     <ConfirmPickDock
       ref={takeButtonRef}

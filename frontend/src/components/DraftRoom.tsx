@@ -318,7 +318,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
 
   if (draftState === 'loading' || !humanSeat) {
     return (
-      <div className="flex h-dvh items-center justify-center font-sans">
+      <div className="flex h-dvh-z items-center justify-center font-sans">
         <div className="text-2xl font-semibold text-ink-subtle animate-pulse">Generating Draft Pod...</div>
       </div>
     );
@@ -352,7 +352,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   const backdropClass = isPackIntro ? 'blur-sm pointer-events-none select-none' : '';
 
   return (
-    <div className="flex flex-col md:flex-row h-dvh bg-surface text-ink font-sans relative overflow-hidden">
+    <div className="flex flex-col md:flex-row h-dvh-z bg-surface text-ink font-sans relative overflow-hidden">
       <SaveErrorBanner message={saveError} />
 
       {isRoundSummary && (
@@ -369,7 +369,9 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
       {/* Main Draft Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}
-        <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass}`}>
+        {/* game_canvas D2: during the pack intro the header and ticker are blurred and inert,
+            so on a phone they give their height to the two-row spread instead. */}
+        <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass} ${isPackIntro ? 'pointer-coarse:max-lg:hidden' : ''}`}>
           <div className="w-64 hidden lg:flex items-center gap-2">
             <ModePill mode={mode} />
             {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
@@ -433,7 +435,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
           </div>
         </header>
 
-        <div className={`transition-[filter] duration-200 ${backdropClass}`}>
+        <div className={`transition-[filter] duration-200 ${backdropClass} ${isPackIntro ? 'pointer-coarse:max-lg:hidden' : ''}`}>
           <BotPickTicker pickLog={pickLog} seats={seats} />
         </div>
 
@@ -463,7 +465,10 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
             {/* Cards Grid */}
             <main className="flex-1 overflow-y-auto flex flex-col items-center pt-6 px-6 pb-6 custom-scrollbar">
               <PackPassStage passSeq={passSeq} direction={packDirection === 1 ? 'right' : 'left'}>
-                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 w-full max-w-[1500px] mx-auto">
+                {/* game_canvas D2 (owner): on a phone the pack is two rows of four; the grid's
+                    max-width is derived from the viewport height minus the header + ticker
+                    (~200px) so both rows fit without scrolling. */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 pointer-coarse:max-lg:gap-2! pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-200px)*10/7+24px)]! w-full max-w-[1500px] mx-auto">
                   <AnimatePresence>
                     {humanSeat.currentPack.map((card, index) => (
                       <motion.div

@@ -194,8 +194,10 @@ from `data/`).
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
 `season_lifecycle_notifications`, `ui_foundation`, and `deckbuilder_ux` are done;
-`mobile_responsive` is superseded by `game_canvas`, whose T4 audit rule + T0 layout fixes
-are done and uncommitted — the owner's D0 checkpoint (canvas yes/no) is the next step; the
+`mobile_responsive` is superseded by `game_canvas`, built 2026-09-16: phones get CSS
+`zoom: 0.7` (`globals.css`), full-height shells use `h-dvh-z`, Home/draft fit with no
+scroll, and `tests/mobile-audit.spec.ts` encodes the per-screen rules — only T5, the
+owner's real-device pass, is open (judge the small later-pick cards there, plan D4); the
 Supabase dashboard refresh-token setting is still an owner action). The 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.

@@ -146,7 +146,7 @@ export default function RostersPage() {
   };
 
   return (
-    <div className="min-h-dvh overflow-y-auto p-8 pt-nav text-ink">
+    <div className="min-h-dvh-z overflow-y-auto p-8 pt-nav text-ink">
       <input
         ref={fileInputRef}
         type="file"

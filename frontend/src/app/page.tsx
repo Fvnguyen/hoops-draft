@@ -85,7 +85,7 @@ export default function Home() {
   const packPlayers = showcase?.pack ?? [];
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto bg-surface-inverse-deep">
+    <main className="relative flex min-h-dvh-z items-center justify-center overflow-x-hidden overflow-y-auto bg-surface-inverse-deep">
       {/* Background Layer */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"
@@ -94,11 +94,13 @@ export default function Home() {
       <div className="absolute inset-0 z-0 bg-gradient-to-t from-surface-inverse-deep via-surface-inverse/60 to-surface-inverse-deep/40" />
       <div className="absolute inset-0 z-0 bg-gradient-to-r from-surface-inverse-deep via-transparent to-surface-inverse-deep/80" />
 
-      <div className="relative z-10 flex h-full min-h-[600px] w-full max-w-7xl items-center justify-between px-8">
+      {/* game_canvas T0b: the 600px floor is lg-only so the menu fits a phone-landscape
+          viewport (385px real, 550px at zoom 0.7) with no page scroll. */}
+      <div className="relative z-10 flex h-full w-full max-w-7xl items-center justify-between px-8 lg:min-h-[600px]">
 
         {/* LEFT COLUMN: Menu */}
-        <div className="flex w-[320px] shrink-0 flex-col self-stretch justify-center pt-12">
-          <div className="mb-12">
+        <div className="flex w-[320px] shrink-0 flex-col self-stretch justify-center pt-6 lg:pt-12">
+          <div className="mb-6 lg:mb-12">
             <h1 className="mb-1 bg-gradient-to-b from-ink-inverse to-ink-inverse-muted bg-clip-text pr-2 text-7xl italic font-black leading-none tracking-tighter text-transparent drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]" style={{ fontFamily: 'var(--font-bebas)' }}>
               HOOPS DRAFT
             </h1>
@@ -153,7 +155,9 @@ export default function Home() {
 
         {/* CENTER COLUMN: Hero Card */}
         <div className="relative flex flex-1 items-center justify-center">
-          <div className="pointer-events-none absolute inset-0 scale-150 rounded-full bg-accent/10 blur-[120px]" />
+          {/* No `scale-150` on the glow: a transformed box adds scrollable overflow (~40px on
+              a phone, i.e. a page scroll). A wider blur reaches the same look without it. */}
+          <div className="pointer-events-none absolute inset-0 rounded-full bg-accent/10 blur-[160px]" />
           {heroPlayer && (
             <div className="relative z-10 w-[300px] cursor-pointer drop-shadow-[0_0_25px_rgba(234,179,8,0.4)] transition-transform duration-500 hover:scale-105">
               {/* Haze & Glow Overlay */}
