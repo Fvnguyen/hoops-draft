@@ -1,6 +1,6 @@
 # Plan: deckbuilder_ux
 
-File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: in progress (waves 0-1 done 2026-09-15; all artboards signed; wave 2 running)
+File: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Status: in progress (waves 0-2 done 2026-09-15; T6 = audit re-run + owner click-through)
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3, tokens + primitives).
 Blocks: mobile_responsive T6 (deck-builder rows). Files owned: `DeckBuilder.tsx`,
 `DepthSlotColumn.tsx`, `PlayPanel.tsx`, `AssignPopover.tsx`, `TopKPIBand.tsx`,
