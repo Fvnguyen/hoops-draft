@@ -30,10 +30,15 @@ and signed off by the owner before any agent implements it.
   plus the roster-list variant. The owner edits and signs off in the canvas; the signed
   artboards are exported to `docs/design/deckbuilder_ux/` and are the spec for T3 and
   T5. An agent implementing those tasks matches the artboard; it does not restyle.
+  Owner amendment at sign-off (2026-09-15): three more artboards, (d) depth chart,
+  (e) roster sidebar, (f) full layout at 1280, are the spec for T4 and gate it.
 - D2 **Collapsed band content** (owner choice): chips `Players n/12`, `Plays n/3`,
   `Identity: <name|none>`; the radar's peak and valley as words (`▲ Playmaking`,
   `▼ 3PT`); a shot-diet mini (`RIM 34 · MID 29 · 3PT 37`); one 44px expand control.
-  Band height 56px (`h-nav`) so it lines up with the game-route gear. Each chip is a
+  Band height 56px (`h-nav`) so it lines up with the game-route gear. The counts now
+  live here, so the depth chart's "ACTIVE ROSTER · Players n/12 · …" header row goes;
+  its actions (Clear, Save, Save & play season) move to the depth-chart title row
+  (artboard d). Each chip is a
   44px `Button variant=ghost` that expands the band to its section. Colours: tokens
   only; positive/danger for peak/valley; chart series from `cardColors`/CSS variables.
 - D3 **Click assigns, drag stays.** `engine/deckbuilder.ts` gains
@@ -76,8 +81,8 @@ toggle UI. Any change to how plays resolve in `engine/game.ts`.
 ## Tasks
 
 - T1 **Design canvas** (top, driver). Files: canvas artifact; exports to
-  `docs/design/deckbuilder_ux/`. Done: owner signs off all three artboards; PNGs
-  committed; D2/D5 amended here if the sign-off changed anything.
+  `docs/design/deckbuilder_ux/`. (a)(b)(c) signed 2026-09-15, PNGs committed. (d)(e)(f)
+  drafted the same day, sign-off pending; T4 starts only after it.
 - T2 **Assign helpers + click-to-assign** (mid). Files: `engine/deckbuilder.ts`,
   `DeckBuilder.tsx`, `AssignPopover.tsx`, `tests/unit/deckbuilder-assign.test.ts` (new).
   Done: unit tests for both helpers (legal, full, wrong side, duplicate); the click flows
