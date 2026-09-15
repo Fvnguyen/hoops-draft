@@ -1,6 +1,6 @@
 # Plan: ui_foundation
 
-File: `docs/plans/plan_ui_foundation_2026-09-15.md`. Status: in progress (wave 0 done 2026-09-15)
+File: `docs/plans/plan_ui_foundation_2026-09-15.md`. Status: in progress (waves 0-1 done 2026-09-15; next: wave 2 = T7 A-D)
 Sequence: 3 in `docs/ROADMAP.md`. Depends on: none. Blocks: mobile_responsive T5/T6.
 Files owned: `globals.css`, `app/layout.tsx` (html attrs + providers; mobile T2 may edit
 only the `metadata`/`viewport` exports), `src/lib/cn.ts` (new), `src/components/ui/*`
