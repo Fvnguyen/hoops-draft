@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { dismissSplash, clickPastSplash } from './helpers/splash';
 
 /**
  * plan_ui_foundation T5 (D7/D8): the confirm control is one component docked at a fixed
@@ -16,18 +17,10 @@ test.describe('Draft room: confirm dock + pack pass', () => {
 
     await page.goto('/draft?mode=quick&clock=fast');
 
-    // `WhatsNewSplash` (D9) is a `data-overlay` modal that shows once per unseen
-    // changelog release and swallows every click underneath it — clear it before
-    // interacting with the draft room. No-op once already seen for this profile.
-    // Dismissed via a backdrop click rather than Escape: PackOpener's own reveal
-    // screen also listens for Escape globally (its "skip reveal" shortcut), so an
-    // Escape sent here could leak through and skip straight past the pack-intro.
-    const overlay = page.locator('[data-overlay="true"]');
-    await overlay.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    if (await overlay.count()) {
-      await page.mouse.click(6, 6);
-      await expect(overlay).toHaveCount(0);
-    }
+    // Shared helper: waits for the splash to mount (it can be seconds behind `goto` on
+    // this route), dismisses it via the backdrop (Escape would leak into PackOpener's
+    // skip-reveal shortcut). Re-checked before each card click below.
+    await dismissSplash(page);
 
     let confirmPos: { x: number; y: number } | null = null;
 
@@ -51,7 +44,7 @@ test.describe('Draft room: confirm dock + pack pass', () => {
       // grid both mark a pickable card the same way: role=button, "Select <name>").
       const spread = page.locator('[role="button"][aria-label^="Select "]').first();
       await expect(spread).toBeVisible();
-      await spread.click();
+      await clickPastSplash(page, () => spread.click());
 
       const takeButton = page.getByRole('button', { name: /^Take / });
       await expect(takeButton).toBeVisible();

@@ -122,9 +122,9 @@ mostly "general improvement" passes; the deck builder stays the only redesign (D
 | home | both | footer dev links 44x16 (Deckbuilder, Debug) | low | pad to 44px or hide on touch | general |
 | all | both | **No horizontal overflow** — `scrollWidth == innerWidth` on all 8 screens, both projects | — | none needed | — |
 
-Vertical extent at phone-landscape (scrolling is allowed, listed for T6 context): season
-1239px, game-tipoff 766px, home 664px, rosters 614px, game-live 572px; draft and deck
-builder already fit 385px.
+Re-measured after ui_foundation (2026-09-15 evening): phone 2 findings, tablet 0. The table
+above is resolved except one new T6 row: `/rosters` `grid-cols-5` squeezes each card's front
+body to 87x19px at 830px wide (headshot and badge row unusable) — layout, not tokens.
 
 ## Parallelization
 

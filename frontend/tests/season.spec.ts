@@ -1,5 +1,6 @@
 import path from 'path';
 import { test, expect } from '@playwright/test';
+import { dismissSplash, clickPastSplash } from './helpers/splash';
 
 /**
  * Covers the game-results-visibility fix (SeasonView/GameView): a freshly-played game's
@@ -22,11 +23,14 @@ test('leaving a fresh game early discards it; finishing and continuing saves it'
   // so an immediate `.count()` here would race it and read "nothing to clean up" before
   // the stale row has actually rendered — wait for the loading state to clear first.
   await page.goto('/rosters');
+  // The What's New splash mounts once per fresh context and swallows clicks (its
+  // seen-state is IndexedDB, not in storageState) — clear it before touching anything.
+  await dismissSplash(page);
   await expect(page.getByText('Loading Rosters...')).toHaveCount(0);
   const existingRow = page.locator('h2', { hasText: ROSTER_NAME }).first();
   if (await existingRow.count()) {
     const card = existingRow.locator('xpath=ancestor::div[contains(@class, "rounded-xl")][1]');
-    await card.getByTitle('Delete Roster').click();
+    await clickPastSplash(page, () => card.getByTitle('Delete Roster').click());
     await expect(existingRow).toHaveCount(0);
   }
 
@@ -36,7 +40,7 @@ test('leaving a fresh game early discards it; finishing and continuing saves it'
 
   const rosterCard = page.locator('h2', { hasText: ROSTER_NAME }).first()
     .locator('xpath=ancestor::div[contains(@class, "rounded-xl")][1]');
-  await rosterCard.getByRole('button', { name: 'Play Season' }).click();
+  await clickPastSplash(page, () => rosterCard.getByRole('button', { name: 'Play Season' }).click());
   await expect(page).toHaveURL(/\/season\?/);
 
   // Game 1 is next up and unplayed. Each schedule row's "Game N • Home/Away" label is

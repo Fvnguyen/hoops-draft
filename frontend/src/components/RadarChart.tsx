@@ -60,9 +60,11 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   const maxRadius = center - labelPad;
   // Side labels ("PERIMETER D", "MID-RANGE") extend past the circle; give the SVG
   // extra width on both sides so they are never clipped by the container edge.
-  // (D2/D5: labels render at the 12px floor, wider than the old 8px, so the pad
-  // is a bit larger too.)
-  const hPad = 64;
+  // (D2/D5: labels render at the 12px floor, wider than the old 8px. The longest,
+  // "PERIMETER D" / "▲ PLAYMAKING", is ~95 viewBox units at that size, so the side pad
+  // must cover that; the top/bottom labels need a little vertical room too.)
+  const hPad = 100;
+  const vPad = 12;
   // Relative strength per axis (team minus league average) drives the vertex dots and
   // the emphasised labels: the biggest positive gap is the peak, the most negative the
   // valley. Shapes and colours only — no numbers (product rule).
@@ -72,7 +74,7 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
 
   return (
     <svg
-      viewBox={`${-hPad} 0 ${size + 2 * hPad} ${size}`}
+      viewBox={`${-hPad} ${-vPad} ${size + 2 * hPad} ${size + 2 * vPad}`}
       className="w-full h-auto max-w-[240px]"
       preserveAspectRatio="xMidYMid meet"
       role="img"

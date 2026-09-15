@@ -1,4 +1,4 @@
-# Handover — 2026-09-14
+# Handover — 2026-09-15
 
 ## Current state
 
@@ -10,8 +10,9 @@ archetype identities and assigned-player plays. Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
-— see the milestones below. 217/218 Vitest tests pass (one engine-minutes failure, open
-issue 5), type-check is clean, `npm run lint` is
+— see the milestones below. The UI runs on semantic tokens + `data-theme` and five
+`components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
+at 0 violations. 218 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -71,45 +72,13 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
   (`SyncConflictPrompt`), scoped `/api/analytics`+`/admin/analytics`; two real post-deploy
   bugs (dead `.catch` on a `PostgrestBuilder`, CAS-vs-deleted-row retry) found and fixed
   live against production; two-device merge/conflict paths verified live, not mocked.
+- **game_engine** (done 2026-09-14, `docs/completed/plan_game_engine_2026-09-13.md`): OT/
+  home-court/spread/impact tuning fixed and measured; dead-code lineup wiring fixed in
+  review; draft-impact + talent-vs-luck decomposition unified into `--report`.
 - **game-results-visibility** (merged 2026-09-14, `2cd44e5`, from branch
   `claude/game-results-visibility-season-atxivj`): `playNextGame` now runs against a cloned
   `Season` and a fresh result commits only when the user watches `GameView` to the end and
   hits "Continue to Schedule"; leaving early discards it. Covered by `tests/season.spec.ts`.
-
-## game_engine — done 2026-09-14
-
-Design/full history: `docs/completed/plan_game_engine_2026-09-13.md`. All T1-T8 done in
-one session; sequence #2 in the roadmap.
-
-- **Bugs fixed**: OT never called plays (now shares `playOnePossession` with regulation,
-  stays starters-only per owner intent, capped at 3 periods, tie broken by average
-  starter OVR not a coin flip); home court was a complete no-op (48.6% home win) — now an
-  asymmetric possession-noise roll, 52-56% with identical rosters; a rim shooting foul
-  paid a flat 1pt instead of two real FTs (`RIM_FT_PCT` 0.77), the single biggest driver
-  of PPP sitting below target — fixed (PPP 0.994->1.06), which also exposed an
-  and-1/assist eligibility bug; `calcPossessionShares` was dead code, replaced the
-  quarter-phase rotation with per-possession `drawLineup`.
-- **Balance tuning**: play call-rate budgets/allocations raised so no play sits at ~0
-  win-rate impact (catalog sample size also raised 300->600, `npm run balance --
-  --catalog`); two content outliers (Horns, Triangle Offense, Midrange Clinic, Elbow
-  Orchestra — all shift shots into `NBA_BASELINE.mid`'s worst-efficiency channel) handed
-  to `card_balance`, out of this plan's scope.
-- **Analytics**: `npm run balance -- <n> --seed <s> --report` produces one versioned
-  `balance_report_*.json` (schemaVersion 2: catalog+draftImpact+spread+
-  outcomeDecomposition), the source for the [Power Curve
-  report](https://claude.ai/code/artifact/17ace14e-ea53-40ff-be8c-9196c3415964).
-  `outcomeDecomposition` replaced an earlier strategy-only cut that conflated real
-  opponent talent with luck: talent (OVR gap) alone explains 7.6% of a single game but
-  24.4% of a full 7-game season, win% climbing monotonically 27%->73% across OVR-gap
-  deciles — talent is rewarded, mechanics are sound.
-- **Open from this milestone**: the two mid-range-shifting content outliers and
-  `NBA_BASELINE.mid`'s low efficiency, handed to `card_balance`; margin/sd run slightly
-  wide of D5's original target band (margin 14-16 vs. 12-14 target, sd ~13.2-13.5 vs.
-  12-13) but was accepted as the final tuning result after `RIM_FT_PCT` — worth a look if
-  `card_balance` content changes shift the shot mix enough to matter.
-- Verified: `npm test` (193/193), `tsc --noEmit`, `npm run lint` (0 errors) clean;
-  `npm run balance -- 500 --seed 42 --report` matches D11's shape; `smoke.spec.ts` (9/9,
-  including `/season`) passes with no console errors.
 
 ## season_lifecycle_notifications — done 2026-09-14
 
@@ -174,6 +143,36 @@ dismissal waits for it once); a leftover fixture roster raises a "changed on ano
 device" toast over later screens, so the run deletes it first; `networkidle` never arrives
 on a live draft, so that wait is bounded.
 
+## ui_foundation waves 0-2 + T8 — 2026-09-15 (plan still open: snapshot re-baseline)
+
+Plan: `docs/plans/plan_ui_foundation_2026-09-15.md`. Commits `68b3096` (wave 0), `a1228eb`
+(wave 1), `cd41127` (wave 2), then T8. What it is: `globals.css` defines semantic tokens
+(surface/ink/line/accent/status) for two themes, `court` (default) and `night`, mapped
+into Tailwind with `@theme inline`, so a theme is `data-theme` on `<html>` and nothing
+else; five primitives in `components/ui/` (Button, IconButton, Panel, Menu, Overlay; cva +
+tailwind-merge, `lib/cn.ts`); game-data colours (position/rarity/team) isolated in
+`components/cardColors.ts`, the one product file allowed hex; `scripts/check-styles.mjs`
+fails on raw palette classes, `text-[Npx]`, `h-screen`, `pt-[Npx]`, hex in className and
+raw `<button>` — 1,358 violations on 2026-09-15 morning, 0 by evening, blocking in CI.
+
+What changed for players: the header never reflows (loading placeholders, `AuthProvider`
+status), game routes have a gear menu instead of the website bar, one fixed
+`ConfirmPickDock` replaces two mismatched draft confirm buttons (100vh -> dvh is what put
+it back on screen on phones), `PackPassStage` no longer remounts the card grid at the end
+of a pass (the flicker), every control is >= 44px, no text below 12px, the What's New
+splash is an `Overlay` capped at 90dvh, the PlayerCard back scrolls instead of clipping.
+
+Measured: mobile audit phone 200 -> 2, tablet 201 -> 0 findings; the 2 are one layout
+item (the /rosters 5-column grid squeezes a card's front body to 87x19px at 830px wide),
+handed to mobile_responsive T6. Vitest 218/218; chromium e2e green except the three
+visual snapshots awaiting the owner's re-baseline OK (D11; images sent). `season.spec`
+passes for the first time: the splash's seen-state is IndexedDB, not in `storageState`, so
+every fresh context shows it — `tests/helpers/splash.ts` is the shared dismissal.
+
+Gotchas: `Button href=` forwards data-*/aria-* to the Link (it did not at first);
+`Menu`'s `<summary>` carries `role=button` so `getByRole` finds it; `sr-only` text and
+image crops are excluded from the audit's clipped rule on purpose.
+
 ## How to run everything
 
 ```bash
@@ -196,7 +195,7 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done, `mobile_responsive` is in progress — T1 done, T2-T5 next). The
+and `season_lifecycle_notifications` are done; `ui_foundation` is at T8 (snapshot OK pending), `mobile_responsive` T1 done). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
@@ -216,18 +215,12 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
    test rather than assuming fixed.
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-4. **Two `visual.spec.ts` snapshots fail with no known cause.** "Season View Franchise
-   Dashboard" (234px expected vs 226px) and "Game View Matchup Header and Tape" (600 vs
-   601px); drift may predate `auth_approval`, which gated Playwright out until recently.
-   Re-baseline once someone confirms the current render is right by eye.
-5. **`game.test.ts` "every box-score starter has minutes between 18 and 48" fails**
-   (expected 17.5 >= 18) — 217/218 Vitest tests pass. Pre-existing on `main` at `2f820ef`;
-   confirmed not caused by the mobile_responsive work, which touches no runtime code.
-   Either the minutes floor drifted below the test's assumption or the test is too strict.
-6. **`tests/season.spec.ts` fails on chromium** — "Loading Rosters..." never clears within
-   5s. Also pre-existing (reproduced on a clean stash of `main`); likely the rosters list
-   now waits on a slower cloud pull than the assertion allows. Needs a real wait condition,
-   not a longer timeout.
+4. **Three `visual.spec.ts` snapshots await re-baseline** (KPI band 62->79px for the 44px
+   hit area, dashboard 234->205px for 12px radar labels, game view the old 601px). ui_foundation
+   D11: owner eyeballs (images sent 2026-09-15), then `--update-snapshots` in one commit.
+5. **`game.test.ts` minutes assertion is flaky.** Failed once on 2026-09-15 (17.5 < 18),
+   passed every run since (5+). Seeded test, so likely a real edge in `game.ts` minutes
+   distribution for one seed; worth pinning the failing seed before it bites CI.
 
 ## Where to look
 

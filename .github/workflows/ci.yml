@@ -33,11 +33,10 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      # plan_ui_foundation D4: blocking since the T7 migration landed at 0 violations.
       - name: Style gate
         run: npm run check:styles
         working-directory: frontend
-        continue-on-error: true
-        # plan_ui_foundation T7: flip to blocking once the migration lands
 
       - name: Unit tests
         run: npm test

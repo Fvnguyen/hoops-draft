@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
+import { dismissSplash as dismissSplashShared } from './helpers/splash';
 
 /**
  * plan_mobile_responsive T1 — the audit harness.
@@ -76,7 +77,9 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
           return false;
         }
         const r = el.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
+        // <= 1px on both axes is the `sr-only` pattern: screen-reader text that is
+        // clipped on purpose, not something a sighted player was meant to see.
+        return r.width > 1 && r.height > 1;
       };
 
       // --- 1. horizontal overflow ---------------------------------------------------
@@ -144,11 +147,14 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
         if (!visible(el)) continue;
         const style = getComputedStyle(el);
         if (style.overflowY !== 'hidden' && style.overflow !== 'hidden') continue;
+        // A textless box whose overflow is an image/svg is a deliberate crop
+        // (object-cover headshots, gradient art), not content the player loses.
+        if (!(el.textContent || '').trim() && el.querySelector('img, svg, video')) continue;
         if (el.scrollHeight > el.clientHeight + 4 && el.clientHeight > 0) {
           findings.push({
             screen,
             kind: 'clipped',
-            detail: `${describe(el)} clips ${el.scrollHeight - el.clientHeight}px of content (overflow hidden, no scroll)`,
+            detail: `${describe(el)} [${el.className.toString().slice(0, 70)}] clips ${el.scrollHeight - el.clientHeight}px of content (overflow hidden, no scroll)`,
           });
         }
       }
@@ -167,30 +173,12 @@ async function measure(page: Page, screen: string): Promise<ScreenReport> {
   );
 }
 
-/**
- * `WhatsNewSplash` is a `fixed inset-0 z-[100]` overlay that shows once per unseen
- * changelog release. Left up it would be the only thing this harness ever measures (and
- * it swallows every click), so clear it before each screen. No-op once seen.
- */
+/** Shared splash dismissal (tests/helpers/splash.ts); the first call waits for the
+ *  overlay to mount, later calls only do a quick check. */
 let splashHandled = false;
 
 async function dismissSplash(page: Page) {
-  const overlay = page.locator('div.fixed.inset-0.z-\\[100\\]');
-  // The splash only mounts once `useCurrentProfile`/`useNotices` have resolved, so on the
-  // first navigation it is not in the DOM yet — checking immediately would miss it and
-  // it would pop up mid-interaction. Wait for it once; after it is dismissed the release
-  // is marked seen for this profile and it never returns, so later screens skip the wait.
-  if (!splashHandled) {
-    await overlay.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-  }
-  if (!(await overlay.count())) return;
-  // NOT the Close button: at phone-landscape the panel is taller than the viewport and
-  // `items-center` pushes its top (and that button) off-screen, unreachable — see the
-  // T1 punch list, row "whats-new splash". The backdrop carries the same
-  // `markChangelogSeen` handler and the corner is always backdrop, so click that.
-  await page.mouse.click(6, 6);
-  await expect(overlay).toHaveCount(0, { timeout: 5000 });
-  splashHandled = true;
+  if (await dismissSplashShared(page, splashHandled ? 800 : 5000)) splashHandled = true;
 }
 
 /** Measure + screenshot one screen and file its report. */

@@ -793,7 +793,7 @@ export function RoleTag({ playName, roleName, side }: { playName: string; roleNa
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-bold uppercase ${colors.bg} ${colors.text} shrink-0 h-[18px]`}
+      className={`inline-flex items-center px-2 py-0.5 leading-none rounded-full text-xs font-bold uppercase ${colors.bg} ${colors.text} shrink-0`}
       title={`${playName} — ${roleName}`}
     >
       {roleName}
@@ -841,7 +841,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
            <div className="font-bold text-xs uppercase truncate text-ink-strong leading-tight" title={play.name}>
              {play.name}
            </div>
-           <div className="flex items-center gap-1.5 overflow-hidden">
+           <div className="flex items-center gap-1.5 overflow-visible">
              <span className={`text-xs font-bold shrink-0 ${theme.labelColor}`}>{theme.label}</span>
              {roles && roles.length > 0 && (
                <div className="flex items-center gap-0.5 shrink-0">
