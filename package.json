@@ -11,7 +11,8 @@
     "build:cards": "npm --prefix frontend run build:cards",
     "analyze": "npm --prefix frontend run analyze --",
     "screenshot": "node scripts/screenshot.js",
-    "feasibility": "npm --prefix frontend run feasibility"
+    "feasibility": "npm --prefix frontend run feasibility",
+    "player-bootstrap": "npm --prefix frontend run player-bootstrap --"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

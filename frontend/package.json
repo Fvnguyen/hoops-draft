@@ -15,6 +15,7 @@
     "analyze": "tsx scripts/analyze.ts",
     "build:cards": "tsx scripts/build-cards.ts",
     "feasibility": "tsx scripts/archetype-feasibility.ts",
+    "player-bootstrap": "tsx scripts/player_bootstrap.ts",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "bootstrap:e2e": "node --env-file=.env.local scripts/bootstrap-e2e-user.mjs",
     "migrate": "node scripts/run-migration.mjs"
