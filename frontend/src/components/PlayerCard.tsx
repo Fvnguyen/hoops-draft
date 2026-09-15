@@ -337,8 +337,9 @@ function StatCell({ label, value, border = true, className = '' }: { label: stri
   );
 }
 
-// D5: MiniPlayerCard shows name, position icon, rarity gem and team stripe only — no
-// stat strip, no badge text (the depth-chart grid this sits in has no room for either).
+// D5: MiniPlayerCard shows position icon, rarity gem and team stripe only — no name (at
+// 48px wide a name is "IMM…", which is exactly the unreadable flavour D5 says to remove;
+// the hover preview carries it), no stat strip, no badge text.
 export function MiniPlayerCard({ player, className = "", onClick }: { player: PlayerCardData, className?: string, onClick?: () => void }) {
   const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
   const tmColor = teamColors[player.player.team] || defaultTeamColor;
@@ -348,7 +349,7 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
     <div
       ref={hoverRef}
       className={`relative rounded border border-line bg-surface-raised cursor-pointer transition-transform hover:-translate-y-1 shadow-sm overflow-visible ${className}`}
-      style={{ width: '48px', height: '72px' }}
+      style={{ width: '48px', height: '60px' }}
       onMouseEnter={onHoverEnter}
       onMouseLeave={onHoverLeave}
       onClick={onClick}
@@ -373,9 +374,6 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
             }
           }}
         />
-        <span className="mt-0.5 w-full text-center text-xs font-bold uppercase truncate text-ink-strong leading-tight px-0.5">
-          {player.player.name}
-        </span>
       </div>
 
       {/* Screen-centred (D-hover) — was a fixed-offset popup below the card, which had
