@@ -74,8 +74,12 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
 
   return (
     <svg
+      // Natural size, 1 viewBox unit = 1px. Scaling the SVG into a narrow column made the
+      // "12px" labels ~6px on screen and the radar itself tiny (owner: "too small").
       viewBox={`${-hPad} ${-vPad} ${size + 2 * hPad} ${size + 2 * vPad}`}
-      className="w-full h-auto max-w-[240px]"
+      width={size + 2 * hPad}
+      height={size + 2 * vPad}
+      className="block max-w-full h-auto"
       preserveAspectRatio="xMidYMid meet"
       role="img"
       aria-label="Team identity radar"

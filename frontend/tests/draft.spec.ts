@@ -37,7 +37,7 @@ test.describe('Draft room: confirm dock + pack pass', () => {
       }
 
       // Wait for the shared confirm dock, disabled until a card is selected.
-      const confirmButton = page.getByRole('button', { name: /^Take |^Select a card$/ });
+      const confirmButton = page.getByRole('button', { name: /^Confirm pick$|^Select a card$/ });
       await expect(confirmButton).toBeVisible();
 
       // Pick the first selectable card in the spread (PackOpener and DraftRoom's own
@@ -46,7 +46,7 @@ test.describe('Draft room: confirm dock + pack pass', () => {
       await expect(spread).toBeVisible();
       await clickPastSplash(page, () => spread.click());
 
-      const takeButton = page.getByRole('button', { name: /^Take / });
+      const takeButton = page.getByRole('button', { name: /^Confirm pick$/ });
       await expect(takeButton).toBeVisible();
 
       const box = await takeButton.boundingBox();

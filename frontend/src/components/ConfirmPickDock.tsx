@@ -26,24 +26,14 @@ export const ConfirmPickDock = forwardRef<HTMLButtonElement, ConfirmPickDockProp
         initial={reducedMotion ? false : { opacity: 0, scale: 0.94 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.18 }}
-        // z-50: DraftRoom's sidebar is itself `z-40` (its own stacking context), so the
-        // dock needs a higher value to stay clickable above it rather than losing DOM-order
-        // stacking ties to whichever renders later.
-        className="fixed z-50 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))]"
+        // `absolute`, not `fixed`: it docks inside the draft's main column (a `relative`
+        // flex child beside the sidebar column), so it can never sit over the sidebar.
+        className="absolute z-40 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))]"
       >
-        {/* Fixed width regardless of label: a longer player name must never shift the
-         *  button's left edge (D7 "never moves"), so the name truncates instead. */}
-        <Button
-          ref={ref}
-          variant="primary"
-          size="lg"
-          disabled={!cardName}
-          onClick={onConfirm}
-          className="w-64 justify-start"
-        >
-          <span className="min-w-0 flex-1 truncate text-center">
-            {cardName ? `Take ${cardName}` : 'Select a card'}
-          </span>
+        {/* Constant label (owner call after live review): the player's name made the
+         *  control wide and loud; the selected card is already highlighted in the spread. */}
+        <Button ref={ref} variant="primary" size="md" disabled={!cardName} onClick={onConfirm}>
+          {cardName ? 'Confirm pick' : 'Select a card'}
         </Button>
       </motion.div>
     );

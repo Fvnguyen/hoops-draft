@@ -345,7 +345,8 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   const packDirection = currentPackNumber === 2 ? 1 : -1;
   const isPackIntro = draftState === 'pack-intro';
   const isRoundSummary = draftState === 'round-summary';
-  const isSidebarOpen = (isSidebarOpenToggled || selectedCardId !== null) && !isPackIntro;
+  // Owner call: selecting/picking a card must not pop the sidebar open; only its toggle does.
+  const isSidebarOpen = isSidebarOpenToggled && !isPackIntro;
   // D7/D8: the opener now renders inside the real room's <main>, with the
   // header/ticker/sidebar blurred behind it instead of a hand-built backdrop.
   const backdropClass = isPackIntro ? 'blur-sm pointer-events-none select-none' : '';
@@ -439,7 +440,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
           // full-screen overlay — header/ticker/sidebar are blurred behind it
           // (backdropClass above) instead of the old hand-built
           // DraftRoomIntroBackdrop.
-          <main className="flex-1 overflow-y-auto relative">
+          <main className="flex-1 overflow-y-auto">
             <PackOpener
               pack={humanSeat.currentPack}
               packNumber={currentPackNumber}

@@ -262,7 +262,9 @@ export function PackOpener({
 
   const body = (
     <div className="relative z-10 flex w-full max-w-6xl flex-col items-center gap-5">
-      <div className="flex w-full max-w-4xl items-start justify-between gap-4">
+      {/* z-20: the dealt cards animate in with transforms (their own stacking contexts)
+          and used to pass over / under this text mid-flight; the heading always wins. */}
+      <div className="relative z-20 flex w-full max-w-4xl items-start justify-between gap-4">
         <div className="flex-1 text-center">
           <p className="text-xs font-black uppercase tracking-[0.32em] text-accent-hover/70">
             {mode === 'quick' ? 'Quick Draft' : 'Premier Draft'}
@@ -413,27 +415,36 @@ export function PackOpener({
           </Button>
         )}
       </div>
-      {phase === 'picking' && (
-        <ConfirmPickDock
-          ref={takeButtonRef}
-          cardName={selectedCard ? cardName(selectedCard) : null}
-          onConfirm={confirmPick}
-        />
-      )}
     </div>
+  );
+
+  // The dock is `absolute` and must anchor to a viewport-tall box, never to the
+  // scrolling content: embedded, that is DraftRoom's main column (its <main> is
+  // deliberately not positioned), so the dock is a sibling of the section, outside
+  // `body`; standalone, the shell itself is min-h-dvh and positioned.
+  const dock = phase === 'picking' && (
+    <ConfirmPickDock
+      ref={takeButtonRef}
+      cardName={selectedCard ? cardName(selectedCard) : null}
+      onConfirm={confirmPick}
+    />
   );
 
   if (embedded) {
     return (
-      <section aria-label={`Opening pack ${packNumber} of ${totalPacks}`} className={shell}>
-        {body}
-      </section>
+      <>
+        <section aria-label={`Opening pack ${packNumber} of ${totalPacks}`} className={shell}>
+          {body}
+        </section>
+        {dock}
+      </>
     );
   }
 
   return (
     <main aria-label={`Opening pack ${packNumber} of ${totalPacks}`} className={shell}>
       {body}
+      {dock}
     </main>
   );
 }

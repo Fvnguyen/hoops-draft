@@ -158,7 +158,7 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
 
       {/* 1. Team identity radar — scaled up from 120px (D4, plan ui_polish_small_fixes):
            120px read as cramped once the badge/plan panel next to it filled out. */}
-      <div className="flex flex-col gap-1 shrink-0" style={{ width: 168 }}>
+      <div className="flex flex-col gap-1 shrink-0">
         <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Team identity</h3>
         <RadarChart data={identity} average={referenceIdentity} size={168} />
       </div>
