@@ -8,6 +8,8 @@ import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
 import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
 import type { PlaybookStatus, PlayStatus } from '../engine/playbook';
 import { MiniPlayerCard, type PlayerCardData } from './PlayerCard';
+import { Button } from './ui';
+import { cn } from '@/lib/cn';
 
 interface GameViewProps {
   game: GameTheater;
@@ -19,9 +21,9 @@ interface GameViewProps {
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
 const TIER_CLASS: Record<ArchetypeTier, string> = {
-  none: 'bg-stone-100 text-stone-400',
-  online: 'bg-emerald-100 text-emerald-700',
-  dedicated: 'bg-amber-100 text-amber-700',
+  none: 'bg-surface-muted text-ink-subtle',
+  online: 'bg-positive-soft text-positive',
+  dedicated: 'bg-warn-soft text-warn',
 };
 
 function playerName(players: PlayerCardData[], id?: string): string {
@@ -80,18 +82,18 @@ function TeamMechanics({ team, playbook }: { team: TeamInfo; playbook: PlaybookS
   return (
     <div className="space-y-1 text-xs">
       {archetypes.map(s => (
-        <div key={s.def.id} className="text-stone-600 flex items-center gap-1.5">
-          <span className="text-emerald-500 text-[10px]">✦</span> {s.def.name}
-          <span className={`text-[8px] font-black uppercase tracking-wide px-1 py-0.5 rounded ${TIER_CLASS[s.tier]}`}>{TIER_LABEL[s.tier]}</span>
+        <div key={s.def.id} className="text-ink-muted flex items-center gap-1.5">
+          <span className="text-positive text-xs">✦</span> {s.def.name}
+          <span className={`text-xs font-black uppercase tracking-wide px-1 py-0.5 rounded ${TIER_CLASS[s.tier]}`}>{TIER_LABEL[s.tier]}</span>
         </div>
       ))}
       {activePlays.map(p => (
-        <div key={p.assignment.cardId} className="text-stone-600 flex items-start gap-1.5">
-          <span className="text-amber-500 text-[10px] mt-0.5">▶</span>
+        <div key={p.assignment.cardId} className="text-ink-muted flex items-start gap-1.5">
+          <span className="text-warn text-xs mt-0.5">▶</span>
           <span>Play: {p.def.name} — {playRoleSummary(p, team.players)}</span>
         </div>
       ))}
-      {archetypes.length === 0 && activePlays.length === 0 && <div className="text-stone-400 italic">No identity or active plays yet.</div>}
+      {archetypes.length === 0 && activePlays.length === 0 && <div className="text-ink-subtle italic">No identity or active plays yet.</div>}
     </div>
   );
 }
@@ -103,42 +105,42 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
   const awayId = calcRosterIdentity(awayDepth);
 
   const bars = [
-    { label: 'Finishing', h: homeId.finishing, a: awayId.finishing, color: 'bg-purple-500' },
-    { label: 'Mid-Range', h: homeId.midRange, a: awayId.midRange, color: 'bg-purple-500' },
-    { label: '3PT', h: homeId.perimeter, a: awayId.perimeter, color: 'bg-purple-500' },
-    { label: 'Perimeter D', h: homeId.perDef, a: awayId.perDef, color: 'bg-teal-500' },
-    { label: 'Post Def', h: homeId.postDef, a: awayId.postDef, color: 'bg-teal-500' },
-    { label: 'Playmaking', h: homeId.playmaking, a: awayId.playmaking, color: 'bg-pink-500' },
-    { label: 'Rebounding', h: homeId.rebounding, a: awayId.rebounding, color: 'bg-pink-500' },
+    { label: 'Finishing', h: homeId.finishing, a: awayId.finishing, color: 'var(--accent)' },
+    { label: 'Mid-Range', h: homeId.midRange, a: awayId.midRange, color: 'var(--accent)' },
+    { label: '3PT', h: homeId.perimeter, a: awayId.perimeter, color: 'var(--accent)' },
+    { label: 'Perimeter D', h: homeId.perDef, a: awayId.perDef, color: 'var(--info)' },
+    { label: 'Post Def', h: homeId.postDef, a: awayId.postDef, color: 'var(--info)' },
+    { label: 'Playmaking', h: homeId.playmaking, a: awayId.playmaking, color: 'var(--positive)' },
+    { label: 'Rebounding', h: homeId.rebounding, a: awayId.rebounding, color: 'var(--positive)' },
   ];
 
   return (
-    <div className="flex flex-col gap-4 p-4 bg-stone-50 overflow-y-auto h-full">
+    <div className="flex flex-col gap-4 p-4 bg-surface-sunken overflow-y-auto h-full">
       <div className="grid grid-cols-2 gap-8">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{game.awayTeam.name} Mechanics</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{game.awayTeam.name} Mechanics</h3>
           <TeamMechanics team={game.awayTeam} playbook={game.playbook.away} />
         </div>
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{game.homeTeam.name} Mechanics</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{game.homeTeam.name} Mechanics</h3>
           <TeamMechanics team={game.homeTeam} playbook={game.playbook.home} />
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-4">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-4 text-center">Team Identity Matchup</h3>
+      <div className="bg-surface-raised rounded-panel border border-line p-4">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-4 text-center">Team Identity Matchup</h3>
         <div className="flex flex-col gap-2">
           {bars.map(b => (
             <div key={b.label} className="flex items-center gap-4">
               <div className="flex-1 flex justify-end">
-                 <div className="h-2 bg-stone-100 rounded-full border border-stone-300 overflow-hidden w-full max-w-[150px]">
-                   <div className={`h-full ${b.color} float-right`} style={{ width: `${Math.min(100, (b.a / 100) * 100)}%` }}></div>
+                 <div className="h-2 bg-surface-sunken rounded-full border border-line-strong overflow-hidden w-full max-w-[150px]">
+                   <div className="h-full float-right" style={{ width: `${Math.min(100, (b.a / 100) * 100)}%`, backgroundColor: b.color }}></div>
                  </div>
               </div>
-              <div className="w-[85px] text-center text-[10px] font-bold uppercase tracking-widest text-stone-600">{b.label}</div>
+              <div className="w-[85px] text-center text-xs font-bold uppercase tracking-widest text-ink-muted">{b.label}</div>
               <div className="flex-1 flex justify-start">
-                 <div className="h-2 bg-stone-100 rounded-full border border-stone-300 overflow-hidden w-full max-w-[150px]">
-                   <div className={`h-full ${b.color}`} style={{ width: `${Math.min(100, (b.h / 100) * 100)}%` }}></div>
+                 <div className="h-2 bg-surface-sunken rounded-full border border-line-strong overflow-hidden w-full max-w-[150px]">
+                   <div className="h-full" style={{ width: `${Math.min(100, (b.h / 100) * 100)}%`, backgroundColor: b.color }}></div>
                  </div>
               </div>
             </div>
@@ -195,24 +197,24 @@ function deriveLiveBoxScore(game: GameTheater, throughIndex: number): { home: Pl
 function BoxScoreTable({ teamName, box, showTurnovers }: { teamName: string; box: PlayerBoxScore[]; showTurnovers: boolean }) {
   return (
     <div className="mb-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{teamName}</h3>
-      <table className="w-full text-[11px]">
+      <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{teamName}</h3>
+      <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-400 font-bold uppercase border-b border-stone-100">
+          <tr className="text-ink-subtle font-bold uppercase border-b border-line">
             <th className="text-left py-1 pr-2">Player</th>
-            <th className="text-center py-1 w-8">MIN</th>
-            <th className="text-center py-1 w-8">PTS</th>
-            <th className="text-center py-1 w-8">2FG</th>
-            <th className="text-center py-1 w-8">3FG</th>
-            <th className="text-center py-1 w-8">FT</th>
-            <th className="text-center py-1 w-8">AST</th>
-            <th className="text-center py-1 w-8">TO</th>
+            <th className="text-center py-1 w-9">MIN</th>
+            <th className="text-center py-1 w-9">PTS</th>
+            <th className="text-center py-1 w-9">2FG</th>
+            <th className="text-center py-1 w-9">3FG</th>
+            <th className="text-center py-1 w-9">FT</th>
+            <th className="text-center py-1 w-9">AST</th>
+            <th className="text-center py-1 w-9">TO</th>
           </tr>
         </thead>
         <tbody>
           {box.filter(b => b.possessions > 0).map(b => (
-            <tr key={b.playerId} className="border-b border-stone-50 text-stone-600">
-              <td className="text-left py-1 pr-2 font-bold text-stone-800 truncate max-w-[120px]">{b.playerName}</td>
+            <tr key={b.playerId} className="border-b border-line text-ink-muted">
+              <td className="text-left py-1 pr-2 font-bold text-ink-strong truncate max-w-[120px]">{b.playerName}</td>
               <td className="text-center py-1">{b.minutes.toFixed(0)}</td>
               <td className="text-center py-1 font-bold">{b.points}</td>
               <td className="text-center py-1">{b.twoPointers}</td>
@@ -241,20 +243,20 @@ export function BoxScoreOnly({ result, homeTeamName, awayTeamName }: {
 }) {
   return (
     <div className="flex flex-col h-full gap-3">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center">
-        <div className="text-sm font-bold text-amber-700">Play-by-play unavailable</div>
-        <div className="text-xs text-amber-600 mt-1">Game rules changed since this game was played — showing the final box score only.</div>
+      <div className="bg-warn-soft border border-line rounded-panel p-4 text-center">
+        <div className="text-sm font-bold text-warn">Play-by-play unavailable</div>
+        <div className="text-xs text-warn mt-1">Game rules changed since this game was played — showing the final box score only.</div>
       </div>
-      <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-4 text-center">
-        <div className="text-2xl font-black uppercase tracking-wider text-stone-800" style={{ fontFamily: 'var(--font-bebas)' }}>
+      <div className="bg-surface-raised rounded-panel border border-line shadow-sm p-4 text-center">
+        <div className="text-2xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
           Final: {homeTeamName} {result.finalScore[0]} — {result.finalScore[1]} {awayTeamName}
         </div>
-        <div className="text-xs text-stone-400 mt-1">
+        <div className="text-xs text-ink-subtle mt-1">
           {result.finalScore[0] > result.finalScore[1] ? homeTeamName : awayTeamName} wins!
           {result.isOvertime && ` (${result.overtimePeriods}OT)`}
         </div>
       </div>
-      <div className="flex-1 bg-white rounded-xl border border-stone-200 shadow-sm overflow-y-auto p-3 min-h-0">
+      <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-y-auto p-3 min-h-0">
         <BoxScoreTable teamName={awayTeamName} box={result.boxScore.away} showTurnovers />
         <BoxScoreTable teamName={homeTeamName} box={result.boxScore.home} showTurnovers />
       </div>
@@ -327,54 +329,56 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
 
   // Progress through quarter
   const quarterPoss = game.possessions.filter(p => p.quarter === quarter);
-  const quarterProgress = quarterPoss.length > 0 
+  const quarterProgress = quarterPoss.length > 0
     ? ((visiblePossessions.filter(p => p.quarter === quarter).length / quarterPoss.length) * 12).toFixed(0)
     : '0';
   const timeDisplay = quarter <= 4 ? `${Math.max(0, 12 - Number(quarterProgress))}:00` : `${Math.max(0, 5 - Math.round(Number(quarterProgress) / 2.4))}:00`;
 
+  const tabButtonClass = (active: boolean) => cn(active && 'bg-surface-inverse text-ink-inverse border-surface-inverse hover:bg-surface-inverse');
+
   return (
     <div className="flex flex-col h-full gap-3">
       {/* Scoreboard */}
-      <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50">
+      <div className="bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-line bg-surface-sunken">
           {/* Away Team (Left) */}
           <div className="flex-1 text-left flex flex-col justify-center">
             <div className="flex items-center gap-2 mb-1">
-              <div className="text-xs font-bold uppercase tracking-widest text-stone-800">{game.awayTeam.name}</div>
-              <div className="text-[9px] font-black uppercase text-stone-400 bg-stone-200 px-1.5 py-0.5 rounded">Away</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-ink-strong">{game.awayTeam.name}</div>
+              <div className="text-xs font-black uppercase text-ink-subtle bg-surface-muted px-1.5 py-0.5 rounded">Away</div>
             </div>
-            <div className="text-4xl font-black text-stone-800 leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[1]}</div>
+            <div className="text-4xl font-black text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[1]}</div>
             <div className="mt-3"><TeamStarters team={game.awayTeam} isHome={false} /></div>
           </div>
 
           {/* Center: Quarter + Time */}
           <div className="flex flex-col items-center px-6 min-w-[120px]">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-1">
+            <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1">
               {currentPoss < 0 ? 'PRE-GAME' : isComplete ? 'FINAL' : quarterLabel}
             </div>
             {!isComplete && currentPoss >= 0 && (
-              <div className="text-lg font-bold text-stone-600 leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{timeDisplay}</div>
+              <div className="text-lg font-bold text-ink-muted leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{timeDisplay}</div>
             )}
             {isComplete && game.isOvertime && (
-              <div className="text-[10px] font-bold text-amber-600 uppercase mt-1">{game.overtimePeriods}x Overtime</div>
+              <div className="text-xs font-bold text-warn uppercase mt-1">{game.overtimePeriods}x Overtime</div>
             )}
-            {currentPoss < 0 && <div className="text-3xl font-black text-stone-300 italic my-1" style={{ fontFamily: 'var(--font-bebas)' }}>VS</div>}
+            {currentPoss < 0 && <div className="text-3xl font-black text-ink-subtle italic my-1" style={{ fontFamily: 'var(--font-bebas)' }}>VS</div>}
           </div>
 
           {/* Home Team (Right) */}
           <div className="flex-1 text-right flex flex-col justify-center items-end">
             <div className="flex items-center gap-2 mb-1">
-              <div className="text-[9px] font-black uppercase text-stone-400 bg-stone-200 px-1.5 py-0.5 rounded">Home</div>
-              <div className="text-xs font-bold uppercase tracking-widest text-stone-800">{game.homeTeam.name}</div>
+              <div className="text-xs font-black uppercase text-ink-subtle bg-surface-muted px-1.5 py-0.5 rounded">Home</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-ink-strong">{game.homeTeam.name}</div>
             </div>
-            <div className="text-4xl font-black text-stone-800 leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[0]}</div>
+            <div className="text-4xl font-black text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[0]}</div>
             <div className="mt-3"><TeamStarters team={game.homeTeam} isHome={true} /></div>
           </div>
         </div>
 
         {/* Quarter scores bar */}
         {game.quarterSummaries.length > 0 && currentPoss >= 0 && (
-          <div className="flex text-[11px] font-bold text-stone-600 border-t border-stone-100 bg-white">
+          <div className="flex text-xs font-bold text-ink-muted border-t border-line bg-surface-raised">
             <div className="flex-1"></div>
             {/* A quarter's row only appears once its possessions are fully consumed —
                 quarterSummaries holds every quarter's precomputed final score up front
@@ -382,10 +386,10 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
                 in-progress quarter here (q.quarter <= quarter) would spoil its own
                 ending before the last possession plays. */}
             {game.quarterSummaries.filter(q => q.quarter < quarter || (isComplete && q.quarter === quarter)).map(q => (
-              <div key={q.quarter} className="w-10 text-center py-1 flex flex-col border-l border-stone-100">
-                <span className="text-[9px] text-stone-400 border-b border-stone-100">{q.quarter <= 4 ? `Q${q.quarter}` : `OT`}</span>
+              <div key={q.quarter} className="w-10 text-center py-1 flex flex-col border-l border-line">
+                <span className="text-xs text-ink-subtle border-b border-line">{q.quarter <= 4 ? `Q${q.quarter}` : `OT`}</span>
                 <span className="py-0.5">{q.awayScore}</span>
-                <span className="border-t border-stone-100 py-0.5">{q.homeScore}</span>
+                <span className="border-t border-line py-0.5">{q.homeScore}</span>
               </div>
             ))}
           </div>
@@ -393,46 +397,44 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center justify-center gap-3 flex-wrap">
         {currentPoss < 0 ? (
           <>
-            <button onClick={handleStart} className="flex items-center gap-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold uppercase text-sm tracking-wider transition-colors">
-              <PlayIcon className="w-4 h-4" /> Tip Off
-            </button>
-            <button onClick={() => setActiveTab('matchup')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${activeTab === 'matchup' ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>
+            <Button onClick={handleStart} variant="primary" icon={<PlayIcon className="w-4 h-4" />}>
+              Tip Off
+            </Button>
+            <Button onClick={() => setActiveTab('matchup')} variant="secondary" className={tabButtonClass(activeTab === 'matchup')}>
               Matchup Preview
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button onClick={handleTogglePlay} className="flex items-center gap-1 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
-              {isPlaying ? <Pause className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
+            <Button onClick={handleTogglePlay} variant="secondary" icon={isPlaying ? <Pause className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}>
               {isPlaying ? 'Pause' : 'Play'}
-            </button>
-            <button onClick={handleSpeedToggle} className="flex items-center gap-1 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
-              <FastForward className="w-4 h-4" />
+            </Button>
+            <Button onClick={handleSpeedToggle} variant="secondary" icon={<FastForward className="w-4 h-4" />}>
               {speed === 500 ? '1×' : speed === 200 ? '2×' : '5×'}
-            </button>
-            <button onClick={handleSkip} className="flex items-center gap-1 px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
-              <SkipForward className="w-4 h-4" /> End
-            </button>
-            <div className="w-px h-6 bg-stone-200 mx-1"></div>
-            <button onClick={() => setActiveTab('matchup')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${activeTab === 'matchup' ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>
+            </Button>
+            <Button onClick={handleSkip} variant="secondary" icon={<SkipForward className="w-4 h-4" />}>
+              End
+            </Button>
+            <div className="w-px h-6 bg-line mx-1"></div>
+            <Button onClick={() => setActiveTab('matchup')} variant="secondary" className={tabButtonClass(activeTab === 'matchup')}>
               Matchup
-            </button>
-            <button onClick={() => setActiveTab('playByPlay')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${activeTab === 'playByPlay' ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>
+            </Button>
+            <Button onClick={() => setActiveTab('playByPlay')} variant="secondary" className={tabButtonClass(activeTab === 'playByPlay')}>
               Play-by-Play
-            </button>
-            <button onClick={() => setActiveTab('boxScore')} className={`px-4 py-2 rounded-lg font-bold text-sm transition-colors ${activeTab === 'boxScore' ? 'bg-stone-800 text-white' : 'bg-stone-100 hover:bg-stone-200 text-stone-700'}`}>
+            </Button>
+            <Button onClick={() => setActiveTab('boxScore')} variant="secondary" className={tabButtonClass(activeTab === 'boxScore')}>
               Box Score
-            </button>
+            </Button>
           </>
         )}
       </div>
 
-      <div className="flex-1 bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden min-h-0 flex flex-col">
+      <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden min-h-0 flex flex-col">
         {activeTab === 'matchup' && <TaleOfTheTape game={game} />}
-        
+
         {/* Play-by-Play Feed */}
         {activeTab === 'playByPlay' && currentPoss >= 0 && (
           <div ref={feedRef} className="flex-1 overflow-y-auto p-3">
@@ -441,16 +443,16 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
                 const isScoring = poss.outcome === '2pt' || poss.outcome === '3pt' || poss.outcome === 'and1';
                 const isHomeTeam = poss.team === 'home';
                 return (
-                  <div key={poss.index} className={`flex items-start gap-2 py-1 px-2 rounded text-xs ${isScoring ? 'bg-emerald-50 font-bold' : 'text-stone-500'}`}>
-                    <span className="shrink-0 text-[10px] font-mono text-stone-300 w-8">{poss.quarter <= 4 ? `Q${poss.quarter}` : 'OT'}</span>
-                    <span className={`shrink-0 text-[10px] font-bold uppercase w-12 ${isHomeTeam ? 'text-blue-600' : 'text-red-500'}`}>
+                  <div key={poss.index} className={`flex items-start gap-2 py-1 px-2 rounded text-xs ${isScoring ? 'bg-positive-soft font-bold' : 'text-ink-muted'}`}>
+                    <span className="shrink-0 text-xs font-mono text-ink-subtle w-8">{poss.quarter <= 4 ? `Q${poss.quarter}` : 'OT'}</span>
+                    <span className={`shrink-0 text-xs font-bold uppercase w-12 ${isHomeTeam ? 'text-info' : 'text-danger'}`}>
                       {isHomeTeam ? game.homeTeam.name.substring(0, 6) : game.awayTeam.name.substring(0, 6)}
                     </span>
                     <span className="flex-1 flex items-center flex-wrap gap-1.5">
                       {poss.calledPlays?.map((call, idx) => (
                         <span
                           key={idx}
-                          className={`shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'}`}
+                          className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
                         >
                           {call.side === 'offense' ? '▶' : '🛡'} {call.name}
                         </span>
@@ -458,7 +460,7 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
                       <span>{poss.narrativeText}</span>
                     </span>
                     {isScoring && (
-                      <span className="shrink-0 font-mono text-[10px] text-stone-400">
+                      <span className="shrink-0 font-mono text-xs text-ink-subtle">
                         {poss.runningScore[0]}-{poss.runningScore[1]}
                       </span>
                     )}
@@ -472,7 +474,7 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
         {/* Box Score */}
         {activeTab === 'boxScore' && (
           <div className="flex-1 overflow-y-auto p-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">
+            <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">
               {isComplete ? 'Final box score' : currentPoss < 0 ? 'Pre-game' : `Through ${quarterLabel} · live`}
             </div>
             {['home', 'away'].map(side => {
@@ -483,24 +485,24 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
                 : (side === 'home' ? liveBox.home : liveBox.away);
               return (
                 <div key={side} className="mb-4">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-2">{team.name}</h3>
-                  <table className="w-full text-[11px]">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{team.name}</h3>
+                  <table className="w-full text-xs">
                     <thead>
-                      <tr className="text-stone-400 font-bold uppercase border-b border-stone-100">
+                      <tr className="text-ink-subtle font-bold uppercase border-b border-line">
                         <th className="text-left py-1 pr-2">Player</th>
-                        <th className="text-center py-1 w-8">MIN</th>
-                        <th className="text-center py-1 w-8">PTS</th>
-                        <th className="text-center py-1 w-8">2FG</th>
-                        <th className="text-center py-1 w-8">3FG</th>
-                        <th className="text-center py-1 w-8">FT</th>
-                        <th className="text-center py-1 w-8">AST</th>
-                        <th className="text-center py-1 w-8">TO</th>
+                        <th className="text-center py-1 w-9">MIN</th>
+                        <th className="text-center py-1 w-9">PTS</th>
+                        <th className="text-center py-1 w-9">2FG</th>
+                        <th className="text-center py-1 w-9">3FG</th>
+                        <th className="text-center py-1 w-9">FT</th>
+                        <th className="text-center py-1 w-9">AST</th>
+                        <th className="text-center py-1 w-9">TO</th>
                       </tr>
                     </thead>
                     <tbody>
                       {box.filter(b => b.possessions > 0).map(b => (
-                        <tr key={b.playerId} className="border-b border-stone-50 text-stone-600">
-                          <td className="text-left py-1 pr-2 font-bold text-stone-800 truncate max-w-[120px]">{b.playerName}</td>
+                        <tr key={b.playerId} className="border-b border-line text-ink-muted">
+                          <td className="text-left py-1 pr-2 font-bold text-ink-strong truncate max-w-[120px]">{b.playerName}</td>
                           <td className="text-center py-1">{b.minutes.toFixed(0)}</td>
                           <td className="text-center py-1 font-bold">{b.points}</td>
                           <td className="text-center py-1">{b.twoPointers}</td>
@@ -521,11 +523,11 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
 
       {/* Final Result Banner */}
       {isComplete && (
-        <div className="bg-white rounded-xl border border-stone-200 shadow-sm p-4 text-center">
-          <div className="text-2xl font-black uppercase tracking-wider text-stone-800" style={{ fontFamily: 'var(--font-bebas)' }}>
+        <div className="bg-surface-raised rounded-panel border border-line shadow-sm p-4 text-center">
+          <div className="text-2xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
             Final: {game.homeTeam.name} {game.finalScore[0]} — {game.finalScore[1]} {game.awayTeam.name}
           </div>
-          <div className="text-xs text-stone-400 mt-1">
+          <div className="text-xs text-ink-subtle mt-1">
             {game.finalScore[0] > game.finalScore[1] ? game.homeTeam.name : game.awayTeam.name} wins!
             {game.isOvertime && ` (${game.overtimePeriods}OT)`}
           </div>

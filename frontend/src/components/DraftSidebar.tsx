@@ -5,6 +5,7 @@ import { DraftCard, CardListRow, PlayerHoverPreview, PlayHoverPreview } from './
 import { useHoverPreview } from './useHoverPreview';
 import { RosterDistribution } from './RosterDistribution';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { IconButton } from './ui';
 
 const TOTAL_PICKS = CUBE_PACKS * (CUBE_PLAYER_CARDS_PER_PACK + 1);
 
@@ -49,39 +50,44 @@ export function DraftSidebar({
         We just slide it horizontally.
       */}
       <div
-        className="absolute top-0 right-0 h-full w-[320px] bg-white border-l border-stone-200 flex flex-col shadow-xl transition-transform duration-300 ease-out"
+        className="absolute top-0 right-0 h-full w-[320px] bg-surface-raised border-l border-line flex flex-col shadow-xl transition-transform duration-300 ease-out"
         style={{ transform: isOpen ? 'translateX(0)' : 'translateX(256px)' }}
       >
-        <button
+        <IconButton
+          label={isOpen ? 'Collapse roster sidebar' : 'Expand roster sidebar'}
+          variant="raised"
           onClick={toggle}
-          className="absolute top-4 -left-3 bg-white border border-stone-200 p-1 rounded-full text-stone-400 hover:text-stone-600 z-50 shadow-md"
+          className="absolute top-4 -left-3 z-50 shadow-md"
         >
           {isOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        </IconButton>
 
         {/* Collapsed Strip Overlay (Always lives in the leftmost 64px) */}
         <div className={`absolute top-0 left-0 w-[64px] h-full flex flex-col items-center pt-16 gap-6 z-20 transition-opacity duration-200 ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           <div
-            className="p-2.5 rounded-xl border-2 border-transparent flex flex-col items-center gap-1 cursor-pointer transition-colors hover:bg-stone-50"
+            className="p-2.5 rounded-xl border-2 border-transparent flex flex-col items-center gap-1 cursor-pointer transition-colors hover:bg-surface-sunken"
             onClick={toggle}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            title="Roster"
           >
-             <Users size={18} className="text-stone-800" />
-             <span className="text-[9px] font-bold uppercase tracking-wide text-stone-500 leading-none">Roster</span>
-             <span className="text-[10px] font-black text-stone-700 leading-none">{drafted.length}</span>
+             <Users size={18} className="text-ink-strong" />
+             {/* D5: the "Roster" caption at 9px can't clear the 12px floor in this 64px
+                 collapsed strip (bold uppercase tracking-wide would overflow) — dropped,
+                 the wrapper's `title` carries it instead. Only the icon + count remain. */}
+             <span className="text-xs font-black text-ink leading-none">{drafted.length}</span>
           </div>
         </div>
 
         {/* Expanded UI */}
         <div className={`flex-1 flex flex-col w-full h-full z-10 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <div className="p-4 border-b border-stone-200 bg-stone-50 flex items-center gap-3">
-            <div className="w-8 h-8 shrink-0 bg-white rounded-md flex items-center justify-center border border-stone-200 cursor-pointer hover:bg-stone-50" onClick={toggle}>
-               <LayoutList className="text-stone-600" size={18} />
+          <div className="p-4 border-b border-line bg-surface-sunken flex items-center gap-3">
+            <div className="w-8 h-8 shrink-0 bg-surface-raised rounded-md flex items-center justify-center border border-line cursor-pointer hover:bg-surface-sunken" onClick={toggle}>
+               <LayoutList className="text-ink-muted" size={18} />
             </div>
             <div className="whitespace-nowrap">
-              <h2 className="text-stone-800 font-bold uppercase tracking-wider text-lg leading-tight">My Team</h2>
-              <div className="text-stone-400 text-xs font-medium uppercase tracking-widest">{drafted.length}/{TOTAL_PICKS} Drafted</div>
+              <h2 className="text-ink-strong font-bold uppercase tracking-wider text-lg leading-tight">My Team</h2>
+              <div className="text-ink-subtle text-xs font-medium uppercase tracking-widest">{drafted.length}/{TOTAL_PICKS} Drafted</div>
             </div>
           </div>
 
@@ -93,12 +99,12 @@ export function DraftSidebar({
             onDrop={handleDrop}
           >
             <div className="flex items-center justify-between mb-1 px-2">
-              <h3 className="font-bold uppercase tracking-widest text-sm flex items-center gap-2 text-stone-800">
+              <h3 className="font-bold uppercase tracking-widest text-sm flex items-center gap-2 text-ink-strong">
                 <Users size={16} /> Roster
               </h3>
-              <span className="text-stone-400 text-xs font-bold">{drafted.length}</span>
+              <span className="text-ink-subtle text-xs font-bold">{drafted.length}</span>
             </div>
-            {drafted.length === 0 && <div className="text-stone-400 text-xs italic px-2">Drag cards here...</div>}
+            {drafted.length === 0 && <div className="text-ink-subtle text-xs italic px-2">Drag cards here...</div>}
             {drafted.map((c, idx) => (
               <RosterCardRow key={`${c.id}-${idx}`} card={c} />
             ))}

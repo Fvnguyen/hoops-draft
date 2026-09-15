@@ -60,7 +60,9 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
   const maxRadius = center - labelPad;
   // Side labels ("PERIMETER D", "MID-RANGE") extend past the circle; give the SVG
   // extra width on both sides so they are never clipped by the container edge.
-  const hPad = 52;
+  // (D2/D5: labels render at the 12px floor, wider than the old 8px, so the pad
+  // is a bit larger too.)
+  const hPad = 64;
   // Relative strength per axis (team minus league average) drives the vertex dots and
   // the emphasised labels: the biggest positive gap is the peak, the most negative the
   // valley. Shapes and colours only — no numbers (product rule).
@@ -82,7 +84,8 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
           key={f}
           points={ringPoints(center, center, maxRadius * f)}
           fill="none"
-          className="stroke-stone-300/50"
+          stroke="var(--line-strong)"
+          strokeOpacity={0.5}
           strokeWidth={1}
         />
       ))}
@@ -97,7 +100,7 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
             y1={center}
             x2={x}
             y2={y}
-            className="stroke-stone-200"
+            stroke="var(--line)"
             strokeWidth={1}
           />
         );
@@ -107,7 +110,8 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
       <polygon
         points={valuePoints(center, center, maxRadius, average)}
         fill="none"
-        className="stroke-stone-400/70"
+        stroke="var(--ink-subtle)"
+        strokeOpacity={0.7}
         strokeWidth={1}
         strokeDasharray="3 2"
       />
@@ -115,7 +119,9 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
       {/* Team polygon */}
       <polygon
         points={valuePoints(center, center, maxRadius, data)}
-        className="fill-purple-500/30 stroke-purple-500"
+        fill="var(--accent)"
+        fillOpacity={0.3}
+        stroke="var(--accent)"
         strokeWidth={1.5}
         strokeLinejoin="round"
       />
@@ -132,7 +138,8 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
             cx={x}
             cy={y}
             r={extreme ? 4.5 : 2.5}
-            className={`${above ? 'fill-emerald-500' : 'fill-rose-500'} stroke-white`}
+            fill={above ? 'var(--positive)' : 'var(--danger)'}
+            stroke="var(--surface-raised)"
             strokeWidth={1.5}
           >
             <title>{`${axis.label}: ${above ? 'above' : 'below'} league average${i === peakIndex ? ' (strength)' : i === valleyIndex ? ' (weakness)' : ''}`}</title>
@@ -148,7 +155,7 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
         const sin = Math.sin(angle);
         const textAnchor = cos > 0.15 ? 'start' : cos < -0.15 ? 'end' : 'middle';
         const dy = sin >= 0 ? 7 : -3;
-        const emphasis = i === peakIndex ? 'fill-emerald-600' : i === valleyIndex ? 'fill-rose-600' : 'fill-stone-500';
+        const emphasisColor = i === peakIndex ? 'var(--positive)' : i === valleyIndex ? 'var(--danger)' : 'var(--ink-muted)';
         const prefix = i === peakIndex ? '▲ ' : i === valleyIndex ? '▼ ' : '';
         return (
           <text
@@ -156,8 +163,9 @@ export function RadarChart({ data, average, size = 120 }: RadarChartProps) {
             x={x}
             y={y + dy}
             textAnchor={textAnchor}
-            className={`${emphasis} uppercase`}
-            style={{ fontSize: 8, fontWeight: i === peakIndex || i === valleyIndex ? 800 : 700, letterSpacing: '0.05em' }}
+            className="uppercase"
+            fill={emphasisColor}
+            style={{ fontSize: 12, fontWeight: i === peakIndex || i === valleyIndex ? 800 : 700, letterSpacing: '0.05em' }}
           >
             {prefix}{axis.label}
           </text>

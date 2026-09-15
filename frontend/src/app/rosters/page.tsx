@@ -1,13 +1,13 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
 import { motion } from 'framer-motion';
 import { Download, Pencil, Swords, Trash2, Upload } from 'lucide-react';
 import { getGameStore, SavedRoster, CURRENT_CARD_SET_VERSION } from '@/storage';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase, HUMAN_SEAT_ID, type Season, type SeasonPhase } from '@/engine/season';
+import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
+import { useRouter } from 'next/navigation';
+import { Button, IconButton } from '@/components/ui';
 import {
   buildExportBundle,
   isLikelyExportBundle,
@@ -22,9 +22,9 @@ const PHASE_LABEL: Record<SeasonPhase, string> = {
 };
 
 const PHASE_CLASS: Record<SeasonPhase, string> = {
-  preseason: 'bg-stone-100 text-stone-500',
-  live: 'bg-emerald-100 text-emerald-700',
-  completed: 'bg-blue-100 text-blue-700',
+  preseason: 'bg-surface-muted text-ink-muted',
+  live: 'bg-positive-soft text-positive',
+  completed: 'bg-info-soft text-info',
 };
 
 export default function RostersPage() {
@@ -146,7 +146,7 @@ export default function RostersPage() {
   };
 
   return (
-    <div className="min-h-screen p-8 pt-[70px] text-stone-800 overflow-y-auto">
+    <div className="min-h-dvh overflow-y-auto p-8 pt-nav text-ink">
       <input
         ref={fileInputRef}
         type="file"
@@ -154,30 +154,22 @@ export default function RostersPage() {
         className="hidden"
         onChange={handleImportFile}
       />
-      <div className="flex justify-end gap-3 mb-6">
-        <button
-          onClick={handleExport}
-          disabled={busy}
-          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-stone-50 text-stone-700 rounded-lg font-bold uppercase tracking-widest text-xs transition-colors border border-stone-300 disabled:opacity-50"
-        >
-          <Download className="w-4 h-4" /> Export my data
-        </button>
-        <button
-          onClick={handleImportClick}
-          disabled={busy}
-          className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-stone-50 text-stone-700 rounded-lg font-bold uppercase tracking-widest text-xs transition-colors border border-stone-300 disabled:opacity-50"
-        >
-          <Upload className="w-4 h-4" /> Import
-        </button>
+      <div className="mb-6 flex flex-wrap justify-end gap-3">
+        <Button variant="secondary" onClick={handleExport} disabled={busy} icon={<Download className="h-4 w-4" />}>
+          Export my data
+        </Button>
+        <Button variant="secondary" onClick={handleImportClick} disabled={busy} icon={<Upload className="h-4 w-4" />}>
+          Import
+        </Button>
       </div>
 
       {importError && (
-        <div className="mb-6 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 rounded-panel border border-danger-line bg-danger-soft px-4 py-3 text-sm text-danger">
           {importError}
         </div>
       )}
       {importSummary && (
-        <div className="mb-6 px-4 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+        <div className="mb-6 rounded-panel border border-positive/30 bg-positive-soft px-4 py-3 text-sm text-positive">
           Import complete — sessions: {importSummary.sessions.added} added, {importSummary.sessions.updated} updated,{' '}
           {importSummary.sessions.skipped} skipped; rosters: {importSummary.rosters.added} added,{' '}
           {importSummary.rosters.updated} updated, {importSummary.rosters.skipped} skipped; seasons:{' '}
@@ -187,15 +179,15 @@ export default function RostersPage() {
       )}
 
       {!ready || !loaded ? (
-        <div className="flex flex-col items-center justify-center h-64 opacity-50">
-          <div className="text-6xl mb-4">🏀</div>
+        <div className="flex h-64 flex-col items-center justify-center opacity-50">
+          <div className="mb-4 text-6xl">🏀</div>
           <h2 className="text-xl font-bold uppercase tracking-widest">Loading Rosters...</h2>
         </div>
       ) : rosters.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 opacity-50">
-          <div className="text-6xl mb-4">🏀</div>
+        <div className="flex h-64 flex-col items-center justify-center opacity-50">
+          <div className="mb-4 text-6xl">🏀</div>
           <h2 className="text-xl font-bold uppercase tracking-widest">No Rosters Saved</h2>
-          <p className="mt-2 text-stone-400">Complete a draft and build a deck to see it here.</p>
+          <p className="mt-2 text-ink-subtle">Complete a draft and build a deck to see it here.</p>
         </div>
       ) : (
         <div className="space-y-8 pb-10">
@@ -207,34 +199,34 @@ export default function RostersPage() {
             const isLocked = phase === 'completed';
 
             return (
-              <motion.div 
-                key={rosterObj.id} 
+              <motion.div
+                key={rosterObj.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="bg-white border border-stone-200 rounded-xl overflow-hidden shadow-sm"
+                className="rounded-xl border border-line bg-surface-raised shadow-sm"
               >
-                <div className="bg-stone-50 px-6 py-4 border-b border-stone-200 flex justify-between items-center">
-                  <div>
-                    <h2 className="text-xl font-black uppercase tracking-wider flex items-center gap-3">
-                      <span className="text-stone-500 text-sm font-normal">#{rosters.length - i}</span>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-line bg-surface-sunken px-6 py-4">
+                  <div className="min-w-0">
+                    <h2 className="flex items-center gap-3 truncate text-xl font-black uppercase tracking-wider">
+                      <span className="text-sm font-normal text-ink-muted">#{rosters.length - i}</span>
                       {rosterObj.name || 'Drafted Roster'}
                     </h2>
-                    <div className="text-xs font-bold text-stone-500 uppercase tracking-widest mt-1 flex items-center gap-2">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-muted">
                       {date}
                       {season && (
-                        <span className={`px-2 py-0.5 rounded-full normal-case tracking-normal font-semibold ${PHASE_CLASS[phase]}`}>
+                        <span className={`rounded-full px-2 py-0.5 normal-case tracking-normal font-semibold ${PHASE_CLASS[phase]}`}>
                           {PHASE_LABEL[phase]}
                         </span>
                       )}
                       {humanStanding && (humanStanding.wins + humanStanding.losses > 0) && (
-                        <span className="normal-case tracking-normal font-semibold text-stone-600">
+                        <span className="normal-case tracking-normal font-semibold text-ink-muted">
                           {humanStanding.wins}-{humanStanding.losses}
                         </span>
                       )}
                       {rosterObj.cardSetVersion && rosterObj.cardSetVersion !== CURRENT_CARD_SET_VERSION && (
                         <span
-                          className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 normal-case tracking-normal font-semibold"
+                          className="rounded-full bg-warn-soft px-2 py-0.5 normal-case tracking-normal font-semibold text-warn"
                           title={`Built from an older card set (${rosterObj.cardSetVersion}); ratings may have changed since.`}
                         >
                           older card set
@@ -242,39 +234,41 @@ export default function RostersPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <Link
+                  <div className="flex flex-wrap items-center gap-3">
+                    <IconButton
                       href={`/roster/${rosterObj.id}${rosterObj.sessionId ? `?sessionId=${rosterObj.sessionId}` : ''}`}
-                      className="p-3 bg-white hover:bg-stone-50 text-stone-500 hover:text-stone-700 rounded-lg transition-colors border border-stone-700"
-                      title={isLocked ? 'View Roster (locked — season complete)' : 'Edit Roster'}
+                      variant="raised"
+                      label={isLocked ? 'View Roster (locked — season complete)' : 'Edit Roster'}
                     >
-                      <Pencil className="w-5 h-5" />
-                    </Link>
+                      <Pencil className="h-5 w-5" />
+                    </IconButton>
 
                     {rosterObj.sessionId && (
-                      <button
+                      <Button
                         onClick={() => router.push(`/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`)}
-                        className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest transition-colors shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:shadow-[0_0_20px_rgba(16,185,129,0.5)]"
+                        icon={<Swords className="h-4 w-4" />}
+                        className="bg-positive text-white shadow-sm hover:bg-positive-strong"
                       >
-                        <Swords className="w-4 h-4" /> {isLocked ? 'View Season' : 'Play Season'}
-                      </button>
+                        {isLocked ? 'View Season' : 'Play Season'}
+                      </Button>
                     )}
 
-                    <button
+                    <IconButton
+                      label="Delete Roster"
+                      variant="raised"
+                      className="hover:bg-danger-soft hover:text-danger"
                       onClick={() => handleDelete(rosterObj.id)}
-                      className="p-3 bg-white hover:bg-red-50 text-stone-500 hover:text-red-600 rounded-lg transition-colors border border-stone-700"
-                      title="Delete Roster"
                     >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
+                      <Trash2 className="h-5 w-5" />
+                    </IconButton>
                   </div>
                 </div>
 
                 <div className="p-6">
-                  <div className="flex gap-6">
+                  <div className="flex gap-6 overflow-x-auto">
                     {/* Active Plays */}
                     <div className="w-36 shrink-0">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 text-center">Plays</h3>
+                      <h3 className="mb-4 text-center text-xs font-bold uppercase tracking-widest text-ink-muted">Plays</h3>
                       <div className="flex flex-col gap-2">
                         {rosterObj.activePlays?.map((playId: string, idx: number) => {
                           const play = rosterObj.draftedCards.find((c: DraftCard) => c.id === playId);
@@ -283,26 +277,26 @@ export default function RostersPage() {
                           return play && play.type === 'Play' ? <PlayCard key={`${play.id}-${idx}`} play={play} compact /> : null;
                         })}
                         {(!rosterObj.activePlays || rosterObj.activePlays.length === 0) && (
-                          <div className="text-stone-400 text-[10px] uppercase font-bold text-center py-4 border border-stone-300 border-dashed rounded-lg bg-stone-900/50">No Plays</div>
+                          <div className="rounded-lg border border-dashed border-line-strong bg-surface-sunken py-4 text-center text-xs font-bold uppercase text-ink-subtle">No Plays</div>
                         )}
                       </div>
                     </div>
 
-                    <div className="w-px bg-stone-200" />
+                    <div className="w-px shrink-0 bg-line" />
 
                     {/* Starting Lineup */}
-                    <div className="flex-1">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-4 text-center">Starting Lineup</h3>
+                    <div className="min-w-[320px] flex-1">
+                      <h3 className="mb-4 text-center text-xs font-bold uppercase tracking-widest text-ink-muted">Starting Lineup</h3>
                       <div className="grid grid-cols-5 gap-4">
                         {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
                           const starter = getStarter(rosterObj, pos);
                           return (
-                            <div key={pos} className="flex flex-col gap-2 relative">
-                              <div className="text-center font-black text-stone-700 text-sm">{pos}</div>
+                            <div key={pos} className="relative flex flex-col gap-2">
+                              <div className="text-center text-sm font-black text-ink">{pos}</div>
                               {starter ? (
                                 <PlayerCard player={starter} />
                               ) : (
-                                <div className="aspect-[2.5/3.5] bg-stone-50 rounded-lg border border-stone-300 border-dashed flex items-center justify-center text-stone-700 font-bold uppercase text-xs">
+                                <div className="flex aspect-[2.5/3.5] items-center justify-center rounded-lg border border-dashed border-line-strong bg-surface-sunken text-xs font-bold uppercase text-ink-muted">
                                   Empty
                                 </div>
                               )}

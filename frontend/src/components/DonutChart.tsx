@@ -60,7 +60,7 @@ export function DonutChart({ data, size = 120, strokeWidth = 20 }: DonutChartPro
       <div className="relative shrink-0" style={{ width: size, maxWidth: '100%', aspectRatio: '1 / 1' }}>
         <svg viewBox={`0 0 ${size} ${size}`} preserveAspectRatio="xMidYMid meet" className="w-full h-full" role="img" aria-label="Expected shot diet">
           {/* Track */}
-          <circle cx={center} cy={center} r={radius} fill="none" className="stroke-stone-100" strokeWidth={strokeWidth} />
+          <circle cx={center} cy={center} r={radius} fill="none" className="stroke-surface-muted" strokeWidth={strokeWidth} />
           {segments.map(seg => {
             const isFocus = hovered === seg.label;
             const dimmed = hovered !== null && !isFocus;
@@ -84,8 +84,8 @@ export function DonutChart({ data, size = 120, strokeWidth = 20 }: DonutChartPro
         {/* Centre readout: hovered (or largest) share */}
         {focus && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none leading-none">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-stone-400">{focus.label}</span>
-            <span className="text-[15px] font-black" style={{ color: focus.color }}>{(focus.share * 100).toFixed(0)}%</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-ink-subtle">{focus.label}</span>
+            <span className="text-base font-black" style={{ color: focus.color }}>{(focus.share * 100).toFixed(0)}%</span>
           </div>
         )}
       </div>
@@ -98,11 +98,11 @@ export function DonutChart({ data, size = 120, strokeWidth = 20 }: DonutChartPro
             <div
               key={seg.label}
               onMouseEnter={() => setHovered(seg.label)}
-              className={`flex items-center gap-2 rounded-md px-2 py-1 border transition-colors cursor-default ${isFocus ? 'bg-stone-50 border-stone-200' : 'border-transparent'}`}
+              className={`flex items-center gap-2 rounded-md px-2 py-1 border transition-colors cursor-default ${isFocus ? 'bg-surface-sunken border-line' : 'border-transparent'}`}
             >
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
-              <span className="text-[10px] font-bold uppercase tracking-wide text-stone-600 w-8">{seg.label}</span>
-              <span className="text-[11px] font-black tabular-nums" style={{ color: seg.color }}>{(seg.share * 100).toFixed(0)}%</span>
+              <span className="text-xs font-bold uppercase tracking-wide text-ink-muted w-8">{seg.label}</span>
+              <span className="text-xs font-black tabular-nums" style={{ color: seg.color }}>{(seg.share * 100).toFixed(0)}%</span>
             </div>
           );
         })}

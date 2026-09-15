@@ -6,6 +6,8 @@
  * with an action button (used for "Undo" after a move that already happened).
  */
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { cn } from '@/lib/cn';
+import { Button } from '@/components/ui';
 
 export interface ToastOptions {
   actionLabel?: string;
@@ -51,23 +53,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 items-center pointer-events-none">
+      <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
         {items.map(item => (
           <div
             key={item.id}
-            className={`pointer-events-auto flex items-center gap-3 rounded-lg px-4 py-2.5 shadow-lg text-sm font-semibold ${
-              item.tone === 'error' ? 'bg-red-600 text-white' : 'bg-stone-800 text-white'
-            }`}
+            className={cn(
+              'pointer-events-auto flex items-center gap-3 rounded-panel px-4 py-2.5 text-sm font-semibold shadow-lg',
+              item.tone === 'error' ? 'bg-danger text-white' : 'bg-surface-inverse text-ink-inverse',
+            )}
           >
             <span>{item.message}</span>
             {item.actionLabel && item.onAction && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 onClick={() => { item.onAction?.(); dismiss(item.id); }}
-                className="text-amber-300 hover:text-amber-200 font-black uppercase tracking-wide text-xs"
+                className="h-auto min-h-0 shrink-0 px-0 py-0 text-xs font-black normal-case tracking-wide text-accent hover:bg-transparent hover:text-accent-hover"
               >
                 {item.actionLabel}
-              </button>
+              </Button>
             )}
           </div>
         ))}

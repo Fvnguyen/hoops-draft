@@ -47,11 +47,11 @@ function PositionBar({ label, value, max, tooltip }: { label: string; value: num
   const pct = max > 0 ? Math.max(6, (value / max) * 100) : 6;
   return (
     <div className="flex-1 flex flex-col items-center gap-1" title={tooltip}>
-      <div className="text-[11px] font-black text-stone-700 leading-none">{value}</div>
-      <div className="w-full h-12 flex items-end bg-stone-100 rounded overflow-hidden">
-        <div className="w-full bg-stone-700 rounded-t-sm transition-all" style={{ height: `${pct}%` }} />
+      <div className="text-xs font-black text-ink leading-none">{value}</div>
+      <div className="w-full h-12 flex items-end bg-surface-sunken rounded overflow-hidden">
+        <div className="w-full bg-ink-muted rounded-t-sm transition-all" style={{ height: `${pct}%` }} />
       </div>
-      <div className="text-[9px] font-bold uppercase tracking-widest text-stone-400">{label}</div>
+      <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle">{label}</div>
     </div>
   );
 }
@@ -62,7 +62,7 @@ export function RosterDistribution({ drafted }: { drafted: DraftCard[] }) {
   const badges = topBadges(drafted, 5);
 
   return (
-    <div className="px-4 pt-4 pb-3 border-b border-stone-200 bg-stone-50/60 flex flex-col gap-3">
+    <div className="px-4 pt-4 pb-3 border-b border-line bg-surface-sunken/60 flex flex-col gap-3">
       <div className="flex gap-2">
         <PositionBar label="G" value={positions.G} max={max} tooltip="PG, SG, G" />
         <PositionBar label="F" value={positions.F} max={max} tooltip="SF, PF, F, and G/F (counted as F for simplicity)" />
@@ -70,11 +70,11 @@ export function RosterDistribution({ drafted }: { drafted: DraftCard[] }) {
         <PositionBar label="Plays" value={plays} max={max} />
       </div>
 
-      <div className="flex items-center justify-center gap-3 pt-1 border-t border-stone-200">
+      <div className="flex items-center justify-center gap-3 pt-1 border-t border-line">
         {(['Common', 'Uncommon', 'Rare', 'Mythic'] as Rarity[]).map(r => (
           <div key={r} className="flex items-center gap-1" title={r}>
             <RarityGem rarity={r} size="sm" />
-            <span className="text-[10px] font-bold text-stone-600">{rarity[r]}</span>
+            <span className="text-xs font-bold text-ink-muted">{rarity[r]}</span>
           </div>
         ))}
       </div>
@@ -82,7 +82,7 @@ export function RosterDistribution({ drafted }: { drafted: DraftCard[] }) {
       {badges.length > 0 && (
         <div className="flex flex-wrap gap-1 justify-center">
           {badges.map(([name, level]) => (
-            <span key={name} className="px-1.5 py-0.5 bg-stone-200 text-stone-600 text-[9px] font-bold uppercase tracking-wide rounded">
+            <span key={name} className="px-1.5 py-0.5 bg-surface-muted text-ink-muted text-xs font-bold uppercase tracking-wide rounded">
               {name} ×{level}
             </span>
           ))}

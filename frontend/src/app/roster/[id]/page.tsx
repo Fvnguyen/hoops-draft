@@ -64,19 +64,19 @@ function RosterPageInner() {
   if (!ready || cards.length === 0) {
     if (error) {
       return (
-        <div className="p-8 text-white bg-black min-h-screen flex items-center justify-center">
+        <div className="flex min-h-dvh items-center justify-center bg-surface-inverse-deep p-8 text-ink-inverse">
           <div className="text-center">
-            <h1 className="text-2xl font-bold mb-4">Error</h1>
-            <p className="text-stone-300">{error}</p>
+            <h1 className="mb-4 text-2xl font-bold">Error</h1>
+            <p className="text-ink-inverse-muted">{error}</p>
           </div>
         </div>
       );
     }
-    return <div className="p-8 text-white bg-black min-h-screen">Loading Roster...</div>;
+    return <div className="min-h-dvh bg-surface-inverse-deep p-8 text-ink-inverse">Loading Roster...</div>;
   }
 
   return (
-    <div className="bg-black">
+    <div className="bg-surface-inverse-deep">
       <DeckBuilder
         draftedCards={cards}
         existingRosterName={rosterName}
@@ -94,7 +94,7 @@ function RosterPageInner() {
 
 export default function RosterPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-white bg-black min-h-screen">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-dvh bg-surface-inverse-deep p-8 text-ink-inverse">Loading...</div>}>
       <RosterPageInner />
     </Suspense>
   );

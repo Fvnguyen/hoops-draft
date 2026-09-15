@@ -15,6 +15,7 @@ import { GameTheater, TeamInfo } from '../engine/game';
 import { GameView, BoxScoreOnly } from './GameView';
 import { Trophy, Swords, ChevronLeft, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
+import { Button } from './ui';
 
 interface SeasonViewProps {
   rosterId: string;
@@ -194,14 +195,14 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
   if (error) {
     return (
-      <div className="min-h-screen pt-[70px] p-8 flex items-center justify-center">
-        <div className="bg-white rounded-xl border border-stone-200 p-8 text-center max-w-md">
+      <div className="min-h-dvh p-8 flex items-center justify-center">
+        <div className="bg-surface-raised rounded-panel border border-line p-8 text-center max-w-md">
           <div className="text-4xl mb-4">⚠️</div>
-          <h2 className="text-lg font-bold text-stone-800 mb-2">Session Not Found</h2>
-          <p className="text-sm text-stone-500 mb-4">{error}</p>
-          <button onClick={() => router.push('/rosters')} className="px-6 py-2 bg-stone-800 text-white rounded-lg font-bold text-sm">
+          <h2 className="text-lg font-bold text-ink-strong mb-2">Session Not Found</h2>
+          <p className="text-sm text-ink-muted mb-4">{error}</p>
+          <Button onClick={() => router.push('/rosters')} variant="primary">
             Back to Rosters
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -209,8 +210,8 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
   if (!ready || dataLoading || !season || !session) {
     return (
-      <div className="min-h-screen pt-[70px] flex items-center justify-center">
-        <div className="text-xl font-semibold text-stone-400 animate-pulse">Loading season...</div>
+      <div className="min-h-dvh flex items-center justify-center">
+        <div className="text-xl font-semibold text-ink-subtle animate-pulse">Loading season...</div>
       </div>
     );
   }
@@ -222,22 +223,22 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
     // plain "Continue"/"Schedule" CTA since there's nothing left to lose.
     const exitIsDestructive = isFreshPlay && !gameFinished;
     return (
-      <div className="min-h-screen pt-[70px] p-4 flex flex-col">
+      <div className="min-h-dvh p-4 flex flex-col">
         <div className="mb-3 flex items-center gap-3">
           {exitIsDestructive ? (
-            <button onClick={handleExitGame} className="flex items-center gap-1 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-sm font-bold text-red-600 hover:bg-red-100 transition-colors">
-              <LogOut className="w-4 h-4" /> Exit Game
-            </button>
+            <Button onClick={handleExitGame} variant="danger" className="bg-danger-soft border border-danger-line text-danger hover:opacity-80" icon={<LogOut className="w-4 h-4" />}>
+              Exit Game
+            </Button>
           ) : isFreshPlay ? (
-            <button onClick={handleContinueToSchedule} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold transition-colors">
-              Continue to Schedule <ArrowRight className="w-4 h-4" />
-            </button>
+            <Button onClick={handleContinueToSchedule} className="bg-positive-strong text-white hover:bg-positive-strong/90" icon={<ArrowRight className="w-4 h-4" />}>
+              Continue to Schedule
+            </Button>
           ) : (
-            <button onClick={handleExitGame} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-sm font-bold text-stone-600 hover:bg-stone-50 transition-colors">
-              <ChevronLeft className="w-4 h-4" /> Schedule
-            </button>
+            <Button onClick={handleExitGame} variant="secondary" icon={<ChevronLeft className="w-4 h-4" />}>
+              Schedule
+            </Button>
           )}
-          <span className="text-sm font-bold text-stone-400 uppercase tracking-wider">
+          <span className="text-sm font-bold text-ink-subtle uppercase tracking-wider">
             Game {(activeGameIndex ?? 0) + 1} of 7
           </span>
         </div>
@@ -248,20 +249,20 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         </div>
 
         {showLeaveConfirm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl border border-stone-200 shadow-xl p-6 max-w-sm w-full text-center">
-              <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-amber-500" />
-              <h2 className="text-lg font-bold text-stone-800 mb-2">Leave this game?</h2>
-              <p className="text-sm text-stone-500 mb-5">
+          <div className="fixed inset-0 bg-surface-scrim flex items-center justify-center z-50 p-4">
+            <div className="bg-surface-raised rounded-panel border border-line shadow-xl p-6 max-w-sm w-full text-center">
+              <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-warn" />
+              <h2 className="text-lg font-bold text-ink-strong mb-2">Leave this game?</h2>
+              <p className="text-sm text-ink-muted mb-5">
                 This game hasn&apos;t finished yet — if you leave now, it won&apos;t be saved and you&apos;ll need to play it again.
               </p>
               <div className="flex gap-3 justify-center">
-                <button onClick={() => setShowLeaveConfirm(false)} className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg font-bold text-sm transition-colors">
+                <Button onClick={() => setShowLeaveConfirm(false)} variant="secondary">
                   Keep Watching
-                </button>
-                <button onClick={closeActiveGame} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-sm transition-colors">
+                </Button>
+                <Button onClick={closeActiveGame} variant="danger">
                   Leave Anyway
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -276,22 +277,22 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
   const champion = isSeasonComplete ? season.standings[0] : null;
 
   return (
-    <div className="min-h-screen pt-[70px] p-6">
+    <div className="min-h-dvh p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <button onClick={() => router.push('/rosters')} className="text-xs text-stone-400 hover:text-stone-600 mb-1 flex items-center gap-1">
-              <ChevronLeft className="w-3 h-3" /> Back to Rosters
-            </button>
-            <h1 className="text-3xl font-black uppercase tracking-wider text-stone-800" style={{ fontFamily: 'var(--font-bebas)' }}>
+            <Button onClick={() => router.push('/rosters')} variant="ghost" className="text-xs mb-1 -ml-5" icon={<ChevronLeft className="w-3 h-3" />}>
+              Back to Rosters
+            </Button>
+            <h1 className="text-3xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
               Season
             </h1>
           </div>
           {humanStanding && (
             <div className="text-right">
-              <div className="text-xs font-bold uppercase tracking-widest text-stone-400">Your Record</div>
-              <div className="text-2xl font-black text-stone-800" style={{ fontFamily: 'var(--font-bebas)' }}>
+              <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Your Record</div>
+              <div className="text-2xl font-black text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
                 {humanStanding.wins} - {humanStanding.losses}
               </div>
             </div>
@@ -299,24 +300,24 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         </div>
 
         {saveError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
-            <p className="text-sm text-red-700 font-semibold">{saveError}</p>
+          <div className="bg-danger-soft border border-danger-line rounded-control px-4 py-3 mb-6">
+            <p className="text-sm text-danger font-semibold">{saveError}</p>
           </div>
         )}
 
         {/* Franchise Dashboard Banner */}
-        <div className="mb-6 rounded-xl overflow-hidden border border-stone-200">
+        <div className="mb-6 rounded-panel overflow-hidden border border-line">
           <FranchiseDashboard team={season.humanTeam} />
         </div>
 
         {/* Champion Banner */}
         {isSeasonComplete && champion && (
-          <div className={`rounded-xl p-6 mb-6 text-center border ${champion.seatId === HUMAN_SEAT_ID ? 'bg-amber-50 border-amber-200' : 'bg-stone-50 border-stone-200'}`}>
-            <Trophy className={`w-10 h-10 mx-auto mb-2 ${champion.seatId === HUMAN_SEAT_ID ? 'text-amber-500' : 'text-stone-400'}`} />
+          <div className={`rounded-panel p-6 mb-6 text-center border ${champion.seatId === HUMAN_SEAT_ID ? 'bg-warn-soft border-warn' : 'bg-surface-sunken border-line'}`}>
+            <Trophy className={`w-10 h-10 mx-auto mb-2 ${champion.seatId === HUMAN_SEAT_ID ? 'text-warn' : 'text-ink-subtle'}`} />
             <div className="text-2xl font-black uppercase tracking-wider" style={{ fontFamily: 'var(--font-bebas)' }}>
               {champion.seatId === HUMAN_SEAT_ID ? '🏆 You are the Champion! 🏆' : `${champion.name} wins the league`}
             </div>
-            <div className="text-sm text-stone-500 mt-1">
+            <div className="text-sm text-ink-muted mt-1">
               Final Record: {champion.wins}-{champion.losses} ({champion.pointDiff > 0 ? '+' : ''}{champion.pointDiff} pt diff)
             </div>
           </div>
@@ -325,7 +326,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Schedule */}
           <div className="lg:col-span-2">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">Schedule</h2>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-3">Schedule</h2>
             <div className="flex flex-col gap-2">
               {season.schedule.map((entry, idx) => {
                 const humanMatch = humanMatchup(entry);
@@ -349,38 +350,38 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
                   <div
                     key={idx}
                     className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
-                      isNext ? 'border-emerald-400 bg-emerald-50' :
-                      entry.played ? 'border-stone-200 bg-white' :
-                      'border-stone-100 bg-stone-50 opacity-60'
-                    } ${(entry.played || isPlayable) ? 'cursor-pointer hover:border-stone-300' : ''}`}
+                      isNext ? 'border-positive bg-positive-soft' :
+                      entry.played ? 'border-line bg-surface-raised' :
+                      'border-line bg-surface-sunken opacity-60'
+                    } ${(entry.played || isPlayable) ? 'cursor-pointer hover:border-line-strong' : ''}`}
                     onClick={() => (entry.played || isPlayable) ? handlePlayGame(idx) : null}
                   >
-                    <div className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-xs font-bold text-stone-500">
+                    <div className="w-8 h-8 rounded-full bg-surface-muted flex items-center justify-center text-xs font-bold text-ink-muted">
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-stone-800">
+                      <div className="text-sm font-bold text-ink-strong">
                         {isHome ? 'vs' : '@'} {oppName}
                       </div>
-                      <div className="text-[10px] text-stone-400 uppercase">
+                      <div className="text-xs text-ink-subtle uppercase">
                         Game {idx + 1} • {isHome ? 'Home' : 'Away'}
                       </div>
                     </div>
                     {entry.played && result ? (
                       <div className="flex items-center gap-2">
-                        <span className={`text-xs font-black uppercase px-2 py-0.5 rounded ${won ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        <span className={`text-xs font-black uppercase px-2 py-0.5 rounded ${won ? 'bg-positive-soft text-positive' : 'bg-danger-soft text-danger'}`}>
                           {won ? 'W' : 'L'}
                         </span>
-                        <span className="text-sm font-bold text-stone-600 font-mono">
+                        <span className="text-sm font-bold text-ink-muted font-mono">
                           {humanScore}-{oppScore}
                         </span>
                       </div>
                     ) : isPlayable ? (
-                      <div className="flex items-center gap-1 text-emerald-600 font-bold text-sm">
+                      <div className="flex items-center gap-1 text-positive font-bold text-sm">
                         <Swords className="w-4 h-4" /> Play <ArrowRight className="w-3 h-3" />
                       </div>
                     ) : (
-                      <span className="text-xs text-stone-300 uppercase font-bold">Upcoming</span>
+                      <span className="text-xs text-ink-subtle uppercase font-bold">Upcoming</span>
                     )}
                   </div>
                 );
@@ -390,16 +391,16 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
 
           {/* Standings */}
           <div>
-            <h2 className="text-xs font-bold uppercase tracking-widest text-stone-400 mb-3">Standings</h2>
-            <div className="bg-white rounded-xl border border-stone-200 shadow-sm overflow-hidden">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-3">Standings</h2>
+            <div className="bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="bg-stone-50 text-stone-400 font-bold uppercase">
+                  <tr className="bg-surface-sunken text-ink-subtle font-bold uppercase">
                     <th className="text-left py-2 px-3">#</th>
                     <th className="text-left py-2">Team</th>
-                    <th className="text-center py-2 w-8">W</th>
-                    <th className="text-center py-2 w-8">L</th>
-                    <th className="text-center py-2 px-3 w-12">+/-</th>
+                    <th className="text-center py-2 w-9">W</th>
+                    <th className="text-center py-2 w-9">L</th>
+                    <th className="text-center py-2 px-3 w-14">+/-</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -407,14 +408,14 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
                     const isHuman = entry.seatId === HUMAN_SEAT_ID;
                     const hasPlayed = entry.wins + entry.losses > 0;
                     return (
-                      <tr key={entry.seatId} className={`border-t border-stone-100 ${isHuman ? 'bg-blue-50 font-bold' : ''}`}>
-                        <td className="py-2 px-3 text-stone-400">{idx + 1}</td>
-                        <td className={`py-2 ${isHuman ? 'text-blue-700' : 'text-stone-700'}`}>
+                      <tr key={entry.seatId} className={`border-t border-line ${isHuman ? 'bg-info-soft font-bold' : ''}`}>
+                        <td className="py-2 px-3 text-ink-subtle">{idx + 1}</td>
+                        <td className={`py-2 ${isHuman ? 'text-info' : 'text-ink'}`}>
                           {entry.name}
                         </td>
-                        <td className="text-center py-2 text-stone-600">{entry.wins}</td>
-                        <td className="text-center py-2 text-stone-600">{entry.losses}</td>
-                        <td className={`text-center py-2 px-3 font-mono ${entry.pointDiff > 0 ? 'text-emerald-600' : entry.pointDiff < 0 ? 'text-red-500' : 'text-stone-400'}`}>
+                        <td className="text-center py-2 text-ink-muted">{entry.wins}</td>
+                        <td className="text-center py-2 text-ink-muted">{entry.losses}</td>
+                        <td className={`text-center py-2 px-3 font-mono ${entry.pointDiff > 0 ? 'text-positive' : entry.pointDiff < 0 ? 'text-danger' : 'text-ink-subtle'}`}>
                           {hasPlayed ? (entry.pointDiff > 0 ? '+' : '') + entry.pointDiff : '—'}
                         </td>
                       </tr>

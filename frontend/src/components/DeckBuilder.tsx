@@ -6,7 +6,7 @@ import { useHoverPreview } from './useHoverPreview';
 import { PlayPanel } from './PlayPanel';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import { calcRosterIdentity, calcRosterShotDiet } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
 import { calcTeamBonuses, evaluatePlay, countBadges } from '../engine/synergies';
@@ -28,6 +28,9 @@ import { DepthSlotColumn } from './DepthSlotColumn';
 import { RosterChecklist } from './RosterChecklist';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
 import { ToastProvider, useToast } from './Toast';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
+import { Overlay } from './ui/Overlay';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -820,28 +823,28 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   return (
-    <div className="@container h-screen pt-[60px] text-stone-800 flex flex-col overflow-hidden relative bg-stone-50" onClick={clearSelection}>
+    <div className="@container h-dvh text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
       {/* Hidden bench-sized HTML5 drag image (D24) — see handleDragStart. */}
       <div
         ref={dragGhostRef}
-        className="fixed -left-[999px] -top-[999px] w-[160px] h-9 bg-white border border-stone-300 rounded-lg shadow flex items-center overflow-hidden pointer-events-none"
+        className="fixed -left-[999px] -top-[999px] w-[160px] h-9 bg-surface-raised border border-line-strong rounded-control shadow flex items-center overflow-hidden pointer-events-none"
         aria-hidden="true"
       >
         <div ref={dragGhostBarRef} className="h-full w-1.5 shrink-0" />
-        <div className="w-8 h-8 shrink-0 mx-1 rounded-full overflow-hidden bg-stone-100">
+        <div className="w-8 h-8 shrink-0 mx-1 rounded-full overflow-hidden bg-surface-sunken">
           <img ref={dragGhostImgRef} alt="" className="w-full h-full object-cover object-top" />
         </div>
-        <div ref={dragGhostNameRef} className="flex-1 min-w-0 px-1 text-[10px] font-bold uppercase truncate text-stone-800" />
+        <div ref={dragGhostNameRef} className="flex-1 min-w-0 px-1 text-xs font-bold uppercase truncate text-ink" />
       </div>
       <TopKPIBand identity={identity} shotDiet={shotDiet} bonuses={bonuses} depthChart={depthChart} average={podAverageIdentity} starterIds={starterIds} archetypes={archetypes} onArchetypesChange={setArchetypes} />
       {saveError && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-3">
-          <p className="text-sm text-red-700 font-semibold">{saveError}</p>
+        <div className="bg-danger-soft border-b border-danger-line px-4 py-3">
+          <p className="text-sm text-danger font-semibold">{saveError}</p>
         </div>
       )}
       {readOnly && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
-          <p className="text-sm text-blue-700 font-semibold">This season is complete — the roster is locked and view-only.</p>
+        <div className="bg-info-soft border-b border-info px-4 py-3">
+          <p className="text-sm text-info font-semibold">This season is complete — the roster is locked and view-only.</p>
         </div>
       )}
       {/* D17: the builder body is the container-query context — the plays column and
@@ -849,19 +852,19 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           to a column under a 1000px CONTAINER width (not viewport width). */}
       <div className={`flex-1 p-4 flex flex-col @min-[1000px]:flex-row gap-4 overflow-hidden relative ${readOnly ? 'pointer-events-none opacity-75' : ''}`}>
         {/* ACTIVE ROSTER */}
-        <div className="flex-1 flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm p-4 min-h-0">
+        <div className="flex-1 flex flex-col bg-surface-raised rounded-panel border border-line shadow-sm p-4 min-h-0">
           <div className="flex justify-between items-start gap-3 mb-4 shrink-0 flex-wrap">
             <div className="flex flex-col gap-1.5 min-w-0">
               <div className="flex items-center gap-4">
-                 <h2 className="text-lg font-bold uppercase text-stone-800 tracking-wider flex items-center gap-2">
-                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                 <h2 className="text-lg font-bold uppercase text-ink-strong tracking-wider flex items-center gap-2">
+                   <span className="w-2 h-2 rounded-full bg-positive-strong"></span>
                    Active Roster
                  </h2>
                  <div className="flex gap-2">
-                    <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${playersInRoster === MAX_ROSTER ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
+                    <span className={`px-2 py-1 rounded bg-surface-sunken border text-xs font-bold uppercase tracking-widest ${playersInRoster === MAX_ROSTER ? 'border-positive/50 text-positive' : 'border-warn/50 text-warn'}`}>
                       Players {playersInRoster}/{MAX_ROSTER}
                     </span>
-                    <span className={`px-2 py-1 rounded bg-stone-50 border text-[10px] font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-emerald-500/50 text-emerald-600' : 'border-amber-500/50 text-amber-600'}`}>
+                    <span className={`px-2 py-1 rounded bg-surface-sunken border text-xs font-bold uppercase tracking-widest ${activePlaysCount === 3 ? 'border-positive/50 text-positive' : 'border-warn/50 text-warn'}`}>
                       Plays {activePlaysCount}/3
                     </span>
                  </div>
@@ -871,39 +874,38 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={(e) => { e.stopPropagation(); setShowClearConfirm(true); }}
-                className="px-4 py-2 text-xs rounded-lg font-black uppercase tracking-widest border border-stone-300 text-stone-500 hover:text-red-600 hover:border-red-300 transition-colors"
+                className="hover:text-danger hover:border-danger-line"
               >
                 Clear
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={(e) => { e.stopPropagation(); setSaveDestination('rosters'); setShowSaveModal(true); }}
                 disabled={!isComplete}
                 title={isComplete ? undefined : statusText}
-                className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
-                  isComplete
-                  ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)] shadow-emerald-500/30'
-                  : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
-                }`}
+                className={isComplete
+                  ? 'bg-positive-strong border-positive-strong text-white hover:bg-positive'
+                  : 'bg-surface-sunken text-ink-subtle border-line'}
               >
                 Save
-              </button>
+              </Button>
               {/* D19: only offered when this roster belongs to a draft session. */}
               {sessionId && (
-                <button
+                <Button
+                  variant="primary"
+                  size="md"
                   onClick={(e) => { e.stopPropagation(); setSaveDestination('season'); setShowSaveModal(true); }}
                   disabled={!isComplete}
                   title={isComplete ? undefined : statusText}
-                  className={`px-6 py-2 text-xs rounded-lg font-black uppercase tracking-widest transition-all ${
-                    isComplete
-                    ? 'bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white shadow-[0_0_15px_rgba(234,88,12,0.3)]'
-                    : 'bg-stone-100 text-stone-400 cursor-not-allowed border border-stone-200'
-                  }`}
+                  className={isComplete ? '' : 'bg-surface-sunken text-ink-subtle'}
                 >
                   Save &amp; play season
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -912,8 +914,8 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             {/* Left Column: Active Plays — full-size cards so requirements/mechanics
                 are actually readable (was a 60px compact row). */}
             <div className="w-[clamp(200px,20cqw,280px)] shrink-0 flex flex-col min-h-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-1 shrink-0">Plays (Max 3)</h3>
-              <div className={`text-[9px] font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-amber-600' : 'text-stone-400'}`}>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-ink-muted mb-1 shrink-0">Plays (Max 3)</h3>
+              <div className={`text-xs font-bold uppercase tracking-wider mb-2 shrink-0 ${playbookStatus.overBudget ? 'text-warn' : 'text-ink-subtle'}`}>
                 Offense {Math.round(playbookStatus.offenseAllocation * 100)}% / {Math.round(playbookStatus.offenseBudget * 100)}%
                 {' · '}
                 Defense {Math.round(playbookStatus.defenseAllocation * 100)}% / {Math.round(playbookStatus.defenseBudget * 100)}%
@@ -928,11 +930,11 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                     return (
                       <div
                         key={slotIndex}
-                        className={`w-full h-[90px] rounded-xl border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-blue-500/50 bg-blue-50' : 'border-stone-300/50 bg-stone-50'} flex items-center justify-center relative transition-colors`}
+                        className={`w-full h-[90px] rounded-panel border-2 border-dashed ${draggedItem?.card.type === 'Play' ? 'border-info/50 bg-info-soft' : 'border-line-strong/50 bg-surface-sunken'} flex items-center justify-center relative transition-colors`}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDropOnZone(e, zoneId)}
                       >
-                        <span className="text-stone-500 font-bold uppercase text-[10px] pointer-events-none text-center px-2">Empty play slot — drag a play here</span>
+                        <span className="text-ink-muted font-bold uppercase text-xs pointer-events-none text-center px-2">Empty play slot — drag a play here</span>
                       </div>
                     );
                   }
@@ -978,7 +980,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             {/* Right Area: Depth Chart — starters get the full card at the top of
                 each column, 2nd/3rd string are medium compact cards below. */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500 mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-ink-muted mb-2 shrink-0">Depth Chart (Starters at Top)</h3>
               <div className="grid grid-cols-5 gap-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 pb-4">
                 {DEPTH_COLUMNS.map(col => (
                   <DepthSlotColumn
@@ -1009,64 +1011,67 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         {/* ROSTER / SIDEBOARD — collapses to a thin bar so the Active Roster
             column (and its 5-across depth chart) can claim the freed width. */}
         <div
-          className={`flex flex-col bg-white rounded-xl border border-stone-200 shadow-sm min-h-0 transition-[width] ${
+          className={`flex flex-col bg-surface-raised rounded-panel border border-line shadow-sm min-h-0 transition-[width] ${
             isRosterCollapsed ? 'w-12 shrink-0 items-center py-3' : 'w-full @min-[1000px]:w-[clamp(280px,26cqw,400px)] shrink-0 p-4'
           }`}
         >
           {isRosterCollapsed ? (
-            <button
-              type="button"
+            <IconButton
+              label="Expand Roster"
+              variant="ghost"
               onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(false); }}
-              title="Expand Roster"
-              className="flex flex-col items-center gap-3 text-stone-400 hover:text-stone-600"
+              className="flex-col gap-3 h-auto min-h-control"
             >
               <ChevronLeft className="w-4 h-4" />
-              <span className="text-[11px] font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">Roster</span>
-            </button>
+              <span className="text-xs font-bold italic uppercase tracking-wider [writing-mode:vertical-rl]">Roster</span>
+            </IconButton>
           ) : (
           <>
-          <h2 className="text-xl font-bold italic uppercase text-stone-400 mb-4 tracking-wider flex items-center gap-2 shrink-0">
-            <span className="w-2 h-2 rounded-full bg-stone-500"></span>
+          <h2 className="text-xl font-bold italic uppercase text-ink-subtle mb-4 tracking-wider flex items-center gap-2 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-ink-muted"></span>
             Roster
             <div className="flex-1" />
-            <button
-              type="button"
+            <IconButton
+              label="Collapse Roster"
+              variant="ghost"
               onClick={(e) => { e.stopPropagation(); setIsRosterCollapsed(true); }}
-              title="Collapse Roster"
-              className="text-stone-400 hover:text-stone-600"
             >
               <ChevronRight className="w-4 h-4" />
-            </button>
+            </IconButton>
           </h2>
 
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
 
             {/* Roster Players Lane (Moved above Plays) */}
             <div
-              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white'}`}
+              className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Player' ? 'border-accent bg-accent-soft' : 'border-line bg-surface-raised'}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropOnZone(e, 'RosterPlayers')}
             >
-              <button onClick={(e) => { e.stopPropagation(); setIsPlayersOpen(!isPlayersOpen); }} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Players ({rosterPlayers.length})</h3>
-                {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
-              </button>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={(e) => { e.stopPropagation(); setIsPlayersOpen(!isPlayersOpen); }}
+                className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Players ({rosterPlayers.length})</h3>
+                {isPlayersOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
+              </Button>
 
               <AnimatePresence>
                 {isPlayersOpen && (
                   <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
                     <div className="px-3 pt-3 flex gap-1" onClick={(e) => e.stopPropagation()}>
                       {(['All', 'G', 'F', 'C'] as const).map(f => (
-                        <button
+                        <Button
                           key={f}
-                          type="button"
+                          variant={posFilter === f ? 'primary' : 'secondary'}
+                          size="md"
                           onClick={() => setPosFilter(f)}
-                          className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest border transition-colors ${
-                            posFilter === f ? 'bg-stone-800 text-white border-stone-800' : 'bg-white text-stone-500 border-stone-200 hover:border-stone-400'
-                          }`}
+                          className={`h-auto min-h-control px-2 py-0.5 text-xs ${posFilter === f ? 'bg-surface-inverse border-surface-inverse text-ink-inverse hover:bg-surface-inverse' : 'bg-surface-raised text-ink-muted border-line hover:border-line-strong'}`}
                         >
                           {f}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                     <div className="p-3 pt-2 flex flex-col gap-2 min-h-[80px]">
@@ -1079,7 +1084,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                           onClick={(e) => { e.stopPropagation(); handleRosterPlayerClick(player); }}
                         />
                       ))}
-                      {filteredRosterPlayers.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No players match this filter.</div>}
+                      {filteredRosterPlayers.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No players match this filter.</div>}
                     </div>
                   </motion.div>
                 )}
@@ -1088,14 +1093,19 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
 
             {/* Roster Plays Lane */}
             <div
-              className={`border rounded-lg overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-blue-500 bg-blue-50' : 'border-stone-200 bg-white'}`}
+              className={`border rounded-control overflow-hidden transition-colors ${draggedItem?.card.type === 'Play' ? 'border-info bg-info-soft' : 'border-line bg-surface-raised'}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDropOnZone(e, 'RosterPlays')}
             >
-              <button onClick={(e) => { e.stopPropagation(); setIsPlaysOpen(!isPlaysOpen); }} className="w-full flex justify-between items-center bg-stone-50 p-3 hover:bg-stone-100 transition-colors">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-stone-400">Plays ({rosterPlays.length})</h3>
-                {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-stone-500" /> : <ChevronRight className="w-4 h-4 text-stone-500" />}
-              </button>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={(e) => { e.stopPropagation(); setIsPlaysOpen(!isPlaysOpen); }}
+                className="w-full h-auto min-h-control justify-between rounded-none bg-surface-sunken p-3 font-normal normal-case tracking-normal hover:bg-surface-muted"
+              >
+                <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Plays ({rosterPlays.length})</h3>
+                {isPlaysOpen ? <ChevronDown className="w-4 h-4 text-ink-muted" /> : <ChevronRight className="w-4 h-4 text-ink-muted" />}
+              </Button>
 
               <AnimatePresence>
                 {isPlaysOpen && (
@@ -1112,7 +1122,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                            <PlayCard play={play as Play} compact evaluation={evaluatePlay(play, badgeTotals)} />
                         </div>
                       ))}
-                      {rosterPlays.length === 0 && <div className="text-center text-xs text-stone-600 italic py-4 pointer-events-none">No plays on bench.</div>}
+                      {rosterPlays.length === 0 && <div className="text-center text-xs text-ink-muted italic py-4 pointer-events-none">No plays on bench.</div>}
                     </div>
                   </motion.div>
                 )}
@@ -1122,26 +1132,26 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           </div>
 
           {/* Basic Plays */}
-          <div className="shrink-0 mt-4 pt-4 border-t border-stone-200">
-            <h3 className="text-sm font-bold uppercase tracking-widest text-stone-500 mb-3">Basic Plays</h3>
+          <div className="shrink-0 mt-4 pt-4 border-t border-line">
+            <h3 className="text-sm font-bold uppercase tracking-widest text-ink-muted mb-3">Basic Plays</h3>
             <div className="flex gap-2">
               <div
                 draggable
                 onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
                 title="Adds a basic play card with no requirements"
-                className="flex-1 bg-stone-50 border border-stone-200 hover:border-orange-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+                className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-accent hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
               >
-                <span className="text-orange-500 font-black pointer-events-none">+</span>
-                <span className="text-stone-500 font-bold uppercase text-[10px] group-hover:text-stone-800 pointer-events-none">Offense</span>
+                <span className="text-accent font-black pointer-events-none">+</span>
+                <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Offense</span>
               </div>
               <div
                 draggable
                 onDragStart={(e) => handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays')}
                 title="Adds a basic play card with no requirements"
-                className="flex-1 bg-stone-50 border border-stone-200 hover:border-blue-500 hover:bg-stone-100 transition-colors p-2.5 rounded-lg flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
+                className="flex-1 min-h-control bg-surface-sunken border border-line hover:border-info hover:bg-surface-muted transition-colors p-2.5 rounded-control flex items-center justify-center gap-1.5 group cursor-grab active:cursor-grabbing"
               >
-                <span className="text-blue-500 font-black pointer-events-none">+</span>
-                <span className="text-stone-500 font-bold uppercase text-[10px] group-hover:text-stone-800 pointer-events-none">Defense</span>
+                <span className="text-info font-black pointer-events-none">+</span>
+                <span className="text-ink-muted font-bold uppercase text-xs group-hover:text-ink pointer-events-none">Defense</span>
               </div>
             </div>
           </div>
@@ -1151,90 +1161,64 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       </div>
 
       {/* Save Modal */}
-      <AnimatePresence>
-        {showSaveModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={(e) => { e.stopPropagation(); setShowSaveModal(false); }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-              className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xl w-full max-w-md shadow-2xl relative"
-              onClick={(e) => e.stopPropagation()}
+      <Overlay open={showSaveModal} onClose={() => setShowSaveModal(false)} labelledBy="save-roster-heading">
+        <div className="p-6" onClick={(e) => e.stopPropagation()}>
+          <h2 id="save-roster-heading" className="text-2xl font-bold uppercase text-ink-inverse mb-2">Save Roster</h2>
+          <p className="text-ink-inverse-muted text-sm mb-6">Give your active roster a name. You can edit this later from the My Rosters menu.</p>
+
+          <div className="mb-6">
+            <label className="block text-xs font-bold uppercase tracking-widest text-ink-inverse-muted mb-2">Roster Name</label>
+            <input
+              type="text"
+              value={rosterName}
+              onChange={e => setRosterName(e.target.value)}
+              className="w-full h-control bg-surface-inverse-deep border border-line-inverse rounded-control px-4 text-ink-inverse focus:outline-none focus:border-line-strong transition-colors"
+              placeholder="e.g. 2025 Championship Run"
+              autoFocus
+            />
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setShowSaveModal(false)}
+              className="text-ink-inverse-muted hover:text-ink-inverse hover:bg-white/10"
             >
-              <button onClick={() => setShowSaveModal(false)} className="absolute top-4 right-4 text-stone-400 hover:text-stone-600">
-                <X className="w-5 h-5" />
-              </button>
-
-              <h2 className="text-2xl font-bold uppercase text-stone-800 mb-2">Save Roster</h2>
-              <p className="text-stone-400 text-sm mb-6">Give your active roster a name. You can edit this later from the My Rosters menu.</p>
-
-              <div className="mb-6">
-                <label className="block text-xs font-bold uppercase tracking-widest text-stone-500 mb-2">Roster Name</label>
-                <input
-                  type="text"
-                  value={rosterName}
-                  onChange={e => setRosterName(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-4 py-3 text-stone-800 focus:outline-none focus:border-stone-400 transition-colors"
-                  placeholder="e.g. 2025 Championship Run"
-                  autoFocus
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowSaveModal(false)}
-                  className="px-6 py-2 rounded-lg font-bold text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleSaveRoster(saveDestination)}
-                  disabled={!rosterName.trim()}
-                  className="px-6 py-2 rounded-lg font-black uppercase tracking-widest bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {saveDestination === 'season' ? 'Save & play season' : 'Save to Collection'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => handleSaveRoster(saveDestination)}
+              disabled={!rosterName.trim()}
+            >
+              {saveDestination === 'season' ? 'Save & play season' : 'Save to Collection'}
+            </Button>
+          </div>
+        </div>
+      </Overlay>
 
       {/* Clear Confirmation Modal */}
-      <AnimatePresence>
-        {showClearConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={(e) => { e.stopPropagation(); setShowClearConfirm(false); }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-              className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xl w-full max-w-sm shadow-2xl relative"
-              onClick={(e) => e.stopPropagation()}
+      <Overlay open={showClearConfirm} onClose={() => setShowClearConfirm(false)} size="sm" labelledBy="clear-roster-heading">
+        <div className="p-6" onClick={(e) => e.stopPropagation()}>
+          <h2 id="clear-roster-heading" className="text-xl font-bold uppercase text-ink-inverse mb-2">Clear Roster?</h2>
+          <p className="text-ink-inverse-muted text-sm mb-6">This sends every player and play back to the Roster and cannot be undone.</p>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setShowClearConfirm(false)}
+              className="text-ink-inverse-muted hover:text-ink-inverse hover:bg-white/10"
             >
-              <h2 className="text-xl font-bold uppercase text-stone-800 mb-2">Clear Roster?</h2>
-              <p className="text-stone-400 text-sm mb-6">This sends every player and play back to the Roster and cannot be undone.</p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowClearConfirm(false)}
-                  className="px-6 py-2 rounded-lg font-bold text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleClearRoster}
-                  className="px-6 py-2 rounded-lg font-black uppercase tracking-widest bg-red-600 hover:bg-red-500 text-white transition-colors"
-                >
-                  Clear Roster
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              Cancel
+            </Button>
+            <Button variant="danger" size="md" onClick={handleClearRoster}>
+              Clear Roster
+            </Button>
+          </div>
+        </div>
+      </Overlay>
     </div>
   );
 }

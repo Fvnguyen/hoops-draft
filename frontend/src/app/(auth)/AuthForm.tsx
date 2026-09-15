@@ -3,8 +3,14 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
+import { Button } from '@/components/ui';
 
 type AuthFormProps = { mode: 'login' | 'signup' };
+
+const inputClass =
+  'h-control w-full rounded-control border border-line-inverse bg-surface-inverse-deep px-3 text-ink-inverse outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-focus/40';
+
+const labelClass = 'mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-ink-inverse-muted';
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
@@ -51,11 +57,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       {mode === 'signup' && (
         <>
           <label className="block">
-            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Display name</span>
-            <input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} className="auth-input" autoComplete="name" />
+            <span className={labelClass}>Display name</span>
+            <input required value={displayName} onChange={(event) => setDisplayName(event.target.value)} className={inputClass} autoComplete="name" />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Username</span>
+            <span className={labelClass}>Username</span>
             <input
               required
               minLength={3}
@@ -64,32 +70,42 @@ export function AuthForm({ mode }: AuthFormProps) {
               title="3-20 letters, numbers, or underscores"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="auth-input"
+              className={inputClass}
               autoComplete="username"
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Email</span>
-            <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="auth-input" autoComplete="email" />
+            <span className={labelClass}>Email</span>
+            <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} autoComplete="email" />
           </label>
         </>
       )}
       {mode === 'login' && (
         <label className="block">
-          <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Username or email</span>
-          <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className="auth-input" autoComplete="username" />
+          <span className={labelClass}>Username or email</span>
+          <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className={inputClass} autoComplete="username" />
         </label>
       )}
       <label className="block">
-        <span className="mb-1 block text-xs font-bold uppercase tracking-[0.2em] text-stone-400">Password</span>
-        <input required minLength={10} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className="auth-input" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
+        <span className={labelClass}>Password</span>
+        <input required minLength={10} type="password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
       </label>
-      {error && <p role="alert" className="border border-red-400/40 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</p>}
-      {message && <p role="status" className="border border-yellow-400/40 bg-yellow-950/40 px-3 py-2 text-sm text-yellow-100">{message}</p>}
-      <button disabled={busy} className="auth-button" type="submit">{busy ? 'PLEASE WAIT...' : mode === 'login' ? 'ENTER THE LEAGUE' : 'REQUEST A SPOT'}</button>
-      <p className="text-center text-sm text-stone-400">
+      {error && (
+        <p role="alert" className="rounded-control border border-danger-line bg-danger-soft/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
+      {message && (
+        <p role="status" className="rounded-control border border-warn bg-warn-soft/10 px-3 py-2 text-sm text-warn">
+          {message}
+        </p>
+      )}
+      <Button type="submit" size="lg" disabled={busy} className="w-full">
+        {busy ? 'PLEASE WAIT...' : mode === 'login' ? 'ENTER THE LEAGUE' : 'REQUEST A SPOT'}
+      </Button>
+      <p className="text-center text-sm text-ink-inverse-muted">
         {mode === 'login' ? 'Need an account? ' : 'Already registered? '}
-        <Link className="font-bold text-yellow-300 hover:text-white" href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'Sign up' : 'Log in'}</Link>
+        <Link className="font-bold text-accent hover:text-ink-inverse" href={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'Sign up' : 'Log in'}</Link>
       </p>
     </form>
   );

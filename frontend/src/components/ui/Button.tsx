@@ -58,15 +58,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 ) {
   const classes = cn(buttonVariants({ variant, size }), className);
   if (href) {
-    // Link accepts the subset of button props that make sense on an anchor.
-    const { onClick, title, 'aria-label': ariaLabel } = rest;
+    // Forward everything except button-only props, so data-testid / aria-* / title /
+    // onClick reach the anchor (T7 group D found the earlier allow-list dropped
+    // data-testid and had to bypass the primitive).
+    const { disabled, form, formAction, value, name, ...anchorProps } = rest;
+    void disabled; void form; void formAction; void value; void name;
     return (
       <Link
         href={href}
         className={classes}
-        title={title}
-        aria-label={ariaLabel}
-        onClick={onClick as unknown as React.MouseEventHandler<HTMLAnchorElement>}
+        {...(anchorProps as unknown as Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>)}
       >
         {icon}
         {children}

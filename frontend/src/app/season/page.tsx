@@ -11,11 +11,11 @@ function SeasonContent() {
 
   if (!rosterId || !sessionId) {
     return (
-      <div className="min-h-screen pt-[70px] p-8 flex items-center justify-center">
-        <div className="bg-white rounded-xl border border-stone-200 p-8 text-center max-w-md">
-          <div className="text-4xl mb-4">🏀</div>
-          <h2 className="text-lg font-bold text-stone-800 mb-2">Missing Parameters</h2>
-          <p className="text-sm text-stone-500">
+      <div className="flex min-h-dvh items-center justify-center p-8">
+        <div className="max-w-md rounded-xl border border-line bg-surface-raised p-8 text-center">
+          <div className="mb-4 text-4xl">🏀</div>
+          <h2 className="mb-2 text-lg font-bold text-ink">Missing Parameters</h2>
+          <p className="text-sm text-ink-muted">
             Navigate here from a saved roster to start a season.
           </p>
         </div>
@@ -29,8 +29,8 @@ function SeasonContent() {
 export default function SeasonPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen pt-[70px] flex items-center justify-center">
-        <div className="text-xl font-semibold text-stone-400 animate-pulse">Loading...</div>
+      <div className="flex min-h-dvh items-center justify-center">
+        <div className="animate-pulse text-xl font-semibold text-ink-muted">Loading...</div>
       </div>
     }>
       <SeasonContent />

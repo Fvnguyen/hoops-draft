@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { Button } from '@/components/ui';
 
 export function ErrorRecovery({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const [clearing, setClearing] = useState(false);
@@ -28,39 +28,27 @@ export function ErrorRecovery({ error, reset }: { error: Error & { digest?: stri
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#F5F0EA] px-6 py-16 text-center text-stone-800">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-surface px-6 py-16 text-center text-ink">
       <div className="text-6xl">🏀</div>
       <h1 className="text-2xl font-black uppercase tracking-widest">Something went wrong</h1>
-      <p className="max-w-md text-sm text-stone-500">
+      <p className="max-w-md text-sm text-ink-muted">
         {error.message || 'An unexpected error stopped this page from rendering.'}
       </p>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={reset}
-          className="rounded-lg bg-stone-800 px-5 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-stone-700"
-        >
+        <Button type="button" onClick={reset}>
           Try again
-        </button>
-        <Link
-          href="/"
-          className="rounded-lg border border-stone-300 bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-stone-600 transition-colors hover:border-stone-400"
-        >
+        </Button>
+        <Button href="/" variant="secondary">
           Go home
-        </Link>
-        <button
-          type="button"
-          onClick={handleResetData}
-          disabled={clearing || cleared}
-          className="rounded-lg border border-red-300 bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-red-600 transition-colors hover:border-red-400 disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" variant="danger" onClick={handleResetData} disabled={clearing || cleared}>
           {cleared ? 'Local data cleared' : clearing ? 'Clearing…' : 'Reset local data'}
-        </button>
+        </Button>
       </div>
 
       {cleared && (
-        <p className="text-xs text-stone-400">Refresh or click &ldquo;Try again&rdquo; to start over.</p>
+        <p className="text-xs text-ink-subtle">Refresh or click &ldquo;Try again&rdquo; to start over.</p>
       )}
     </div>
   );

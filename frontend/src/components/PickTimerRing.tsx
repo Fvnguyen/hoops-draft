@@ -41,7 +41,10 @@ export function PickTimerRing({ pickDeadline, pickNumber, size = 40 }: PickTimer
 
   const isRed = remainingSeconds < 5;
   const isAmber = !isRed && remainingSeconds < 10;
-  const color = isRed ? '#dc2626' : isAmber ? '#d97706' : '#78716c';
+  // D1: status colours via the semantic CSS variables (not literal hex, not a raw
+  // palette class) — the style gate's hex-color rule scans every string literal in
+  // the file, not just className, so these are read straight off the theme instead.
+  const color = isRed ? 'var(--color-danger)' : isAmber ? 'var(--color-warn)' : 'var(--color-ink-muted)';
 
   return (
     <div
@@ -51,7 +54,7 @@ export function PickTimerRing({ pickDeadline, pickNumber, size = 40 }: PickTimer
       aria-label={`${Math.ceil(remainingSeconds)} seconds left to pick`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#e7e5e4" strokeWidth={strokeWidth} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--color-line)" strokeWidth={strokeWidth} />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -65,7 +68,7 @@ export function PickTimerRing({ pickDeadline, pickNumber, size = 40 }: PickTimer
           style={{ transition: 'stroke-dashoffset 0.1s linear, stroke 0.2s ease' }}
         />
       </svg>
-      <span className="absolute text-[10px] font-black tabular-nums" style={{ color }}>
+      <span className="absolute text-xs font-black tabular-nums" style={{ color }}>
         {Math.ceil(remainingSeconds)}
       </span>
     </div>

@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlayerCard, PlayerCardData } from '../components/PlayerCard';
 import { getAllCards } from '@/engine/cards';
+import { buttonVariants } from '@/components/ui';
+import { cn } from '@/lib/cn';
 
 function shuffled<T>(items: T[]): T[] {
   const arr = [...items];
@@ -83,24 +85,24 @@ export default function Home() {
   const packPlayers = showcase?.pack ?? [];
 
   return (
-    <main className="min-h-screen flex items-center justify-center relative overflow-hidden bg-stone-900">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto bg-surface-inverse-deep">
       {/* Background Layer */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"
         style={{ backgroundImage: 'url(/arena_16_9.jpg)' }}
       />
-      <div className="absolute inset-0 z-0 bg-gradient-to-t from-stone-950 via-stone-900/60 to-stone-950/40" />
-      <div className="absolute inset-0 z-0 bg-gradient-to-r from-stone-950 via-transparent to-stone-950/80" />
+      <div className="absolute inset-0 z-0 bg-gradient-to-t from-surface-inverse-deep via-surface-inverse/60 to-surface-inverse-deep/40" />
+      <div className="absolute inset-0 z-0 bg-gradient-to-r from-surface-inverse-deep via-transparent to-surface-inverse-deep/80" />
 
-      <div className="relative z-10 w-full max-w-7xl px-8 flex items-center justify-between h-full min-h-[600px]">
+      <div className="relative z-10 flex h-full min-h-[600px] w-full max-w-7xl items-center justify-between px-8">
 
         {/* LEFT COLUMN: Menu */}
-        <div className="w-[320px] flex flex-col pt-12 self-stretch justify-center">
+        <div className="flex w-[320px] shrink-0 flex-col self-stretch justify-center pt-12">
           <div className="mb-12">
-            <h1 className="text-7xl tracking-tighter leading-none mb-1 italic font-black drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] text-transparent bg-clip-text bg-gradient-to-b from-white via-stone-200 to-stone-400 pr-2" style={{ fontFamily: 'var(--font-bebas)' }}>
+            <h1 className="mb-1 bg-gradient-to-b from-ink-inverse to-ink-inverse-muted bg-clip-text pr-2 text-7xl italic font-black leading-none tracking-tighter text-transparent drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]" style={{ fontFamily: 'var(--font-bebas)' }}>
               HOOPS DRAFT
             </h1>
-            <div className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600 font-black tracking-[0.25em] text-xl italic drop-shadow-md pr-2">
+            <div className="bg-gradient-to-r from-brand-from to-brand-to bg-clip-text pr-2 text-xl font-black italic tracking-[0.25em] text-transparent drop-shadow-md">
               ALL-STARS
             </div>
           </div>
@@ -110,49 +112,64 @@ export default function Home() {
             <Link
               href="/draft?mode=premier"
               data-testid="cta-premier"
-              className="group relative px-6 py-3.5 bg-gradient-to-r from-yellow-500/90 to-orange-600/70 border border-yellow-400/60 rounded hover:from-yellow-400 hover:to-orange-500 transition-all shadow-[0_0_25px_rgba(234,179,8,0.25)]"
+              className={cn(
+                buttonVariants({ variant: 'primary', size: 'lg' }),
+                'group relative h-auto min-h-control-lg w-full flex-col items-start gap-0.5 whitespace-normal rounded px-6 py-3.5 text-left normal-case tracking-normal',
+                'border border-accent/60 bg-gradient-to-r from-brand-from/90 to-brand-to/70 shadow-[0_0_25px_rgba(234,179,8,0.25)] hover:from-brand-from hover:to-brand-to',
+              )}
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-300" />
-              <span className="font-black text-xl tracking-wider text-white drop-shadow-md italic pr-2">PREMIER DRAFT</span>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-yellow-50/90 pr-2">Timed picks · round summaries</div>
+              <div className="absolute inset-y-0 left-0 w-1 bg-accent" />
+              <span className="text-xl font-black italic tracking-wider text-white drop-shadow-md">PREMIER DRAFT</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-white/90">Timed picks · round summaries</span>
             </Link>
 
             <Link
               href="/draft?mode=quick"
               data-testid="cta-quick"
-              className="group relative px-6 py-3 bg-gradient-to-r from-blue-900/80 to-blue-800/20 border border-blue-500/50 rounded hover:from-stone-700 hover:border-stone-400 transition-all"
+              className={cn(
+                buttonVariants({ variant: 'secondary', size: 'lg' }),
+                'group relative h-auto min-h-control w-full flex-col items-start gap-0.5 whitespace-normal rounded px-6 py-3 text-left normal-case tracking-normal',
+                'border border-info/50 bg-gradient-to-r from-info/80 to-info/20 text-ink-inverse hover:border-info hover:from-info',
+              )}
             >
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 group-hover:bg-stone-300 transition-colors" />
-              <span className="font-black text-lg tracking-wider text-blue-100 group-hover:text-white drop-shadow-md italic pr-2">QUICK DRAFT</span>
-              <div className="text-[10px] font-bold uppercase tracking-widest text-blue-100/80 pr-2">No timer · quick animations</div>
+              <div className="absolute inset-y-0 left-0 w-1 bg-info group-hover:bg-ink-inverse-muted" />
+              <span className="text-lg font-black italic tracking-wider text-ink-inverse drop-shadow-md">QUICK DRAFT</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-inverse-muted">No timer · quick animations</span>
             </Link>
 
-            <Link href="/rosters" className="group relative px-6 py-3 bg-gradient-to-r from-stone-800/80 to-transparent border border-stone-600/50 rounded hover:from-stone-700 hover:border-stone-400 transition-all">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-stone-600 group-hover:bg-stone-300 transition-colors" />
-              <span className="font-black text-lg tracking-wider text-stone-300 group-hover:text-white drop-shadow-md italic pr-2">MY ROSTERS</span>
+            <Link
+              href="/rosters"
+              className={cn(
+                buttonVariants({ variant: 'secondary', size: 'lg' }),
+                'group relative h-auto min-h-control w-full justify-start rounded px-6 py-3 text-left normal-case tracking-normal',
+                'border border-line-inverse/50 bg-gradient-to-r from-surface-inverse/80 to-transparent text-ink-inverse-muted hover:border-line-strong hover:from-surface-sunken',
+              )}
+            >
+              <div className="absolute inset-y-0 left-0 w-1 bg-line-inverse group-hover:bg-ink-inverse-muted" />
+              <span className="text-lg font-black italic tracking-wider drop-shadow-md group-hover:text-ink-inverse">MY ROSTERS</span>
             </Link>
           </div>
         </div>
 
         {/* CENTER COLUMN: Hero Card */}
-        <div className="flex-1 flex justify-center items-center relative">
-          <div className="absolute inset-0 bg-yellow-500/10 blur-[120px] rounded-full scale-150 pointer-events-none" />
+        <div className="relative flex flex-1 items-center justify-center">
+          <div className="pointer-events-none absolute inset-0 scale-150 rounded-full bg-accent/10 blur-[120px]" />
           {heroPlayer && (
-            <div className="w-[300px] relative z-10 drop-shadow-[0_0_25px_rgba(234,179,8,0.4)] hover:scale-105 transition-transform duration-500 cursor-pointer">
+            <div className="relative z-10 w-[300px] cursor-pointer drop-shadow-[0_0_25px_rgba(234,179,8,0.4)] transition-transform duration-500 hover:scale-105">
               {/* Haze & Glow Overlay */}
-              <div className="absolute inset-0 z-20 pointer-events-none bg-blue-950/15 mix-blend-overlay rounded-xl ring-2 ring-yellow-400/50 shadow-[0_0_30px_rgba(250,204,21,0.2)_inset]"></div>
+              <div className="pointer-events-none absolute inset-0 z-20 rounded-xl bg-info/15 mix-blend-overlay shadow-[0_0_30px_rgba(250,204,21,0.2)_inset] ring-2 ring-accent/50"></div>
               <PlayerCard player={heroPlayer} />
             </div>
           )}
         </div>
 
         {/* RIGHT COLUMN: Pack Preview */}
-        <div className="w-[450px] flex flex-col items-center justify-center pt-8 z-20 shrink-0">
-          <h2 className="text-5xl font-black italic tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-200 drop-shadow-md mb-8 z-20 whitespace-nowrap pr-2" style={{ fontFamily: 'var(--font-bebas)' }}>
+        <div className="z-20 flex w-[450px] shrink-0 flex-col items-center justify-center pt-8">
+          <h2 className="z-20 mb-8 whitespace-nowrap bg-gradient-to-b from-ink-inverse to-info-soft bg-clip-text pr-2 text-5xl font-black italic tracking-tight text-transparent drop-shadow-md" style={{ fontFamily: 'var(--font-bebas)' }}>
             DRAFT PACK
           </h2>
 
-          <div className="relative w-full h-[280px] flex justify-center items-center mt-4">
+          <div className="relative mt-4 flex h-[280px] w-full items-center justify-center">
             {packPlayers.map((p, i) => {
               // Fan the cards out with a visible spread; hovering lifts just
               // that card above its neighbours so its name/stats are legible.
@@ -163,7 +180,7 @@ export default function Home() {
               return (
                 <div
                   key={p.id}
-                  className="absolute top-0 w-[170px] transition-all duration-500 hover:z-50 hover:-translate-y-8 cursor-pointer drop-shadow-xl"
+                  className="absolute top-0 w-[170px] cursor-pointer transition-all duration-500 hover:z-50 hover:-translate-y-8 drop-shadow-xl"
                   style={{
                     transform: `rotate(${angle}deg)`,
                     transformOrigin: '50% 300%',
@@ -171,7 +188,7 @@ export default function Home() {
                   }}
                 >
                   {/* Subtle Haze Overlay */}
-                  <div className="absolute inset-0 z-20 pointer-events-none bg-blue-950/20 mix-blend-overlay rounded-xl ring-1 ring-white/10"></div>
+                  <div className="pointer-events-none absolute inset-0 z-20 rounded-xl bg-info/20 mix-blend-overlay ring-1 ring-white/10"></div>
                   <PlayerCard player={p} />
                 </div>
               );
@@ -182,15 +199,25 @@ export default function Home() {
 
       {/* Dev Tools (build-time only, never shipped to production) */}
       {isDev && (
-        <details className="absolute bottom-3 left-3 z-20 group">
-          <summary className="list-none cursor-pointer text-[10px] text-stone-500 hover:text-stone-300 font-bold uppercase tracking-widest select-none">
+        <details className="group absolute bottom-3 left-3 z-20">
+          <summary className="list-none cursor-pointer select-none text-xs font-bold uppercase tracking-widest text-ink-inverse-muted hover:text-ink-inverse">
             Dev Tools
           </summary>
-          <div className="mt-2 flex flex-col gap-2 pl-2 border-l-2 border-stone-800 bg-stone-950/60 backdrop-blur-sm p-3 rounded">
-            <Link href="/deckbuilder-test" className="text-xs font-bold text-stone-400 hover:text-stone-200 uppercase tracking-widest">Deckbuilder</Link>
-            <Link href="/test-ui" className="text-xs font-bold text-stone-400 hover:text-stone-200 uppercase tracking-widest">Test UI</Link>
-            <Link href="/data" className="text-xs font-bold text-stone-400 hover:text-stone-200 uppercase tracking-widest">Data Viewer</Link>
-            <Link href="/debug" className="text-xs font-bold text-stone-400 hover:text-stone-200 uppercase tracking-widest">Debug</Link>
+          <div className="mt-2 flex flex-col gap-1 rounded border-l-2 border-line-inverse bg-surface-inverse-deep/60 pl-2 backdrop-blur-sm">
+            {[
+              { href: '/deckbuilder-test', label: 'Deckbuilder' },
+              { href: '/test-ui', label: 'Test UI' },
+              { href: '/data', label: 'Data Viewer' },
+              { href: '/debug', label: 'Debug' },
+            ].map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                className="flex min-h-control w-44 items-center px-2 text-xs font-bold uppercase tracking-widest text-ink-inverse-muted hover:text-ink-inverse"
+              >
+                {label}
+              </Link>
+            ))}
           </div>
         </details>
       )}

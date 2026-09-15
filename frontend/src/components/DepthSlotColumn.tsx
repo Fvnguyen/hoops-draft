@@ -19,6 +19,7 @@ import { useHoverPreview } from './useHoverPreview';
 import { SLOTS_PER_COLUMN } from '@/engine/depthChart';
 import type { DepthColumn } from '@/engine/positions';
 import type { PlaySide } from '@/engine/playbook';
+import { Button } from './ui/Button';
 
 /** Static starter front + its own hover state (D-hover, no flip — see PlayerCard's
  *  compact block for the full reasoning). A hook call per rendered card needs its own
@@ -100,24 +101,24 @@ export function DepthSlotColumn({
 
   const tint =
     selectionActive && pendingFit === 'adjacent' && !columnFull
-      ? 'bg-amber-50 border-amber-400 ring-1 ring-amber-300'
+      ? 'bg-warn-soft border-warn ring-1 ring-warn'
       : selectionActive && pendingFit === 'natural' && !columnFull
-        ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-300'
+        ? 'bg-positive-soft border-positive ring-1 ring-positive'
         : selectionActive && (pendingFit === 'none' || columnFull)
-          ? 'bg-red-50 border-red-300'
-          : 'bg-stone-50 border-stone-200';
+          ? 'bg-danger-soft border-danger-line'
+          : 'bg-surface-sunken border-line';
 
   return (
     <div
       data-testid={`depth-column-${column}`}
-      className={`flex flex-col gap-1.5 rounded-lg p-1.5 border transition-colors min-h-[300px] min-w-0 ${tint}`}
+      className={`flex flex-col gap-1.5 rounded-panel p-1.5 border transition-colors min-h-[300px] min-w-0 ${tint}`}
     >
       {/* 3px position-colour accent + column header */}
       <div
         className="h-[3px] w-full rounded-full shrink-0 pointer-events-none"
         style={{ background: `linear-gradient(to right, ${posC1}, ${posC2})` }}
       />
-      <div className="text-center font-black text-stone-600 text-sm pb-1 pointer-events-none shrink-0">
+      <div className="text-center font-black text-ink-muted text-sm pb-1 pointer-events-none shrink-0">
         {column}
       </div>
 
@@ -134,14 +135,20 @@ export function DepthSlotColumn({
           const blockedReason = rosterFull ? 'Roster full (12)' : undefined;
           const disabled = !isNextFree;
           const popoverOpen = openPopoverSlot === slotIndex;
+          const tone = disabled
+            ? 'border-line text-ink-subtle bg-surface-sunken cursor-not-allowed'
+            : blockedReason
+              ? 'border-line-strong text-ink-subtle bg-surface-raised hover:border-danger hover:text-danger cursor-pointer'
+              : 'border-line-strong text-ink-muted bg-surface-raised hover:border-positive hover:text-positive hover:bg-positive-soft cursor-pointer';
 
           return (
             <div key={`empty-${slotIndex}`} className="relative shrink-0">
-              <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-300 mb-1 pointer-events-none">
+              <div className="text-center text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1 pointer-events-none">
                 {SLOT_LABELS[slotIndex]}
               </div>
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 data-testid={`depth-slot-${column}-${slotIndex}`}
                 disabled={disabled}
                 onClick={(e) => {
@@ -153,16 +160,10 @@ export function DepthSlotColumn({
                   e.stopPropagation();
                   if (!disabled) onDrop(e, column, slotIndex);
                 }}
-                className={`w-full ${slotIndex === 0 ? 'aspect-[5/7]' : 'h-[36px]'} flex items-center justify-center rounded-lg border-2 border-dashed p-2 text-center text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                  disabled
-                    ? 'border-stone-200 text-stone-300 cursor-not-allowed'
-                    : blockedReason
-                      ? 'border-stone-300 text-stone-400 hover:border-red-300 hover:text-red-500 cursor-pointer'
-                      : 'border-stone-300 text-stone-500 hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50/50 cursor-pointer'
-                }`}
+                className={`w-full whitespace-normal border-2 border-dashed p-2 text-center text-xs font-bold normal-case tracking-wide shadow-none ${slotIndex === 0 ? 'h-auto aspect-[5/7]' : ''} ${tone}`}
               >
                 {blockedReason ?? (selectionActive ? `Place in ${column}` : `Add ${column}`)}
-              </button>
+              </Button>
               {popoverOpen && (
                 <AssignPopover
                   candidates={popoverCandidates ?? []}
@@ -196,13 +197,13 @@ export function DepthSlotColumn({
                 tiny corner tag on the card instead — a separate 9px line
                 above each of the 3 bench rows added up fast. */}
             {isStarter && (
-              <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">
+              <div className="text-center text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1 pointer-events-none">
                 {SLOT_LABELS[slotIndex]}
               </div>
             )}
             <div
               className={`group relative w-full cursor-pointer transition-opacity ${isStarter ? 'aspect-[5/7]' : ''} ${
-                assigning ? (dimmed ? 'opacity-30 grayscale' : 'ring-2 ring-emerald-400 rounded-lg') : ''
+                assigning ? (dimmed ? 'opacity-30 grayscale' : 'ring-2 ring-positive rounded-panel') : ''
               }`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -215,7 +216,7 @@ export function DepthSlotColumn({
                     <RoleTag key={i} playName={r.playName} roleName={r.roleName} side={r.side} />
                   ))}
                   {roleTags.length > 2 && (
-                    <span className="text-[8px] font-black bg-stone-900 text-white rounded px-1 py-0.5 w-fit leading-none">
+                    <span className="text-xs font-black bg-surface-inverse text-ink-inverse rounded px-1 py-0.5 w-fit leading-none">
                       +{roleTags.length - 2}
                     </span>
                   )}
@@ -237,7 +238,7 @@ export function DepthSlotColumn({
       })}
 
       {columnFull && (
-        <div className="text-center text-[9px] font-bold uppercase tracking-widest text-stone-400 pointer-events-none pt-1">
+        <div className="text-center text-xs font-bold uppercase tracking-widest text-ink-subtle pointer-events-none pt-1">
           Column full
         </div>
       )}

@@ -8,9 +8,9 @@ import { RadarChart } from './RadarChart';
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
 const TIER_CLASS: Record<ArchetypeTier, string> = {
-  none: 'bg-stone-100 text-stone-400',
-  online: 'bg-emerald-100 text-emerald-700',
-  dedicated: 'bg-amber-100 text-amber-700',
+  none: 'bg-surface-muted text-ink-subtle',
+  online: 'bg-positive-soft text-positive',
+  dedicated: 'bg-warn-soft text-warn',
 };
 
 function playerName(players: PlayerCardData[], id?: string): string {
@@ -44,11 +44,11 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
   const activePlays = playbookStatus.plays.filter(p => p.active);
 
   return (
-    <div className="bg-white border-b border-stone-200 px-6 py-4 flex gap-8 items-start shadow-sm w-full">
+    <div className="bg-surface-raised border-b border-line px-6 py-4 flex gap-8 items-start shadow-sm w-full">
 
       {/* Left: Starters */}
       <div className="shrink-0 flex flex-col items-center">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Starting Five</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">Starting Five</h3>
         <div className="flex gap-2">
           {['PG', 'SG', 'SF', 'PF', 'C'].map(pos => {
             const starter = resolvedDepth[pos]?.[0];
@@ -56,68 +56,68 @@ export function FranchiseDashboard({ team }: { team: TeamInfo }) {
             return (
               <div key={pos} className="flex flex-col items-center">
                 <MiniPlayerCard player={starter} className="mb-1" />
-                <span className="text-[9px] font-bold text-stone-400">{pos}</span>
+                <span className="text-xs font-bold text-ink-subtle">{pos}</span>
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className="w-px bg-stone-200 self-stretch" />
+      <div className="w-px bg-line self-stretch" />
 
       {/* Center: Team identity radar + shot diet as a plain list */}
       <div className="shrink-0 flex gap-8">
         <div className="flex flex-col gap-1">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team Identity</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Team Identity</h3>
           <RadarChart data={identity} average={LEAGUE_AVG_IDENTITY} size={150} />
         </div>
 
-        <div className="flex flex-col gap-1 pl-8 border-l border-stone-200">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot Diet</h3>
+        <div className="flex flex-col gap-1 pl-8 border-l border-line">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Shot Diet</h3>
           <div className="flex-1 flex flex-col justify-center gap-2">
             {[
-              { label: 'RIM', value: shotDiet.rim, color: '#f43f5e' },
-              { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
-              { label: '3PT', value: shotDiet.per, color: '#0284c7' },
+              { label: 'RIM', value: shotDiet.rim, color: 'var(--danger)' },
+              { label: 'MID', value: shotDiet.mid, color: 'var(--warn)' },
+              { label: '3PT', value: shotDiet.per, color: 'var(--info)' },
             ].map(row => (
               <div key={row.label} className="flex items-center gap-3">
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
-                <span className="text-[11px] font-bold uppercase tracking-wide text-stone-600 w-9">{row.label}</span>
-                <span className="text-[13px] font-black tabular-nums" style={{ color: row.color }}>{Math.round(row.value * 100)}%</span>
+                <span className="text-xs font-bold uppercase tracking-wide text-ink-muted w-9">{row.label}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: row.color }}>{Math.round(row.value * 100)}%</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="w-px bg-stone-200 self-stretch" />
+      <div className="w-px bg-line self-stretch" />
 
       {/* Right: Active Mechanics — selected archetype(s) + active plays with assigned players */}
       <div className="flex-1 min-w-[250px] max-w-[350px]">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-2">Active Mechanics</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">Active Mechanics</h3>
         <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[100px] pr-2 custom-scrollbar">
           {selectedArchetypes.map(s => (
-            <div key={s.def.id} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
-              <span className="text-emerald-500 text-[10px] mt-0.5">✦</span>
+            <div key={s.def.id} className="flex items-start gap-1.5 bg-surface-sunken rounded px-2 py-1 border border-line">
+              <span className="text-positive text-xs mt-0.5">✦</span>
               <div className="flex flex-col leading-tight">
-                <span className="font-bold text-[10px] text-stone-700">{s.def.name}</span>
-                <span className={`text-[8px] font-black uppercase tracking-wide w-fit px-1 py-0.5 rounded mt-0.5 ${TIER_CLASS[s.tier]}`}>
+                <span className="font-bold text-xs text-ink">{s.def.name}</span>
+                <span className={`text-xs font-black uppercase tracking-wide w-fit px-1 py-0.5 rounded mt-0.5 ${TIER_CLASS[s.tier]}`}>
                   {TIER_LABEL[s.tier]}
                 </span>
               </div>
             </div>
           ))}
           {activePlays.map(p => (
-            <div key={p.assignment.cardId} className="flex items-start gap-1.5 bg-stone-50 rounded px-2 py-1 border border-stone-100">
-              <span className="text-amber-500 text-[10px] mt-0.5">▶</span>
+            <div key={p.assignment.cardId} className="flex items-start gap-1.5 bg-surface-sunken rounded px-2 py-1 border border-line">
+              <span className="text-warn text-xs mt-0.5">▶</span>
               <div className="flex flex-col leading-tight">
-                <span className="font-bold text-[10px] text-stone-700">Play: {p.def.name}</span>
-                <span className="text-stone-500 text-[9px]">{playRoleSummary(p, team.players)}</span>
+                <span className="font-bold text-xs text-ink">Play: {p.def.name}</span>
+                <span className="text-ink-muted text-xs">{playRoleSummary(p, team.players)}</span>
               </div>
             </div>
           ))}
           {selectedArchetypes.length === 0 && activePlays.length === 0 && (
-             <div className="text-stone-400 italic text-xs py-2">No identity or active plays yet.</div>
+             <div className="text-ink-subtle italic text-xs py-2">No identity or active plays yet.</div>
           )}
         </div>
       </div>

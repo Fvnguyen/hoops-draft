@@ -7,20 +7,8 @@ import { RarityGem, PositionIcon } from './PlayerCard';
 import type { PlayStatus, PlayRole } from '../engine/playbook';
 import { describeRoleRequirement } from '../engine/playbook';
 import { AssignPopover } from './AssignPopover';
-
-// Small local badge-icon substitute — `BadgeIcon` in PlayerCard.tsx is not exported
-// (and that file is owned by another workstream), so this renders a coloured
-// initials circle instead. Colours are picked from a small fixed palette keyed by
-// badge name so the same badge always reads the same colour across panels.
-const ROLE_BADGE_COLORS: Record<string, string> = {
-  'Finisher': '#F97316',
-  'Mid-Range Maestro': '#3B82F6',
-  'Sharpshooter': '#8B5CF6',
-  'Floor General': '#14B8A6',
-  'Glass Cleaner': '#22C55E',
-  'Lockdown Defender': '#EF4444',
-  'Paint Protector': '#DC2626',
-};
+import { badgeConfig, defaultBadgeConfig, catColor } from './cardColors';
+import { IconButton } from './ui/IconButton';
 
 function initialsFor(name: string): string {
   const words = name.split(/[\s-]+/).filter(Boolean);
@@ -29,29 +17,31 @@ function initialsFor(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
+/** Small role-badge chip. Icon-only (D5): the level used to show as a tiny digit
+ *  overlay, unreadable well under the 12px floor, so it's dropped for the tooltip
+ *  to carry instead — same "icon only, no level digit" rule PlayerCard's own
+ *  micro badge tiers follow. Colours/icons come from `cardColors.badgeConfig`
+ *  (shared with PlayerCard) rather than a local copy. */
 function RoleBadgeIcon({ role }: { role: PlayRole }) {
-  const name = role.badge ?? 'Any';
-  const color = ROLE_BADGE_COLORS[name] ?? '#78716C';
+  const name = role.badge;
+  const config = name ? badgeConfig[name] : undefined;
+  const Icon = config?.icon ?? defaultBadgeConfig.icon;
+  const color = config?.color ?? defaultBadgeConfig.color;
   const level = role.minLevel ?? 1;
   return (
-    <div className="relative shrink-0" title={role.badge ? `${role.badge} (Lv.${level})` : 'Any player'}>
-      <div
-        className="w-[18px] h-[18px] rounded-full border-2 border-stone-500/60 flex items-center justify-center text-[7px] font-black text-white leading-none"
-        style={{ backgroundColor: color }}
-      >
-        {initialsFor(name)}
-      </div>
-      {role.badge && level > 1 && (
-        <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-stone-800 border border-white flex items-center justify-center text-[6px] font-black text-white leading-none">
-          {level}
-        </span>
-      )}
+    <div
+      className="relative shrink-0 flex items-center justify-center w-[18px] h-[18px] rounded-full border-2 border-line-strong"
+      style={{ backgroundColor: color }}
+      title={role.badge ? `${role.badge} (Lv.${level})` : 'Any player'}
+      aria-label={role.badge ? `${role.badge}, level ${level}` : 'Any player'}
+    >
+      <Icon className="w-[10px] h-[10px] text-white" aria-hidden="true" />
+      <span className="sr-only">{role.badge ? initialsFor(role.badge) : 'Any'}</span>
     </div>
   );
 }
 
 const categoryLabel: Record<Play['playCategory'], string> = { system: 'SYSTEM', special: 'SPECIAL', basic: 'BASIC' };
-const categoryColor: Record<Play['playCategory'], string> = { system: 'text-amber-600', special: 'text-teal-600', basic: 'text-slate-500' };
 
 export interface PlayPanelProps {
   /** The roster card backing this slot — carries flavour text and category
@@ -94,15 +84,15 @@ function RoleRow({
 }) {
   const [dragOverState, setDragOverState] = useState<'none' | 'eligible' | 'ineligible'>('none');
 
-  const rowBg = dragOverState === 'eligible' ? 'bg-emerald-100 border-emerald-500'
-    : dragOverState === 'ineligible' ? 'bg-red-50 border-red-400'
-    : filled ? 'bg-emerald-50 border-emerald-500'
-    : 'bg-white border-stone-300 border-dashed';
+  const rowBg = dragOverState === 'eligible' ? 'bg-positive-soft border-positive'
+    : dragOverState === 'ineligible' ? 'bg-danger-soft border-danger'
+    : filled ? 'bg-positive-soft border-positive'
+    : 'bg-surface-raised border-line-strong border-dashed';
 
   return (
     <div className="relative">
       <div
-        className={`flex items-center gap-2 px-2 py-1.5 min-h-[40px] rounded-md border transition-colors ${rowBg} ${filled ? 'border-l-4' : ''} ${isSelected ? 'ring-2 ring-emerald-400 animate-pulse' : ''} ${!filled ? 'cursor-pointer' : ''}`}
+        className={`flex items-center gap-2 px-2 py-1.5 min-h-control rounded-md border transition-colors ${rowBg} ${filled ? 'border-l-4' : ''} ${isSelected ? 'ring-2 ring-positive animate-pulse' : ''} ${!filled ? 'cursor-pointer' : ''}`}
         // The whole row is the drop target (native drag) AND, when unfilled, the click
         // target that opens the AssignPopover below — no separate small "Assign" chip
         // (it read as a tiny drop zone rather than an obvious full-row control).
@@ -124,8 +114,8 @@ function RoleRow({
         <RoleBadgeIcon role={role} />
 
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-bold uppercase text-stone-800 truncate leading-tight">{role.name}</div>
-          <div className="text-[10px] text-stone-500 truncate leading-tight">{describeRoleRequirement(role)}</div>
+          <div className="text-xs font-bold uppercase text-ink truncate leading-tight">{role.name}</div>
+          <div className="text-xs text-ink-muted truncate leading-tight">{describeRoleRequirement(role)}</div>
         </div>
 
         {filled && playerFromRoster ? (
@@ -133,26 +123,26 @@ function RoleRow({
           // player name is the only flexible child (flex-1 min-w-0 truncate) so it's
           // the one that gives way — the position pill (shrink-0) always stays fully
           // visible instead of being squeezed off (D18).
-          <div className="flex items-center gap-1 shrink-0 min-w-0 max-w-[130px]">
+          <div className="flex items-center gap-1 shrink-0 min-w-0 max-w-[160px]">
             <img
               src={`/headshots/${playerFromRoster.id}.png`}
               alt=""
-              className="w-[26px] h-[26px] rounded-full object-cover object-top border border-stone-300 bg-stone-100 shrink-0"
+              className="w-[26px] h-[26px] rounded-full object-cover object-top border border-line-strong bg-surface-sunken shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
             />
-            <span className="flex-1 min-w-0 text-[11px] font-bold text-stone-800 truncate">{playerFromRoster.player.name}</span>
-            <PositionIcon position={playerFromRoster.player.position} className="min-w-[22px] h-[15px] px-1 text-[8px] shrink-0" />
-            <button
-              type="button"
+            <span className="flex-1 min-w-0 text-xs font-bold text-ink truncate">{playerFromRoster.player.name}</span>
+            <PositionIcon position={playerFromRoster.player.position} className="min-w-[22px] h-[15px] px-1 text-xs shrink-0" />
+            <IconButton
+              label="Clear role"
+              variant="ghost"
               onClick={(e) => { e.stopPropagation(); onRoleClear(role.id); }}
-              title="Clear role"
-              className="w-5 h-5 shrink-0 flex items-center justify-center rounded-full bg-red-600 text-white hover:bg-red-500"
+              className="shrink-0 bg-danger text-white hover:bg-danger hover:opacity-90 hover:text-white"
             >
-              <X size={11} />
-            </button>
+              <X size={14} />
+            </IconButton>
           </div>
         ) : (
-          <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-bold uppercase text-stone-500">
+          <span className="shrink-0 flex items-center gap-0.5 text-xs font-bold uppercase text-ink-muted">
             Assign
             <ChevronDown size={12} />
           </span>
@@ -160,7 +150,7 @@ function RoleRow({
       </div>
 
       {!filled && reason && (
-        <div className="px-2 pt-0.5 text-[8px] font-semibold text-red-500">{reason}</div>
+        <div className="px-2 pt-0.5 text-xs font-semibold text-danger">{reason}</div>
       )}
 
       {isSelected && pickerCandidates && (
@@ -194,34 +184,34 @@ export function PlayPanel({
   const tooltip = `${status.def.summary}\n\n${play.mechanicText}`;
 
   return (
-    <div className="w-full bg-white border border-stone-200 rounded-xl shadow-sm overflow-visible">
+    <div className="w-full bg-surface-raised border border-line rounded-panel shadow-sm overflow-visible">
       {/* Header */}
-      <div className="flex items-center gap-2 px-2.5 h-10 border-b border-stone-200">
+      <div className="flex items-center gap-2 px-2.5 min-h-control border-b border-line">
         <RarityGem rarity={play.rarity} size="md" />
         <div className="flex-1 min-w-0 leading-tight">
-          <div className="text-xs font-bold uppercase text-stone-800 truncate">{play.name}</div>
-          <div className={`text-[9px] font-black uppercase tracking-wider ${categoryColor[play.playCategory]}`}>{categoryLabel[play.playCategory]}</div>
+          <div className="text-xs font-bold uppercase text-ink truncate">{play.name}</div>
+          <div className={`text-xs font-black uppercase tracking-wider ${catColor[play.playCategory]}`}>{categoryLabel[play.playCategory]}</div>
         </div>
         <span
           title={tooltip}
-          className="shrink-0 w-4 h-4 rounded-full border border-stone-300 text-stone-400 text-[10px] font-bold flex items-center justify-center cursor-help select-none"
+          className="shrink-0 w-5 h-5 rounded-full border border-line-strong text-ink-subtle text-xs font-bold flex items-center justify-center cursor-help select-none"
         >
           i
         </span>
         <div className="shrink-0 flex flex-col items-end leading-tight">
-          <span className={`px-1.5 py-[1px] rounded text-[8px] font-black uppercase tracking-wider ${status.active ? 'bg-emerald-500 text-white' : 'bg-stone-200 text-stone-500'}`}>
+          <span className={`px-1.5 py-[1px] rounded text-xs font-black uppercase tracking-wider ${status.active ? 'bg-positive-strong text-white' : 'bg-surface-muted text-ink-muted'}`}>
             {status.active ? 'Active' : 'Inactive'}
           </span>
-          <span className="text-[8px] text-stone-500 whitespace-nowrap">{allocationPct}% {allocationLabel}</span>
+          <span className="text-xs text-ink-muted whitespace-nowrap">{allocationPct}% {allocationLabel}</span>
         </div>
-        <button
-          type="button"
+        <IconButton
+          label="Return to Roster"
+          variant="ghost"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
-          title="Return to Roster"
-          className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-stone-400 hover:text-red-600 hover:bg-red-50"
+          className="shrink-0 hover:text-danger hover:bg-danger-soft"
         >
-          <X size={13} />
-        </button>
+          <X size={14} />
+        </IconButton>
       </div>
 
       {/* Role rows */}
@@ -251,7 +241,7 @@ export function PlayPanel({
 
       {/* Footer — only when inactive */}
       {!status.active && firstUnfilled && (
-        <div className="px-2.5 py-1 border-t border-stone-200 text-[8px] font-semibold text-stone-500">
+        <div className="px-2.5 py-1 border-t border-line text-xs font-semibold text-ink-muted">
           Inactive: {firstUnfilled.role.name} {(firstUnfilled.reason ?? 'unassigned').charAt(0).toLowerCase() + (firstUnfilled.reason ?? 'unassigned').slice(1)}
         </div>
       )}

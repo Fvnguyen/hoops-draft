@@ -23,22 +23,22 @@ export function RosterChecklist({ result, direction = 'row', className = '' }: R
     >
       {result.items.map(item => {
         const tone = item.met
-          ? 'text-emerald-600'
+          ? 'text-positive'
           : item.optional
-            ? 'text-stone-400'
-            : 'text-amber-600';
+            ? 'text-ink-subtle'
+            : 'text-warn';
         return (
           <li
             key={item.id}
             data-testid={`checklist-${item.id}`}
             data-met={item.met}
-            className={`flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider ${tone}`}
+            className={`flex items-center gap-1 text-xs font-bold uppercase tracking-wider ${tone}`}
             title={item.detail}
           >
             {item.met ? <Check className="w-3 h-3 shrink-0" /> : <Circle className="w-3 h-3 shrink-0" />}
             <span>{item.label}</span>
             {!item.met && item.detail && (
-              <span className="font-semibold normal-case tracking-normal text-stone-500 truncate max-w-[200px]">
+              <span className="font-semibold normal-case tracking-normal text-ink-muted truncate max-w-[200px]">
                 — {item.detail}
               </span>
             )}

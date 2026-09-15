@@ -14,6 +14,8 @@ import {
 } from '../engine/archetypes';
 import { DonutChart } from './DonutChart';
 import { RadarChart } from './RadarChart';
+import { Button } from './ui/Button';
+import { IconButton } from './ui/IconButton';
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
 
@@ -69,6 +71,12 @@ export function selectedUnlockedIds(selection: ArchetypeSelection, statuses: Arc
   const ids = [selection.gold, selection.offense, selection.defense].filter((id): id is string => !!id && unlocked.has(id));
   return new Set(ids);
 }
+
+const SLOT_LABEL_COLOR: Record<Slot, string> = {
+  offense: 'text-danger',
+  defense: 'text-info',
+  gold: 'text-accent',
+};
 
 export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds, archetypes, onArchetypesChange }: {
   identity: RosterIdentity;
@@ -129,38 +137,43 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
 
   if (collapsed) {
     return (
-      <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 h-7 px-4 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400 truncate">
+      <div className="bg-surface-raised border-b border-line shrink-0 shadow-sm z-10 min-h-control pl-4 pr-16 flex items-center justify-between gap-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-ink-subtle truncate">
           Team report · {identityLabel} · RIM {rimPct}% MID {midPct}% 3PT {perPct}%
         </span>
-        <button type="button" onClick={toggleCollapsed} aria-label="Expand team report" title="Expand team report" className="shrink-0 text-stone-400 hover:text-stone-600">
+        <IconButton
+          label="Expand team report"
+          variant="ghost"
+          onClick={toggleCollapsed}
+          className="shrink-0"
+        >
           <ChevronIcon direction="down" />
-        </button>
+        </IconButton>
       </div>
     );
   }
 
   return (
-    <div className="bg-white border-b border-stone-200 shrink-0 shadow-sm z-10 px-5 py-2 flex items-stretch gap-6">
+    <div className="bg-surface-raised border-b border-line shrink-0 shadow-sm z-10 pl-5 pr-16 py-2 flex items-stretch gap-6">
 
       {/* 1. Team identity radar — scaled up from 120px (D4, plan ui_polish_small_fixes):
            120px read as cramped once the badge/plan panel next to it filled out. */}
       <div className="flex flex-col gap-1 shrink-0" style={{ width: 168 }}>
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Team identity</h3>
+        <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Team identity</h3>
         <RadarChart data={identity} average={referenceIdentity} size={168} />
       </div>
 
       {/* 2. Shot diet — sized down from 124px/20px (D22), same reasoning as the radar. */}
-      <div className="flex flex-col gap-1 pl-6 border-l border-stone-200 shrink-0">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Shot diet</h3>
+      <div className="flex flex-col gap-1 pl-6 border-l border-line shrink-0">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Shot diet</h3>
         <div className="flex-1 flex items-center">
           <DonutChart
             size={90}
             strokeWidth={14}
             data={[
-              { label: 'RIM', value: shotDiet.rim, color: '#f43f5e' },
-              { label: 'MID', value: shotDiet.mid, color: '#f59e0b' },
-              { label: '3PT', value: shotDiet.per, color: '#0284c7' },
+              { label: 'RIM', value: shotDiet.rim, color: 'var(--danger)' },
+              { label: 'MID', value: shotDiet.mid, color: 'var(--warn)' },
+              { label: '3PT', value: shotDiet.per, color: 'var(--info)' },
             ]}
           />
         </div>
@@ -168,51 +181,57 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
 
       {/* 3. Identity — only UNLOCKED plans are shown; the selected one is highlighted and
              any other unlocked plan can be selected with a click. Locked plans stay hidden. */}
-      <div className="min-w-0 flex-1 pl-6 border-l border-stone-200 flex flex-col gap-1.5">
+      <div className="min-w-0 flex-1 pl-6 border-l border-line flex flex-col gap-1.5">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Identity</h3>
-          <button type="button" onClick={toggleCollapsed} aria-label="Collapse team report" title="Collapse team report" className="shrink-0 text-stone-400 hover:text-stone-600">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle">Identity</h3>
+          <IconButton
+            label="Collapse team report"
+            variant="ghost"
+            onClick={toggleCollapsed}
+            className="shrink-0"
+          >
             <ChevronIcon direction="up" />
-          </button>
+          </IconButton>
         </div>
 
         <div className="flex flex-col gap-1.5">
             {groups.map(group => (
-              <div key={group.slot} className={`flex items-center gap-2 flex-wrap min-w-0 rounded-md border px-2 py-1.5 ${group.plans.length > 0 ? 'border-stone-200 bg-stone-50/60' : 'border-dashed border-stone-200'}`}>
-                <span className={`text-[9px] font-black uppercase tracking-widest w-14 shrink-0 ${group.slot === 'gold' ? 'text-amber-600' : group.slot === 'defense' ? 'text-sky-700' : 'text-rose-600'}`}>{group.label}</span>
+              <div key={group.slot} className={`flex items-center gap-2 flex-wrap min-w-0 rounded-md border px-2 py-1.5 ${group.plans.length > 0 ? 'border-line bg-surface-sunken/60' : 'border-dashed border-line'}`}>
+                <span className={`text-xs font-black uppercase tracking-widest w-14 shrink-0 ${SLOT_LABEL_COLOR[group.slot]}`}>{group.label}</span>
                 {group.plans.length === 0 && (
-                  <span className="text-[9px] text-stone-400 italic">No plan unlocked</span>
+                  <span className="text-xs text-ink-subtle italic">No plan unlocked</span>
                 )}
                 {group.plans.map(s => {
                   const selected = selectedIds.has(s.def.id);
                   const editable = !!onArchetypesChange;
                   return (
-                    <button
+                    <Button
                       key={s.def.id}
-                      type="button"
+                      variant={selected ? 'primary' : 'secondary'}
+                      size="md"
                       disabled={!editable}
                       onClick={() => onArchetypesChange?.(toggleArchetype(selection, group.slot, s.def.id))}
                       title={`${s.def.name} — ${s.def.description}`}
-                      className={`flex items-center gap-1.5 h-6 px-2 rounded border text-[10px] font-bold uppercase tracking-wide transition-colors min-w-0 ${
+                      className={`h-auto min-h-control gap-1.5 px-2 py-1 text-xs font-bold normal-case tracking-wide min-w-0 ${
                         selected
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          ? 'bg-positive-strong border-positive-strong text-white hover:bg-positive-strong'
                           : editable
-                            ? 'bg-white border-stone-300 text-stone-600 hover:border-emerald-400 hover:text-emerald-700'
-                            : 'bg-stone-50 border-stone-200 text-stone-500'
+                            ? 'bg-surface-raised border-line-strong text-ink-muted hover:border-positive hover:text-positive'
+                            : 'bg-surface-sunken border-line text-ink-muted'
                       }`}
                     >
-                      {selected && <span className="text-[10px] leading-none">✓</span>}
+                      {selected && <span className="text-xs leading-none">✓</span>}
                       <span className="truncate">{s.def.name}</span>
-                      <span className={`text-[8px] font-black rounded px-1 ${selected ? 'bg-white/20' : s.tier === 'dedicated' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      <span className={`text-xs font-black rounded px-1 ${selected ? 'bg-white/20' : s.tier === 'dedicated' ? 'bg-warn-soft text-warn' : 'bg-positive-soft text-positive'}`}>
                         {TIER_LABEL[s.tier]}
                       </span>
-                    </button>
+                    </Button>
                   );
                 })}
                 {group.lockedHint && (
                   <span
                     title={`${group.lockedHint.def.name} — locked`}
-                    className="text-[9px] text-stone-400 italic truncate min-w-0"
+                    className="text-xs text-ink-subtle italic truncate min-w-0"
                   >
                     {group.lockedHint.def.name} locked
                     {group.lockedHint.missing.length > 0 && (
@@ -223,7 +242,7 @@ export function TopKPIBand({ identity, shotDiet, depthChart, average, starterIds
               </div>
             ))}
             {onArchetypesChange && selectedIds.size === 0 && unlocked.length > 0 && (
-              <p className="text-[9px] text-stone-400">Click a plan to make it your team&apos;s identity. A Gold plan takes both slots.</p>
+              <p className="text-xs text-ink-subtle">Click a plan to make it your team&apos;s identity. A Gold plan takes both slots.</p>
             )}
         </div>
       </div>
