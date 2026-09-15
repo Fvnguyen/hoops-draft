@@ -1,6 +1,14 @@
 # Plan: mobile_responsive
 
-File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: in progress (T1 done)
+File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: **superseded 2026-09-15
+by [game_canvas](plan_game_canvas_2026-09-15.md)** — T1-T4 and T6 below are done and kept
+as-is (their manifest/icons/OrientationGate/audit-harness/fluid-width work is the
+foundation `game_canvas` builds on); T5 was already absorbed by `deckbuilder_ux`; T7
+(owner real-device pass) is superseded by `game_canvas` T5. Reason: today's real-device
+test (780x360, narrower than this plan's 830x385 target) showed the fluid-width approach
+is brittle — `DraftRoom`'s header silently clipped content the audit's one fixed
+viewport didn't catch. `game_canvas` replaces "make every width fit" with "scale one
+known-good width to fit any device," per owner decision.
 Sequence: 5 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3, done) and deckbuilder_ux (#4) for T6; T2-T4 may run now.
 Files owned: `frontend/playwright.config.ts`, `frontend/tests/mobile-audit.spec.ts` (new),
 `frontend/tests/visual.spec.ts`, `frontend/src/app/layout.tsx`, `frontend/src/app/manifest.ts`
@@ -70,25 +78,35 @@ snapshots. Draft bot behaviour (draft_ai). Any engine or balance change.
 
 - T1 **Audit harness + punch list** (mid). Files: `playwright.config.ts` (projects
   `phone-landscape`, `tablet-landscape` with D1 viewports, `storageState` from `setup`),
-  `tests/mobile-audit.spec.ts`. For each of `/`, `/draft` (mid-draft via the fixture
-  builder), `/rosters`, a roster's deck builder, a game view, `/season`: full-page
-  screenshot to `test-results/mobile-audit/<project>/<route>.png` (gitignored), and
-  assert-and-report `document.scrollWidth <= innerWidth`, every `button, a, [role=button]`
-  bounding box >= 44x44, no computed font-size < 12 px. Done when the spec runs green
-  or red on both projects and the failures are transcribed into the "Audit findings"
-  table below. **Done 2026-09-15** — harness runs both projects red; table filled.
-  Owner reviews the table before T6 starts.
+  `tests/mobile-audit.spec.ts`. Screenshots + asserts overflow/tap-target/font-size for
+  each of `/`, `/draft`, `/rosters`, deck builder, a game view, `/season`. **Done
+  2026-09-15** — findings transcribed below.
 - T2 **Manifest, icons, meta** (low). Files: `app/manifest.ts`, `public/icons/`,
   `app/layout.tsx` (`viewport`, apple meta). Done when Chrome on the S24+ offers "Install
   app" and the installed app launches standalone in landscape (owner photo/screenshot).
+  **Done 2026-09-15** — standalone/landscape manifest, night-theme `#0c0a09` colors,
+  hand-drawn SVG icons (no image pipeline in the repo, PNG was out of scope), apple meta
+  in `layout.tsx`. `/manifest.webmanifest` verified 200. Owner still needs to confirm the
+  "Install app" prompt + standalone launch on the S24+ (folds into T7).
 - T3 **OrientationGate** (mid). Files: `components/OrientationGate.tsx`, `app/layout.tsx`,
   `app/(auth)/layout.tsx` (opt-out). Done when a Playwright test at 385x830 with
   `hasTouch` sees the overlay on `/` and not on `/login`, and desktop snapshots are
-  unchanged.
+  unchanged. **Done 2026-09-15** — pure-CSS `portrait:pointer-coarse:flex` overlay
+  (z-[300]), opt-out via `usePathname()` against `/login`/`/signup`/`/pending` (same
+  pattern as `TopNav`'s bare-route check). `tests/orientation-gate.spec.ts` (3/3). The
+  gate sits above `WhatsNewSplash` (z-100) by design — nothing reachable while rotated
+  wrong.
 - T4 **Auto-login verification** (mid). Files: `proxy.ts`, `components/WhatsNewSplash.tsx`,
   Supabase dashboard settings (record values in the plan). Done when D4 acceptance holds
   on the installed app and a Playwright test with the saved `storageState` loads `/`
-  with no `/login` navigation in the trace.
+  with no `/login` navigation in the trace. **Done 2026-09-15 (audit, no code bugs
+  found)** — `proxy.ts` never redirects an authenticated `/` load to `/login`;
+  `@supabase/ssr` cookie has no `maxAge` override, so it runs on the library default (400
+  days, over the 90-day bar); `WhatsNewSplash` already persists "seen" via
+  `getGameStore().setMeta` (IndexedDB, not session-scoped). `tests/auto-login.spec.ts`
+  (3/3) guards the no-redirect behavior. **Owner action required** (not repo-controlled):
+  Supabase dashboard, Authentication → Sessions, confirm "Refresh token expiry" /
+  inactivity timeout is >= 90 days.
 - T5 **Tap-to-place deck builder** — ABSORBED by deckbuilder_ux D3/T2 (click assigns on
   every device). Left here only so the numbering holds; the phone-viewport proof lands in
   `tests/deckbuilder.spec.ts` (tier `compact`) and is re-checked in T7.
@@ -102,40 +120,19 @@ snapshots. Draft bot behaviour (draft_ai). Any engine or balance change.
   loop draft → deck → game → season, installed and in-browser. Findings go back into
   the table; exit when the owner signs off.
 
-## Audit findings (T1, measured 2026-09-15)
+## Audit findings (T1, measured 2026-09-15) — resolved
 
-Both projects, 8 screens. Phone 200 findings, tablet 201 — near-identical, so these are
-absolute-px hit-area and type-scale defects, **not** width breakpoints. T6 is therefore
-mostly "general improvement" passes; the deck builder stays the only redesign (D5).
-
-| Screen | Project | Breaks | Severity | Fix | General / redesign |
-|---|---|---|---|---|---|
-| all | both | `WhatsNewSplash` panel has no max-height; at 385px it overflows, its Close button is off-screen, and it blocks every route (only the backdrop/CTA dismiss it) | blocker | `max-h-[90dvh] overflow-y-auto` on the panel | general — fixed by ui_foundation D9 (`Overlay`), not here |
-| all | both | TopNav profile menu rows 238x36; "Back to Home" 34x34 | high | 44px min height on menu rows and icon buttons | general |
-| all | both | 8–11px text everywhere (7–34 instances per screen) | high | 12px floor on the type scale | general |
-| home, rosters | both | PlayerCard back face clips 122–285px of badges/season averages (`overflow:hidden`, no scroll) | high | scroll region or taller back face | general |
-| deck-builder | both | "Expand team report" 14x14, "Return to Roster" 20x20 | high | 44px hit areas | general |
-| deck-builder | both | depth slots 89x36 (11 sub-44px controls total) | med | taller rows; feeds T5 tap-to-place | redesign (pre-approved) |
-| game | both | Exit Game / Tip Off / Pause / End / Matchup all 34–36px tall | med | 44px control height | general |
-| draft | both | sound toggles 26–28px; "Turn sound on" label clips 15px | med | 44px hit areas | general |
-| season | both | "Back to Rosters" 105x16; 8px SVG chart labels | med | 44px target; chart min font | general |
-| home | both | footer dev links 44x16 (Deckbuilder, Debug) | low | pad to 44px or hide on touch | general |
-| all | both | **No horizontal overflow** — `scrollWidth == innerWidth` on all 8 screens, both projects | — | none needed | — |
-
-Re-measured after ui_foundation (2026-09-15 evening): phone 2 findings, tablet 0. The table
-above is resolved except one new T6 row: `/rosters` `grid-cols-5` squeezes each card's front
-body to 87x19px at 830px wide (headshot and badge row unusable) — layout, not tokens.
-
-## Parallelization
-
-Wave 0 (driver): T1, then owner review of the table. Wave 1 (parallel, disjoint files):
-T2 (low), T3 (mid), T4 (mid), T5 (mid). Wave 2 (parallel, one agent per screen): T6.
-Wave 3: T7 owner. Agents never run git.
-
-## Recommended model tier
-
-Main driver: top (Fable 5.1 / Opus 5) — the punch-list triage and the deck-builder
-redesign decision are design calls. Wave 1-2 agents: mid (Sonnet 5), T2 low (Haiku 4.5).
+Both projects, 8 screens. First pass: phone 200 findings, tablet 201 — near-identical
+absolute-px hit-area/type-scale defects, not width breakpoints (blocker: unbounded
+`WhatsNewSplash` panel; high: TopNav rows, 8-11px text everywhere, `PlayerCard` back-face
+clipping, deck-builder icon buttons; med: game/draft/season 44px targets, deck-builder
+depth slots; low: home footer links). All fixed by `ui_foundation` (tokens/primitives,
+12px/44px floors) except one screen it didn't touch: `/rosters` `grid-cols-5` squeezed
+Starting Lineup cards to 87x19px at 830px wide. **Fixed 2026-09-15**: `app/rosters/page.tsx`
+Starting Lineup `grid grid-cols-5` -> `flex` with `flex-1 min-w-[148px]` per card (same
+pattern as `DeckBuilder.tsx`'s docked columns), scrolling inside the existing
+`overflow-x-auto` parent instead of squeezing 5-across. `tests/mobile-audit.spec.ts` is
+now green (0 findings) on all 8 screens, both projects.
 
 ## Verification / exit criteria
 

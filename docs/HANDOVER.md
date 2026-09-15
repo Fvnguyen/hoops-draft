@@ -12,7 +12,7 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
 — see the milestones below. The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
-at 0 violations. 218 Vitest tests pass, type-check is clean, `npm run lint` is
+at 0 violations. 229 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -85,34 +85,39 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
   `Season` and a fresh result commits only when the user watches `GameView` to the end and
   hits "Continue to Schedule"; leaving early discards it. Covered by `tests/season.spec.ts`.
 
-## mobile_responsive T1 (audit harness) — 2026-09-15
+## mobile_responsive T1-T4, T6 — 2026-09-15
 
-Merged the docs-only branch `claude/mobile-relevant-plans-y794q8` (fast-forward, `2f820ef`):
-the plan now carries the manifest/icons/auto-login work, drops the service worker
-(`mobile_pwa_shell` is gone), and makes `android_twa` conditional.
+T1 audit harness: `playwright.config.ts` gains `phone-landscape` (830x385, dpr 3) and
+`tablet-landscape` (1244x778, dpr 2.25) projects scoped to `tests/mobile-audit.spec.ts`,
+walking 8 screens across all four flows in one test, measuring overflow/sub-44px
+targets/sub-12px text/clipped-no-scroll. First run: 200 findings on phone, 201 on
+tablet, near-identical (absolute-px defects, not width breakpoints) — all but one fixed
+by `ui_foundation`'s token/primitive pass. The one holdout, `/rosters`' `grid-cols-5`
+squeezing Starting Lineup cards to 87x19px, is T6: swapped to `flex` +
+`flex-1 min-w-[148px]` per card (same pattern as `DeckBuilder.tsx`'s docked columns),
+scrolling inside the existing `overflow-x-auto` row. Audit spec now green (0 findings),
+both projects, all 8 screens.
 
-Then built T1, the audit harness. `playwright.config.ts` gains two `isMobile`+`hasTouch`
-projects — `phone-landscape` (830x385, dpr 3) and `tablet-landscape` (1244x778, dpr 2.25)
-— scoped to `tests/mobile-audit.spec.ts` (T6/D9 widens them to smoke+visual); `chromium`
-ignores that spec so the desktop gate stays clean. It walks all four flows in ONE test
-(8 screens: home, draft entry, live pick spread, rosters, deck builder, season, game at
-tip-off and live), screenshots each full-page, and measures four things in one
-`page.evaluate`: horizontal overflow, sub-44px tap targets, sub-12px text, containers that
-clip with no scroll. `expect.soft` means a run always measures all 8 and still ends red;
-T6's exit criterion is this spec going green on both projects.
+T2 (manifest/icons/meta): `app/manifest.ts` (standalone, landscape, night-theme
+`#0c0a09`), hand-drawn SVG icons under `public/icons/` (no image pipeline in the repo,
+so no PNG/maskable-PNG — SVG icons with `purpose: maskable` instead), apple meta in
+`layout.tsx`. T3 (`OrientationGate`): pure-CSS `portrait:pointer-coarse:flex` overlay,
+z-[300], opt-out via `usePathname()` on `/login`/`/signup`/`/pending`; sits above
+`WhatsNewSplash` (z-100) by design. T4 (auto-login): audit only, no bugs found —
+`proxy.ts` never redirects an authenticated `/` load, the Supabase cookie has no
+`maxAge` override (400-day library default), `WhatsNewSplash` already persists
+seen-state in IndexedDB. **Owner action still open**: set Supabase dashboard
+Authentication → Sessions refresh-token/inactivity timeout to >= 90 days (not
+repo-controlled). New specs `orientation-gate.spec.ts` (3/3) and `auto-login.spec.ts`
+(3/3); full suite 42/42 across chromium/phone-landscape/tablet-landscape, root
+`npm test` 229/229, tsc/lint clean. Only T7 (owner real-device pass) is left on this plan.
 
-Result: **200 findings on phone, 201 on tablet**, in the plan's "Audit findings" table.
-Headline: the viewports agree almost exactly and there is **no horizontal overflow
-anywhere**, so these are absolute-px hit-area and type-scale defects, not width
-breakpoints — T6 is mostly "general improvement" passes, not bespoke phone layouts.
-Biggest find is a blocker the mechanical checks missed: `WhatsNewSplash` has no
-max-height, so at 385px its Close button is off-screen and it blocks every route (only a
-backdrop/CTA tap dismisses it) — adds `WhatsNewSplash.tsx` to the plan's owned files.
-
-Harness gotchas: the splash mounts only after `useCurrentProfile`/`useNotices` resolve (so
-dismissal waits for it once); a leftover fixture roster raises a "changed on another
-device" toast over later screens, so the run deletes it first; `networkidle` never arrives
-on a live draft, so that wait is bounded.
+Harness gotchas: `WhatsNewSplash` mounts only after `useCurrentProfile`/`useNotices`
+resolve; a leftover fixture roster raises a cross-device toast over later screens, so the
+run deletes it first; `networkidle` never arrives on a live draft, so that wait is
+bounded; `dismissSplash`'s backdrop click can't reach the splash while
+`OrientationGate` is showing (portrait+touch) — that's correct (nothing should be
+interactive mid-gate), so specs check the gate without going through the splash there.
 
 ## ui_foundation — done 2026-09-15
 
@@ -188,9 +193,9 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done; `ui_foundation` and `deckbuilder_ux` done (owner laptop review signed; three review
-fixes landed: overlay report, both sidebars dock, 148px column floor), `mobile_responsive` T1 done). The
-2026-09-12 code review that
+`season_lifecycle_notifications`, `ui_foundation`, and `deckbuilder_ux` are done;
+`mobile_responsive` T1-T4/T6 done, only owner-side T7 (real-device pass) and the Supabase
+dashboard refresh-token setting are left). The 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
 
