@@ -19,23 +19,20 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 3 | mobile_responsive — viewport export, `@container` cards, touch-friendly draft/deckbuilder, sticky game header, bottom nav (proposal D only; no manifest/service worker) | not yet planned | — (2a done, unblocked) | — | 2-3 days |
+| 3 | [mobile_responsive](plans/plan_mobile_responsive_2026-09-15.md) — landscape-only Samsung phone/tablet layouts, audit-driven punch list, tap-to-place deck builder, Add to Home Screen manifest + auto-login (absorbs the old mobile_pwa_shell; no service worker/offline) | planned | — | `playwright.config.ts`, `tests/mobile-audit.spec.ts`, `app/layout.tsx`, `app/manifest.ts`, `OrientationGate.tsx`, `DeckBuilder.tsx`, `DepthSlotColumn.tsx`, `DraftRoom.tsx` (layout only), `GameView.tsx`, `SeasonView.tsx`, `FranchiseDashboard.tsx`, `TopNav.tsx`, `app/page.tsx`, `app/rosters/page.tsx` | 3-4 days |
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
 | 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 4 (game_engine done; needs contested-draft data) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
 | 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | — (game_engine done, unblocked) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 7 | mobile_pwa_shell — manifest, service worker, offline fallback, Lighthouse PWA audit (proposal G.1) | not yet planned | 3 | — | 1-2 days |
-| 8 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2) | not yet planned | 7 | — | 2-3 days |
+| 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once #3 is signed off on the real devices and the installed web app is something the owner would hand to a friend | not yet planned | 3 | — | 2-3 days |
 
-Re-sequenced 2026-09-14: `accounts_cloud_saves` (was #3) is done — see Recently completed.
-`ui_draft_deckbuild_pack`, `ui_polish_small_fixes`, `playwright_auth_fixture`,
-`game_engine`, and `season_lifecycle_notifications` (was #2b, small/unblocked, inserted
-and finished same-day) are done too. card_balance keeps its hard dependency on draft_ai (needs
-contested-draft data to measure against) so draft_ai still lands first despite ranking
-lower in value. mobile_pwa is split into mobile_responsive (#3, layout only, cheap) and
-mobile_pwa_shell (#7, manifest/service worker), so the layout pass isn't gated behind
-Android. Scope sketch for 3, 7-8 is proposals D, F, G in
-`docs/completed/review_code_and_architecture_2026-09-12.md`; write their plan docs
-(`/roadmap new`) when their turn comes.
+Re-sequenced 2026-09-15: `mobile_responsive` (#3) now carries the manifest/icons/auto-login
+work; `mobile_pwa_shell` is removed (a service worker and offline page cannot work while
+`proxy.ts` gates every route on a live Supabase session — revisit only with an offline-
+tolerant auth design) and `android_twa` (#7) is conditional on #3's real-device sign-off.
+The 2026-09-14 note still holds: card_balance keeps its hard dependency on draft_ai (needs
+contested-draft data), so draft_ai lands before card_balance despite ranking lower in
+value. Scope sketch for #7 is proposal G.2 in
+`docs/completed/review_code_and_architecture_2026-09-12.md`.
 
 ## Recently completed (latest three)
 
