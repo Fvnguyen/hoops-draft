@@ -19,35 +19,34 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 3 | [ui_foundation](plans/plan_ui_foundation_2026-09-15.md) — semantic tokens + `data-theme`, five `components/ui` primitives (cva), style gate in CI, 12px/44px floors, dvh, one nav offset; fixes confirm button, late header, game-route HUD gear, pack-pass flicker, clipped card back, undismissable splash | in progress (T8: gate 0, audit phone 200 -> 2 / tablet 0; snapshot re-baseline awaits owner OK) | — | `globals.css`, `app/layout.tsx`, `components/ui/*`, `cardColors.ts`, `scripts/check-styles.mjs`, `ci.yml`, `AuthProvider.tsx`, `TopNav.tsx`, `PlayerCard.tsx`, `PackOpener.tsx`, `PackPassStage.tsx`, `DraftRoom.tsx`, `DeckBuilder.tsx`, `GameView.tsx`, `SeasonView.tsx`, all product pages (full list in plan) | 3-4 days |
-| 4 | [deckbuilder_ux](plans/plan_deckbuilder_ux_2026-09-15.md) — design-first deck builder: canvas-signed collapsed/expanded band (chips, peak/valley, shot diet), click-to-assign plays and players (absorbs mobile T5), three container tiers, play tiles | planned | 3 | `DeckBuilder.tsx`, `DepthSlotColumn.tsx`, `PlayPanel.tsx`, `AssignPopover.tsx`, `TopKPIBand.tsx`, `DonutChart.tsx`, `RadarChart.tsx`, `PlayerCard.tsx` (play sections), `engine/deckbuilder.ts`, `tests/deckbuilder.spec.ts`, `docs/design/deckbuilder_ux/*` | 2-3 days |
-| 5 | [mobile_responsive](plans/plan_mobile_responsive_2026-09-15.md) — landscape-only Samsung phone/tablet layouts, audit-driven punch list, tap-to-place deck builder, Add to Home Screen manifest + auto-login (absorbs the old mobile_pwa_shell; no service worker/offline) | in progress (T1 audit done) | 3 done; 4 for T6 (T5 absorbed by 4); T2-T4 may run alongside (disjoint files; `layout.tsx` metadata/viewport exports only) | `playwright.config.ts`, `tests/mobile-audit.spec.ts`, `app/layout.tsx`, `app/manifest.ts`, `OrientationGate.tsx`, `DeckBuilder.tsx`, `DepthSlotColumn.tsx`, `DraftRoom.tsx` (layout only), `GameView.tsx`, `SeasonView.tsx`, `FranchiseDashboard.tsx`, `TopNav.tsx`, `app/page.tsx`, `app/rosters/page.tsx` | 3-4 days |
-| 6 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 7 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 6 (game_engine done; needs contested-draft data) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
-| 8 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | — (game_engine done, unblocked) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 9 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once #5 is signed off on the real devices and the installed web app is something the owner would hand to a friend | not yet planned | 5 | — | 2-3 days |
+| 3 | [deckbuilder_ux](plans/plan_deckbuilder_ux_2026-09-15.md) — design-first deck builder: canvas-signed collapsed/expanded band (chips, peak/valley, shot diet), click-to-assign plays and players (absorbs mobile T5), three container tiers, play tiles | planned | — (ui_foundation done) | `DeckBuilder.tsx`, `DepthSlotColumn.tsx`, `PlayPanel.tsx`, `AssignPopover.tsx`, `TopKPIBand.tsx`, `DonutChart.tsx`, `RadarChart.tsx`, `PlayerCard.tsx` (play sections), `engine/deckbuilder.ts`, `tests/deckbuilder.spec.ts`, `docs/design/deckbuilder_ux/*` | 2-3 days |
+| 4 | [mobile_responsive](plans/plan_mobile_responsive_2026-09-15.md) — landscape-only Samsung phone/tablet layouts, audit-driven punch list, tap-to-place deck builder, Add to Home Screen manifest + auto-login (absorbs the old mobile_pwa_shell; no service worker/offline) | in progress (T1 audit done) | 3 for T6 (T5 absorbed by 3); T2-T4 may run alongside (disjoint files; `layout.tsx` metadata/viewport exports only) | `playwright.config.ts`, `tests/mobile-audit.spec.ts`, `app/layout.tsx`, `app/manifest.ts`, `OrientationGate.tsx`, `DeckBuilder.tsx`, `DepthSlotColumn.tsx`, `DraftRoom.tsx` (layout only), `GameView.tsx`, `SeasonView.tsx`, `FranchiseDashboard.tsx`, `TopNav.tsx`, `app/page.tsx`, `app/rosters/page.tsx` | 3-4 days |
+| 5 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
+| 6 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 5 (game_engine done; needs contested-draft data) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 7 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | — (game_engine done, unblocked) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
+| 8 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once #4 is signed off on the real devices and the installed web app is something the owner would hand to a friend | not yet planned | 4 | — | 2-3 days |
 
-Re-sequenced 2026-09-15 (later the same day): `ui_foundation` (#3) goes ahead of
-`mobile_responsive` (#4) because its tokens and primitives resolve most of the mobile
+Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
+`mobile_responsive` because its tokens and primitives resolve most of the mobile
 audit's punch list (absolute-px type/hit-area defects, not breakpoints) in one pass;
 mobile T6 then re-audits and fixes only what is left. Earlier that day:
 `mobile_responsive` took over the manifest/icons/auto-login work; `mobile_pwa_shell` is removed (a service worker and offline page cannot work while
 `proxy.ts` gates every route on a live Supabase session — revisit only with an offline-
-tolerant auth design) and `android_twa` (#9) is conditional on #5's real-device sign-off. `deckbuilder_ux` (#4)
+tolerant auth design) and `android_twa` (#8) is conditional on #4's real-device sign-off. `deckbuilder_ux` (#3)
 was added after the owner's live review of ui_foundation the same evening: one deck-builder
 redesign for all devices, canvas-signed first, absorbing the mobile plan's tap-to-place.
 The 2026-09-14 note still holds: card_balance keeps its hard dependency on draft_ai (needs
 contested-draft data), so draft_ai lands before card_balance despite ranking lower in
-value. Scope sketch for #9 is proposal G.2 in
+value. Scope sketch for #8 is proposal G.2 in
 `docs/completed/review_code_and_architecture_2026-09-12.md`.
 
 ## Recently completed (latest three)
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [ui_foundation](completed/plan_ui_foundation_2026-09-15.md) | 2026-09-15 | Semantic tokens + `data-theme` (court/night), five `components/ui` primitives, blocking style gate 1,358 -> 0, 12px/44px floors, dvh; header never reflows, gear menu on game routes, one confirm dock, pack-pass flicker fixed; mobile audit phone 200 -> 2, tablet 201 -> 0; commits `68b3096`..`695d5dc` |
 | [season_lifecycle_notifications](completed/plan_season_lifecycle_notifications_2026-09-14.md) | 2026-09-14 | Derived Pre-Season/Live/Completed status, UI-enforced roster/season lock, per-roster records + user W/L stats, notification bell (changelog + season-complete) — all verified live in-browser |
 | [accounts_cloud_saves](completed/plan_accounts_cloud_saves_2026-09-14.md) | 2026-09-14 | Supabase-backed `GameStore` (`cas_upsert` optimistic-CAS RPC), type-specific auto-merge (`storage/merge.ts`), roster conflict UI, scoped `/api/analytics`+`/admin/analytics`; two-device merge and conflict paths verified live against production, not just mocks |
-| [game_engine](completed/plan_game_engine_2026-09-13.md) | 2026-09-14 | OT/home-court/spread/impact tuning fixed and measured; code review (T6) fixed dead-code lineup wiring; draft-impact + talent-vs-luck decomposition unified into `--report` and the Power Curve artifact |
 
 ## Model tiers used in plans
 

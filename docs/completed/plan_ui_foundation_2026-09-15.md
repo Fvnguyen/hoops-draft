@@ -1,7 +1,7 @@
 # Plan: ui_foundation
 
-File: `docs/plans/plan_ui_foundation_2026-09-15.md`. Status: in progress (waves 0-2 + T8 done 2026-09-15 except D11 snapshot re-baseline, owner OK pending)
-Sequence: 3 in `docs/ROADMAP.md`. Depends on: none. Blocks: mobile_responsive T5/T6.
+File: `docs/completed/plan_ui_foundation_2026-09-15.md`. Status: done 2026-09-15 (exit criteria met; 2 phone-audit layout items and the S24+ device check carried to mobile_responsive T6/T7)
+Sequence: was 3 in `docs/ROADMAP.md`. Depends on: none. Blocks: mobile_responsive T5/T6.
 Files owned: `globals.css`, `app/layout.tsx` (html attrs + providers; mobile T2 may edit
 only the `metadata`/`viewport` exports), `src/lib/cn.ts` (new), `src/components/ui/*`
 (new), `src/components/cardColors.ts` (new), `scripts/check-styles.mjs` (new),

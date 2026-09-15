@@ -143,10 +143,11 @@ dismissal waits for it once); a leftover fixture roster raises a "changed on ano
 device" toast over later screens, so the run deletes it first; `networkidle` never arrives
 on a live draft, so that wait is bounded.
 
-## ui_foundation waves 0-2 + T8 — 2026-09-15 (plan still open: snapshot re-baseline)
+## ui_foundation — done 2026-09-15
 
-Plan: `docs/plans/plan_ui_foundation_2026-09-15.md`. Commits `68b3096` (wave 0), `a1228eb`
-(wave 1), `cd41127` (wave 2), then T8. What it is: `globals.css` defines semantic tokens
+Plan: `docs/completed/plan_ui_foundation_2026-09-15.md`. Commits `68b3096` (wave 0),
+`a1228eb` (wave 1), `cd41127` (wave 2), `ce52128` (T8), `3db08d3` (owner live-review
+fixes), `695d5dc` (snapshot re-baseline). What it is: `globals.css` defines semantic tokens
 (surface/ink/line/accent/status) for two themes, `court` (default) and `night`, mapped
 into Tailwind with `@theme inline`, so a theme is `data-theme` on `<html>` and nothing
 else; five primitives in `components/ui/` (Button, IconButton, Panel, Menu, Overlay; cva +
@@ -164,8 +165,7 @@ splash is an `Overlay` capped at 90dvh, the PlayerCard back scrolls instead of c
 
 Measured: mobile audit phone 200 -> 2, tablet 201 -> 0 findings; the 2 are one layout
 item (the /rosters 5-column grid squeezes a card's front body to 87x19px at 830px wide),
-handed to mobile_responsive T6. Vitest 218/218; chromium e2e green except the three
-visual snapshots awaiting the owner's re-baseline OK (D11; images sent). `season.spec`
+handed to mobile_responsive T6. Vitest 218/218; chromium e2e 20/20 green after the D11 re-baseline. `season.spec`
 passes for the first time: the splash's seen-state is IndexedDB, not in `storageState`, so
 every fresh context shows it — `tests/helpers/splash.ts` is the shared dismissal.
 
@@ -195,7 +195,7 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done; `ui_foundation` is at T8 (snapshot OK pending), `deckbuilder_ux` planned from the owner's live review, `mobile_responsive` T1 done). The
+and `season_lifecycle_notifications` are done; `ui_foundation` done; `deckbuilder_ux` (from the owner's live review) is next, `mobile_responsive` T1 done). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
@@ -215,10 +215,7 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
    test rather than assuming fixed.
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
    worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-4. **Three `visual.spec.ts` snapshots await re-baseline** (KPI band 62->79px for the 44px
-   hit area, dashboard 234->205px for 12px radar labels, game view the old 601px). ui_foundation
-   D11: owner eyeballs (images sent 2026-09-15), then `--update-snapshots` in one commit.
-5. **`game.test.ts` minutes assertion is flaky.** Failed once on 2026-09-15 (17.5 < 18),
+4. **`game.test.ts` minutes assertion is flaky.** Failed once on 2026-09-15 (17.5 < 18),
    passed every run since (5+). Seeded test, so likely a real edge in `game.ts` minutes
    distribution for one seed; worth pinning the failing seed before it bites CI.
 

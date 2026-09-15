@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Style gate: scan className literals for style violations.
- * Ref: docs/plans/plan_ui_foundation_2026-09-15.md, decision D4.
+ * Ref: docs/completed/plan_ui_foundation_2026-09-15.md, decision D4.
  *
  * Rules:
  * 1. Raw palette classes
