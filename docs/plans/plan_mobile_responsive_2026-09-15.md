@@ -1,7 +1,7 @@
 # Plan: mobile_responsive
 
 File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: in progress (T1 done)
-Sequence: 4 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3) for T5/T6; T2-T4 may run alongside it.
+Sequence: 5 in `docs/ROADMAP.md`. Depends on: ui_foundation (#3, done) and deckbuilder_ux (#4) for T6; T2-T4 may run now.
 Files owned: `frontend/playwright.config.ts`, `frontend/tests/mobile-audit.spec.ts` (new),
 `frontend/tests/visual.spec.ts`, `frontend/src/app/layout.tsx`, `frontend/src/app/manifest.ts`
 (new), `frontend/public/icons/*` (new), `frontend/src/components/OrientationGate.tsx` (new),
@@ -89,9 +89,9 @@ snapshots. Draft bot behaviour (draft_ai). Any engine or balance change.
   Supabase dashboard settings (record values in the plan). Done when D4 acceptance holds
   on the installed app and a Playwright test with the saved `storageState` loads `/`
   with no `/login` navigation in the trace.
-- T5 **Tap-to-place deck builder** (mid). Files: `DeckBuilder.tsx`, `DepthSlotColumn.tsx`,
-  `PlayPanel.tsx`. Done when a Playwright test on `phone-landscape` builds a legal 12-man
-  roster and assigns a play by taps only, and `npm test` + desktop drag snapshots pass.
+- T5 **Tap-to-place deck builder** — ABSORBED by deckbuilder_ux D3/T2 (click assigns on
+  every device). Left here only so the numbering holds; the phone-viewport proof lands in
+  `tests/deckbuilder.spec.ts` (tier `compact`) and is re-checked in T7.
 - T6 **Layout fixes from the punch list** (mid; one agent per screen, disjoint files).
   Known offenders to start from: `DraftRoom.tsx` `max-w-[1500px]` + 5-col grid,
   `DeckBuilder.tsx` `grid-cols-5`, `app/page.tsx` `w-[450px]`, `FranchiseDashboard.tsx`

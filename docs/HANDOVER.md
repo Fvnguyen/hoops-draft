@@ -195,7 +195,7 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done; `ui_foundation` is at T8 (snapshot OK pending), `mobile_responsive` T1 done). The
+and `season_lifecycle_notifications` are done; `ui_foundation` is at T8 (snapshot OK pending), `deckbuilder_ux` planned from the owner's live review, `mobile_responsive` T1 done). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
