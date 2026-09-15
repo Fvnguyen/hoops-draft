@@ -103,8 +103,9 @@ toggle UI. Any change to how plays resolve in `engine/game.ts`.
   D4 tiers with the < 1440 exclusivity. Done: spec green at 900/1100/1440.
 - T5 **Play tiles** (mid). Files: `PlayerCard.tsx` (play sections), `PlayPanel.tsx`.
   Done: matches artboard (c); roster-list and slot variants; snapshot on `/test-ui`.
-- T6 **Spec, snapshots, re-audit** (driver). Files: `tests/deckbuilder.spec.ts`,
-  `tests/visual.spec.ts` + snapshots, `app/test-ui/page.tsx`. Done: exit criteria below.
+- T6 **Spec, snapshots, re-audit** (driver). Done 2026-09-15 except the owner check:
+  spec green at three tiers, snapshots updated, mobile audit deck-builder 0/0 (phone
+  total 2 = the /rosters row, mobile T6), chromium e2e 35/35.
 
 ## Parallelization
 

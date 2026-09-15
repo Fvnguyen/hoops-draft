@@ -169,9 +169,31 @@ handed to mobile_responsive T6. Vitest 218/218; chromium e2e 20/20 green after t
 passes for the first time: the splash's seen-state is IndexedDB, not in `storageState`, so
 every fresh context shows it — `tests/helpers/splash.ts` is the shared dismissal.
 
-Gotchas: `Button href=` forwards data-*/aria-* to the Link (it did not at first);
-`Menu`'s `<summary>` carries `role=button` so `getByRole` finds it; `sr-only` text and
-image crops are excluded from the audit's clipped rule on purpose.
+Gotchas: `Button href=` forwards data-*/aria-*; `Menu`'s `<summary>` carries `role=button`;
+`sr-only` text and image crops are excluded from the audit's clipped rule.
+
+## deckbuilder_ux waves 0-2 — 2026-09-15 (open: owner click-through, then `/roadmap done`)
+
+Plan: `docs/plans/plan_deckbuilder_ux_2026-09-15.md`. Design-first: eight artboards on the
+canvas "Deck Builder HUD" (https://claude.ai/artifact/Vixm9Jj2yx6xwzbHGVc22K), sources and
+2x PNGs in `docs/design/deckbuilder_ux/`, all signed by the owner the same day. Commits
+`9f036b3` (wave 1), `7e98612` (wave 2) + fixes. What changed: the builder's top band is
+a 56px HUD (Players/Plays/Identity chips, radar peak/valley words, shot-diet mini from
+1440, Clear/Save icons + one "Save & play season" primary; expanded = radar, shot diet,
+identity lanes); the ACTIVE ROSTER validity row is gone; Plays and Roster are the same
+collapsible sidebar (docked / 48px strip / compact drawer), tiers measured on the shell
+(compact < 960, regular < 1440 with the two sidebars mutually exclusive, wide both dock);
+depth chart per artboard (d) with 5/7 starter and 44px bench rows; plays are 72px tiles
+(56px in lists); a click assigns a play (first open slot) or a player (highlighted
+slots), through pure `engine/deckbuilder.ts` helpers the drag path shares (11 unit tests).
+`tests/deckbuilder.spec.ts` covers overflow, 44px, both click flows and the exclusivity
+rule at 900/1100/1440. Mobile audit: deck-builder 0 findings on both projects; phone
+total 2 (the /rosters grid row, mobile T6). Chromium e2e 35/35, vitest 229/229.
+
+Seams caught only by integration: the roster-list Add button was swallowed (handler on
+a wrapper the tile never bubbled to); role avatars must be CSS backgrounds (an <img>'s
+onError misses a 404 that lands before hydration); `--update-snapshots` keeps a stale
+baseline that still passes the diff ratio — use `=all` to force a rewrite.
 
 ## How to run everything
 
@@ -195,7 +217,7 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-and `season_lifecycle_notifications` are done; `ui_foundation` done; `deckbuilder_ux` (from the owner's live review) is next, `mobile_responsive` T1 done). The
+and `season_lifecycle_notifications` are done; `ui_foundation` and `deckbuilder_ux` done except the owner click-through, `mobile_responsive` T1 done). The
 2026-09-12 code review that
 produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
 the list below predates it.
