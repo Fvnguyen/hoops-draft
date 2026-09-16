@@ -334,9 +334,11 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     // real mechanic, the rarity bump above (bumpRarity) - only the flavor badge is gone.
     if (POSITIONLESS_PLAYERS.has(p.name)) traits.push({ name: 'Positionless', level: 3 });
 
-    if (stat.ast >= 6.0 && (stat.ast / Math.max(0.1, stat.tov)) >= 3.0) traits.push({ name: 'Playmaking Maestro', level: 2 });
-    if (stat.stl >= 1.0 && stat.blk >= 1.0) traits.push({ name: 'Two-Way Disruptor', level: 2 });
-    if (stat.fg3_pct >= 0.40 && stat.fg3a >= 6.0) traits.push({ name: 'Sniper', level: 2 });
+    // card_balance T3 (2026-09-17, owner-approved): Playmaking Maestro/Two-Way Disruptor/
+    // Sniper are gone as raw-stat-formula traits — they're combo conditions over two
+    // skill badge levels now (archetypes.ts KEYSTONE_CONDITIONS), never shown as a card
+    // icon, checked directly against the badges already computed above, so they always
+    // track BADGE_THRESHOLDS with no separate formula to keep in sync.
 
     const formattedAwards: string[] = [];
     for (const a of r.awards) {

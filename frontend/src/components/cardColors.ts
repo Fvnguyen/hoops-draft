@@ -8,17 +8,19 @@
  */
 import {
   Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck,
-  Swords, Wand2, type LucideIcon,
+  type LucideIcon,
 } from 'lucide-react';
 import type { Play } from '@/engine/types';
 
 // ---- Badges -------------------------------------------------------------------
 
-// card_balance T3 (2026-09-16, owner-approved): cosmetic-only badges (Legend, League
+// card_balance T3 (2026-09-16/17, owner-approved): cosmetic-only badges (Legend, League
 // Leader, Ironman, Efficiency Savant, Young Phenom, Veteran Presence, Microwave, Volume
-// Scorer, Stat Sheet Stuffer) removed — never generated onto a card anymore
-// (engine/ratings.ts). What's left is the 7 mono skill colours plus the 3 gold-plan
-// keystone traits (Two-Way Disruptor, Sniper, Playmaking Maestro).
+// Scorer, Stat Sheet Stuffer) removed — never generated onto a card. Two-Way Disruptor/
+// Sniper/Playmaking Maestro also removed here: they're gold-plan keystone combo
+// conditions now (archetypes.ts KEYSTONE_CONDITIONS, two skill-badge levels checked
+// directly), never their own trait or card icon — explained in synergy/play text only.
+// What's left is exactly the 7 mono skill colours plus Positionless.
 export const badgeConfig: Record<string, { icon: LucideIcon; color: string }> = {
   'Finisher':            { icon: Flame,         color: '#F97316' },
   'Mid-Range Maestro':   { icon: Target,        color: '#3B82F6' },
@@ -27,9 +29,6 @@ export const badgeConfig: Record<string, { icon: LucideIcon; color: string }> = 
   'Glass Cleaner':       { icon: Dumbbell,       color: '#22C55E' },
   'Lockdown Defender':   { icon: Shield,         color: '#EF4444' },
   'Paint Protector':     { icon: ShieldCheck,    color: '#DC2626' },
-  'Sniper':              { icon: Crosshair,      color: '#6366F1' },
-  'Two-Way Disruptor':   { icon: Swords,         color: '#8B5CF6' },
-  'Playmaking Maestro':  { icon: Wand2,          color: '#14B8A6' },
 };
 
 export const defaultBadgeConfig = { icon: Star, color: '#9CA3AF' };

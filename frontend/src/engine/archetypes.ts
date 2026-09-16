@@ -185,10 +185,31 @@ function unionCarrierStats(activePlayers: PlayerCardData[], starterIds: Set<stri
   return { distinct, starters };
 }
 
-/** True when any active player carries one of a gold plan's keystone traits. */
+/**
+ * card_balance T3 (2026-09-17, owner-approved): keystones are combo conditions over two
+ * SKILL BADGE levels, not their own traits — never shown as a card icon, never pushed
+ * onto `traits`, unlike the mono colours. Checked directly against badge levels so they
+ * always track the current BADGE_THRESHOLDS retune with no separate raw-stat formula to
+ * keep in sync. Two-Way Disruptor deliberately requires L2+L2 (not the default L1+L1 the
+ * other three use) — perimeter and post defense correlate enough that L1+L1 overshoots
+ * every single-skill L3 count; L2+L2 brings it back in line ("upping level requirements",
+ * owner's rule for scaling an overly common combo).
+ */
+function hasBadgeLevel(p: PlayerCardData, badge: string, level: number): boolean {
+  return (p.traits ?? []).some(t => t.name === badge && t.level >= level);
+}
+
+export const KEYSTONE_CONDITIONS: Record<string, (p: PlayerCardData) => boolean> = {
+  'Two-Way Disruptor': p => hasBadgeLevel(p, 'Lockdown Defender', 2) && hasBadgeLevel(p, 'Paint Protector', 2),
+  'Point Forward': p => hasBadgeLevel(p, 'Floor General', 1) && hasBadgeLevel(p, 'Glass Cleaner', 1),
+  '3-and-D': p => hasBadgeLevel(p, 'Sharpshooter', 1) && hasBadgeLevel(p, 'Lockdown Defender', 1),
+  'Stretch-5': p => hasBadgeLevel(p, 'Sharpshooter', 1) && hasBadgeLevel(p, 'Paint Protector', 1),
+};
+
+/** True when any active player satisfies one of a gold plan's keystone combo conditions. */
 function hasKeystone(activePlayers: PlayerCardData[], keystones: string[] | undefined): boolean {
   if (!keystones || keystones.length === 0) return true;
-  return activePlayers.some(p => (p.traits ?? []).some(t => keystones.includes(t.name)));
+  return activePlayers.some(p => keystones.some(k => KEYSTONE_CONDITIONS[k]?.(p)));
 }
 
 // ── Catalog (plan §3) ───────────────────────────────────────────────────────
@@ -286,7 +307,10 @@ export const ARCHETYPES: ArchetypeDef[] = [
   {
     id: '3-and-d-paradigm', name: '3-and-D Paradigm', kind: 'gold', side: 'both',
     colors: { primary: 'Lockdown Defender', support: 'Sharpshooter', tertiary: 'Floor General' },
-    keystones: ['Two-Way Disruptor'],
+    // card_balance T3 (2026-09-17): now keyed on the '3-and-D' combo condition
+    // (Sharpshooter + Lockdown Defender), an exact name and colour match — was
+    // Two-Way Disruptor (Lockdown + Paint Protector), which shares only one colour here.
+    keystones: ['3-and-D'],
     dedicated: {
       ownShare: { mid: -0.05, three: 0.05 }, ownEff: { three: 0.02 },
       oppShare: { three: -0.05, rim: 0.02, mid: 0.03 }, oppEff: { three: -0.04 },
@@ -296,7 +320,12 @@ export const ARCHETYPES: ArchetypeDef[] = [
   {
     id: 'switchblade-pressure', name: 'Switchblade Pressure', kind: 'gold', side: 'both',
     colors: { primary: 'Lockdown Defender', support: 'Floor General', tertiary: 'Finisher' },
-    keystones: ['Playmaking Maestro', 'Two-Way Disruptor'],
+    // card_balance T3 (2026-09-17): Playmaking Maestro no longer exists as a trait
+    // (folded into the combo-condition system); no combo condition matches this plan's
+    // actual colour set (Lockdown/Floor General/Finisher) cleanly, so this keeps its
+    // other keystone, Two-Way Disruptor, as the sole option. Flagged in the plays/
+    // synergies review — may want a dedicated combo condition of its own.
+    keystones: ['Two-Way Disruptor'],
     dedicated: {
       possessions: 4, ownShare: { rim: 0.05, mid: -0.03, three: -0.02 },
       oppEff: { three: -0.03, rim: -0.02 },
@@ -306,7 +335,10 @@ export const ARCHETYPES: ArchetypeDef[] = [
   {
     id: 'five-out-fortress', name: 'Five-Out Fortress', kind: 'gold', side: 'both',
     colors: { primary: 'Sharpshooter', support: 'Glass Cleaner', tertiary: 'Paint Protector' },
-    keystones: ['Sniper', 'Two-Way Disruptor'],
+    // card_balance T3 (2026-09-17): Sniper no longer exists as a trait; replaced with
+    // 'Stretch-5' (Sharpshooter + Paint Protector), which matches 2 of this plan's 3
+    // colours directly. Two-Way Disruptor kept as the second path (unchanged).
+    keystones: ['Stretch-5', 'Two-Way Disruptor'],
     dedicated: {
       ownShare: { rim: -0.03, mid: -0.07, three: 0.10 }, ownEff: { three: 0.02 },
       oppShare: { rim: -0.05, mid: 0.02, three: 0.03 }, oppEff: { rim: -0.03 },

@@ -148,7 +148,8 @@ describe('two-colour distinct-player requirement', () => {
 describe('gold archetype keystone gate', () => {
   it('stays "none" without the keystone trait even when every tally is met, then reaches Online once present', () => {
     // 3-and-D Paradigm online: Lockdown Defender 4c/9p, Sharpshooter 2c/4p, Floor General
-    // 2c/4p, distinct 6, relevant starters 3, keystone 'Two-Way Disruptor'.
+    // 2c/4p, distinct 6, relevant starters 3, keystone '3-and-D' (card_balance T3,
+    // 2026-09-17: a combo condition over two skill badges now, not its own trait).
     const p1 = makePlayer([trait('Lockdown Defender', 3)]);
     const p2 = makePlayer([trait('Lockdown Defender', 3)]);
     const p3 = makePlayer([trait('Lockdown Defender', 2)]);
@@ -164,7 +165,7 @@ describe('gold archetype keystone gate', () => {
     expect(before.tier).toBe('none');
     expect(before.missing.some(m => m.includes('Keystone'))).toBe(true);
 
-    const p9 = makePlayer([trait('Two-Way Disruptor', 2)]);
+    const p9 = makePlayer([trait('Sharpshooter', 1), trait('Lockdown Defender', 1)]);
     const after = evaluateArchetypes([...roster, p9], starterIds).find(s => s.def.id === '3-and-d-paradigm')!;
     expect(after.tier).toBe('online');
   });

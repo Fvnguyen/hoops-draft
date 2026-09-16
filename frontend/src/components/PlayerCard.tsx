@@ -74,13 +74,14 @@ export type DraftCard = EngineDraftCard;
 export { basePosColors, getPosColors, rarityTextColor };
 
 // Plain-English badge tooltip copy (MTG-style keyword reminder text) — what it boosts
-// and, for the badges that gate a roster identity (the 7 mono colors + the 3 gold
-// keystones in engine/archetypes.ts), which identity it unlocks. No exact percentages —
-// matches the game's existing "never show exact ratings/formulas" product rule.
-// card_balance T3 (2026-09-16, owner-approved): the 9 cosmetic-only badges this comment
-// used to list (Legend, League Leader, Ironman, Efficiency Savant, Volume Scorer, Young
-// Phenom, Veteran Presence, Microwave, Stat Sheet Stuffer) are gone — engine/ratings.ts
-// no longer generates them. Every entry below now has a real mechanical effect.
+// and, for the badges that gate a roster identity, which identity it unlocks. No exact
+// percentages — matches the game's existing "never show exact ratings/formulas" rule.
+// card_balance T3 (2026-09-16/17, owner-approved): the 9 cosmetic-only badges this
+// comment used to list are gone (engine/ratings.ts no longer generates them), and so are
+// Two-Way Disruptor/Playmaking Maestro/Sniper — those are gold-plan keystone combo
+// conditions now (two skill-badge levels, archetypes.ts KEYSTONE_CONDITIONS), never
+// their own card trait or icon, so they have no entry here; their "what unlocks what"
+// explanation lives in the gold plan's own description/reachability text instead.
 const BADGE_DESCRIPTIONS: Record<string, string> = {
   'Finisher': "Boosts your team's rim scoring and unlocks the Rim Pressure identity.",
   'Mid-Range Maestro': "Boosts your team's mid-range scoring and unlocks the Midrange Clinic identity.",
@@ -89,9 +90,6 @@ const BADGE_DESCRIPTIONS: Record<string, string> = {
   'Glass Cleaner': "Boosts your team's rebounding and unlocks the Second-Chance Engine identity.",
   'Lockdown Defender': "Boosts your team's perimeter defense and unlocks the No-Fly Zone identity.",
   'Paint Protector': "Boosts your team's interior defense and unlocks the Paint Wall identity.",
-  'Two-Way Disruptor': "Boosts your team on both ends and unlocks the 3-and-D Paradigm identity.",
-  'Playmaking Maestro': "Boosts your team's ball movement and unlocks the Switchblade Pressure identity.",
-  'Sniper': "Boosts your team's 3-point shooting and unlocks the Five-Out Fortress identity.",
   'Positionless': 'Slots into any lineup spot with no penalty.',
 };
 
