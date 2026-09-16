@@ -57,13 +57,10 @@ chosen from measurement. Badge "individual brilliance" effects are a later plan.
   is a committee question (the Pistons take fewer threes); how well the shots go in is
   the D2 value. Shot profile moves from the pre-game 12-man average to the on-court five
   (T3), which is the prerequisite for any creator steer.
-- D5 **Lever size is chosen from a sweep, not by feel.** `--eff-scale`/`--max-shift` flags
-  on the balance script; the six fixed lineups plus the general run at 0.10/0.20/0.30
-  report expected-points spread, score sd, [90,130], home-win and talent share
-  (`outcomeDecomposition`). The plan records the chosen values with before/after.
-  Regression gates from game_engine D5 stay: sd 12–13, margin 12–14, ≥85% in [90,130],
-  PPP 1.05–1.12, home win 52–56%. Talent share per game is allowed to rise from 7.6%;
-  the target band is set after the sweep (owner call), not before.
+- D5 **Lever size is chosen from a sweep, not by feel** (`--eff-scale`/`--max-shift`; six
+  fixed lineups + the general run; talent share from `--report`). Regression gates from
+  game_engine D5 stay: sd 12–13, margin 12–14, ≥85% in [90,130], PPP 1.05–1.12, home win
+  52–56%. The talent-share band is the owner's call after the sweep.
   **Sweep 2026-09-16** (`npm run balance -- 500 --seed 42 [--report] --eff-scale S
   --max-shift 0.4·S`, after T1 + in-game centres; talent = OVR-gap R² from `--report`):
 
@@ -132,11 +129,9 @@ fouls/injuries (game_engine D6 still holds).
   `calcTeamPossRating`/`STRENGTH_SWING_PCT`/`TURNOVER_RATE` removed; `--levers` flag;
   `tests/unit/possession-events.test.ts`. Spread after tuning (500, seed 42): PPP 1.050,
   sd 13.1, margin 15.3, [90,130] 86.6%, home win 57.2%. Tier: top.
-- T5 — done 2026-09-16 (numbers in HANDOVER): `player_bootstrap` + `--report` re-run on the
-  final constants; `docs/game_mechanics.md` sections 1-4 rewritten; HANDOVER milestone.
-  Open for the owner: sign off the lever table (perimeter shooting 1.98 sits just under
-  perimeter defence 2.12 — `EDGE_WEIGHT.three.off` 1.15 would flip it), then
-  `/roadmap done engine_possession_model`. Tier: low.
+- T5 — done 2026-09-16: `player_bootstrap` + `--report` re-run; `docs/game_mechanics.md`
+  §1-4 rewritten; HANDOVER milestone + open issue 6 (owner sign-off: talent share 21.9% /
+  49.3%, lever order). Then `/roadmap done engine_possession_model`. Tier: low.
 
 ## Parallelization / model tier
 
