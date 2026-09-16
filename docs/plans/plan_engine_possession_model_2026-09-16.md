@@ -51,10 +51,13 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
   perimeter DEN 62 / NYK 62 / WAS 58 / LAL 57 / DET 44. Depth view at equal plain mean 60:
   a flat lineup is worth exactly its mean in every row; a 90 + four 52s buys +6 in
   playmaking, +4 in mid, ~+2 in perimeter/rebounding, 0 on defence.
-- D3 **Edge centres are measured, not pool means.** With k>0 the expected lineup value of a
-  random rotation lineup is not 50 (playmaking ≈ 58, perimeter ≈ 54). `LINEUP_CENTRE`
-  holds the measured centre per dimension (seeded random 5-man lineups from rotation
-  players, printed by the balance script header, asserted by a test within ±1.5);
+- D3 **Edge centres are measured over in-game lineups, not pool means.** `LINEUP_CENTRE`
+  holds the expected lineup value per dimension for lineups drawn the way the engine draws
+  them (bot drafts → bot rosters → five per depth-chart slot weighted by minutes;
+  `measureLineupCentres` in `tests/unit/helpers.ts`, printed by the balance header,
+  asserted by a test within ±1.5). Drafted lineups sit 6–13 points above random rotation
+  lineups in every dimension but perimeter; centring on the random pool made every channel
+  edge negative on average and PPP fall with the edge scale (found in the first sweep);
   `CHANNEL_CENTRE` (replacing `LEAGUE_AVG`) derives the per-channel off/def centres from
   it (mid defence = 0.4·perimeterDefense + 0.6·postDefense as today).
 - D4 **Efficiency uses the aggregated value; shot share uses the plain mean.** Who shoots
