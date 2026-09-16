@@ -146,7 +146,7 @@ export const HOLE_BOTTOM_N = 2;
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
   finishing: 63.2, midRange: 62.3, perimeter: 54.0, playmaking: 68.8,
-  rebounding: 66.6, perimeterDefense: 60.0, postDefense: 59.9,
+  rebounding: 66.6, perimeterDefense: 61.7, postDefense: 61.7,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */
@@ -361,22 +361,30 @@ export const POSITIONLESS_PLAYERS = new Set([
 
 /**
  * Badge (Trait) level thresholds, per dimension (card_balance T3, 2026-09-16,
- * owner-approved). D3's original flat 80/90/96 cutoff applied the same absolute number
- * to all seven skill ratings despite very different underlying distributions
- * (playmaking mean 35 vs perimeter mean 57) — some badges (Finisher L3) were nearly
- * unreachable while others (Sharpshooter L1) were common. Replaced with the same
- * top-9% / top-3.5% / top-1.3% cutoff on every dimension, so no dimension's L3 can be
- * easier than another's L2 — consistency by construction, not hand-tuned per badge.
- * Regenerate via `npm run build:cards` (it prints this block) whenever the pool changes.
+ * owner-approved, hand-rolled final pass). D3's original flat 80/90/96 cutoff applied
+ * the same absolute number to all seven skill ratings despite very different underlying
+ * distributions (playmaking mean 35 vs perimeter mean 57) — some badges (Finisher L3)
+ * were nearly unreachable while others (Sharpshooter L1) were common. An equal-percentile
+ * pass fixed that but was rejected as "absolute balance" — it erased real, deliberate
+ * scarcity (playmaking is a genuinely concentrated, high-lever skill; perimeter/finishing
+ * are broadly practiced). This is the locked design: every level is binned to one
+ * consistent range (L1 70-79, L2 80-89, L3 90-99) so the numbers read the same way across
+ * every colour, rounded to multiples of 3 within that range for a "synergized" feel, and
+ * for each dimension the bin chosen is whichever lands its real holder-count closest to
+ * the cross-dimension average for that level (~62 at L1, ~29 at L2, ~11 at L3) — real
+ * scarcity still varies by dimension (playmaking/rebounding/defense sit at the low end of
+ * their bin range, perimeter/finishing at the high end), it's just expressed in aligned,
+ * legible numbers instead of raw percentile artifacts. Hand-set, not auto-regenerated —
+ * do not overwrite with `build:cards`'s printed percentile block.
  */
 export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: number }> = {
-  finishing:         { l1: 83, l2: 88, l3: 92 },
-  midRange:          { l1: 81, l2: 89, l3: 96 },
-  perimeter:         { l1: 87, l2: 91, l3: 94 },
-  playmaking:        { l1: 77, l2: 95, l3: 99 },
-  rebounding:        { l1: 75, l2: 94, l3: 99 },
-  perimeterDefense:  { l1: 76, l2: 86, l3: 94 },
-  postDefense:       { l1: 72, l2: 82, l3: 90 },
+  finishing:         { l1: 79, l2: 86, l3: 90 },
+  midRange:          { l1: 76, l2: 86, l3: 93 },
+  perimeter:         { l1: 79, l2: 89, l3: 93 },
+  playmaking:        { l1: 70, l2: 83, l3: 99 },
+  rebounding:        { l1: 70, l2: 83, l3: 96 },
+  perimeterDefense:  { l1: 70, l2: 80, l3: 90 },
+  postDefense:       { l1: 70, l2: 80, l3: 90 },
 };
 
 /** Card rarity cutoffs on `overall` before award/legendary/league-leader bumps. */

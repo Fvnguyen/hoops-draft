@@ -62,12 +62,17 @@ function main(): void {
     console.log(`  ${(key + ':').padEnd(18)} { mean: ${m.toFixed(2)}, sd: ${sd.toFixed(2)} },`);
   }
 
-  // card_balance T3 (2026-09-16, owner-approved): the same top-X% cutoff per dimension,
-  // guaranteeing badge coverage is consistent by construction across all 7 skills — no
-  // dimension's L3 can be easier than another's L2. Paste over BADGE_THRESHOLDS in
-  // engine/balance.ts whenever the pool changes.
+  // card_balance T3 (2026-09-16): an EARLIER equal-percentile pass through this exact
+  // cutoff — same top-X% on every dimension — was superseded by the owner as "absolute
+  // balance," erasing real, deliberate scarcity differences between skills. The locked
+  // BADGE_THRESHOLDS in engine/balance.ts is now hand-rolled (binned to 70-79/80-89/90-99,
+  // rounded to multiples of 3, each dimension's bin chosen to land closest to the
+  // cross-dimension average count) — do NOT paste this printed block over it. This
+  // printout is diagnostic only: a reference point for spotting new outliers (a badge
+  // drifting to 0 or far outside the hand-set range) after a pool refresh, not a source
+  // of truth to copy from.
   const L1_PCT = 0.09, L2_PCT = 0.035, L3_PCT = 0.013;
-  console.log('\nBADGE_THRESHOLDS (per-dimension percentile cutoffs — copy into engine/balance.ts):');
+  console.log('\nBADGE_THRESHOLDS reference (equal-percentile, DIAGNOSTIC ONLY — do not paste over the hand-rolled block in engine/balance.ts):');
   for (const key of ratingKeys) {
     if (key === 'overall') continue;
     const v = tagged.map((c) => c.ratings[key] ?? 0).sort((a, b) => b - a);
