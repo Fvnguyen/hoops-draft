@@ -1,27 +1,22 @@
 # Plan: engine_possession_model
 
-File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (wave 1 done: T1 lineup model, T2 edge 0.20/0.08; wave 2 T3/T4 next).
+File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (T1-T5 done 2026-09-16; owner sign-off pending on talent share 21.9%/49.3% and the lever order — HANDOVER open issue 6).
 Sequence: 4a in `docs/ROADMAP.md` (ahead of card_balance). Depends on: game_engine (done).
-Files owned: `engine/balance.ts` (new "Lineup model" section, `CHANNEL_CENTRE`, edge scale),
-new `engine/lineup.ts`, `engine/game.ts` (possession edge, shot profile, possession events),
-`scripts/balance.ts` (`--eff-scale`, lineup-centre header), `scripts/build-cards.ts` (norm
-printout), `scripts/player_bootstrap.ts`, `tests/unit/lineup.test.ts`, `tests/unit/game*.test.ts`,
-`docs/game_mechanics.md`.
+Files owned: `engine/balance.ts` (lineup model + possession events sections), `engine/lineup.ts`,
+`engine/game.ts`, `scripts/balance.ts` (`--eff-scale`/`--max-shift`/`--levers`, centre header),
+`scripts/build-cards.ts`, `tests/unit/{lineup,possession-events,game}.test.ts`, `docs/game_mechanics.md`.
 
 ## Goal
 
-Owner reframing (2026-09-16 session): the engine must produce meaningful play and NBA feel,
-with dimensions unequally important *by design*. Evidence that it does not today
-(`analysis_player_win_shares_bootstrap_2026-09-16.md` + this session's six-lineup study):
-the per-possession edge is an unweighted 5-man mean, so one functional zero (Duren 0
-perimeter) outweighs the best shooter in the league; every lineup collapses toward the
-pool mean; a 23-point lineup edge buys 2.3pp of efficiency, so six real starting fives
-span under 5% in expected points per shot; playmaking and rebounding enter only through
-a pre-game possession battle capped at 3.5% of pace (a 10-point gap ≈ 0.3 possessions).
-After this plan: lineup values are computed per dimension with a designed aggregation
-(stars carry creation, shooting is by committee, defence depends on everyone), every
-rating has a per-possession lever, and the size of each lever is chosen from measured
-spread, not by feel. Badge-driven "individual brilliance" effects are a later plan.
+Owner reframing (2026-09-16): meaningful play and NBA feel, with dimensions unequally
+important *by design*. Evidence it was not so (`analysis_player_win_shares_bootstrap_2026-09-16.md`
++ this session's six-lineup study): the per-possession edge was an unweighted 5-man mean
+of raw ratings (one functional zero outweighed the best shooter in the league, every
+lineup collapsed toward the pool mean, six real starting fives spanned under 5% in
+expected points per shot), and playmaking/rebounding entered only through a pre-game
+possession battle worth ~0.3 possessions per 10 rating points. After this plan: designed
+per-dimension lineup aggregation, every rating has a per-possession lever, lever sizes
+chosen from measurement. Badge "individual brilliance" effects are a later plan.
 
 ## Decisions (locked)
 
@@ -46,11 +41,10 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
   | perimeterDefense | 0 | 35 | 0.30 | everyone guards someone; two weak links get hunted |
   | postDefense | 0 | 35 | 0.20 | same, lighter |
 
-  Floor 35 = one sd below league average, defined once. Measured on the six 2025-26
-  starting fives (standardised): playmaking LAL 79 / DEN 76 / NYK 70 / DET 66 / WAS 60;
-  perimeter DEN 62 / NYK 62 / WAS 58 / LAL 57 / DET 44. Depth view at equal plain mean 60:
-  a flat lineup is worth exactly its mean in every row; a 90 + four 52s buys +6 in
-  playmaking, +4 in mid, ~+2 in perimeter/rebounding, 0 on defence.
+  Floor 35 = one sd below average. Six 2025-26 fives (standardised): playmaking LAL 79 /
+  DEN 76 / NYK 70 / DET 66 / WAS 60; perimeter DEN 62 / NYK 62 / WAS 58 / LAL 57 / DET 44.
+  A flat lineup is worth exactly its mean; a 90 + four 52s buys +6 playmaking, +4 mid,
+  ~+2 perimeter/rebounding, 0 on defence. Pinned by `tests/unit/lineup.test.ts`.
 - D3 **Edge centres are measured over in-game lineups, not pool means.** `LINEUP_CENTRE`
   holds the expected lineup value per dimension for lineups drawn the way the engine draws
   them (bot drafts → bot rosters → five per depth-chart slot weighted by minutes;
@@ -79,12 +73,10 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
   | 0.10 (today) | 1.062 | 12.8 | 13.9 | 89.1% | 56.4% | 5.3% | 17.5% | 69.5 / 30.6 | 2.9% |
   | 0.20 | 1.060 | 13.3 | 14.6 | 87.0% | 49.4% | 10.2% | 29.1% | 76.8 / 23.3 | 5.1% |
   | 0.30 | 1.061 | 14.0 | 16.1 | 85.8% | 56.0% | 17.3% | 41.6% | 83.6 / 16.5 | 7.4% |
-  | 0.40 | 1.061 | 14.0 | 16.1 | 85.7% | 54.0% | – | – | – | 9.7% |
 
-  Home win at 500 games has a ±2.2pp standard error; PPP is flat across scales only
-  after the in-game recentring (with pool-mean centres it fell 1.043 → 0.999). The
-  earlier baseline margin (15.5) was already outside the 12–14 band. **Owner chose 0.20 /
-  max shift 0.08** (committed as `EFFICIENCY_SCALE` / `MAX_EFF_SHIFT`).
+  PPP is flat across scales only after the in-game recentring (D3); baseline margin (15.5)
+  was already outside the 12–14 band. **Owner chose 0.20 / 0.08** (`EFFICIENCY_SCALE` /
+  `MAX_EFF_SHIFT`).
 - D6 **Possession model folds into play by play** (wave 2): the pre-game possession battle
   (`calcTeamPossRating`, `STRENGTH_SWING_PCT`) is removed; possessions are equal except
   for turnovers and offensive rebounds resolved per possession from the on-court lineups.
@@ -92,14 +84,34 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
   `TURNOVER_RATE` on misses) and a bounded steer of the shot profile toward the channel
   with the best matchup edge (cap in `balance.ts`); rebounding (vs opponent rebounding)
   sets the offensive-rebound chance after a miss. No flat efficiency boost from playmaking.
-- D7 Badges stay out of dimension mechanics. A later plan (`badge_effects`, roadmap) adds
-  badge-level "individual brilliance" effects; nothing here reads `traits`.
+  **Done 2026-09-16.** Measured turnover rate 13.9% of possessions, ~30% of misses
+  rebounded by the offence. Lever sizes then set per side and channel (`EDGE_WEIGHT`,
+  `TURNOVER_DEF_WEIGHT`, `OREB_SCALE` 0.30→0.15, `TURNOVER_SCALE` 0.20→0.25) against
+  `npm run balance -- 5000 --seed 777 --levers` (margin per game for +10 standardised
+  points on one rating for a whole roster, 5000 paired games each, se ≈ 0.26):
+
+  | dimension | before tuning (equal weights) | after |
+  |---|---:|---:|
+  | finishing | 1.11 | 2.66 |
+  | playmaking | 1.74 | 2.66 |
+  | perimeterDefense | 4.37 | 2.12 |
+  | perimeter | 2.10 | 1.98 |
+  | postDefense | 1.87 | 1.58 |
+  | rebounding | 3.10 | 1.38 |
+  | midRange | 0.34 | 0.75 |
+
+  At equal weights finishing was the smallest offensive lever (a rim make is 1.77 points on
+  35% of shots) and perimeter defence stacked threes, 40% of mid and forced turnovers.
+  Now: creation and finishing on top, shooting and perimeter defence next, post defence
+  and rebounding medium, mid-range lowest. The edge clamp now equals `MAX_EFF_SHIFT /
+  EFFICIENCY_SCALE` (the old ±0.25 was sized for unit weights).
+- D7 Badges stay out of dimension mechanics (`badge_effects` plan later); nothing here
+  reads `traits`.
 - D8 Every constant change is one commit quoting before/after from the exact balance
   command (game_engine D7). Baseline 2026-09-16, `npm run balance -- 500 --seed 42`:
   PPP 1.061, score sd 13.2, [90,130] 87.7%, home win 55.0%, OT 3.4%.
-- D9 `player_bootstrap` (`corr(OVR, winSharesPerGame)` 0.617, badge correlation table) is
-  re-run after wave 1 and wave 2; the intended dimension ordering (owner: mid-range
-  lowest by design, playmaking not last) is a checked claim in the exit criteria.
+- D9 `player_bootstrap` re-run after each wave; the intended dimension ordering is checked
+  with `--levers` (badge correlations are confounded by position and minutes).
 
 ## Out of scope
 
@@ -109,34 +121,29 @@ plan); badge effects (`badge_effects`, later); narration (`game_theater`); bot d
 
 ## Tasks
 
-- T1 Lineup model: `RATING_NORM`, `STANDARDISE`, `LINEUP_AGG`, `HOLE_BOTTOM_N`,
-  `LINEUP_CENTRE`, `CHANNEL_CENTRE` in `balance.ts`; pure `engine/lineup.ts`
-  (`standardiseRating`, `lineupValue`, `lineupMidDefence`); `resolvePossession` uses them
-  for the channel edge. Tests: formula properties (flat lineup = its value, k=0 = mean,
-  bottom-two hole), the Pistons/Lakers numbers above, norm vs `cards.json`, centre vs
-  measured. `build-cards` prints the norm block. Done when `npm test` is green and the
-  balance header prints measured centres within ±1.5 of the constants. Tier: top.
-- T2 Lever sweep per D5: `--eff-scale`/`--max-shift` flags threaded through
-  `simulateMany`; six-lineup expected-points table + general run at three scales; owner
-  picks the band; constants committed with before/after. Tier: top.
-- T3 Shot profile from the on-court five (plain mean of standardised values, D4), removing
-  the 12-man pre-game profile; re-measure. Tier: mid.
-- T4 Possession events per D6: turnovers from playmaking vs perimeter defence, offensive
-  rebounds from rebounding, creator steer; remove the possession battle and its constants;
-  regression tests for each event. Tier: top.
-- T5 Re-run `player_bootstrap` and `--report`; update `docs/game_mechanics.md` (lineup
-  model section, possession events) and HANDOVER. Tier: low.
+- T1 — done (`ff6a59a`, `b8c233a`). Lineup model constants in `balance.ts`, pure
+  `engine/lineup.ts`, `resolvePossession` on lineup values; `lineup.test.ts` pins the
+  formula, the six-lineup numbers, `RATING_NORM` vs cards.json and `LINEUP_CENTRE` vs a
+  seeded in-game measurement. Tier: top.
+- T2 — done (`0332b3a`). D5 sweep, owner chose 0.20 / 0.08. Tier: top.
+- T3 — done. Shot profile from the on-court five (`calcLineupShotProfile`, D4); the deck
+  builder's shot-diet preview shows the starting five. Tier: mid.
+- T4 — done. Possession events per D6 (`turnoverChance`, `offensiveReboundChance`,
+  `steerShotProfile` — steer ranks channels by absolute expected points, a first version
+  that ranked by relative edge steered into mid-range and was caught by its test);
+  `calcTeamPossRating`/`STRENGTH_SWING_PCT`/`TURNOVER_RATE` removed; `--levers` flag;
+  `tests/unit/possession-events.test.ts`. Spread after tuning (500, seed 42): PPP 1.050,
+  sd 13.1, margin 15.3, [90,130] 86.6%, home win 57.2%. Tier: top.
+- T5 — done 2026-09-16 (numbers in HANDOVER): `player_bootstrap` + `--report` re-run on the
+  final constants; `docs/game_mechanics.md` sections 1-4 rewritten; HANDOVER milestone.
+  Open for the owner: sign off the lever table (perimeter shooting 1.98 sits just under
+  perimeter defence 2.12 — `EDGE_WEIGHT.three.off` 1.15 would flip it), then
+  `/roadmap done engine_possession_model`. Tier: low.
 
-## Parallelization
+## Parallelization / model tier
 
-Wave 1: T1 then T2 (driver, sequential — T2 needs T1's numbers). Wave 2: T3 and T4 can run
-in parallel (T3 owns `calcTeamShotProfile`, T4 owns `calcPossessionSplit`/`resolvePossession`
-events); driver merges and re-measures. Wave 3: T5.
-
-## Recommended model tier
-
-Main driver: Fable 5.1 / Opus 5 (every task changes balance numbers). T3/T5 agents:
-Sonnet 5 / Haiku 4.5.
+All waves ran in one driver session (Fable 5.1): T1 → T2 → T3+T4 → T5. Every task changed
+balance numbers, so no agent delegation.
 
 ## Verification / exit criteria
 

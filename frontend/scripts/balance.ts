@@ -5,6 +5,9 @@
  * Usage: tsx scripts/balance.ts [games=500] [--seed N] [--ab] [--catalog] [--draft-impact] [--report]
  *        [--eff-scale X] [--max-shift Y]   (engine_possession_model D5 lever sweep: override
  *        EFFICIENCY_SCALE / MAX_EFF_SHIFT for this run only; the header prints both)
+ *        [--levers]   per-dimension lever table: +10 standardised points on ONE rating for a
+ *        whole roster, same seed and opponent, margin/win delta per dimension ("unequal by
+ *        design" is checked against this, not asserted)
  *
  * Runs the same headless draft -> roster -> game pipeline as the vitest
  * suite (tests/unit/helpers.ts) and prints a compact tuning report: PPP,
@@ -49,7 +52,7 @@ import { simulateGame, type TeamInfo, type GameTheater, type EdgeTuning } from '
 import { evaluateArchetypes, ARCHETYPES, type ArchetypeTier, type ArchetypeDef, type ArchetypeSelection, type Color } from '../src/engine/archetypes';
 import { generateCubePool } from '../src/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '../src/engine/deckbuilder';
-import { CUBE_PLAYER_CARDS_PER_PACK, RATING_DIMS, LINEUP_CENTRE, LINEUP_AGG, EFFICIENCY_SCALE, MAX_EFF_SHIFT } from '../src/engine/balance';
+import { CUBE_PLAYER_CARDS_PER_PACK, RATING_DIMS, RATING_NORM, LINEUP_CENTRE, LINEUP_AGG, EFFICIENCY_SCALE, MAX_EFF_SHIFT, type RatingDim } from '../src/engine/balance';
 import type { PlayerCardData, Play, DraftCard } from '../src/engine/types';
 import { pathToFileURL } from 'url';
 import fs from 'fs';
@@ -58,8 +61,9 @@ import path from 'path';
 /** Edge-size override for this run (plan D5 sweep); set once in main, read by every harness. */
 let activeTuning: EdgeTuning = {};
 
-function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; catalog: boolean; draftImpact: boolean; report: boolean; tuning: EdgeTuning } {
+function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; catalog: boolean; draftImpact: boolean; report: boolean; levers: boolean; tuning: EdgeTuning } {
   const tuning: EdgeTuning = {};
+  let levers = false;
   let games = 500;
   let seed: number | undefined;
   let ab = false;
@@ -69,7 +73,9 @@ function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; 
 
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--eff-scale') {
+    if (argv[i] === '--levers') {
+      levers = true;
+    } else if (argv[i] === '--eff-scale') {
       tuning.efficiencyScale = Number(argv[++i]);
     } else if (argv[i] === '--max-shift') {
       tuning.maxEffShift = Number(argv[++i]);
@@ -89,7 +95,7 @@ function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; 
   }
   if (positional[0]) games = parseInt(positional[0], 10);
 
-  return { games, seed: seed ?? randomSeed(), ab, catalog, draftImpact, report, tuning };
+  return { games, seed: seed ?? randomSeed(), ab, catalog, draftImpact, report, levers, tuning };
 }
 
 /** T8 (D11): the `spread` section of balance_report_*.json — same numbers the plain
@@ -949,6 +955,53 @@ function reportAb(pairs: ABPair[]): void {
   console.log(`  Opponent away: n=${awayPairs.length}  mean margin ${fmtDelta(mean(awayPairs.map((p) => p.marginTreatment)))}`);
 }
 
+
+// ── Per-dimension lever table (--levers, engine_possession_model) ────────────
+
+/**
+ * How much one rating dimension is worth: every player on a roster gets +10 standardised
+ * points (10/15 of that dimension's pool sd, raw) on ONE dimension, and the roster replays
+ * the same seeded games against the same opponents. Reports margin and win% delta per
+ * dimension — the check for "dimensions are unequally important by design".
+ */
+function runLeverTable(players: PlayerCardData[], drafts: number, gamesPerDraft: number, seed: number, tuning: EdgeTuning): void {
+  const Z_BUMP = 10;
+  const bump = (t: TeamInfo, dim: RatingDim): TeamInfo => ({
+    ...t,
+    players: t.players.map((p) => ({
+      ...p,
+      ratings: { ...p.ratings, [dim]: Math.max(0, Math.min(99, (p.ratings[dim] ?? 0) + (Z_BUMP / 15) * RATING_NORM[dim].sd)) },
+    })),
+  });
+  const acc: Record<string, { margin: number; win: number; n: number }> = {};
+  for (const d of RATING_DIMS) acc[d] = { margin: 0, win: 0, n: 0 };
+  const rng = createRng(seed);
+  for (let d = 0; d < drafts; d++) {
+    const teams = buildTeams(runHeadlessDraft(players, PLAYS, Math.floor(rng.next() * 4294967296)));
+    for (let g = 0; g < gamesPerDraft; g++) {
+      const a = Math.floor(rng.next() * teams.length);
+      let b = Math.floor(rng.next() * teams.length);
+      while (b === a) b = Math.floor(rng.next() * teams.length);
+      const gameSeed = Math.floor(rng.next() * 4294967296);
+      const base = simulateGame(teams[a], teams[b], { rng: createRng(gameSeed), tuning });
+      const baseMargin = base.finalScore[0] - base.finalScore[1];
+      for (const dim of RATING_DIMS) {
+        const gm = simulateGame(bump(teams[a], dim), teams[b], { rng: createRng(gameSeed), tuning });
+        const m = gm.finalScore[0] - gm.finalScore[1];
+        acc[dim].margin += m - baseMargin;
+        acc[dim].win += (m > 0 ? 1 : 0) - (baseMargin > 0 ? 1 : 0);
+        acc[dim].n++;
+      }
+    }
+  }
+  const n = acc[RATING_DIMS[0]].n;
+  console.log(`\n=== Lever table (--levers): +${Z_BUMP} standardised points on one rating for a whole roster, ${n} paired games per dimension ===`);
+  console.log(`  ${'dimension'.padEnd(18)} ${'Δ margin/game'.padStart(14)} ${'Δ win%'.padStart(8)}`);
+  for (const dim of [...RATING_DIMS].sort((x, y) => acc[y].margin / acc[y].n - acc[x].margin / acc[x].n)) {
+    console.log(`  ${dim.padEnd(18)} ${(acc[dim].margin / acc[dim].n).toFixed(2).padStart(14)} ${((acc[dim].win / acc[dim].n) * 100).toFixed(1).padStart(7)}pp`);
+  }
+}
+
 // ── Unified report (--report, D11) ──────────────────────────────────────────
 
 const REPORT_SCHEMA_VERSION = 2; // v2 (2026-09-14): added outcomeDecomposition (talent/home/strategy/lineup split)
@@ -970,7 +1023,7 @@ function writeUnifiedReport(
 }
 
 function main(): void {
-  const { games: n, seed, ab, catalog, draftImpact, report, tuning } = parseArgs(process.argv.slice(2));
+  const { games: n, seed, ab, catalog, draftImpact, report, levers, tuning } = parseArgs(process.argv.slice(2));
   activeTuning = tuning;
   console.log(`Seed: ${seed}`);
   const t0 = Date.now();
@@ -999,6 +1052,11 @@ function main(): void {
     }
   }
   console.log(`\nEdge size: EFFICIENCY_SCALE ${tuning.efficiencyScale ?? EFFICIENCY_SCALE}${tuning.efficiencyScale !== undefined ? ' (override)' : ''}, MAX_EFF_SHIFT ${tuning.maxEffShift ?? MAX_EFF_SHIFT}${tuning.maxEffShift !== undefined ? ' (override)' : ''}`);
+
+  if (levers) {
+    runLeverTable(players, Math.max(4, Math.round(n / 40)), 40, seed, tuning);
+    return;
+  }
 
   console.log(`\nRunning ${n} headless games...`);
   const games = simulateMany(n, players, PLAYS, seed, { tuning });

@@ -206,6 +206,22 @@ export const AND1_CHANCE_CAP = 0.30;
 export const EFFICIENCY_SCALE = 0.20;
 export const MAX_EFF_SHIFT = 0.08;
 
+/**
+ * Per-channel edge weights (engine_possession_model, "unequal by design"): the channel
+ * edge is `off · (offence − centre) − def · (defence − centre)`, so each side of each
+ * channel has its own deliberate size. Rationale (measured with `npm run balance --
+ * --levers`, margin per game for +10 standardised points on a whole roster): at equal
+ * weights the rim is the smallest offensive lever (1.1) because a rim make is worth 1.77
+ * points on 35% of shots, while perimeter defence stacks the three-point channel, 40% of
+ * mid-range and forced turnovers (4.4). The owner's intended order is finishing, shooting
+ * and creation on top, defence and rebounding medium, mid-range lowest.
+ */
+export const EDGE_WEIGHT: Record<ShotChannel, { off: number; def: number }> = {
+  rim:   { off: 2.2, def: 1.2 },
+  mid:   { off: 1.0, def: 0.6 },
+  three: { off: 1.0, def: 0.6 },
+};
+
 /** Profile blending: 50% NBA baseline, 50% team tendency. */
 export const PROFILE_WEIGHT = 0.50;
 
@@ -221,21 +237,26 @@ export const PROFILE_WEIGHT = 0.50;
 /**
  * Turnover before a shot: playmaking (lineup value, k=1.5 star channel) against the
  * opponent's perimeter defence. NBA team turnover rate is ~13-14 per 100 possessions.
- * chance = BASE − SCALE · edge, clamped to [MIN, MAX]; a +20-point creator edge is −4pp.
+ * chance = BASE − SCALE · edge, clamped to [MIN, MAX]; a +20-point creator edge is −5pp.
  */
 export const TURNOVER_BASE = 0.135;
-export const TURNOVER_SCALE = 0.20;
+export const TURNOVER_SCALE = 0.25;
+/** How much of the turnover edge the DEFENCE's perimeter defence supplies (steals) relative
+ *  to the offence's playmaking (ball security). Below 1 so perimeter defence, which already
+ *  guards the most valuable channel, does not become the biggest lever in the game. */
+export const TURNOVER_DEF_WEIGHT = 0.3;
 export const TURNOVER_MIN = 0.06;
 export const TURNOVER_MAX = 0.24;
 
 /**
  * Offensive rebound after a missed field goal (not after a free-throw trip): the
  * offence's rebounding value against the defence's. NBA OREB% is ~25-28% of misses.
- * chance = BASE + SCALE · edge, clamped; the possession then continues with another shot
+ * chance = BASE + SCALE · edge, clamped (rebounding acts on both ends, so SCALE is half the
+ * turnover scale to keep it a medium lever); the possession then continues with another shot
  * (same lineup and profile) up to MAX_CHAIN extra shots.
  */
 export const OREB_BASE = 0.26;
-export const OREB_SCALE = 0.30;
+export const OREB_SCALE = 0.15;
 export const OREB_MIN = 0.12;
 export const OREB_MAX = 0.42;
 export const OREB_MAX_CHAIN = 2;

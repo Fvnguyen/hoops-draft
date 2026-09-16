@@ -28,7 +28,7 @@ import {
   POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
   OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
   NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT,
-  LINEUP_CENTRE, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
+  LINEUP_CENTRE, EDGE_WEIGHT, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_DEF_WEIGHT, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
 } from './balance';
 import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
@@ -394,8 +394,8 @@ export function steerShotProfile(
   return { rim: shares.rim, mid: shares.mid, per: shares.three };
 }
 
-/** Channel edge in rating points / 100, clamped ±0.25 — the same number resolvePossession
- *  scales into an efficiency shift. */
+/** Channel edge in rating points / 100 (EDGE_WEIGHT per side), clamped so the efficiency
+ *  cap binds exactly at the clamp — the number resolvePossession scales into an efficiency shift. */
 function channelEdge(
   channel: ShotChannel,
   offenseLineup: PlayerCardData[],
@@ -417,14 +417,19 @@ function channelEdge(
       defRating = lineupValue(defenseLineup, 'perimeterDefense');
       break;
   }
-  const edge = ((offRating - centre[channel].off) - (defRating - centre[channel].def)) / 100;
-  return Math.max(-0.25, Math.min(0.25, edge));
+  const w = EDGE_WEIGHT[channel];
+  const edge = (w.off * (offRating - centre[channel].off) - w.def * (defRating - centre[channel].def)) / 100;
+  // Clamp where the efficiency cap would bind anyway (MAX_EFF_SHIFT / EFFICIENCY_SCALE), so
+  // the two caps coincide and a channel weight above 1 is not cut off early by a stale
+  // ±0.25 (which was sized for unit weights).
+  const cap = MAX_EFF_SHIFT / EFFICIENCY_SCALE;
+  return Math.max(-cap, Math.min(cap, edge));
 }
 
 /** D6: chance the offence turns it over before getting a shot up. Exported for tests. */
 export function turnoverChance(offenseLineup: PlayerCardData[], defenseLineup: PlayerCardData[]): number {
   const edge = ((lineupValue(offenseLineup, 'playmaking') - LINEUP_CENTRE.playmaking)
-              - (lineupValue(defenseLineup, 'perimeterDefense') - LINEUP_CENTRE.perimeterDefense)) / 100;
+              - TURNOVER_DEF_WEIGHT * (lineupValue(defenseLineup, 'perimeterDefense') - LINEUP_CENTRE.perimeterDefense)) / 100;
   return Math.max(TURNOVER_MIN, Math.min(TURNOVER_MAX, TURNOVER_BASE - TURNOVER_SCALE * edge));
 }
 
