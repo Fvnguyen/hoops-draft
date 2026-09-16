@@ -62,18 +62,13 @@ the pack spread and later picks are two rows of four whose grid width is derived
 the viewport height (header + ticker hidden while inert during the intro); deck builder
 has no page scroll, only its columns; game/season scroll vertically by decision.
 Audit (`tests/mobile-audit.spec.ts`): rule 5 flags own text outside the viewport with no
-scroll container or translated drawer (found four real clips `scrollWidth` never saw),
-rule 6 forbids page scroll on home/draft/deck builder (strict on home/draft: any region
-over half the screen scrolling more than a tenth), rects divided by `currentCSSZoom`,
-measurement before the full-page screenshot, textless/line-clamped boxes are art.
-Touch contract: tap selects, tap again deselects, no flip on tap, no double-tap pick, no
-2s auto-pick — the dock's Confirm/Take picks; long-press (450ms) opens the preview with
-badge legend + front + un-rotated back (`PlayerCardBack`); cards cancel the browser
-context menu on every pointer. Desktop keeps hover flip and double-click-to-pick (now in
-the pack opener too). Also: pack reveal shows the static front during the flip (nested
-3D contexts painted text through the backs), basic plays tap-to-slot, season schedule +
-standings side by side, two-line names under 200px, headshots via `next/image` (~22 KB
-WebP instead of 182 KB PNG) with the draft room preloading this and the incoming pack.
+scroll container (found four real clips `scrollWidth` never saw), rule 6 forbids page
+scroll on home/draft/deck builder, rects divided by `currentCSSZoom`. Touch contract:
+tap selects, tap again deselects, no flip/double-tap pick, the dock's Confirm/Take picks;
+long-press (450ms) opens the preview (badge legend + front + back); cards cancel the
+context menu. Desktop keeps hover flip and double-click-to-pick. Also: static front
+during the reveal flip, basic plays tap-to-slot, schedule + standings side by side,
+headshots via `next/image` (~22 KB WebP) with the draft room preloading the next pack.
 Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
 (`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
 
@@ -225,6 +220,12 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    game 3: PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that
    team every possession. Fix belongs in `engine/deckbuilder.ts` (bot roster must cover
    all five slots, or the draft bot must guarantee eligibility) — `draft_ai` territory.
+
+9. **Jahmai Mashack (MEM) has no NBA id** — not in the installed `nba_api` static list, and
+   `stats.nba.com` timed out from the build container, so his card keeps a hash id and the
+   CDN placeholder headshot. Re-run `fetch_players.py` (its resolver now prefers active
+   players and strips Jr/II/III suffixes — fixed 2026-09-16 for Ron Holland, Robert
+   Williams III, A.J. Green) with a current `nba_api` and network to pick him up.
 
 ## Where to look
 

@@ -32,6 +32,49 @@ def get_bref_table(html_content, table_id):
     
     return df
 
+
+# ── NBA id resolution ────────────────────────────────────────────────────────
+# basketball-reference names drop generational suffixes ("Ron Holland", "Robert
+# Williams") while the NBA list carries them ("Ronald Holland II", "Robert Williams III")
+# and also holds every retired namesake. A plain name lookup therefore lands on the
+# wrong (inactive) player and the headshot CDN serves the wrong face or a placeholder.
+# Resolution order: exact normalised match among ACTIVE players -> fuzzy match among
+# active players -> exact match among inactive players (a retired player with a real
+# card) -> None (the caller falls back to a hash id).
+
+_SUFFIX_RE = None
+
+def normalise_player_name(name):
+    """lower-case, ASCII, no punctuation, no Jr/Sr/II/III/IV suffix, single spaces."""
+    global _SUFFIX_RE
+    import re
+    if _SUFFIX_RE is None:
+        _SUFFIX_RE = re.compile(r"\b(jr|sr|ii|iii|iv|v)\b")
+    from unidecode import unidecode
+    n = unidecode(name).lower().replace('.', ' ').replace("'", '').replace('-', ' ')
+    n = _SUFFIX_RE.sub(' ', n)
+    return ' '.join(n.split())
+
+def build_nba_index(nba_players):
+    """{'active': {norm: id}, 'inactive': {norm: id}} from nba_api's static player list."""
+    active, inactive = {}, {}
+    for p in nba_players:
+        key = normalise_player_name(p['full_name'])
+        bucket = active if p.get('is_active') else inactive
+        bucket.setdefault(key, str(p['id']))
+    return {'active': active, 'inactive': inactive}
+
+def resolve_nba_id(name, index, cutoff=0.85):
+    import difflib
+    key = normalise_player_name(name)
+    if key in index['active']:
+        return index['active'][key]
+    close = difflib.get_close_matches(key, list(index['active'].keys()), n=1, cutoff=cutoff)
+    if close:
+        return index['active'][close[0]]
+    return index['inactive'].get(key)
+
+
 def fetch_and_generate_players():
     # Read from local files saved by playwright
     print("Reading local HTML files...")
@@ -286,13 +329,10 @@ def fetch_and_generate_players():
     import hashlib
     
     # Map real NBA IDs
-    nba_dict = {}
-    nba_keys = []
+    nba_index = {'active': {}, 'inactive': {}}
     try:
         from nba_api.stats.static import players
-        nba_players = players.get_players()
-        nba_dict = {unidecode(p['full_name']).lower(): str(p['id']) for p in nba_players}
-        nba_keys = list(nba_dict.keys())
+        nba_index = build_nba_index(players.get_players())
     except Exception as e:
         print("Could not map NBA IDs:", e)
 
@@ -319,14 +359,7 @@ def fetch_and_generate_players():
         team = latest_teams.get(raw_name, row['Team'])
         age = int(row['Age'])
         
-        name_lower = name.lower()
-        if name_lower not in nba_dict:
-            # Fuzzy match for NBA API
-            nba_matches = difflib.get_close_matches(name_lower, nba_keys, n=1, cutoff=0.7)
-            if nba_matches:
-                name_lower = nba_matches[0]
-
-        real_id = nba_dict.get(name_lower) or hashlib.md5((name + team + pos).encode('utf-8')).hexdigest()[:8]
+        real_id = resolve_nba_id(name, nba_index) or hashlib.md5((name + team + pos).encode('utf-8')).hexdigest()[:8]
         
         # Insert Player
         c.execute("INSERT INTO Player (id, name, position, height, weight, age, team) VALUES (?, ?, ?, ?, ?, ?, ?)",
