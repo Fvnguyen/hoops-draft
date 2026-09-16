@@ -31,8 +31,7 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
 
 One line each (full write-ups live in the linked plans under `docs/completed/`):
 
-- **Repo cleanup** (2026-09-12): nested `frontend/` repo absorbed via subtree merge; dead generator/patcher scripts and unused deps removed; AGENTS/CLAUDE/HANDOVER/ARCHITECTURE written.
-- **Phase 0 correctness** (2026-09-12): inverted defensive modifiers, play activation, possession double counting, edge bias, storage quota, `/api/cards` N+1 fixed; PPP 1.29 → 1.08.
+- **Repo cleanup + Phase 0 correctness** (2026-09-12): `frontend/` absorbed via subtree merge, dead scripts/deps removed, agent docs written; inverted defensive modifiers, play activation, possession double counting, edge bias, storage quota, `/api/cards` N+1 fixed; PPP 1.29 → 1.08.
 - **Phase 1 engine isolation** (2026-09-12): pure seeded engine (`engine/rng.ts`), `cards.json` build artifact, `src/storage/` GameStore.
 - **Plays & archetypes** (2026-09-13, `plan_plays_and_synergies_2026-09-13.md`): identities (`archetypes.ts`), assigned-player plays (`playbook.ts`), roster v2, `PlayPanel`.
 - **Post-milestone fixes** (2026-09-13): pack reveal sequence, live box score from possessions, Mythic card-back bleed, legacy upgrade paths.
