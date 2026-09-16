@@ -24,13 +24,14 @@ import {
 import type { ArchetypeSelection } from './archetypes';
 import { Rng, createRng, randomSeed } from './rng';
 import {
-  BASE_PACE, HOME_NOISE_LO_PCT, HOME_NOISE_HI_PCT, AWAY_NOISE_LO_PCT, AWAY_NOISE_HI_PCT, STRENGTH_SWING_PCT,
+  BASE_PACE, HOME_NOISE_LO_PCT, HOME_NOISE_HI_PCT, AWAY_NOISE_LO_PCT, AWAY_NOISE_HI_PCT,
   POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
   OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
-  NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
+  NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT,
+  LINEUP_CENTRE, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
 } from './balance';
-import { lineupValue, lineupMidDefence } from './lineup';
+import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
 
 /** Edge-size knobs resolvePossession reads (balance script sweeps them; defaults in balance.ts). */
 export interface EdgeTuning { efficiencyScale?: number; maxEffShift?: number }
@@ -48,6 +49,8 @@ export interface PlayerBoxScore {
   andOnes: number;
   turnovers: number;
   assists: number;
+  /** engine_possession_model D6: boards that kept a possession alive. */
+  offensiveRebounds: number;
 }
 
 export interface PossessionEvent {
@@ -62,7 +65,11 @@ export interface PossessionEvent {
   outcome: 'miss' | '2pt' | '3pt' | 'and1';
   scoringPlayerId?: string;
   assistPlayerId?: string;
-  isPossessionWinEvent?: boolean;  // Steal, OREB, etc. that earned extra possession
+  isPossessionWinEvent?: boolean;  // play/identity possessionSwing extra possession
+  /** D6: the ball-handler charged with a turnover — possession ended before a shot. */
+  turnoverPlayerId?: string;
+  /** D6: players who grabbed an offensive rebound on this possession, in order. */
+  offensiveRebounders?: string[];
   narrativeText: string;
   runningScore: [number, number]; // [home, away]
   /** Assigned-player plays that applied to this possession (§7): an offense entry when
@@ -225,7 +232,6 @@ function segmentForQuarter(quarter: number): number {
 
 // ── Possession Battle ──────────────────────────────────────────────────────
 
-// (calcTeamStrength removed — replaced by calcTeamPossRating in scoring engine v2)
 
 interface PossessionSplit {
   homePoss: number;
@@ -236,10 +242,6 @@ interface PossessionSplit {
 }
 
 function calcPossessionSplit(
-  homePlayers: PlayerCardData[],
-  awayPlayers: PlayerCardData[],
-  homeDepthChart: Record<string, string[]>,
-  awayDepthChart: Record<string, string[]>,
   homeBonuses: TeamBonuses,
   awayBonuses: TeamBonuses,
   rng: Rng
@@ -254,13 +256,10 @@ function calcPossessionSplit(
   let homePoss = BASE_PACE + homeNoise;
   let awayPoss = BASE_PACE + awayNoise;
 
-  // Team possession battle: playmaking + rebounding + defense (starters ×2, bench ×1)
-  const homePossRating = calcTeamPossRating(homePlayers, homeDepthChart);
-  const awayPossRating = calcTeamPossRating(awayPlayers, awayDepthChart);
-  const strengthDelta = ((homePossRating - awayPossRating) / 100) * BASE_PACE * STRENGTH_SWING_PCT;
-
-  homePoss += strengthDelta;
-  awayPoss -= strengthDelta;
+  // engine_possession_model D6: no pre-game possession battle. Teams get equal
+  // possessions apart from the pace noise above and the play/identity swing below; what a
+  // roster's playmaking/rebounding/defence is worth is resolved per possession
+  // (turnovers, offensive rebounds, the creator steer in playOnePossession).
 
   // Apply synergy/play possession swing (small fixed bonuses). P0-3: this is the ONLY
   // place possession swings are applied — every synergy/play source (offensive or
@@ -292,49 +291,17 @@ function calcPossessionSplit(
 /// ── Scoring Engine (v2 — Multi-Channel) ───────────────────────────────────
 //
 // Architecture:
-//   PRE-GAME (team-wide):
-//     1. calcTeamPossRating → possession battle delta
-//     2. calcTeamShotProfile → team shot distribution [rim%, mid%, per%]
-//
-//   PER-POSSESSION (lineup-specific):
-//     3. Roll shot type from team distribution
-//     4. Compute channel edge (lineup offense vs opponent lineup defense)
-//     5. Roll efficiency (base + edge × SCALE, clamped ±10pp)
-//     6. Points + and-1 check
+//   PER-POSSESSION, all from the five on the floor (engine_possession_model D4/D6):
+//     1. Turnover roll (playmaking vs perimeter defence) — possession may end here
+//     2. Shot profile from the lineup's plain means, called-play share shift, creator steer
+//     3. Roll shot type; channel edge (aggregated lineup offence vs defence, centred)
+//     4. Roll efficiency (base + edge × EFFICIENCY_SCALE, clamped ±MAX_EFF_SHIFT)
+//     5. Points + and-1 check; a missed FG may be rebounded (rebounding vs rebounding)
+//        and the possession continues, up to OREB_MAX_CHAIN times
 
 type ShotChannel = 'rim' | 'mid' | 'three';
 
-/**
- * Pre-game: Calculate team possession rating for the possession battle.
- * Uses weighted averages (starters ×2, bench ×1).
- */
-export function calcTeamPossRating(
-  players: PlayerCardData[],
-  depthChart: Record<string, string[]>
-): number {
-  const starterIds = new Set<string>();
-  for (const ids of Object.values(depthChart)) {
-    if (ids.length > 0) starterIds.add(ids[0]);
-  }
-
-  let totalWeight = 0;
-  let totalRating = 0;
-
-  for (const p of players) {
-    const weight = starterIds.has(p.id) ? 2.0 : 1.0;
-    const avgDef = ((p.ratings?.perimeterDefense ?? 50) + (p.ratings?.postDefense ?? 50)) / 2;
-    const possRating =
-      (p.ratings?.playmaking ?? 50) * 0.40 +
-      (p.ratings?.rebounding ?? 50) * 0.35 +
-      avgDef * 0.25;
-    totalWeight += weight;
-    totalRating += weight * possRating;
-  }
-
-  return totalWeight > 0 ? totalRating / totalWeight : 50;
-}
-
-/** Shot profile: [rim%, mid%, per%] pre-computed per team */
+/** Shot profile: [rim%, mid%, per%] for the five on the floor */
 export interface TeamShotProfile {
   rim: number;
   mid: number;
@@ -342,66 +309,129 @@ export interface TeamShotProfile {
 }
 
 /**
- * Pre-game: Calculate team shot distribution blending NBA baseline with team's
- * offensive rating profile. Starters weighted ×2, bench ×1.
+ * Per-possession shot distribution for the five on the floor (engine_possession_model
+ * D4): who shoots is a committee question, so the tendency is the plain mean of the
+ * lineup's standardised finishing / mid-range / perimeter ratings (a lineup with two
+ * non-shooters takes fewer threes), blended PROFILE_WEIGHT with the NBA baseline and
+ * shifted by identity/coverage share mods. Replaces the pre-game 12-man team profile.
  */
-export function calcTeamShotProfile(
-  players: PlayerCardData[],
-  depthChart: Record<string, string[]>,
+export function calcLineupShotProfile(
+  lineup: PlayerCardData[],
   offenseMods: GameModifiers,
   defenseFromOpponent: GameModifiers
 ): TeamShotProfile {
-  const starterIds = new Set<string>();
-  for (const ids of Object.values(depthChart)) {
-    if (ids.length > 0) starterIds.add(ids[0]);
-  }
+  const f = lineupMean(lineup, 'finishing');
+  const m = lineupMean(lineup, 'midRange');
+  const p = lineupMean(lineup, 'perimeter');
+  const total = f + m + p;
+  const rimTendency = total > 0 ? f / total : 0.333;
+  const midTendency = total > 0 ? m / total : 0.333;
+  const perTendency = total > 0 ? p / total : 0.334;
 
-  let totalWeight = 0;
-  let teamFinishing = 0, teamMidRange = 0, teamPerimeter = 0;
-
-  for (const p of players) {
-    const weight = starterIds.has(p.id) ? 2.0 : 1.0;
-    totalWeight += weight;
-    teamFinishing += weight * (p.ratings?.finishing ?? 50);
-    teamMidRange += weight * (p.ratings?.midRange ?? 50);
-    teamPerimeter += weight * (p.ratings?.perimeter ?? 50);
-  }
-
-  if (totalWeight > 0) {
-    teamFinishing /= totalWeight;
-    teamMidRange /= totalWeight;
-    teamPerimeter /= totalWeight;
-  }
-
-  // Team tendency from offensive ratings
-  const total = teamFinishing + teamMidRange + teamPerimeter;
-  const rimTendency = total > 0 ? teamFinishing / total : 0.333;
-  const midTendency = total > 0 ? teamMidRange / total : 0.333;
-  const perTendency = total > 0 ? teamPerimeter / total : 0.334;
-
-  // Blend PROFILE_WEIGHT/(1-PROFILE_WEIGHT) with NBA baseline
   let rim = (1 - PROFILE_WEIGHT) * NBA_BASELINE.rim.share + PROFILE_WEIGHT * rimTendency;
   let mid = (1 - PROFILE_WEIGHT) * NBA_BASELINE.mid.share + PROFILE_WEIGHT * midTendency;
   let per = (1 - PROFILE_WEIGHT) * NBA_BASELINE.three.share + PROFILE_WEIGHT * perTendency;
 
-  // Apply synergy/play shot distribution bonuses. P0-1: defenseFromOpponent deltas are
-  // ADDED, matching the sign convention documented on GameModifiers/TeamBonuses in
-  // synergies.ts — defensive share bonuses are stored negative so adding them here
-  // actually shrinks the offense's share of that channel.
+  // Identity/coverage share mods (P0-1 sign convention: defensive deltas are stored
+  // negative and ADDED, so they shrink the offence's share of that channel).
   rim += offenseMods.rimShareBonus + (defenseFromOpponent.rimShareBonus || 0);
   mid += offenseMods.midShareBonus + (defenseFromOpponent.midShareBonus || 0);
   per += offenseMods.perShareBonus + (defenseFromOpponent.perShareBonus || 0);
 
-  // Ensure no negative shares before normalizing
-  rim = Math.max(0, rim);
-  mid = Math.max(0, mid);
-  per = Math.max(0, per);
-
-  // Normalize to sum to 1.0
+  rim = Math.max(0, rim); mid = Math.max(0, mid); per = Math.max(0, per);
   const sum = rim + mid + per;
   if (sum > 0) { rim /= sum; mid /= sum; per /= sum; }
-
   return { rim, mid, per };
+}
+
+const POINTS_PER_MAKE: Record<ShotChannel, number> = {
+  rim: 0.5 * 2 + 0.5 * 2 * RIM_FT_PCT,  // half clean 2s, half two-FT trips
+  mid: 2,
+  three: 3,
+};
+
+/**
+ * D6 creator steer: the offence's playmaking edge (its lineup value vs the centre) moves
+ * `STEER_SCALE · edge` of shot share, capped ±STEER_CAP, from the channel worth the fewest
+ * expected points against THIS defence to the one worth the most. Expected points are
+ * absolute — (base efficiency + this matchup's efficiency shift) × points per make — so a
+ * creator steers toward the genuinely best shot available, not the channel with the
+ * largest relative edge (mid-range stays the least efficient channel by design unless a
+ * defence is truly soft there). Matchup-based, so the "good shot" changes with the
+ * opponent; bounded, so rim never swallows the profile. A below-average creator steers
+ * the other way. Exported for tests.
+ */
+export function steerShotProfile(
+  profile: TeamShotProfile,
+  offenseLineup: PlayerCardData[],
+  defenseLineup: PlayerCardData[],
+  centre: Record<ShotChannel, { off: number; def: number }>,
+  tuning?: EdgeTuning
+): TeamShotProfile {
+  const creator = (lineupValue(offenseLineup, 'playmaking') - LINEUP_CENTRE.playmaking) / 100;
+  const steer = clampTo(creator * STEER_SCALE, STEER_CAP);
+  if (steer === 0) return profile;
+
+  const effScale = tuning?.efficiencyScale ?? EFFICIENCY_SCALE;
+  const maxShift = tuning?.maxEffShift ?? MAX_EFF_SHIFT;
+  const expectedPts = (ch: ShotChannel) => {
+    const shift = clampTo(channelEdge(ch, offenseLineup, defenseLineup, centre) * effScale, maxShift);
+    return (NBA_BASELINE[ch].efficiency + shift) * POINTS_PER_MAKE[ch];
+  };
+  const xp: Record<ShotChannel, number> = { rim: expectedPts('rim'), mid: expectedPts('mid'), three: expectedPts('three') };
+  const channels: ShotChannel[] = ['rim', 'mid', 'three'];
+  const best = channels.reduce((a, b) => (xp[b] > xp[a] ? b : a));
+  const worst = channels.reduce((a, b) => (xp[b] < xp[a] ? b : a));
+  if (best === worst) return profile;
+
+  const shares: Record<ShotChannel, number> = { rim: profile.rim, mid: profile.mid, three: profile.per };
+  // Positive steer: from worst to best. Negative: from best to worst. Never below 0.
+  const from = steer > 0 ? worst : best;
+  const to = steer > 0 ? best : worst;
+  const moved = Math.min(Math.abs(steer), shares[from]);
+  shares[from] -= moved;
+  shares[to] += moved;
+  return { rim: shares.rim, mid: shares.mid, per: shares.three };
+}
+
+/** Channel edge in rating points / 100, clamped ±0.25 — the same number resolvePossession
+ *  scales into an efficiency shift. */
+function channelEdge(
+  channel: ShotChannel,
+  offenseLineup: PlayerCardData[],
+  defenseLineup: PlayerCardData[],
+  centre: Record<ShotChannel, { off: number; def: number }>
+): number {
+  let offRating: number, defRating: number;
+  switch (channel) {
+    case 'rim':
+      offRating = lineupValue(offenseLineup, 'finishing');
+      defRating = lineupValue(defenseLineup, 'postDefense');
+      break;
+    case 'mid':
+      offRating = lineupValue(offenseLineup, 'midRange');
+      defRating = lineupMidDefence(defenseLineup);
+      break;
+    case 'three':
+      offRating = lineupValue(offenseLineup, 'perimeter');
+      defRating = lineupValue(defenseLineup, 'perimeterDefense');
+      break;
+  }
+  const edge = ((offRating - centre[channel].off) - (defRating - centre[channel].def)) / 100;
+  return Math.max(-0.25, Math.min(0.25, edge));
+}
+
+/** D6: chance the offence turns it over before getting a shot up. Exported for tests. */
+export function turnoverChance(offenseLineup: PlayerCardData[], defenseLineup: PlayerCardData[]): number {
+  const edge = ((lineupValue(offenseLineup, 'playmaking') - LINEUP_CENTRE.playmaking)
+              - (lineupValue(defenseLineup, 'perimeterDefense') - LINEUP_CENTRE.perimeterDefense)) / 100;
+  return Math.max(TURNOVER_MIN, Math.min(TURNOVER_MAX, TURNOVER_BASE - TURNOVER_SCALE * edge));
+}
+
+/** D6: chance a missed field goal is rebounded by the offence. Exported for tests. */
+export function offensiveReboundChance(offenseLineup: PlayerCardData[], defenseLineup: PlayerCardData[]): number {
+  const edge = (lineupValue(offenseLineup, 'rebounding') - lineupValue(defenseLineup, 'rebounding')) / 100;
+  return Math.max(OREB_MIN, Math.min(OREB_MAX, OREB_BASE + OREB_SCALE * edge));
 }
 
 /**
@@ -436,28 +466,9 @@ export function resolvePossession(
   else if (roll < shotProfile.rim + shotProfile.mid)   channel = 'mid';
   else                                                 channel = 'three';
 
-  // Step 2: Compute channel-specific edge from the five on the floor (engine_possession_model
-  // D1-D3): standardised ratings, aggregated per dimension with LINEUP_AGG's k / hole tax
-  // (engine/lineup.ts), centred on the measured expectation for that dimension
-  // (CHANNEL_CENTRE) so an average lineup against an average defence nets ~0 edge.
-  let offRating: number, defRating: number;
-  switch (channel) {
-    case 'rim':
-      offRating = lineupValue(offenseLineup, 'finishing');
-      defRating = lineupValue(defenseLineup, 'postDefense');
-      break;
-    case 'mid':
-      offRating = lineupValue(offenseLineup, 'midRange');
-      defRating = lineupMidDefence(defenseLineup);
-      break;
-    case 'three':
-      offRating = lineupValue(offenseLineup, 'perimeter');
-      defRating = lineupValue(defenseLineup, 'perimeterDefense');
-      break;
-  }
-
-  const edge = ((offRating - centre[channel].off) - (defRating - centre[channel].def)) / 100;
-  const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
+  // Step 2: channel edge from the five on the floor (engine_possession_model D1-D3):
+  // standardised, aggregated per dimension (engine/lineup.ts), centred on CHANNEL_CENTRE.
+  const clampedEdge = channelEdge(channel, offenseLineup, defenseLineup, centre);
 
   // Step 3: Roll efficiency
   const baseEff = NBA_BASELINE[channel].efficiency;
@@ -491,13 +502,9 @@ export function resolvePossession(
   const made = rng.next() < efficiency;
 
   if (!made) {
-    // P2-2: attribute a fraction of misses to the would-be shooter as a turnover
-    // instead of a missed field goal, so PlayerBoxScore.turnovers (previously always
-    // 0) reflects something. Narrative text and box-score attribution are kept in
-    // sync by deciding the turnover here rather than leaving it to the randomly
-    // chosen narrative flavor text.
-    const isTurnover = rng.next() < TURNOVER_RATE;
-    return { outcome: 'miss', points: 0, isAnd1: false, isTurnover, isCleanFieldGoal: false, channel, scorerId, narrativeHint: isTurnover ? 'turnover' : 'miss' };
+    // D6: turnovers are rolled BEFORE the shot in playOnePossession (turnoverChance), so a
+    // miss here is always a missed field goal — and a live ball for offensiveReboundChance.
+    return { outcome: 'miss', points: 0, isAnd1: false, isTurnover: false, isCleanFieldGoal: false, channel, scorerId, narrativeHint: 'miss' };
   }
 
   // Step 4: Points + and-1 check
@@ -685,7 +692,6 @@ function playOnePossession(params: {
   defenseLineupMap: Map<string, string>;
   offenseMods: GameModifiers;
   defFromOpp: GameModifiers;
-  baseShotProfile: TeamShotProfile;
   offenseScaled: ScaledPlay[];
   coverageScaled: ScaledPlay[];
   minutesPerPoss: number;
@@ -698,7 +704,7 @@ function playOnePossession(params: {
 }): { event: PossessionEvent; points: number } {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
-    offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp, baseShotProfile,
+    offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp,
     offenseScaled, coverageScaled, minutesPerPoss, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
   } = params;
   const isHome = team === 'home';
@@ -735,7 +741,11 @@ function playOnePossession(params: {
   // only, same sign convention as defenseMods. The combined per-possession eff shift per
   // channel is clamped to ±IDENTITY_CAPS.eff and share shifts to ±IDENTITY_CAPS.share
   // (applyCalledShareShift does the share clamp).
-  const shotProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
+  // D4/D6: profile from the five actually on the floor, then the called play's share
+  // shift, then the creator steer toward this matchup's best shot.
+  const baseShotProfile = calcLineupShotProfile(offenseLineup, offenseMods, defFromOpp);
+  const calledProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
+  const shotProfile = steerShotProfile(calledProfile, offenseLineup, defenseLineup, centre, tuning);
 
   const rimEffDelta = clampTo((calledOffense?.def.mods.rimEff ?? 0) + (calledCoverage?.def.mods.rimEff ?? 0), IDENTITY_CAPS.eff);
   const midEffDelta = clampTo((calledOffense?.def.mods.midEff ?? 0) + (calledCoverage?.def.mods.midEff ?? 0), IDENTITY_CAPS.eff);
@@ -748,8 +758,27 @@ function playOnePossession(params: {
 
   const boostedIds = calledOffense ? new Set(calledOffense.playerIds) : undefined;
 
-  // Resolve the possession (multi-channel: shot type → edge → efficiency)
-  const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
+  // D6 step 1: turnover before the shot. The ball-handler charged is drawn by playmaking
+  // (attribution only, like the scorer pick).
+  type Resolved = ReturnType<typeof resolvePossession>;
+  let result: Resolved;
+  let turnoverPlayerId: string | undefined;
+  const offensiveRebounders: string[] = [];
+  if (rng.next() < turnoverChance(offenseLineup, defenseLineup)) {
+    const handler = weightedRandom(offenseLineup, offenseLineup.map(p => (p.ratings?.playmaking ?? 0) + 1), rng);
+    turnoverPlayerId = handler?.id;
+    result = { outcome: 'miss', points: 0, isAnd1: false, isTurnover: true, isCleanFieldGoal: false, channel: 'rim', scorerId: turnoverPlayerId, narrativeHint: 'turnover' };
+  } else {
+    // Steps 2-5: shoot; a missed field goal may be rebounded and shot again.
+    result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
+    let chain = 0;
+    while (result.outcome === 'miss' && chain < OREB_MAX_CHAIN && rng.next() < offensiveReboundChance(offenseLineup, defenseLineup)) {
+      const rebounder = weightedRandom(offenseLineup, offenseLineup.map(p => (p.ratings?.rebounding ?? 0) + 1), rng);
+      if (rebounder) offensiveRebounders.push(rebounder.id);
+      chain++;
+      result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
+    }
+  }
 
   // Playbook recording (§7): tag this possession with whichever calls applied.
   const calledPlays: PossessionEvent['calledPlays'] = [];
@@ -777,9 +806,13 @@ function playOnePossession(params: {
       if (result.isAnd1) bs.andOnes++;
     }
   }
-  if (result.isTurnover && result.scorerId) {
-    const bs = boxStats.get(result.scorerId);
+  if (turnoverPlayerId) {
+    const bs = boxStats.get(turnoverPlayerId);
     if (bs) bs.turnovers++;
+  }
+  for (const id of offensiveRebounders) {
+    const bs = boxStats.get(id);
+    if (bs) bs.offensiveRebounds++;
   }
   if (result.assistId && result.points > 0) {
     const bs = boxStats.get(result.assistId);
@@ -802,7 +835,10 @@ function playOnePossession(params: {
     scoringPlayerId: result.scorerId,
     assistPlayerId: result.assistId,
     isPossessionWinEvent: isPossWin || undefined,
-    narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin),
+    turnoverPlayerId,
+    offensiveRebounders: offensiveRebounders.length ? offensiveRebounders : undefined,
+    narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin,
+      offensiveRebounders.length ? (playerNameMap.get(offensiveRebounders[offensiveRebounders.length - 1]) || '???') : undefined),
     runningScore: [0, 0], // filled in by the caller once it's updated home/awayScore
     calledPlays,
   };
@@ -873,6 +909,14 @@ const ASSIST_TEXTS = [
   ' (feed from {assist})',
 ];
 
+// D6: offensive rebound that kept the possession alive (prefix before the final shot text)
+const OREB_TEXTS = [
+  '{rebounder} tips it back out —',
+  '{rebounder} skies for the offensive board —',
+  'Second chance: {rebounder} keeps it alive —',
+  '{rebounder} muscles in for the putback opportunity —',
+];
+
 const POSSESSION_WIN_TEXTS = [
   'Offensive rebound!',
   'Steal by the defense!',
@@ -885,11 +929,15 @@ function generateNarrative(
   scorerName: string,
   rng: Rng,
   assistName?: string,
-  isPossWin?: boolean
+  isPossWin?: boolean,
+  rebounderName?: string
 ): string {
   let prefix = '';
   if (isPossWin) {
     prefix = POSSESSION_WIN_TEXTS[Math.floor(rng.next() * POSSESSION_WIN_TEXTS.length)] + ' ';
+  }
+  if (rebounderName) {
+    prefix += OREB_TEXTS[Math.floor(rng.next() * OREB_TEXTS.length)].replace('{rebounder}', rebounderName) + ' ';
   }
 
   let texts: string[];
@@ -1057,28 +1105,13 @@ export function simulateGame(
   homeBonuses.activePlays = homePlaybook.plays.map(p => ({ name: p.def.name, description: p.def.summary, activated: p.active ? 'full' as const : 'none' as const }));
   awayBonuses.activePlays = awayPlaybook.plays.map(p => ({ name: p.def.name, description: p.def.summary, activated: p.active ? 'full' as const : 'none' as const }));
 
-  // 3. Possession battle (uses new calcTeamPossRating: playmaking + rebounding + defense)
+  // 3. Possession counts (pace noise + play/identity swing; no possession battle — D6)
   // Minutes are credited per on-court possession (offense and defense), scaled to
   // the actual game length: a player on court for every possession gets exactly 48.
-  const split = calcPossessionSplit(
-    homeTeam.players, awayTeam.players,
-    homeTeam.depthChart, awayTeam.depthChart,
-    homeBonuses, awayBonuses,
-    rng
-  );
+  const split = calcPossessionSplit(homeBonuses, awayBonuses, rng);
   // T6 code review: this used to be declared with a throwaway 0.24 initializer above the
   // split, always overwritten below before any read — dead value, removed.
   const REG_MIN_PER_POSS = 48 / split.totalPoss;
-
-  // 4. Pre-game shot profiles (team-wide, blended with NBA baseline)
-  const homeShotProfile = calcTeamShotProfile(
-    homeTeam.players, homeTeam.depthChart,
-    homeBonuses.offenseMods, awayBonuses.defenseMods
-  );
-  const awayShotProfile = calcTeamShotProfile(
-    awayTeam.players, awayTeam.depthChart,
-    awayBonuses.offenseMods, homeBonuses.defenseMods
-  );
 
   // 4. Distribute possessions across 4 quarters with noise
   const quarterPoss = distributeQuarters(split.homePoss, split.awayPoss, rng);
@@ -1097,7 +1130,7 @@ export function simulateGame(
       playerId: p.id, playerName: p.player?.name || p.id,
       minutes: 0, possessions: 0, points: 0,
       twoPointers: 0, threePointers: 0, andOnes: 0,
-      turnovers: 0, assists: 0,
+      turnovers: 0, assists: 0, offensiveRebounds: 0,
     });
   }
 
@@ -1134,7 +1167,6 @@ export function simulateGame(
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
       const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
       const coverageScaled = isHome ? awayDefenseScaled : homeDefenseScaled;
-      const baseShotProfile = isHome ? homeShotProfile : awayShotProfile;
 
       // Check if this is a possession-winning event
       let isPossWin = false;
@@ -1151,7 +1183,7 @@ export function simulateGame(
         offenseTeam, defenseTeam,
         offenseLineupMap: drawLineup(offenseTeam.depthChart, offenseShares, rng),
         defenseLineupMap: drawLineup(defenseTeam.depthChart, defenseShares, rng),
-        offenseMods, defFromOpp, baseShotProfile, offenseScaled, coverageScaled,
+        offenseMods, defFromOpp, offenseScaled, coverageScaled,
         minutesPerPoss: REG_MIN_PER_POSS, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
       });
 
@@ -1201,7 +1233,6 @@ export function simulateGame(
       const defenseTeam = isHome ? awayTeam : homeTeam;
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
-      const otShotProfile = isHome ? homeShotProfile : awayShotProfile;
       const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
       const coverageScaled = isHome ? awayDefenseScaled : homeDefenseScaled;
       const otSegment = segmentForQuarter(otQuarter);
@@ -1217,7 +1248,7 @@ export function simulateGame(
         offenseTeam, defenseTeam,
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
-        offenseMods, defFromOpp, baseShotProfile: otShotProfile, offenseScaled, coverageScaled,
+        offenseMods, defFromOpp, offenseScaled, coverageScaled,
         minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, rng, centre, tuning, boxStats, playerNameMap,
       });
 

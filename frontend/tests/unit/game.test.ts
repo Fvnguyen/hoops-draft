@@ -13,7 +13,8 @@ import { createRng } from '@/engine/rng';
 import type { PlayerCardData, SeasonStat } from '@/engine/types';
 
 describe('game simulation (200 headless games)', () => {
-  const games = simulateMany(200);
+  // Seeded (2026-09-16): an unseeded fixture made the minutes floor a random flake (HANDOVER #5).
+  const games = simulateMany(200, undefined, undefined, 20260916);
 
   it('produces no ties', () => {
     for (const g of games) {

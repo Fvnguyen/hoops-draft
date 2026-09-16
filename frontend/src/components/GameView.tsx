@@ -160,8 +160,8 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
 function deriveLiveBoxScore(game: GameTheater, throughIndex: number): { home: PlayerBoxScore[]; away: PlayerBoxScore[] } {
   const stats = new Map<string, PlayerBoxScore>();
   const teamOf = new Map<string, 'home' | 'away'>();
-  for (const p of game.homeTeam.players) { teamOf.set(p.id, 'home'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0 }); }
-  for (const p of game.awayTeam.players) { teamOf.set(p.id, 'away'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0 }); }
+  for (const p of game.homeTeam.players) { teamOf.set(p.id, 'home'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0, offensiveRebounds: 0 }); }
+  for (const p of game.awayTeam.players) { teamOf.set(p.id, 'away'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0, offensiveRebounds: 0 }); }
 
   const regulationPoss = game.possessions.filter(e => e.quarter <= 4).length || 1;
   const otPoss = new Map<number, number>();

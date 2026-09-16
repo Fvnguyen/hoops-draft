@@ -1,5 +1,5 @@
 import { PlayerCardData, Play } from './types';
-import { calcTeamShotProfile } from './game';
+import { calcLineupShotProfile } from './game';
 import { countBadges, emptyModifiers, calcTeamBonuses } from './synergies';
 import { evaluateArchetypes, MONO_THRESHOLDS, type ArchetypeSelection } from './archetypes';
 
@@ -91,12 +91,13 @@ export function calcRosterShotDiet(
   const fakePossShares = new Map<string, number>();
   const bonuses = calcTeamBonuses(allPlayers, [], fakePossShares, selection ? { archetypes: selection } : undefined);
 
-  // calcTeamShotProfile needs players array and depthChart
-  const depthChartIds: Record<string, string[]> = {};
+  // engine_possession_model D4: the engine's profile is per on-court five, so the deck
+  // builder previews the starting five (depth-chart index 0 per position).
+  const starters: PlayerCardData[] = [];
   for (const pos in depthChart) {
-    depthChartIds[pos] = depthChart[pos].map(p => p.id);
+    if (depthChart[pos][0]) starters.push(depthChart[pos][0]);
   }
-  return calcTeamShotProfile(allPlayers, depthChartIds, bonuses.offenseMods, emptyModifiers());
+  return calcLineupShotProfile(starters.length > 0 ? starters : allPlayers, bonuses.offenseMods, emptyModifiers());
 }
 
 /**

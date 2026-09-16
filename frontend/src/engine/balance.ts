@@ -33,9 +33,6 @@ export const HOME_NOISE_HI_PCT = 0.09;
 export const AWAY_NOISE_LO_PCT = -0.075;
 export const AWAY_NOISE_HI_PCT = 0.075;
 
-/** Possession battle swing from team strength delta: ±8% of BASE_PACE. */
-export const STRENGTH_SWING_PCT = 0.035;
-
 /** Regulation possessions per team are clamped to [85%, 115%] of BASE_PACE. */
 export const POSSESSION_CLAMP_MIN_PCT = 0.85;
 export const POSSESSION_CLAMP_MAX_PCT = 1.15;
@@ -212,14 +209,46 @@ export const MAX_EFF_SHIFT = 0.08;
 /** Profile blending: 50% NBA baseline, 50% team tendency. */
 export const PROFILE_WEIGHT = 0.50;
 
+// ── Possession events (engine_possession_model D6, 2026-09-16) ──────────────
+//
+// The pre-game "possession battle" (a 12-man playmaking/rebounding/defence average moving
+// the possession count by a capped 3.5% of pace — a 10-point gap was ~0.3 possessions) is
+// gone. Teams get equal possessions apart from pace noise (home court, D4) and play/
+// identity possessionSwing; what differs is resolved per possession from the five on the
+// floor, using the same standardised lineup values (engine/lineup.ts) and centres
+// (LINEUP_CENTRE) as the shot edge. Edges below are in rating points / 100, as there.
+
 /**
- * P2-2: fraction of missed possessions attributed to the shooter as a turnover rather
- * than a missed field goal, so PlayerBoxScore.turnovers is populated (previously
- * always 0). Rough placeholder in line with NBA team turnover rates (~13-14 per ~100
- * possessions); not derived from the card pool like LINEUP_CENTRE, so it's fair game to
- * retune alongside EFFICIENCY_SCALE once real balance numbers are measured.
+ * Turnover before a shot: playmaking (lineup value, k=1.5 star channel) against the
+ * opponent's perimeter defence. NBA team turnover rate is ~13-14 per 100 possessions.
+ * chance = BASE − SCALE · edge, clamped to [MIN, MAX]; a +20-point creator edge is −4pp.
  */
-export const TURNOVER_RATE = 0.15;
+export const TURNOVER_BASE = 0.135;
+export const TURNOVER_SCALE = 0.20;
+export const TURNOVER_MIN = 0.06;
+export const TURNOVER_MAX = 0.24;
+
+/**
+ * Offensive rebound after a missed field goal (not after a free-throw trip): the
+ * offence's rebounding value against the defence's. NBA OREB% is ~25-28% of misses.
+ * chance = BASE + SCALE · edge, clamped; the possession then continues with another shot
+ * (same lineup and profile) up to MAX_CHAIN extra shots.
+ */
+export const OREB_BASE = 0.26;
+export const OREB_SCALE = 0.30;
+export const OREB_MIN = 0.12;
+export const OREB_MAX = 0.42;
+export const OREB_MAX_CHAIN = 2;
+
+/**
+ * Creator steer (D6): a playmaking edge moves shot share from the channel with the worst
+ * expected-points edge in this matchup to the one with the best, `SCALE · edge` of share,
+ * capped at ±CAP. Above-average creators get their team more of its good shots against
+ * THIS defence; below-average ones drift toward the bad ones. Never touches make
+ * probability directly — no flat efficiency boost from playmaking.
+ */
+export const STEER_SCALE = 0.30;
+export const STEER_CAP = 0.08;
 
 // ── ratings.ts (from engine.ts) ─────────────────────────────────────────────
 
