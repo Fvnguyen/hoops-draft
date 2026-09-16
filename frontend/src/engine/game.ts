@@ -121,7 +121,9 @@ export interface PossessionEvent {
   turnoverPlayerId?: string;
   /** D6: players who grabbed an offensive rebound on this possession, in order. */
   offensiveRebounders?: string[];
-  narrativeText: string;
+  /** Pre-game_theater prose; only present on legacy theaters saved before D1 (the
+   *  renderer falls back to it, D7). New events never carry it. */
+  narrativeText?: string;
   /** D1 structured narration (T1). */
   narrative: PossessionNarrative;
   /** D9 every field-goal attempt in order (misses included), for FGA/3PA and blocks. */
@@ -787,12 +789,11 @@ function playOnePossession(params: {
   centre: Record<ShotChannel, { off: number; def: number }>;
   tuning?: EdgeTuning;
   boxStats: Map<string, PlayerBoxScore>;
-  playerNameMap: Map<string, string>;
 }): { event: PossessionEvent; points: number } {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
     offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp,
-    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats, playerNameMap,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats,
   } = params;
   const isHome = team === 'home';
 
@@ -973,8 +974,6 @@ function playOnePossession(params: {
     for (const id of defenseIds) { const bs = boxStats.get(id); if (bs) bs.plusMinus -= result.points; }
   }
 
-  const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
-  const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
 
   const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
     : result.channel === 'three' ? '3pt' as const
@@ -1025,8 +1024,6 @@ function playOnePossession(params: {
     ...(isClutch ? { isClutch: true } : {}),
     turnoverPlayerId,
     offensiveRebounders: offensiveRebounders.length ? offensiveRebounders : undefined,
-    narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin,
-      offensiveRebounders.length ? (playerNameMap.get(offensiveRebounders[offensiveRebounders.length - 1]) || '???') : undefined),
     narrative,
     shots,
     ...(stealPlayerId ? { stealPlayerId } : {}),
@@ -1036,122 +1033,6 @@ function playOnePossession(params: {
   };
 
   return { event, points: result.points };
-}
-
-// ── Narrative Generator ────────────────────────────────────────────────────
-
-// Missed-shot narratives (blocks included — still a missed field goal, not a turnover)
-const MISS_TEXTS = [
-  '{player} misses the jumper.',
-  'Contested shot by {player} — no good.',
-  'Blocked! Shot rejected.',
-  '{player} rattles it out.',
-  '{player} can\'t connect.',
-];
-
-// Turnover-flavored narratives — used when resolvePossession rolls isTurnover: true
-// (P2-2), so the box score's turnover count and the narrative text stay in sync.
-const TURNOVER_TEXTS = [
-  'Stolen by the defense!',
-  'Bad pass — turnover!',
-  '{player} loses the handle.',
-];
-
-const RIM_MAKE_TEXTS = [
-  '{player} scores on a layup!',
-  '{player} drives and finishes!',
-  '{player} with the floater — bucket!',
-  'Dunk by {player}!',
-  '{player} powers through to the rim!',
-];
-
-const RIM_FT_TEXTS = [
-  '{player} is fouled going to the basket — to the line.',
-  '{player} draws the foul driving in.',
-  'Shooting foul on {player} — free throws.',
-];
-
-const MID_MAKE_TEXTS = [
-  '{player} with the mid-range jumper — cash!',
-  '{player} pulls up from the elbow — money!',
-  '{player} with the fadeaway — bucket!',
-  '{player} hits the turnaround jumper!',
-  '{player} from mid-range — got it!',
-];
-
-const THREE_MAKE_TEXTS = [
-  '{player} drains the three!',
-  '{player} from downtown — BANG!',
-  '{player} for three... got it!',
-  '{player} pulls up from deep — splash!',
-  'Corner three by {player} — nothing but net!',
-  '{player} catches and shoots — three ball!',
-];
-
-const AND1_TEXTS = [
-  '{player} scores AND the foul!',
-  '{player} finishes through contact — and one!',
-  '{player} powers through for the and-one!',
-  'Tough finish by {player} — plus the free throw!',
-];
-
-const ASSIST_TEXTS = [
-  ' (assist: {assist})',
-  ' ({assist} with the dime)',
-  ' (feed from {assist})',
-];
-
-// D6: offensive rebound that kept the possession alive (prefix before the final shot text)
-const OREB_TEXTS = [
-  '{rebounder} tips it back out —',
-  '{rebounder} skies for the offensive board —',
-  'Second chance: {rebounder} keeps it alive —',
-  '{rebounder} muscles in for the putback opportunity —',
-];
-
-const POSSESSION_WIN_TEXTS = [
-  'Offensive rebound!',
-  'Steal by the defense!',
-  'Block leads to a fast break!',
-  'Loose ball recovered!',
-];
-
-function generateNarrative(
-  narrativeHint: string,
-  scorerName: string,
-  rng: Rng,
-  assistName?: string,
-  isPossWin?: boolean,
-  rebounderName?: string
-): string {
-  let prefix = '';
-  if (isPossWin) {
-    prefix = POSSESSION_WIN_TEXTS[Math.floor(rng.next() * POSSESSION_WIN_TEXTS.length)] + ' ';
-  }
-  if (rebounderName) {
-    prefix += OREB_TEXTS[Math.floor(rng.next() * OREB_TEXTS.length)].replace('{rebounder}', rebounderName) + ' ';
-  }
-
-  let texts: string[];
-  switch (narrativeHint) {
-    case 'miss': texts = MISS_TEXTS; break;
-    case 'turnover': texts = TURNOVER_TEXTS; break;
-    case 'rim_make': texts = RIM_MAKE_TEXTS; break;
-    case 'rim_ft': texts = RIM_FT_TEXTS; break;
-    case 'mid_make': texts = MID_MAKE_TEXTS; break;
-    case 'three_make': texts = THREE_MAKE_TEXTS; break;
-    case 'and1': texts = AND1_TEXTS; break;
-    default: texts = MISS_TEXTS;
-  }
-
-  let text = texts[Math.floor(rng.next() * texts.length)].replace('{player}', scorerName);
-
-  if (assistName && narrativeHint !== 'miss' && narrativeHint !== 'turnover') {
-    const assistText = ASSIST_TEXTS[Math.floor(rng.next() * ASSIST_TEXTS.length)].replace('{assist}', assistName);
-    text += assistText;
-  }
-
-  return prefix + text;
 }
 
 // ── Team Builder Helper ────────────────────────────────────────────────────
@@ -1260,10 +1141,6 @@ export function simulateGame(
   const rng = opts?.rng ?? createRng(randomSeed());
   const centre = opts?.centre ?? CHANNEL_CENTRE;
   const tuning = opts?.tuning;
-  const playerNameMap = new Map<string, string>();
-  for (const p of [...homeTeam.players, ...awayTeam.players]) {
-    playerNameMap.set(p.id, p.player?.name || p.id);
-  }
 
   // 1. Calculate possession shares
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
@@ -1383,7 +1260,7 @@ export function simulateGame(
         offenseLineupMap: closers ? starterLineupMap(offenseTeam.depthChart) : drawLineup(offenseTeam.depthChart, offenseShares, rng),
         defenseLineupMap: closers ? starterLineupMap(defenseTeam.depthChart) : drawLineup(defenseTeam.depthChart, defenseShares, rng),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats, playerNameMap,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
@@ -1458,7 +1335,7 @@ export function simulateGame(
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats, playerNameMap,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
