@@ -326,7 +326,7 @@ export function renderBeat(beat: Beat, theater: GameTheater): string {
       const label = periodLabel(beat.quarter, theater.overtimePeriods);
       const base = `End of ${label}: ${away} ${beat.score[1]}, ${home} ${beat.score[0]}.`;
       if (!beat.topScorer) return base;
-      return `${base} ${beat.topScorer.name} leads with ${beat.topScorer.points}.`;
+      return `${base} ${beat.topScorer.name} scored ${beat.topScorer.points} in the period.`;
     }
     case 'clutch_start':
       return `Crunch time. ${away} ${beat.score[1]}, ${home} ${beat.score[0]}.`;

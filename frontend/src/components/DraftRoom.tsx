@@ -34,7 +34,7 @@ const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
 const TOTAL_PICKS = CUBE_PACKS * PICKS_PER_PACK;
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
-const playsDB: Play[] = [
+export const playsDB: Play[] = [
   { type: 'Play', id: 'play-sys-1', name: 'Triangle Offense', rarity: 'Mythic', playCategory: 'system', badges: ['Post Scorer', 'Mid-Range'], mechanicText: 'Requires elite post and mid-range scoring. Grants massive +25% efficiency to half-court offense.' },
   { type: 'Play', id: 'play-sys-2', name: '7 Seconds or Less', rarity: 'Mythic', playCategory: 'system', badges: ['Floor General', 'Sharpshooter'], mechanicText: 'Requires a Floor General and 3 Sharpshooters. Grants legendary transition scoring boost.' },
   { type: 'Play', id: 'play-sys-3', name: 'Grit and Grind', rarity: 'Rare', playCategory: 'system', badges: ['Lockdown Defender', 'Glass Cleaner'], mechanicText: 'Requires 2 Lockdown Defenders and 1 Glass Cleaner. Opponent efficiency drops by 20%.' },

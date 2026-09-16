@@ -59,7 +59,7 @@ export const IDENTITY_TEMPLATES: Record<string, string[]> = {
   'second-chance-engine': [
     'Second-Chance Engine running: {oreb} offensive boards for {team} in {q}.',
     '{team} keep the possession alive, {oreb} offensive rebounds this quarter.',
-    'The glass feeds {team}: {oreb} second chances in {q} and {paint} paint points.',
+    'The glass feeds {team}: {oreb} second-chance possession(s) in {q} and {paint} paint points.',
     'Miss it, get it back: {oreb} offensive boards for {team} so far this quarter.',
   ],
   'no-fly-zone': [

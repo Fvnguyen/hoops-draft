@@ -368,7 +368,7 @@ describe('computeBeats: ordering and renderBeat', () => {
     expect(renderBeat(by('run'), t)).toBe('8-0 run for Astro.');
     expect(renderBeat(by('run_answered'), t)).toBe('CourtSense answers the 12-0 run.');
     expect(renderBeat(by('lead_change'), t)).toMatch(/^Lead change: CourtSense up \d+-\d+\.$/);
-    expect(renderBeat(by('quarter_end'), t)).toBe('End of Q1: Astro 12, CourtSense 15. CourtSense P0 leads with 15.');
+    expect(renderBeat(by('quarter_end'), t)).toBe('End of Q1: Astro 12, CourtSense 15. CourtSense P0 scored 15 in the period.');
     expect(renderBeat(by('clutch_start'), t)).toMatch(/^Crunch time\. Astro \d+, CourtSense \d+\.$/);
     expect(renderBeat(by('game_winner'), t)).toMatch(/^CourtSense P0 wins it, \d+-\d+!$/);
     expect(renderBeat(by('final'), t)).toMatch(/^Final: Astro \d+, CourtSense \d+\. CourtSense wins by \d+ after trailing by 12\.$/);

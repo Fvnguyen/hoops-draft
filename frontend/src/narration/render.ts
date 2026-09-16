@@ -223,10 +223,15 @@ export function renderPossession(event: PossessionEvent, ctx: RenderContext, pic
     [true, false, false, false], [false, false, false, false],
   ];
   for (const [c, w, a, s] of ladder) {
-    const line = assemble(c, w, a, s);
+    const line = tidy(assemble(c, w, a, s));
     if (line.length < MAX_LINE_CHARS) return line;
   }
-  return assemble(false, false, false, false);
+  return tidy(assemble(false, false, false, false));
+}
+
+/** A name ending in a period ("Wendell Carter Jr.") must not produce "Jr.." before a break. */
+function tidy(line: string): string {
+  return line.replace(/\.\.(?=\s|$)/g, '.');
 }
 
 export function renderTheater(theater: GameTheater): string[] {
