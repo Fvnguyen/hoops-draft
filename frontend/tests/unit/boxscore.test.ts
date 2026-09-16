@@ -40,13 +40,22 @@ describe('box score (D9) — 20 seeded games', () => {
     }
   });
 
-  it('team plus/minus sums to 5 x margin on each side (tiebreak point excluded — it is not an event)', () => {
+  it('team plus/minus sums to the points scored x players on the floor, per side (tiebreak point excluded — it is not an event)', () => {
+    // Usually 5 x margin. Derived from the events rather than assumed, because a bot roster
+    // can draft no player eligible for a position (seen: an empty C column at seed 424242,
+    // game 3) and then plays four on five all game — a deckbuilder issue logged in
+    // docs/HANDOVER.md, not a box-score one.
     for (const g of games) {
-      const tb = tiebreakPoint(g);
-      const home = g.finalScore[0] - (tb?.side === 'home' ? 1 : 0);
-      const away = g.finalScore[1] - (tb?.side === 'away' ? 1 : 0);
-      expect(sum(g.boxScore.home, 'plusMinus')).toBe(5 * (home - away));
-      expect(sum(g.boxScore.away, 'plusMinus')).toBe(5 * (away - home));
+      let home = 0, away = 0;
+      let prev: [number, number] = [0, 0];
+      for (const e of g.possessions) {
+        const pts = e.team === 'home' ? e.runningScore[0] - prev[0] : e.runningScore[1] - prev[1];
+        prev = e.runningScore;
+        const offN = e.lineupOnCourt.length, defN = e.defenseOnCourt.length;
+        if (e.team === 'home') { home += pts * offN; away -= pts * defN; } else { away += pts * offN; home -= pts * defN; }
+      }
+      expect(sum(g.boxScore.home, 'plusMinus')).toBe(home);
+      expect(sum(g.boxScore.away, 'plusMinus')).toBe(away);
     }
   });
 

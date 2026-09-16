@@ -30,7 +30,7 @@ import {
   NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT,
   LINEUP_CENTRE, EDGE_WEIGHT, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_DEF_WEIGHT, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
-  STEER_NARRATE_MIN, BLOCK_SHARE_OF_MISSES, STEAL_SHARE_OF_TURNOVERS,
+  STEER_NARRATE_MIN, BLOCK_SHARE_OF_MISSES, STEAL_SHARE_OF_TURNOVERS, CLUTCH_WINDOW_POSS, CLUTCH_MARGIN,
 } from './balance';
 import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
 
@@ -740,6 +740,13 @@ function applyCalledShareShift(base: TeamShotProfile, mods: PlayCallModifiers): 
 
 /** A lineup map built from each position's starter (depth-chart index 0) only — OT's
  *  "your best 5 close the game" default before any play call is applied. */
+/** D10: true when every player in `lineup` is one of the team's depth-chart starters. */
+function closersOnly(lineup: Map<string, string>, team: TeamInfo): boolean {
+  const starters = new Set(team.starters);
+  for (const id of lineup.values()) if (!starters.has(id)) return false;
+  return true;
+}
+
 function starterLineupMap(depthChart: Record<string, string[]>): Map<string, string> {
   const map = new Map<string, string>();
   for (const [pos, ids] of Object.entries(depthChart)) {
@@ -774,6 +781,8 @@ function playOnePossession(params: {
   coverageScaled: ScaledPlay[];
   minutesPerPoss: number;
   isPossWin: boolean;
+  /** D10: inside the crunch-time window (tag + flag only; the caller picks the closers). */
+  isClutch?: boolean;
   rng: Rng;
   centre: Record<ShotChannel, { off: number; def: number }>;
   tuning?: EdgeTuning;
@@ -783,7 +792,7 @@ function playOnePossession(params: {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
     offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp,
-    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats, playerNameMap,
   } = params;
   const isHome = team === 'home';
 
@@ -806,14 +815,17 @@ function playOnePossession(params: {
   const rolledOffense = rollCalledPlay(rng, offenseScaled);
   if (rolledOffense) {
     const overridden = overrideLineupForPlay(offenseLineupMap, offenseTeam.depthChart, rolledOffense.playerIds);
-    if (overridden) { offenseIds = Array.from(overridden.values()); calledOffense = rolledOffense; }
+    // D10: the bench never closes — inside the crunch-time window a play whose assigned
+    // players would pull a non-starter onto the floor is not called (the roll still
+    // happened, so the rng stream is unchanged).
+    if (overridden && !(isClutch && !closersOnly(overridden, offenseTeam))) { offenseIds = Array.from(overridden.values()); calledOffense = rolledOffense; }
   }
 
   let calledCoverage: PlayStatus | undefined;
   const rolledCoverage = rollCalledPlay(rng, coverageScaled);
   if (rolledCoverage) {
     const overriddenDef = overrideLineupForPlay(defenseLineupMap, defenseTeam.depthChart, rolledCoverage.playerIds);
-    if (overriddenDef) { defenseIds = Array.from(overriddenDef.values()); calledCoverage = rolledCoverage; }
+    if (overriddenDef && !(isClutch && !closersOnly(overriddenDef, defenseTeam))) { defenseIds = Array.from(overriddenDef.values()); calledCoverage = rolledCoverage; }
   }
 
   const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
@@ -983,6 +995,7 @@ function playOnePossession(params: {
   const tags: string[] = [];
   if (isSecondChance) tags.push('second_chance');
   if (isPossWin) tags.push('poss_win');
+  if (isClutch) tags.push('clutch');
   const narrative: PossessionNarrative = {
     kind,
     ...(result.isTurnover ? {} : { channel: result.channel }),
@@ -1009,6 +1022,7 @@ function playOnePossession(params: {
     scoringPlayerId: result.scorerId,
     assistPlayerId: result.assistId,
     isPossessionWinEvent: isPossWin || undefined,
+    ...(isClutch ? { isClutch: true } : {}),
     turnoverPlayerId,
     offensiveRebounders: offensiveRebounders.length ? offensiveRebounders : undefined,
     narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin,
@@ -1323,6 +1337,9 @@ export function simulateGame(
     // Interleave possessions: alternate home/away
     let homeIdx = 0, awayIdx = 0;
     let isHomeTurn = rng.next() < 0.5; // Random first possession per quarter
+    // D10 crunch time (Q4 only in regulation; OT has its own loop below).
+    let clutchChecked = false;
+    let closers = false;
 
     while (homeIdx < homeQ || awayIdx < awayQ) {
       let team: 'home' | 'away';
@@ -1332,6 +1349,13 @@ export function simulateGame(
       else { team = isHomeTurn ? 'home' : 'away'; isHomeTurn = !isHomeTurn; }
 
       const isHome = team === 'home';
+      if (quarter === 4 && !clutchChecked) {
+        const left = isHome ? homeQ - homeIdx : awayQ - awayIdx;
+        if (left <= CLUTCH_WINDOW_POSS) {
+          clutchChecked = true;
+          closers = Math.abs(homeScore - awayScore) <= CLUTCH_MARGIN;
+        }
+      }
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
       const offenseShares = isHome ? homeShares : awayShares;
@@ -1351,13 +1375,15 @@ export function simulateGame(
 
       // Fresh per-possession lineup draw, weighted by each roster's possession shares
       // (see drawLineup) — replaces the old precomputed quarter-phase rotation timeline.
+      // D10: inside the crunch-time window both teams put their closing five on instead
+      // (no weighted draw at all — the bench never closes).
       const { event, points } = playOnePossession({
         index: possIndex, quarter, segment, team,
         offenseTeam, defenseTeam,
-        offenseLineupMap: drawLineup(offenseTeam.depthChart, offenseShares, rng),
-        defenseLineupMap: drawLineup(defenseTeam.depthChart, defenseShares, rng),
+        offenseLineupMap: closers ? starterLineupMap(offenseTeam.depthChart) : drawLineup(offenseTeam.depthChart, offenseShares, rng),
+        defenseLineupMap: closers ? starterLineupMap(defenseTeam.depthChart) : drawLineup(defenseTeam.depthChart, defenseShares, rng),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats, playerNameMap,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
@@ -1394,6 +1420,9 @@ export function simulateGame(
     const otStartScore: [number, number] = [homeScore, awayScore];
     let homeOTIdx = 0, awayOTIdx = 0;
     let otHomeTurn = rng.next() < 0.5;
+    // D10: OT already closes with starters; the window still flags isClutch for the UI.
+    let otClutchChecked = false;
+    let otClutch = false;
 
     while (homeOTIdx < homeOTPoss || awayOTIdx < awayOTPoss) {
       let team: 'home' | 'away';
@@ -1402,6 +1431,13 @@ export function simulateGame(
       else { team = otHomeTurn ? 'home' : 'away'; otHomeTurn = !otHomeTurn; }
 
       const isHome = team === 'home';
+      if (!otClutchChecked) {
+        const left = isHome ? homeOTPoss - homeOTIdx : awayOTPoss - awayOTIdx;
+        if (left <= CLUTCH_WINDOW_POSS) {
+          otClutchChecked = true;
+          otClutch = Math.abs(homeScore - awayScore) <= CLUTCH_MARGIN;
+        }
+      }
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
@@ -1422,7 +1458,7 @@ export function simulateGame(
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, rng, centre, tuning, boxStats, playerNameMap,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats, playerNameMap,
       });
 
       if (isHome) homeScore += points; else awayScore += points;

@@ -283,6 +283,17 @@ export const STEER_NARRATE_MIN = 0.04;
 export const BLOCK_SHARE_OF_MISSES = 0.10;
 export const STEAL_SHARE_OF_TURNOVERS = 0.55;
 
+/**
+ * game_theater D10 — crunch time. In Q4 and every OT period the window opens at the first
+ * possession where the offense has CLUTCH_WINDOW_POSS or fewer of its own possessions left
+ * in the period (the current one included); it is entered only if the absolute margin at
+ * that moment is CLUTCH_MARGIN or less (checked exactly once per period), and then lasts to
+ * the end of the period. Inside it both teams play their closing five (depth-chart starters,
+ * no weighted lineup draw). Changes Q4 outcomes — BALANCE_VERSION 7.
+ */
+export const CLUTCH_WINDOW_POSS = 4;
+export const CLUTCH_MARGIN = 5;
+
 // ── ratings.ts (from engine.ts) ─────────────────────────────────────────────
 
 export const RATING_CONFIG = {
