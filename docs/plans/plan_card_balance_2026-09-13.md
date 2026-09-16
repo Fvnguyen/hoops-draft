@@ -1,6 +1,7 @@
 # Plan: card_balance
 
-File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: planned.
+File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: in progress (started 2026-09-16, baseline captured; owner started it ahead of
+draft_ai — T2/T5 re-verify against contested drafts once draft_ai lands).
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
 reflect the final simulation and contested drafts). Files owned: `data/fetch_players.py`,
 `frontend/game.db` (regenerated), `engine/ratings.ts`, `engine/balance.ts` (rating,
@@ -20,27 +21,37 @@ backbone of a strategy), and positions are real.
 
 ## Real-data findings (update timestamp when a newer dump lands)
 
-**2026-09-14** — first real-user export (see game_engine plan's findings for the game-level
-numbers from the same dump: `data/game_logs/full_dump_2026-09-14T08-27-49-961Z.json`).
-This is one session's 168-card draft cube, not the full 448-player pool D2/D3 measure
-against — treat as a spot-check, not a verification:
-- Cube rarity mix (192 cards incl. plays): Mythic 12, Rare 15, Uncommon 57, Common 108.
-- Early-pick average OVR 71.6 (R1 picks 1-4) — lower than the 71-74 range seen in the
-  earlier pre-v2 local test dumps; not enough signal to act on, flag for T2's rarity
-  re-tune to check against the regenerated `cards.json` once T1 (positions) lands.
-- No usable signal yet on badge coverage or plan-to-play coverage (D3/D4) — one drafted
-  roster's plays don't represent the full pool.
-- Wait for this plan's own dependencies (game_engine, draft_ai) and re-run
-  `npm run analyze` / `npm run feasibility` against the regenerated `cards.json` before
-  treating any of this as evidence toward D2/D3.
+**2026-09-14** — one real-user 168-card cube export (`full_dump_2026-09-14T08-27-49-961Z.json`):
+cube rarity Mythic 12 / Rare 15 / Uncommon 57 / Common 108; early-pick OVR 71.6. Spot-check only.
 
-**2026-09-16** — full-pool (448 players) win-side bootstrap, not a draft spot-check: see
-[analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md)
-for method + full findings. Headline: `corr(OVR, winSharesPerGame) = 0.617`; finishing/
-interior badges (Finisher, Paint Protector, Glass Cleaner) predict winning 2-3x better
-than Sharpshooter/Floor General despite rating volume-scoring more heavily; 204/448 cards
-(45.5%) are clipped at the OVR-40 floor despite a real 3x win-shares spread within that
-group — the highest-leverage target for T2's rating retune.
+**2026-09-16, pre-merge** — full-pool win-side bootstrap, method + tables in
+[analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md):
+`corr(OVR, winSharesPerGame) = 0.617`; interior badges predict winning 2-3x better than
+Sharpshooter/Floor General; 204/448 cards clipped at the OVR-40 floor.
+
+**2026-09-16, baseline on the merged engine (engine_possession_model, `3226cf2`)** — the
+"before" for D9. Same commands, same seeds, pre-merge `c0fa02e` vs merged:
+- `npm run balance -- 500 --seed 42`: PPP 1.061 → 1.050, score sd 13.2 → 13.1, [90,130]
+  87.7% → 86.6%, home win 55.0% → 57.2%, OT 3.4% → 1.4%, margin mean 15.5 → 15.3.
+- `npm run player-bootstrap -- 150 --seed 42 --json` (4,200 games, all 448 played):
+  corr(OVR, WS/g) 0.617 → **0.691**, corr(OVR, team win%) 0.160 → 0.313. WS/g by rarity
+  Mythic .048→.052, Rare .047→.049, Uncommon .046→.047, Common .037→.036 — tiers now
+  separate in order, but Common sd (.0078) still exceeds the Mythic-Rare gap. Badge r:
+  Finisher .34→.40, Glass Cleaner .31→.38, Mid-Range .25→.32, Paint Protector .31→.30,
+  Floor General .17→.26, Lockdown .14→.19, Sharpshooter .10→.12 (76 holders, still last
+  of the skill badges). Persistent OVR residual outliers: LeBron (Rare 79), Maxey (Mythic
+  95), LaMelo (Rare 84), now Donovan Mitchell (Mythic 92) and Curry (Mythic 77, z -1.6 in
+  tier); persistent underrated Commons: Oubre (60), Naji Marshall (56), Horford (42),
+  Jović (40), plus Ingram (63), Turner (58), Siakam (64).
+- Lever table (`2000 --seed 777 --levers`, Δ margin/game for +10 std points): playmaking
+  2.27, finishing 2.21, perimeter 1.99, perimeter D 1.80, post D 1.48, rebounding 1.40,
+  mid-range 0.74. Mid-Range Maestro's r (.32) is out of line with its lever (0.74):
+  the badge marks players who are good at everything else too — T2 should not read
+  badge r as lever size.
+- Pool as shipped (`cards.json`): rarity Mythic 20 / Rare 22 / Uncommon 58 / Common
+  348; **OVR = 40: 204, ≤ 45: 241, 40-49 band: 268 of 448**; positions G 176 / F 130 /
+  C 47 / G/F 44 / F/C 42 and only 9 cards with a PG/SG/SF/PF label — D1 confirmed as
+  the first task. Rerun both commands after every T1-T5 commit (D9).
 
 ## Decisions (locked)
 

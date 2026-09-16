@@ -20,16 +20,16 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content, rating retune + OVR-40 floor against the new engine | planned, next | engine_possession_model (done, unmerged) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content, rating retune + OVR-40 floor against the new engine | in progress (baseline 2026-09-16) | engine_possession_model (merged to local main 2026-09-16, unpushed) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
 | 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls; must narrate the new events (turnovers before the shot, second chances, creator steer) | planned, next | engine_possession_model (done, unmerged) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
 | 9 | badge_effects — badge levels as "individual brilliance" special effects on top of the lineup model (owner 2026-09-16); not dimension mechanics | not yet planned | engine_possession_model | `engine/game.ts`, `engine/balance.ts` badge section | 1-2 days |
 | 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (new variant), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 
-**Shipping gate (owner, 2026-09-16):** `engine_possession_model` is complete on branch
-`claude/game-engine-card-balance-0toacl` but is NOT merged to `main` (main deploys to
-Vercel). `game_theater` and `card_balance` depend on it and are developed on that same
-branch; the branch merges only once both have landed. No PR before then.
+**Shipping gate (owner, 2026-09-16):** `engine_possession_model` was fast-forwarded into
+local `main` on 2026-09-16 (`3226cf2`) but `main` is NOT pushed (origin/main deploys to
+Vercel). `game_theater` and `card_balance` build on it locally; push only once both have
+landed. No PR before then.
 
 Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
 `mobile_responsive` because its tokens and primitives resolve most of the mobile
@@ -40,9 +40,9 @@ mobile T6 then re-audits and fixes only what is left. Earlier that day:
 tolerant auth design) and `android_twa` (#7) is conditional on the owner wanting to hand the installed app to a friend (`game_canvas` done 2026-09-16). `deckbuilder_ux` (done)
 was added after the owner's live review of ui_foundation the same evening: one deck-builder
 redesign for all devices, canvas-signed first, absorbing the mobile plan's tap-to-place.
-The 2026-09-14 note still holds: card_balance keeps its hard dependency on draft_ai (needs
-contested-draft data), so draft_ai lands before card_balance despite ranking lower in
-value. Scope sketch for #7 is proposal G.2 in
+The 2026-09-14 note (card_balance waits for draft_ai's contested-draft data) was set
+aside by the owner on 2026-09-16: card_balance starts first on the merged engine, and
+its T2/T5 numbers are re-checked once draft_ai lands. Scope sketch for #7 is proposal G.2 in
 `docs/completed/review_code_and_architecture_2026-09-12.md`.
 
 ## Recently completed (latest three)
