@@ -97,10 +97,11 @@ WebP instead of 182 KB PNG) with the draft room preloading this and the incoming
 Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
 (`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
 
-## engine_possession_model — in progress 2026-09-16 (T1-T5 done, owner sign-off pending)
+## engine_possession_model — done 2026-09-16 (UNMERGED: ships with game_theater + card_balance)
 
-Plan: `docs/plans/plan_engine_possession_model_2026-09-16.md` (moves to completed after the
-owner signs off the lever table). Commits `ff6a59a` (lineup model), `b8c233a` (in-game
+Plan: `docs/completed/plan_engine_possession_model_2026-09-16.md`. **Shipping gate:** the
+branch `claude/game-engine-card-balance-0toacl` is not merged to `main` (Vercel deploys
+main) until `game_theater` and `card_balance`, which depend on it, land on the same branch. Commits `ff6a59a` (lineup model), `b8c233a` (in-game
 centres), `0332b3a` (edge 0.20/0.08), `5b46e5e` (possession events), plus the lever tuning
 commit. Owner reframing that drove it: meaningful play and NBA feel, dimensions unequally
 important *by design*. What changed in the engine, all constants in `balance.ts`:
@@ -136,9 +137,9 @@ Gotchas: `LINEUP_CENTRE`/`RATING_NORM` are regenerated constants with drift test
 ±0.5); the six-lineup numbers are pinned in `lineup.test.ts`, so retuning `LINEUP_AGG`
 means updating those expectations deliberately; the steer ranks channels by absolute
 expected points (a relative-edge version steered into mid-range).
-Next: owner signs off the lever table (perimeter shooting 1.98 vs perimeter defence 2.12 —
-`EDGE_WEIGHT.three.off` 1.15 flips it), then `/roadmap done engine_possession_model`;
-card_balance then retunes ratings/OVR-40 floor against this engine; `badge_effects` later.
+Next, on this branch: `game_theater` (narrate turnovers before the shot, second chances,
+the steer) and `card_balance` (ratings/OVR-40 floor against this engine); then merge.
+`badge_effects` later.
 
 ## How to run everything
 
@@ -161,8 +162,8 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (`engine_possession_model` awaits the owner's lever
-sign-off; `card_balance` follows it; `game_canvas`, `deckbuilder_ux`, `ui_foundation` and
+What to do next is `docs/ROADMAP.md` (`engine_possession_model` is done but unmerged;
+`game_theater` and `card_balance` come next on the same branch; `game_canvas`, `deckbuilder_ux`, `ui_foundation` and
 earlier are done; `mobile_responsive` was folded into `game_canvas`). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
@@ -193,15 +194,15 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
    flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
    starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
    18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-6. **engine_possession_model owner sign-off** — two calls before `/roadmap done`:
-   (a) talent share is 21.9% per game / 49.3% per season (`--report`), double the band
-   chosen in the D5 sweep; at 0.30 scale the owner rejected 41.6% per season as "feels
-   solved". Pulling `EFFICIENCY_SCALE` to 0.12-0.15 (keep events) is the lever; re-run
-   `--report` and `--levers` after. (b) the lever order: perimeter shooting 1.98 sits just
-   under perimeter defence 2.12 — `EDGE_WEIGHT.three.off` 1.15 flips it if wanted.
-   Also unexplained: the player-level on-floor regression gives finishing a negative
-   marginal while the roster-level `--levers` A/B makes it the top lever; the A/B is the
-   cleaner instrument, but card_balance's harness should look before retuning ratings.
+6. **engine_possession_model follow-ups, revisit during card_balance** — owner accepted
+   the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
+   (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
+   (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
+   1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
+   negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
+   finishing the top lever; look with a larger bootstrap before retuning ratings.
+7. **Shipping gate**: do not open a PR or merge `claude/game-engine-card-balance-0toacl`
+   until game_theater and card_balance are complete on it (owner, 2026-09-16).
 
 ## Where to look
 

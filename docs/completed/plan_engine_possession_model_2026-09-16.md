@@ -1,6 +1,6 @@
 # Plan: engine_possession_model
 
-File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (T1-T5 done 2026-09-16; owner sign-off pending on talent share 21.9%/49.3% and the lever order — HANDOVER open issue 6).
+File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: done 2026-09-16 (owner accepted the measured talent share 21.9%/49.3% and the lever order as-is; revisit after card_balance). Ships only with game_theater + card_balance — see ROADMAP shipping gate.
 Sequence: 4a in `docs/ROADMAP.md` (ahead of card_balance). Depends on: game_engine (done).
 Files owned: `engine/balance.ts` (lineup model + possession events sections), `engine/lineup.ts`,
 `engine/game.ts`, `scripts/balance.ts` (`--eff-scale`/`--max-shift`/`--levers`, centre header),
