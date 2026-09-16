@@ -1,6 +1,6 @@
 # Plan: engine_possession_model
 
-File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress.
+File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (T1 done, T2 sweep measured — awaiting owner's edge-size call).
 Sequence: 4a in `docs/ROADMAP.md` (ahead of card_balance). Depends on: game_engine (done).
 Files owned: `engine/balance.ts` (new "Lineup model" section, `CHANNEL_CENTRE`, edge scale),
 new `engine/lineup.ts`, `engine/game.ts` (possession edge, shot profile, possession events),
@@ -68,6 +68,19 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
   Regression gates from game_engine D5 stay: sd 12–13, margin 12–14, ≥85% in [90,130],
   PPP 1.05–1.12, home win 52–56%. Talent share per game is allowed to rise from 7.6%;
   the target band is set after the sweep (owner call), not before.
+  **Sweep 2026-09-16** (`npm run balance -- 500 --seed 42 [--report] --eff-scale S
+  --max-shift 0.4·S`, after T1 + in-game centres; talent = OVR-gap R² from `--report`):
+
+  | scale | PPP | score sd | margin | [90,130] | home win | talent/game | talent/season | best vs worst decile win% | six-lineup xPts spread |
+  |---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
+  | 0.10 (today) | 1.062 | 12.8 | 13.9 | 89.1% | 56.4% | 5.3% | 17.5% | 69.5 / 30.6 | 2.9% |
+  | 0.20 | 1.060 | 13.3 | 14.6 | 87.0% | 49.4% | 10.2% | 29.1% | 76.8 / 23.3 | 5.1% |
+  | 0.30 | 1.061 | 14.0 | 16.1 | 85.8% | 56.0% | 17.3% | 41.6% | 83.6 / 16.5 | 7.4% |
+  | 0.40 | 1.061 | 14.0 | 16.1 | 85.7% | 54.0% | – | – | – | 9.7% |
+
+  Home win at 500 games has a ±2.2pp standard error; PPP is flat across scales only
+  after the in-game recentring (with pool-mean centres it fell 1.043 → 0.999). The
+  earlier baseline margin (15.5) was already outside the 12–14 band.
 - D6 **Possession model folds into play by play** (wave 2): the pre-game possession battle
   (`calcTeamPossRating`, `STRENGTH_SWING_PCT`) is removed; possessions are equal except
   for turnovers and offensive rebounds resolved per possession from the on-court lineups.
