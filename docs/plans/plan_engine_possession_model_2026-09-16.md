@@ -1,6 +1,6 @@
 # Plan: engine_possession_model
 
-File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (T1 done, T2 sweep measured — awaiting owner's edge-size call).
+File: `docs/plans/plan_engine_possession_model_2026-09-16.md`. Status: in progress (wave 1 done: T1 lineup model, T2 edge 0.20/0.08; wave 2 T3/T4 next).
 Sequence: 4a in `docs/ROADMAP.md` (ahead of card_balance). Depends on: game_engine (done).
 Files owned: `engine/balance.ts` (new "Lineup model" section, `CHANNEL_CENTRE`, edge scale),
 new `engine/lineup.ts`, `engine/game.ts` (possession edge, shot profile, possession events),
@@ -83,7 +83,8 @@ spread, not by feel. Badge-driven "individual brilliance" effects are a later pl
 
   Home win at 500 games has a ±2.2pp standard error; PPP is flat across scales only
   after the in-game recentring (with pool-mean centres it fell 1.043 → 0.999). The
-  earlier baseline margin (15.5) was already outside the 12–14 band.
+  earlier baseline margin (15.5) was already outside the 12–14 band. **Owner chose 0.20 /
+  max shift 0.08** (committed as `EFFICIENCY_SCALE` / `MAX_EFF_SHIFT`).
 - D6 **Possession model folds into play by play** (wave 2): the pre-game possession battle
   (`calcTeamPossRating`, `STRENGTH_SWING_PCT`) is removed; possessions are equal except
   for turnovers and offensive rebounds resolved per possession from the on-court lineups.

@@ -198,9 +198,16 @@ export const RIM_FT_PCT = 0.77;
  */
 export const AND1_CHANCE_CAP = 0.30;
 
-/** Efficiency scaling: how much the edge shifts base efficiency. Max shift ±10pp. */
-export const EFFICIENCY_SCALE = 0.10;
-export const MAX_EFF_SHIFT = 0.04;  // ±10 percentage points max
+/**
+ * Edge size (engine_possession_model T2, owner call 2026-09-16 from the D5 sweep): how much
+ * a channel edge (in rating points / 100, clamped ±0.25) shifts base efficiency, and the
+ * cap on that shift. 0.20 / 0.08 doubles what talent explains in a game (OVR-gap R²
+ * 5.3% -> 10.2%, season 17.5% -> 29.1%) while keeping score sd 13.3, [90,130] 87%,
+ * PPP 1.06; 0.30 pushed a season past 40% talent and both spread gates out of band.
+ * Sweep table in the plan (D5); re-run with `--eff-scale`/`--max-shift` before changing.
+ */
+export const EFFICIENCY_SCALE = 0.20;
+export const MAX_EFF_SHIFT = 0.08;
 
 /** Profile blending: 50% NBA baseline, 50% team tendency. */
 export const PROFILE_WEIGHT = 0.50;
