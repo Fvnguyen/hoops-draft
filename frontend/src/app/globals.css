@@ -197,3 +197,25 @@ body {
   color: var(--ink);
   font-family: var(--font-inter), system-ui, sans-serif;
 }
+
+/* game_theater D10: the "Crunchtime!" pop-up — fade + settle in, hold, fade out over
+   1.5s (matches CRUNCH_POPUP_MS in GameView). Reduced motion keeps the fade only. */
+@keyframes crunch-pop {
+  0%   { opacity: 0; transform: scale(0.85) translateY(8px); }
+  15%  { opacity: 1; transform: scale(1.04) translateY(0); }
+  25%  { transform: scale(1); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes crunch-fade {
+  0%   { opacity: 0; }
+  15%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.crunch-pop {
+  animation: crunch-pop 1.5s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .crunch-pop { animation: crunch-fade 1.5s linear forwards; }
+}

@@ -13,6 +13,8 @@ import {
 import type { DraftSession } from '../engine/deckbuilder';
 import { GameTheater, TeamInfo } from '../engine/game';
 import { GameView, BoxScoreOnly } from './GameView';
+import { gameContextFor } from '../narration/context';
+import type { GameContext } from '../narration/types';
 import { Trophy, Swords, ChevronLeft, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
 import { Button } from './ui';
@@ -26,7 +28,7 @@ interface SeasonViewProps {
  *  or — when the persisted result predates the current engine (D1 balanceVersion
  *  mismatch) — just the box score. */
 type ActiveGameView =
-  | { kind: 'theater'; theater: GameTheater }
+  | { kind: 'theater'; theater: GameTheater; context: GameContext }
   | { kind: 'boxOnly'; result: StoredGameResult; homeTeam: TeamInfo; awayTeam: TeamInfo };
 
 export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
@@ -122,10 +124,12 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         pendingCommitRef.current = null;
         setIsFreshPlay(false);
         setGameFinished(true);
+        // game_theater D11: header record/streak/rank as of this game day.
+        const context = gameContextFor(season, gameIndex, humanMatch.homeSeatIndex, humanMatch.awaySeatIndex, HUMAN_SEAT_ID);
         setActiveGame(
           replay.kind === 'versionMismatch'
             ? { kind: 'boxOnly', result: replay.result, homeTeam, awayTeam }
-            : { kind: 'theater', theater: replay.theater }
+            : { kind: 'theater', theater: replay.theater, context }
         );
         setActiveGameIndex(gameIndex);
         return;
@@ -144,7 +148,11 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       pendingCommitRef.current = result.season;
       setIsFreshPlay(true);
       setGameFinished(false);
-      setActiveGame({ kind: 'theater', theater: result.gameResult });
+      const freshMatch = humanMatchup(entry);
+      const context = freshMatch
+        ? gameContextFor(season, gameIndex, freshMatch.homeSeatIndex, freshMatch.awaySeatIndex, HUMAN_SEAT_ID)
+        : { userSeatId: HUMAN_SEAT_ID };
+      setActiveGame({ kind: 'theater', theater: result.gameResult, context });
       setActiveGameIndex(gameIndex);
     } catch (err) {
       if (err instanceof StorageQuotaError) {
@@ -244,7 +252,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
         </div>
         <div className="flex-1 min-h-0">
           {activeGame.kind === 'theater'
-            ? <GameView game={activeGame.theater} onCompletionChange={setGameFinished} />
+            ? <GameView game={activeGame.theater} context={activeGame.context} onCompletionChange={setGameFinished} />
             : <BoxScoreOnly result={activeGame.result} homeTeamName={activeGame.homeTeam.name} awayTeamName={activeGame.awayTeam.name} />}
         </div>
 

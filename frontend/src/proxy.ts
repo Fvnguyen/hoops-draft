@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = new Set(['/login', '/signup', '/pending']);
-const PROTECTED_PREFIXES = ['/draft', '/rosters', '/season', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview'];
+const PROTECTED_PREFIXES = ['/draft', '/rosters', '/season', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview', '/theater-preview'];
 
 function isProtected(pathname: string) {
   // The home page is gated too — an unauthenticated visitor should always

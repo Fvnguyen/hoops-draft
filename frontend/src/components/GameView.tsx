@@ -1,15 +1,23 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { GameTheater, TeamInfo, PlayerBoxScore } from '../engine/game';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { GameTheater, TeamInfo, PossessionEvent, boxScoreThrough } from '../engine/game';
 import type { StoredGameResult } from '../engine/season';
-import { Play as PlayIcon, FastForward, Pause, SkipForward } from 'lucide-react';
+import { Play as PlayIcon, Pause, SkipForward, ArrowDown } from 'lucide-react';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
 import { evaluateArchetypes, type ArchetypeStatus, type ArchetypeTier } from '../engine/archetypes';
 import type { PlaybookStatus, PlayStatus } from '../engine/playbook';
 import { MiniPlayerCard, type PlayerCardData } from './PlayerCard';
-import { Button } from './ui';
+import { Button, Panel } from './ui';
 import { cn } from '@/lib/cn';
+import { renderTheater } from '../narration/render';
+import { computeBeats, renderBeat } from '../narration/beats';
+import { summarizeGame } from '../narration/summary';
+import type { Beat, GameContext, Side } from '../narration/types';
+import { BoxScoreTable, GameSummaryPanel, SIDE_CHIP, SIDE_TEXT } from './BoxScore';
+
+/** The season's human seat id (engine/season.ts HUMAN_SEAT_ID) — the default "you". */
+const DEFAULT_USER_SEAT = 'human-0';
 
 interface GameViewProps {
   game: GameTheater;
@@ -17,6 +25,11 @@ interface GameViewProps {
   /** Fires synchronously (no delay) whenever `isComplete` changes, so a caller can gate
    *  UI — e.g. an exit control — on whether the game has actually finished playing out. */
   onCompletionChange?: (isComplete: boolean) => void;
+  /** D11: season record/streak/rank for the header; absent = exhibition. */
+  context?: GameContext;
+  /** Fixtures/screenshots only (/theater-preview, scripts/theater-shot.ts): open the view
+   *  already advanced to a possession, on a tab, optionally with the crunch pop-up up. */
+  initialState?: { possession?: number; tab?: 'playByPlay' | 'boxScore' | 'matchup'; crunchPopup?: boolean };
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -25,6 +38,14 @@ const TIER_CLASS: Record<ArchetypeTier, string> = {
   online: 'bg-positive-soft text-positive',
   dedicated: 'bg-warn-soft text-warn',
 };
+
+/** D6: playback speeds in ms per possession. "End" is not a speed (D6). */
+const SPEEDS = [
+  { label: '1×', ms: 500 },
+  { label: '2×', ms: 250 },
+  { label: '4×', ms: 125 },
+] as const;
+const CRUNCH_POPUP_MS = 1500;
 
 function playerName(players: PlayerCardData[], id?: string): string {
   if (!id) return 'Unassigned';
@@ -49,6 +70,23 @@ function teamArchetypeStatuses(team: TeamInfo): ArchetypeStatus[] {
     if (selection?.defense) { const s = byId.get(selection.defense); if (s) selected.push(s); }
   }
   return selected;
+}
+
+function abbrev(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return words.slice(0, 3).map(w => w[0]).join('').toUpperCase();
+  return name.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || '???';
+}
+
+/** "You win" / "Astro wins": the human team is literally named "You" by default. */
+function winsVerb(name: string): string {
+  return name.trim().toLowerCase() === 'you' ? 'win' : 'wins';
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
 }
 
 export function TeamStarters({ team, isHome }: { team: TeamInfo; isHome: boolean }) {
@@ -118,11 +156,11 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
     <div className="flex flex-col gap-4 p-4 bg-surface-sunken overflow-y-auto h-full">
       <div className="grid grid-cols-2 gap-8">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{game.awayTeam.name} Mechanics</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2"><span className={cn('mr-1', SIDE_TEXT.away)}>Away</span>{game.awayTeam.name} Mechanics</h3>
           <TeamMechanics team={game.awayTeam} playbook={game.playbook.away} />
         </div>
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{game.homeTeam.name} Mechanics</h3>
+          <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2"><span className={cn('mr-1', SIDE_TEXT.home)}>Home</span>{game.homeTeam.name} Mechanics</h3>
           <TeamMechanics team={game.homeTeam} playbook={game.playbook.home} />
         </div>
       </div>
@@ -151,85 +189,6 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
   );
 }
 
-
-/**
- * Box score for the possessions played so far (the theater is precomputed, so the final
- * box score would spoil the game). Points come from running-score deltas, minutes from
- * on-court possessions scaled to the period length. Turnovers are only known at the end.
- */
-function deriveLiveBoxScore(game: GameTheater, throughIndex: number): { home: PlayerBoxScore[]; away: PlayerBoxScore[] } {
-  const stats = new Map<string, PlayerBoxScore>();
-  const teamOf = new Map<string, 'home' | 'away'>();
-  for (const p of game.homeTeam.players) { teamOf.set(p.id, 'home'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0, offensiveRebounds: 0 }); }
-  for (const p of game.awayTeam.players) { teamOf.set(p.id, 'away'); stats.set(p.id, { playerId: p.id, playerName: p.player?.name ?? p.id, minutes: 0, possessions: 0, points: 0, twoPointers: 0, threePointers: 0, andOnes: 0, turnovers: 0, assists: 0, offensiveRebounds: 0 }); }
-
-  const regulationPoss = game.possessions.filter(e => e.quarter <= 4).length || 1;
-  const otPoss = new Map<number, number>();
-  for (const e of game.possessions) if (e.quarter > 4) otPoss.set(e.quarter, (otPoss.get(e.quarter) ?? 0) + 1);
-
-  let prev: [number, number] = [0, 0];
-  for (let i = 0; i <= Math.min(throughIndex, game.possessions.length - 1); i++) {
-    const e = game.possessions[i];
-    const minPerPoss = e.quarter <= 4 ? 48 / regulationPoss : 5 / (otPoss.get(e.quarter) ?? 10);
-    for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) { b.possessions++; b.minutes += minPerPoss; } }
-    for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.minutes += minPerPoss; }
-    const delta = e.team === 'home' ? e.runningScore[0] - prev[0] : e.runningScore[1] - prev[1];
-    prev = e.runningScore;
-    if (delta > 0 && e.scoringPlayerId) {
-      const b = stats.get(e.scoringPlayerId);
-      if (b) {
-        b.points += delta;
-        if (e.outcome === '3pt') { b.threePointers++; if (delta === 4) b.andOnes++; }
-        else if (delta >= 2) { b.twoPointers++; if (e.outcome === 'and1') b.andOnes++; }
-      }
-      if (e.assistPlayerId) { const a = stats.get(e.assistPlayerId); if (a) a.assists++; }
-    }
-  }
-  const rows = Array.from(stats.values()).map(b => ({ ...b, minutes: Math.round(b.minutes * 10) / 10 }));
-  const byPoints = (a: PlayerBoxScore, b: PlayerBoxScore) => b.points - a.points;
-  return {
-    home: rows.filter(b => teamOf.get(b.playerId) === 'home').sort(byPoints),
-    away: rows.filter(b => teamOf.get(b.playerId) === 'away').sort(byPoints),
-  };
-}
-
-/** Shared box-score table markup, used by GameView's Box Score tab and BoxScoreOnly. */
-function BoxScoreTable({ teamName, box, showTurnovers }: { teamName: string; box: PlayerBoxScore[]; showTurnovers: boolean }) {
-  return (
-    <div className="mb-4">
-      <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{teamName}</h3>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-ink-subtle font-bold uppercase border-b border-line">
-            <th className="text-left py-1 pr-2">Player</th>
-            <th className="text-center py-1 w-9">MIN</th>
-            <th className="text-center py-1 w-9">PTS</th>
-            <th className="text-center py-1 w-9">2FG</th>
-            <th className="text-center py-1 w-9">3FG</th>
-            <th className="text-center py-1 w-9">FT</th>
-            <th className="text-center py-1 w-9">AST</th>
-            <th className="text-center py-1 w-9">TO</th>
-          </tr>
-        </thead>
-        <tbody>
-          {box.filter(b => b.possessions > 0).map(b => (
-            <tr key={b.playerId} className="border-b border-line text-ink-muted">
-              <td className="text-left py-1 pr-2 font-bold text-ink-strong truncate max-w-[120px]">{b.playerName}</td>
-              <td className="text-center py-1">{b.minutes.toFixed(0)}</td>
-              <td className="text-center py-1 font-bold">{b.points}</td>
-              <td className="text-center py-1">{b.twoPointers}</td>
-              <td className="text-center py-1">{b.threePointers}</td>
-              <td className="text-center py-1">{b.andOnes}</td>
-              <td className="text-center py-1">{b.assists}</td>
-              <td className="text-center py-1">{showTurnovers ? b.turnovers : '–'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /**
  * D1: a completed game whose `balanceVersion` no longer matches the current engine
  * (`BALANCE_VERSION` in engine/balance.ts) can't be safely re-simulated from its seed —
@@ -249,35 +208,179 @@ export function BoxScoreOnly({ result, homeTeamName, awayTeamName }: {
       </div>
       <div className="bg-surface-raised rounded-panel border border-line shadow-sm p-4 text-center">
         <div className="text-2xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
-          Final: {homeTeamName} {result.finalScore[0]} — {result.finalScore[1]} {awayTeamName}
+          Final: {awayTeamName} {result.finalScore[1]} @ {homeTeamName} {result.finalScore[0]}
         </div>
         <div className="text-xs text-ink-subtle mt-1">
-          {result.finalScore[0] > result.finalScore[1] ? homeTeamName : awayTeamName} wins!
+          {(() => { const w = result.finalScore[0] > result.finalScore[1] ? homeTeamName : awayTeamName; return `${w} ${winsVerb(w)}`; })()}
           {result.isOvertime && ` (${result.overtimePeriods}OT)`}
         </div>
       </div>
       <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-y-auto p-3 min-h-0">
-        <BoxScoreTable teamName={awayTeamName} box={result.boxScore.away} showTurnovers />
-        <BoxScoreTable teamName={homeTeamName} box={result.boxScore.home} showTurnovers />
+        <BoxScoreTable teamName={awayTeamName} side="away" box={result.boxScore.away} />
+        <BoxScoreTable teamName={homeTeamName} side="home" box={result.boxScore.home} />
       </div>
     </div>
   );
 }
 
-export function GameView({ game, onComplete, onCompletionChange }: GameViewProps) {
-  const [currentPoss, setCurrentPoss] = useState(-1); // -1 = not started
+// ── Play-by-play rows ─────────────────────────────────────────────────────────
+
+type FeedRow =
+  | { key: string; kind: 'poss'; event: PossessionEvent; text: string; clock: string }
+  | { key: string; kind: 'beat'; beat: Beat; text: string };
+
+/**
+ * One derived clock string per possession from its ordinal inside its period (12:00
+ * regulation, 5:00 OT). The crunch-time window (D10, last 4 possessions per team) lands
+ * around 2:00 by this same formula, so the pop-up and the clock agree.
+ */
+function deriveClocks(events: PossessionEvent[]): string[] {
+  const perQuarter = new Map<number, number>();
+  for (const e of events) perQuarter.set(e.quarter, (perQuarter.get(e.quarter) ?? 0) + 1);
+  const seen = new Map<number, number>();
+  return events.map(e => {
+    const k = (seen.get(e.quarter) ?? 0) + 1;
+    seen.set(e.quarter, k);
+    const total = perQuarter.get(e.quarter) ?? 1;
+    const periodMin = e.quarter <= 4 ? 12 : 5;
+    const secondsLeft = Math.max(0, Math.round(periodMin * 60 * (1 - k / total)));
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  });
+}
+
+function BeatRow({ beat, text, game }: { beat: Beat; text: string; game: GameTheater }) {
+  const scoreLine = (score: [number, number]) => `${game.awayTeam.name} ${score[1]} · ${game.homeTeam.name} ${score[0]}`;
+  switch (beat.type) {
+    case 'run':
+      return <div className="my-1 px-3 py-1.5 rounded-control bg-warn-soft text-warn text-xs font-black uppercase tracking-wide">{text}</div>;
+    case 'game_winner':
+      return <div className="my-1 px-3 py-1.5 rounded-control bg-accent text-accent-ink text-sm font-black uppercase tracking-wide">{text}</div>;
+    case 'quarter_end': {
+      const q = beat.quarter <= 4 ? `Q${beat.quarter}` : `OT${beat.quarter - 4}`;
+      return (
+        <Panel variant="sunken" padding="sm" className="my-2">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <div className="text-xs font-black uppercase tracking-widest text-ink-subtle">End of {q}</div>
+            <div className="text-lg font-black text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{scoreLine(beat.score)}</div>
+          </div>
+          <div className="mt-1 text-xs text-ink-muted flex flex-wrap gap-x-4 gap-y-0.5">
+            <span>{q}: {beat.quarterScore[1]}–{beat.quarterScore[0]}</span>
+            {beat.topScorer && <span>Top scorer: <span className="font-bold text-ink-strong">{beat.topScorer.name}</span> ({beat.topScorer.points})</span>}
+            <span className="font-mono">
+              <span className={SIDE_TEXT.away}>{abbrev(game.awayTeam.name)}</span> {beat.shooting.away.fgm}-{beat.shooting.away.fga} FG, {beat.shooting.away.tpm}-{beat.shooting.away.tpa} 3P
+              {' · '}
+              <span className={SIDE_TEXT.home}>{abbrev(game.homeTeam.name)}</span> {beat.shooting.home.fgm}-{beat.shooting.home.fga} FG, {beat.shooting.home.tpm}-{beat.shooting.home.tpa} 3P
+            </span>
+          </div>
+        </Panel>
+      );
+    }
+    case 'clutch_start':
+      return (
+        <Panel variant="inverse" padding="sm" className="my-2 flex items-center justify-between gap-2">
+          <span className="text-warn font-black uppercase tracking-widest text-sm" style={{ fontFamily: 'var(--font-bebas)' }}>Crunch time</span>
+          <span className="text-xs text-ink-inverse-muted">{text}</span>
+        </Panel>
+      );
+    case 'ot_start':
+      return (
+        <Panel variant="inverse" padding="sm" className="my-2 text-center">
+          <span className="text-ink-inverse font-black uppercase tracking-widest text-sm" style={{ fontFamily: 'var(--font-bebas)' }}>{text}</span>
+        </Panel>
+      );
+    case 'final':
+      return (
+        <Panel variant="raised" padding="sm" className="my-2 border-accent/40 text-center">
+          <div className="text-xs font-black uppercase tracking-widest text-accent">Final</div>
+          <div className="text-sm font-bold text-ink-strong">{text}</div>
+        </Panel>
+      );
+    case 'identity':
+      return <div className="px-3 py-0.5 text-xs italic text-ink-muted"><span className="text-positive not-italic mr-1">✦</span>{text}</div>;
+    default:
+      return <div className="px-3 py-0.5 text-xs italic text-ink-muted">{text}</div>;
+  }
+}
+
+function TeamBlock({ game, side, score, isUser, seasonLine }: { game: GameTheater; side: Side; score: number; isUser: boolean; seasonLine: string }) {
+  const team = side === 'home' ? game.homeTeam : game.awayTeam;
+  const isHome = side === 'home';
+  const archetypes = teamArchetypeStatuses(team);
+  return (
+    <div className={cn('flex-1 flex flex-col justify-center min-w-0', isHome ? 'items-end text-right' : 'items-start text-left')}>
+      <div className={cn('flex items-center gap-2 mb-1', isHome && 'flex-row-reverse')}>
+        <div className={cn('w-9 h-9 rounded-control flex items-center justify-center font-black text-sm shrink-0', SIDE_CHIP[side])} style={{ fontFamily: 'var(--font-bebas)' }}>{abbrev(team.name)}</div>
+        <div className="min-w-0">
+          <div className={cn('flex items-center gap-1.5', isHome && 'flex-row-reverse')}>
+            <div className="text-sm font-black uppercase tracking-widest text-ink-strong truncate">{team.name}</div>
+            <span className={cn('text-xs font-black uppercase px-1.5 py-0.5 rounded', SIDE_CHIP[side])}>{side}</span>
+            {isUser && team.name.trim().toLowerCase() !== 'you' && <span className="text-xs font-black uppercase px-1.5 py-0.5 rounded bg-surface-inverse text-ink-inverse">You</span>}
+          </div>
+          <div className="text-xs text-ink-muted font-mono">{seasonLine}</div>
+        </div>
+      </div>
+      <div className={cn('flex items-center gap-1 flex-wrap mb-1', isHome && 'justify-end')}>
+        {archetypes.map(s => (
+          <span key={s.def.id} className={cn('text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded', TIER_CLASS[s.tier])} title={TIER_LABEL[s.tier]}>✦ {s.def.name}</span>
+        ))}
+      </div>
+      <div className={cn('text-5xl font-black leading-none', isUser ? 'text-ink-strong' : 'text-ink')} style={{ fontFamily: 'var(--font-bebas)' }}>{score}</div>
+      <div className="mt-3 hidden sm:block"><TeamStarters team={team} isHome={isHome} /></div>
+    </div>
+  );
+}
+
+// ── GameView ──────────────────────────────────────────────────────────────────
+
+export function GameView({ game, onComplete, onCompletionChange, context, initialState }: GameViewProps) {
+  const [currentPoss, setCurrentPoss] = useState(initialState?.possession ?? -1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(500); // ms per possession
-  const [activeTab, setActiveTab] = useState<'playByPlay' | 'boxScore' | 'matchup'>(currentPoss < 0 ? 'matchup' : 'playByPlay');
+  const [speedIdx, setSpeedIdx] = useState(0);
+  const [activeTab, setActiveTab] = useState<'playByPlay' | 'boxScore' | 'matchup'>(initialState?.tab ?? 'matchup');
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [crunchPopup, setCrunchPopup] = useState(initialState?.crunchPopup ? 1 : 0); // >0 while the pop-up is visible
   const feedRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const shownCrunchRef = useRef<Set<number>>(new Set());
 
   const totalPoss = game.possessions.length;
   const isComplete = currentPoss >= totalPoss - 1;
   const currentEvent = currentPoss >= 0 ? game.possessions[currentPoss] : null;
-  const liveBox = useMemo(() => deriveLiveBoxScore(game, currentPoss), [game, currentPoss]);
   const score = currentEvent ? currentEvent.runningScore : [0, 0];
   const quarter = currentEvent?.quarter || 1;
+
+  const userSeatId = context?.userSeatId ?? DEFAULT_USER_SEAT;
+  const userSide: Side | null = game.homeTeam.seatId === userSeatId ? 'home' : game.awayTeam.seatId === userSeatId ? 'away' : null;
+
+  // Narration (D2), beats (D4) and clocks are pure functions of the theater: computed once.
+  const texts = useMemo(() => renderTheater(game), [game]);
+  const beats = useMemo(() => computeBeats(game), [game]);
+  const clocks = useMemo(() => deriveClocks(game.possessions), [game.possessions]);
+  const beatsByIndex = useMemo(() => {
+    const m = new Map<number, Beat[]>();
+    for (const b of beats) { const arr = m.get(b.atIndex) ?? []; arr.push(b); m.set(b.atIndex, arr); }
+    return m;
+  }, [beats]);
+  /** Indices of the first clutch possession per period (D10): speed snaps to 1x here. */
+  const crunchStarts = useMemo(() => new Set(beats.filter(b => b.type === 'clutch_start').map(b => b.atIndex + 1)), [beats]);
+  const liveBox = useMemo(() => boxScoreThrough(game, currentPoss), [game, currentPoss]);
+  const summary = useMemo(() => {
+    if (!isComplete || game.boxScore.home.length === 0 || game.boxScore.away.length === 0) return null;
+    return summarizeGame(game, userSeatId);
+  }, [game, isComplete, userSeatId]);
+
+  const speedMs = SPEEDS[speedIdx].ms;
+
+  const stepTo = useCallback((next: number) => {
+    if (crunchStarts.has(next) && !shownCrunchRef.current.has(next)) {
+      shownCrunchRef.current.add(next);
+      setSpeedIdx(0);
+      setCrunchPopup(next + 1);
+    }
+    setCurrentPoss(next);
+  }, [crunchStarts]);
 
   // Auto-play timer
   useEffect(() => {
@@ -285,23 +388,36 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
       timerRef.current = setInterval(() => {
         setCurrentPoss(prev => {
           const next = prev + 1;
-          if (next >= totalPoss) {
-            setIsPlaying(false);
-            return totalPoss - 1;
+          if (next >= totalPoss) { setIsPlaying(false); return totalPoss - 1; }
+          if (crunchStarts.has(next) && !shownCrunchRef.current.has(next)) {
+            shownCrunchRef.current.add(next);
+            setSpeedIdx(0);
+            setCrunchPopup(next + 1);
           }
           return next;
         });
-      }, speed);
+      }, speedMs);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isPlaying, speed, isComplete, totalPoss]);
+  }, [isPlaying, speedMs, isComplete, totalPoss, crunchStarts]);
 
-  // Scroll feed to bottom
+  // Crunch-time pop-up auto-vanishes (D10).
   useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
-    }
-  }, [currentPoss]);
+    if (!crunchPopup) return;
+    const t = setTimeout(() => setCrunchPopup(0), CRUNCH_POPUP_MS);
+    return () => clearTimeout(t);
+  }, [crunchPopup]);
+
+  // Auto-scroll that stops when the user scrolls up (D6).
+  useEffect(() => {
+    if (autoScroll && feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [currentPoss, autoScroll, activeTab]);
+  const handleFeedScroll = () => {
+    const el = feedRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+    setAutoScroll(atBottom);
+  };
 
   // Notify parent on complete
   useEffect(() => {
@@ -315,71 +431,83 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
     onCompletionChange?.(isComplete);
   }, [isComplete, onCompletionChange]);
 
-  const handleStart = () => { setCurrentPoss(0); setIsPlaying(true); setActiveTab('playByPlay'); };
+  const handleStart = () => { stepTo(0); setIsPlaying(true); setActiveTab('playByPlay'); };
   const handleTogglePlay = () => setIsPlaying(prev => !prev);
-  const handleSkip = () => { setCurrentPoss(totalPoss - 1); setIsPlaying(false); };
-  const handleSpeedToggle = () => {
-    setSpeed(prev => prev === 500 ? 200 : prev === 200 ? 80 : 500);
-  };
+  /** D6: "End" is not a speed — it shows the result now (no beats, no pop-up). */
+  const handleEnd = () => { setCurrentPoss(totalPoss - 1); setIsPlaying(false); setCrunchPopup(0); setActiveTab('boxScore'); };
 
-  const visiblePossessions = game.possessions.slice(0, currentPoss + 1);
-
-  // Quarter label
   const quarterLabel = quarter <= 4 ? `Q${quarter}` : `OT${quarter - 4}`;
+  const timeDisplay = currentPoss >= 0 ? clocks[currentPoss] : '12:00';
+  const inClutch = !!currentEvent?.isClutch && !isComplete;
 
-  // Progress through quarter
-  const quarterPoss = game.possessions.filter(p => p.quarter === quarter);
-  const quarterProgress = quarterPoss.length > 0
-    ? ((visiblePossessions.filter(p => p.quarter === quarter).length / quarterPoss.length) * 12).toFixed(0)
-    : '0';
-  const timeDisplay = quarter <= 4 ? `${Math.max(0, 12 - Number(quarterProgress))}:00` : `${Math.max(0, 5 - Math.round(Number(quarterProgress) / 2.4))}:00`;
+  const rows = useMemo<FeedRow[]>(() => {
+    const out: FeedRow[] = [];
+    const from = Math.max(0, currentPoss - 60);
+    for (let i = from; i <= currentPoss && i < totalPoss; i++) {
+      const e = game.possessions[i];
+      out.push({ key: `p${i}`, kind: 'poss', event: e, text: texts[i] ?? e.narrativeText, clock: clocks[i] });
+      for (const b of beatsByIndex.get(i) ?? []) out.push({ key: `b${i}-${b.type}`, kind: 'beat', beat: b, text: renderBeat(b, game) });
+    }
+    return out;
+  }, [game, currentPoss, totalPoss, texts, clocks, beatsByIndex]);
+
+  const latestBeat = useMemo(() => {
+    for (let i = rows.length - 1; i >= 0; i--) { const r = rows[i]; if (r.kind === 'beat' && r.beat.type !== 'final') return r.text; }
+    return null;
+  }, [rows]);
 
   const tabButtonClass = (active: boolean) => cn(active && 'bg-surface-inverse text-ink-inverse border-surface-inverse hover:bg-surface-inverse');
 
+  const seasonLine = (side: Side) => {
+    const line = side === 'home' ? context?.home : context?.away;
+    if (!line) return 'Exhibition';
+    return `${line.wins}-${line.losses} · ${line.streak} · ${ordinal(line.rank)} of ${line.of}`;
+  };
+  const h2h = context?.headToHead && context.headToHead[0] + context.headToHead[1] > 0 ? context.headToHead : null;
+
   return (
-    <div className="flex flex-col h-full gap-3">
+    <div className="flex flex-col h-full gap-3 relative">
       {/* Scoreboard */}
       <div className="bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b border-line bg-surface-sunken">
-          {/* Away Team (Left) */}
-          <div className="flex-1 text-left flex flex-col justify-center">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="text-xs font-bold uppercase tracking-widest text-ink-strong">{game.awayTeam.name}</div>
-              <div className="text-xs font-black uppercase text-ink-subtle bg-surface-muted px-1.5 py-0.5 rounded">Away</div>
-            </div>
-            <div className="text-4xl font-black text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[1]}</div>
-            <div className="mt-3"><TeamStarters team={game.awayTeam} isHome={false} /></div>
-          </div>
+        <div className="flex items-stretch justify-between p-4 border-b border-line bg-surface-sunken gap-2">
+          <TeamBlock game={game} side="away" score={score[1]} isUser={userSide === 'away'} seasonLine={seasonLine('away')} />
 
-          {/* Center: Quarter + Time */}
-          <div className="flex flex-col items-center px-6 min-w-[120px]">
+          {/* Center: status, clock, ticker */}
+          <div className="flex flex-col items-center justify-center px-2 sm:px-6 min-w-[110px] sm:min-w-[160px] text-center">
             <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-1">
-              {currentPoss < 0 ? 'PRE-GAME' : isComplete ? 'FINAL' : quarterLabel}
+              {currentPoss < 0 ? 'Pre-game' : isComplete ? 'Final' : quarterLabel}
             </div>
             {!isComplete && currentPoss >= 0 && (
-              <div className="text-lg font-bold text-ink-muted leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{timeDisplay}</div>
+              <div className="text-2xl font-bold text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{timeDisplay}</div>
+            )}
+            {inClutch && (
+              <div className="mt-1 text-xs font-black uppercase tracking-widest text-warn bg-warn-soft px-2 py-0.5 rounded motion-safe:animate-pulse">Crunch time</div>
             )}
             {isComplete && game.isOvertime && (
-              <div className="text-xs font-bold text-warn uppercase mt-1">{game.overtimePeriods}x Overtime</div>
+              <div className="text-xs font-bold text-warn uppercase mt-1">{game.overtimePeriods}× Overtime</div>
             )}
-            {currentPoss < 0 && <div className="text-3xl font-black text-ink-subtle italic my-1" style={{ fontFamily: 'var(--font-bebas)' }}>VS</div>}
+            {currentPoss < 0 && (
+              <>
+                <div className="text-3xl font-black text-ink-subtle italic my-1" style={{ fontFamily: 'var(--font-bebas)' }}>@</div>
+                {h2h && <div className="text-xs text-ink-muted font-mono">Season series {h2h[1]}-{h2h[0]}</div>}
+              </>
+            )}
+            {currentPoss >= 0 && latestBeat && (
+              <div className="mt-2 text-xs italic text-ink-muted max-w-[220px] truncate" title={latestBeat}>{latestBeat}</div>
+            )}
           </div>
 
-          {/* Home Team (Right) */}
-          <div className="flex-1 text-right flex flex-col justify-center items-end">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="text-xs font-black uppercase text-ink-subtle bg-surface-muted px-1.5 py-0.5 rounded">Home</div>
-              <div className="text-xs font-bold uppercase tracking-widest text-ink-strong">{game.homeTeam.name}</div>
-            </div>
-            <div className="text-4xl font-black text-ink-strong leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>{score[0]}</div>
-            <div className="mt-3"><TeamStarters team={game.homeTeam} isHome={true} /></div>
-          </div>
+          <TeamBlock game={game} side="home" score={score[0]} isUser={userSide === 'home'} seasonLine={seasonLine('home')} />
         </div>
 
         {/* Quarter scores bar */}
         {game.quarterSummaries.length > 0 && currentPoss >= 0 && (
           <div className="flex text-xs font-bold text-ink-muted border-t border-line bg-surface-raised">
-            <div className="flex-1"></div>
+            <div className="flex-1 flex items-center px-3 gap-2 text-xs font-mono">
+              <span className={SIDE_TEXT.away}>{abbrev(game.awayTeam.name)}</span>
+              <span className="text-ink-subtle">@</span>
+              <span className={SIDE_TEXT.home}>{abbrev(game.homeTeam.name)}</span>
+            </div>
             {/* A quarter's row only appears once its possessions are fully consumed —
                 quarterSummaries holds every quarter's precomputed final score up front
                 (the theater is fully simulated ahead of playback), so including the
@@ -388,16 +516,28 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
             {game.quarterSummaries.filter(q => q.quarter < quarter || (isComplete && q.quarter === quarter)).map(q => (
               <div key={q.quarter} className="w-10 text-center py-1 flex flex-col border-l border-line">
                 <span className="text-xs text-ink-subtle border-b border-line">{q.quarter <= 4 ? `Q${q.quarter}` : `OT`}</span>
-                <span className="py-0.5">{q.awayScore}</span>
-                <span className="border-t border-line py-0.5">{q.homeScore}</span>
+                <span className={cn('py-0.5', SIDE_TEXT.away)}>{q.awayScore}</span>
+                <span className={cn('border-t border-line py-0.5', SIDE_TEXT.home)}>{q.homeScore}</span>
               </div>
             ))}
+            {!isComplete && (
+              <div className="w-10 text-center py-1 flex flex-col border-l border-line">
+                <span className="text-xs text-ink-subtle border-b border-line">{quarterLabel}</span>
+                <span className={cn('py-0.5', SIDE_TEXT.away)}>{score[1] - game.quarterSummaries.filter(q => q.quarter < quarter).reduce((s, q) => s + q.awayScore, 0)}</span>
+                <span className={cn('border-t border-line py-0.5', SIDE_TEXT.home)}>{score[0] - game.quarterSummaries.filter(q => q.quarter < quarter).reduce((s, q) => s + q.homeScore, 0)}</span>
+              </div>
+            )}
+            <div className="w-12 text-center py-1 flex flex-col border-l border-line-strong font-black">
+              <span className="text-xs text-ink-subtle border-b border-line">T</span>
+              <span className={cn('py-0.5', SIDE_TEXT.away)}>{score[1]}</span>
+              <span className={cn('border-t border-line py-0.5', SIDE_TEXT.home)}>{score[0]}</span>
+            </div>
           </div>
         )}
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-center gap-3 flex-wrap">
+      <div className="flex items-center justify-center gap-2 flex-wrap">
         {currentPoss < 0 ? (
           <>
             <Button onClick={handleStart} variant="primary" icon={<PlayIcon className="w-4 h-4" />}>
@@ -409,16 +549,30 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
           </>
         ) : (
           <>
-            <Button onClick={handleTogglePlay} variant="secondary" icon={isPlaying ? <Pause className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}>
-              {isPlaying ? 'Pause' : 'Play'}
-            </Button>
-            <Button onClick={handleSpeedToggle} variant="secondary" icon={<FastForward className="w-4 h-4" />}>
-              {speed === 500 ? '1×' : speed === 200 ? '2×' : '5×'}
-            </Button>
-            <Button onClick={handleSkip} variant="secondary" icon={<SkipForward className="w-4 h-4" />}>
-              End
-            </Button>
-            <div className="w-px h-6 bg-line mx-1"></div>
+            {!isComplete && (
+              <>
+                <Button onClick={handleTogglePlay} variant="secondary" icon={isPlaying ? <Pause className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}>
+                  {isPlaying ? 'Pause' : 'Play'}
+                </Button>
+                <div className="inline-flex rounded-control border border-line-strong overflow-hidden" role="group" aria-label="Playback speed">
+                  {SPEEDS.map((s, i) => (
+                    <Button
+                      key={s.label}
+                      variant="ghost"
+                      onClick={() => setSpeedIdx(i)}
+                      aria-pressed={speedIdx === i}
+                      className={cn('rounded-none px-3', speedIdx === i && 'bg-surface-inverse text-ink-inverse hover:bg-surface-inverse hover:text-ink-inverse')}
+                    >
+                      {s.label}
+                    </Button>
+                  ))}
+                </div>
+                <Button onClick={handleEnd} variant="secondary" icon={<SkipForward className="w-4 h-4" />} title="Show the result now">
+                  End
+                </Button>
+                <div className="w-px h-6 bg-line mx-1"></div>
+              </>
+            )}
             <Button onClick={() => setActiveTab('matchup')} variant="secondary" className={tabButtonClass(activeTab === 'matchup')}>
               Matchup
             </Button>
@@ -426,110 +580,109 @@ export function GameView({ game, onComplete, onCompletionChange }: GameViewProps
               Play-by-Play
             </Button>
             <Button onClick={() => setActiveTab('boxScore')} variant="secondary" className={tabButtonClass(activeTab === 'boxScore')}>
-              Box Score
+              {isComplete ? 'Box Score & Summary' : 'Box Score'}
             </Button>
           </>
         )}
       </div>
 
-      <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden min-h-0 flex flex-col">
+      <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden min-h-0 flex flex-col relative">
         {activeTab === 'matchup' && <TaleOfTheTape game={game} />}
 
         {/* Play-by-Play Feed */}
         {activeTab === 'playByPlay' && currentPoss >= 0 && (
-          <div ref={feedRef} className="flex-1 overflow-y-auto p-3">
-            <div className="flex flex-col gap-1">
-              {visiblePossessions.slice(-30).map(poss => {
-                const isScoring = poss.outcome === '2pt' || poss.outcome === '3pt' || poss.outcome === 'and1';
-                const isHomeTeam = poss.team === 'home';
-                return (
-                  <div key={poss.index} className={`flex items-start gap-2 py-1 px-2 rounded text-xs ${isScoring ? 'bg-positive-soft font-bold' : 'text-ink-muted'}`}>
-                    <span className="shrink-0 text-xs font-mono text-ink-subtle w-8">{poss.quarter <= 4 ? `Q${poss.quarter}` : 'OT'}</span>
-                    <span className={`shrink-0 text-xs font-bold uppercase w-12 ${isHomeTeam ? 'text-info' : 'text-danger'}`}>
-                      {isHomeTeam ? game.homeTeam.name.substring(0, 6) : game.awayTeam.name.substring(0, 6)}
-                    </span>
-                    <span className="flex-1 flex items-center flex-wrap gap-1.5">
-                      {poss.calledPlays?.map((call, idx) => (
-                        <span
-                          key={idx}
-                          className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
-                        >
-                          {call.side === 'offense' ? '▶' : '🛡'} {call.name}
-                        </span>
-                      ))}
-                      <span>{poss.narrativeText}</span>
-                    </span>
-                    {isScoring && (
-                      <span className="shrink-0 font-mono text-xs text-ink-subtle">
-                        {poss.runningScore[0]}-{poss.runningScore[1]}
+          <>
+            <div ref={feedRef} onScroll={handleFeedScroll} className="flex-1 overflow-y-auto p-3">
+              <div className="flex flex-col gap-0.5">
+                {rows.map(row => {
+                  if (row.kind === 'beat') return <BeatRow key={row.key} beat={row.beat} text={row.text} game={game} />;
+                  const poss = row.event;
+                  const isScoring = poss.outcome === '2pt' || poss.outcome === '3pt' || poss.outcome === 'and1';
+                  const side: Side = poss.team;
+                  const isUserRow = userSide === side;
+                  return (
+                    <div
+                      key={row.key}
+                      className={cn(
+                        'flex items-start gap-2 py-1 px-2 rounded text-xs border-l-2',
+                        isUserRow ? (side === 'home' ? 'border-l-accent' : 'border-l-info') : 'border-l-transparent',
+                        isScoring ? (side === 'home' ? 'bg-accent-soft/40 font-bold text-ink-strong' : 'bg-info-soft font-bold text-ink-strong') : 'text-ink-muted',
+                        poss.isClutch && 'ring-1 ring-warn/40',
+                      )}
+                    >
+                      <span className="shrink-0 font-mono text-ink-subtle w-14 whitespace-nowrap">{poss.quarter <= 4 ? `Q${poss.quarter}` : `OT${poss.quarter - 4}`} {row.clock}</span>
+                      <span className={cn('shrink-0 text-xs font-black uppercase px-1 rounded w-10 text-center', SIDE_CHIP[side])}>{abbrev(side === 'home' ? game.homeTeam.name : game.awayTeam.name)}</span>
+                      <span className="flex-1 flex items-center flex-wrap gap-1.5">
+                        {poss.calledPlays?.map((call, idx) => (
+                          <span
+                            key={idx}
+                            className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
+                          >
+                            {call.side === 'offense' ? '▶' : '🛡'} {call.name}
+                          </span>
+                        ))}
+                        <span>{row.text}</span>
                       </span>
-                    )}
-                  </div>
-                );
-              })}
+                      {isScoring && (
+                        <span className="shrink-0 font-mono text-xs text-ink-subtle">
+                          {poss.runningScore[1]}-{poss.runningScore[0]}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+            {!autoScroll && !isComplete && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
+                <Button variant="inverse" className="bg-surface-inverse shadow-lg" icon={<ArrowDown className="w-4 h-4" />} onClick={() => { setAutoScroll(true); if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight; }}>
+                  Jump to live
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Box Score */}
+        {/* Box Score (+ Summary once complete) */}
         {activeTab === 'boxScore' && (
           <div className="flex-1 overflow-y-auto p-3">
             <div className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">
-              {isComplete ? 'Final box score' : currentPoss < 0 ? 'Pre-game' : `Through ${quarterLabel} · live`}
+              {isComplete ? 'Final box score' : currentPoss < 0 ? 'Pre-game' : `Through ${quarterLabel} ${timeDisplay} · live`}
             </div>
-            {['home', 'away'].map(side => {
+            {summary && <GameSummaryPanel summary={summary} homeName={game.homeTeam.name} awayName={game.awayTeam.name} />}
+            {(['away', 'home'] as Side[]).map(side => {
               const team = side === 'home' ? game.homeTeam : game.awayTeam;
               // Never reveal the precomputed final numbers mid-game: derive from what has been played.
               const box = isComplete
                 ? (side === 'home' ? game.boxScore.home : game.boxScore.away)
                 : (side === 'home' ? liveBox.home : liveBox.away);
               return (
-                <div key={side} className="mb-4">
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2">{team.name}</h3>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-ink-subtle font-bold uppercase border-b border-line">
-                        <th className="text-left py-1 pr-2">Player</th>
-                        <th className="text-center py-1 w-9">MIN</th>
-                        <th className="text-center py-1 w-9">PTS</th>
-                        <th className="text-center py-1 w-9">2FG</th>
-                        <th className="text-center py-1 w-9">3FG</th>
-                        <th className="text-center py-1 w-9">FT</th>
-                        <th className="text-center py-1 w-9">AST</th>
-                        <th className="text-center py-1 w-9">TO</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {box.filter(b => b.possessions > 0).map(b => (
-                        <tr key={b.playerId} className="border-b border-line text-ink-muted">
-                          <td className="text-left py-1 pr-2 font-bold text-ink-strong truncate max-w-[120px]">{b.playerName}</td>
-                          <td className="text-center py-1">{b.minutes.toFixed(0)}</td>
-                          <td className="text-center py-1 font-bold">{b.points}</td>
-                          <td className="text-center py-1">{b.twoPointers}</td>
-                          <td className="text-center py-1">{b.threePointers}</td>
-                          <td className="text-center py-1">{b.andOnes}</td>
-                          <td className="text-center py-1">{b.assists}</td>
-                          <td className="text-center py-1">{isComplete ? b.turnovers : '–'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BoxScoreTable key={side} teamName={team.name} side={side} box={box} starters={team.starters} isUser={userSide === side} live={!isComplete} />
               );
             })}
+          </div>
+        )}
+
+        {/* D10: "Crunchtime!" pop-up — appears once per window entry, fades on its own. */}
+        {crunchPopup > 0 && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20" aria-live="polite">
+            <div className="crunch-pop rounded-panel bg-surface-inverse text-warn px-8 py-4 shadow-xl border border-warn/40">
+              <div className="text-5xl font-black uppercase tracking-widest leading-none" style={{ fontFamily: 'var(--font-bebas)' }}>Crunchtime!</div>
+            </div>
           </div>
         )}
       </div>
 
       {/* Final Result Banner */}
-      {isComplete && (
+      {isComplete && currentPoss >= 0 && (
         <div className="bg-surface-raised rounded-panel border border-line shadow-sm p-4 text-center">
           <div className="text-2xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
-            Final: {game.homeTeam.name} {game.finalScore[0]} — {game.finalScore[1]} {game.awayTeam.name}
+            Final: <span className={SIDE_TEXT.away}>{game.awayTeam.name} {game.finalScore[1]}</span> @ <span className={SIDE_TEXT.home}>{game.homeTeam.name} {game.finalScore[0]}</span>
           </div>
           <div className="text-xs text-ink-subtle mt-1">
-            {game.finalScore[0] > game.finalScore[1] ? game.homeTeam.name : game.awayTeam.name} wins!
+            {(() => { const w = game.finalScore[0] > game.finalScore[1] ? game.homeTeam.name : game.awayTeam.name; return `${w} ${winsVerb(w)}`; })()}
             {game.isOvertime && ` (${game.overtimePeriods}OT)`}
+            {summary && <> · Player of the game: <span className="font-bold text-ink-strong">{summary.playerOfTheGame.name}</span></>}
           </div>
         </div>
       )}

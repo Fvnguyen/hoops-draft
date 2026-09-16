@@ -14,7 +14,7 @@ import type { Rarity } from './types';
  * `storage/types.ts` `StoredGameResult.balanceVersion`) so the season view can tell a
  * stale theater from a fresh one instead of silently re-narrating a different game.
  */
-export const BALANCE_VERSION = 6; // 2026-09-14: OT capped at 3 periods, tie broken by starter OVR not a coin flip
+export const BALANCE_VERSION = 7; // 2026-09-16 game_theater: narrative + box attribution + clutch closers change the Q4 lineup draws
 
 // ── game.ts (from gameEngine.ts) ────────────────────────────────────────────
 
@@ -270,6 +270,29 @@ export const OREB_MAX_CHAIN = 2;
  */
 export const STEER_SCALE = 0.30;
 export const STEER_CAP = 0.08;
+/** game_theater D1: the steer is narrated (`narrative.steeredTo`) only when it moved at
+ *  least this much share toward a channel. Presentation threshold — no sim effect. */
+export const STEER_NARRATE_MIN = 0.04;
+
+/**
+ * game_theater D9 — box-score ATTRIBUTION only. These shares label outcomes the sim has
+ * already decided; they are drawn from a per-possession derived rng, never the sim stream,
+ * so changing them cannot move a score. NBA reference: blocks are ~5-6% of FGA (≈10% of
+ * misses); steals are ~55% of turnovers.
+ */
+export const BLOCK_SHARE_OF_MISSES = 0.10;
+export const STEAL_SHARE_OF_TURNOVERS = 0.55;
+
+/**
+ * game_theater D10 — crunch time. In Q4 and every OT period the window opens at the first
+ * possession where the offense has CLUTCH_WINDOW_POSS or fewer of its own possessions left
+ * in the period (the current one included); it is entered only if the absolute margin at
+ * that moment is CLUTCH_MARGIN or less (checked exactly once per period), and then lasts to
+ * the end of the period. Inside it both teams play their closing five (depth-chart starters,
+ * no weighted lineup draw). Changes Q4 outcomes — BALANCE_VERSION 7.
+ */
+export const CLUTCH_WINDOW_POSS = 4;
+export const CLUTCH_MARGIN = 5;
 
 // ── ratings.ts (from engine.ts) ─────────────────────────────────────────────
 

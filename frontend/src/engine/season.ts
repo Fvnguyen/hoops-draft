@@ -6,7 +6,7 @@
  */
 
 import { DraftSession } from './deckbuilder';
-import { simulateGame, buildTeamInfo, GameTheater, TeamInfo, PlayerBoxScore } from './game';
+import { simulateGame, buildTeamInfo, GameTheater, TeamInfo, PlayerBoxScore, emptyBoxScore } from './game';
 import { Rng, createRng, randomSeed } from './rng';
 import { BALANCE_VERSION } from './balance';
 
@@ -522,4 +522,55 @@ export function computeUserSeasonStats(seasons: Season[]): UserSeasonStats {
     avgWins: seasonsPlayed === 0 ? '0.0' : (wins / seasonsPlayed).toFixed(1),
     avgLosses: seasonsPlayed === 0 ? '0.0' : (losses / seasonsPlayed).toFixed(1),
   };
+}
+
+// ── game_theater D9: season player totals ──────────────────────────────────
+
+/** One human-team player's box score summed across the season, plus games played. */
+export interface SeasonPlayerTotals extends PlayerBoxScore {
+  gamesPlayed: number;
+}
+
+/**
+ * Sums the human team's box-score rows across every played matchup that stored a box
+ * (only the human's own matchup keeps one — see playNextGame). Every column is additive,
+ * plus/minus included; `gamesPlayed` counts games the player was on the floor for
+ * (minutes > 0). Rows from saves that predate D9 lack the new columns and count as 0.
+ * Sorted by points desc; no played games → [].
+ */
+export function seasonPlayerTotals(season: Season): SeasonPlayerTotals[] {
+  const totals = new Map<string, SeasonPlayerTotals>();
+  for (const entry of season.schedule ?? []) {
+    if (!entry.played) continue;
+    const matchup = humanMatchup(entry);
+    const result = matchup?.result;
+    if (!matchup || !result?.boxScore) continue;
+    const rows = matchup.homeSeatIndex === 0 ? result.boxScore.home : result.boxScore.away;
+    for (const row of rows ?? []) {
+      let t = totals.get(row.playerId);
+      if (!t) { t = { ...emptyBoxScore(row.playerId, row.playerName), gamesPlayed: 0 }; totals.set(row.playerId, t); }
+      const minutes = row.minutes ?? 0;
+      if (minutes > 0) t.gamesPlayed++;
+      t.minutes = Math.round((t.minutes + minutes) * 10) / 10;
+      t.possessions += row.possessions ?? 0;
+      t.points += row.points ?? 0;
+      t.twoPointers += row.twoPointers ?? 0;
+      t.threePointers += row.threePointers ?? 0;
+      t.andOnes += row.andOnes ?? 0;
+      t.turnovers += row.turnovers ?? 0;
+      t.assists += row.assists ?? 0;
+      t.offensiveRebounds += row.offensiveRebounds ?? 0;
+      t.defensiveRebounds += row.defensiveRebounds ?? 0;
+      t.steals += row.steals ?? 0;
+      t.blocks += row.blocks ?? 0;
+      t.fieldGoalsMade += row.fieldGoalsMade ?? 0;
+      t.fieldGoalsAttempted += row.fieldGoalsAttempted ?? 0;
+      t.threesMade += row.threesMade ?? 0;
+      t.threesAttempted += row.threesAttempted ?? 0;
+      t.freeThrowsMade += row.freeThrowsMade ?? 0;
+      t.freeThrowsAttempted += row.freeThrowsAttempted ?? 0;
+      t.plusMinus += row.plusMinus ?? 0;
+    }
+  }
+  return Array.from(totals.values()).sort((a, b) => b.points - a.points);
 }
