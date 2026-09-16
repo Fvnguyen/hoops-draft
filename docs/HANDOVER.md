@@ -12,7 +12,9 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
 — see the milestones below. The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
-at 0 violations. 229 Vitest tests pass, type-check is clean, `npm run lint` is
+at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
+CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
+230 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -85,39 +87,10 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
   `Season` and a fresh result commits only when the user watches `GameView` to the end and
   hits "Continue to Schedule"; leaving early discards it. Covered by `tests/season.spec.ts`.
 
-## mobile_responsive T1-T4, T6 — 2026-09-15
-
-T1 audit harness: `playwright.config.ts` gains `phone-landscape` (830x385, dpr 3) and
-`tablet-landscape` (1244x778, dpr 2.25) projects scoped to `tests/mobile-audit.spec.ts`,
-walking 8 screens across all four flows in one test, measuring overflow/sub-44px
-targets/sub-12px text/clipped-no-scroll. First run: 200 findings on phone, 201 on
-tablet, near-identical (absolute-px defects, not width breakpoints) — all but one fixed
-by `ui_foundation`'s token/primitive pass. The one holdout, `/rosters`' `grid-cols-5`
-squeezing Starting Lineup cards to 87x19px, is T6: swapped to `flex` +
-`flex-1 min-w-[148px]` per card (same pattern as `DeckBuilder.tsx`'s docked columns),
-scrolling inside the existing `overflow-x-auto` row. Audit spec now green (0 findings),
-both projects, all 8 screens.
-
-T2 (manifest/icons/meta): `app/manifest.ts` (standalone, landscape, night-theme
-`#0c0a09`), hand-drawn SVG icons under `public/icons/` (no image pipeline in the repo,
-so no PNG/maskable-PNG — SVG icons with `purpose: maskable` instead), apple meta in
-`layout.tsx`. T3 (`OrientationGate`): pure-CSS `portrait:pointer-coarse:flex` overlay,
-z-[300], opt-out via `usePathname()` on `/login`/`/signup`/`/pending`; sits above
-`WhatsNewSplash` (z-100) by design. T4 (auto-login): audit only, no bugs found —
-`proxy.ts` never redirects an authenticated `/` load, the Supabase cookie has no
-`maxAge` override (400-day library default), `WhatsNewSplash` already persists
-seen-state in IndexedDB. **Owner action still open**: set Supabase dashboard
-Authentication → Sessions refresh-token/inactivity timeout to >= 90 days (not
-repo-controlled). New specs `orientation-gate.spec.ts` (3/3) and `auto-login.spec.ts`
-(3/3); full suite 42/42 across chromium/phone-landscape/tablet-landscape, root
-`npm test` 229/229, tsc/lint clean. Only T7 (owner real-device pass) is left on this plan.
-
-Harness gotchas: `WhatsNewSplash` mounts only after `useCurrentProfile`/`useNotices`
-resolve; a leftover fixture roster raises a cross-device toast over later screens, so the
-run deletes it first; `networkidle` never arrives on a live draft, so that wait is
-bounded; `dismissSplash`'s backdrop click can't reach the splash while
-`OrientationGate` is showing (portrait+touch) — that's correct (nothing should be
-interactive mid-gate), so specs check the gate without going through the splash there.
+- **mobile_responsive** (superseded 2026-09-15, closed 2026-09-16): audit harness
+  (`phone-landscape`/`tablet-landscape` projects, `tests/mobile-audit.spec.ts`), manifest +
+  SVG icons, `OrientationGate`, auto-login audit (Supabase refresh-token setting still an
+  owner action), `/rosters` lineup row; folded into `game_canvas`.
 
 ## ui_foundation — done 2026-09-15
 
@@ -171,6 +144,34 @@ a wrapper the tile never bubbled to); role avatars must be CSS backgrounds (an <
 onError misses a 404 that lands before hydration); `--update-snapshots` keeps a stale
 baseline that still passes the diff ratio — use `=all` to force a rewrite.
 
+## game_canvas — done 2026-09-16
+
+Owner UAT on the S26+ set the bar: the five main screens fit a phone-landscape screen
+without scrolling, scaled down like Chrome does with a non-responsive page. Mechanism:
+`html { zoom: var(--zoom) }`, 0.7 under `(pointer: coarse) and (max-width: 999px)`
+(`globals.css`). `zoom` reflows (unlike transform) so fixed positioning, inner scroll and
+hit-testing keep working with no JS; viewport units shrink with it, so every full-height
+shell uses `h-dvh-z`/`min-h-dvh-z` (`100dvh / --zoom`) — one code path, desktop unchanged,
+tablet stays fluid. Per screen: Home fits (lg-only 600px floor, fan shown on phones);
+the pack spread and later picks are two rows of four whose grid width is derived from
+the viewport height (header + ticker hidden while inert during the intro); deck builder
+has no page scroll, only its columns; game/season scroll vertically by decision.
+Audit (`tests/mobile-audit.spec.ts`): rule 5 flags own text outside the viewport with no
+scroll container or translated drawer (found four real clips `scrollWidth` never saw),
+rule 6 forbids page scroll on home/draft/deck builder (strict on home/draft: any region
+over half the screen scrolling more than a tenth), rects divided by `currentCSSZoom`,
+measurement before the full-page screenshot, textless/line-clamped boxes are art.
+Touch contract: tap selects, tap again deselects, no flip on tap, no double-tap pick, no
+2s auto-pick — the dock's Confirm/Take picks; long-press (450ms) opens the preview with
+badge legend + front + un-rotated back (`PlayerCardBack`); cards cancel the browser
+context menu on every pointer. Desktop keeps hover flip and double-click-to-pick (now in
+the pack opener too). Also: pack reveal shows the static front during the flip (nested
+3D contexts painted text through the backs), basic plays tap-to-slot, season schedule +
+standings side by side, two-line names under 200px, headshots via `next/image` (~22 KB
+WebP instead of 182 KB PNG) with the draft room preloading this and the incoming pack.
+Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
+(`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
+
 ## How to run everything
 
 ```bash
@@ -192,17 +193,13 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (plan sequence; `accounts_cloud_saves`, `game_engine`,
-`season_lifecycle_notifications`, `ui_foundation`, and `deckbuilder_ux` are done;
-`mobile_responsive` is superseded by `game_canvas`, built 2026-09-16: phones get CSS
-`zoom: 0.7` (`globals.css`), full-height shells use `h-dvh-z`, Home/draft fit with no
-scroll, `tests/mobile-audit.spec.ts` encodes the per-screen rules, and the owner's first
-feedback round is in (plan D6: side-by-side season, tap-to-slot basic plays, long-press
-card preview, two-line names, static reveal face). Open: T2 phone-card design (canvas
-sign-off first) and T5, the owner's real-device pass; the
-Supabase dashboard refresh-token setting is still an owner action). The 2026-09-12 code review that
-produced Phases 0-1 is archived as `docs/completed/review_code_and_architecture_2026-09-12.md`;
-the list below predates it.
+What to do next is `docs/ROADMAP.md` (`accounts_cloud_saves`, `game_engine`,
+`season_lifecycle_notifications`, `ui_foundation`, `deckbuilder_ux`, `game_canvas` are
+done; `mobile_responsive` was folded into `game_canvas`). Owner actions outside the repo:
+Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
+Vercel image-optimization quota is the first place to look if headshots ever break. The
+2026-09-12 code review that produced Phases 0-1 is archived as
+`docs/completed/review_code_and_architecture_2026-09-12.md`; the list below predates it.
 
 Item 1 below is from `docs/analytics/analysis_report.md`/`analytics_summary.md` (both
 banner-marked stale, generated by the retired `scripts/analyze_game_data.js`) —

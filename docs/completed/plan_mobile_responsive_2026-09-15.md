@@ -1,7 +1,7 @@
 # Plan: mobile_responsive
 
-File: `docs/plans/plan_mobile_responsive_2026-09-15.md`. Status: **superseded 2026-09-15
-by [game_canvas](plan_game_canvas_2026-09-15.md)** — T1-T4 and T6 below are done and kept
+File: `docs/completed/plan_mobile_responsive_2026-09-15.md`. Status: **superseded 2026-09-15
+by [game_canvas](plan_game_canvas_2026-09-15.md), closed with it 2026-09-16** — T1-T4 and T6 below are done and kept
 as-is (their manifest/icons/OrientationGate/audit-harness/fluid-width work is the
 foundation `game_canvas` builds on); T5 was already absorbed by `deckbuilder_ux`; T7
 (owner real-device pass) is superseded by `game_canvas` T5. Reason: today's real-device

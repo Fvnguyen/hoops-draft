@@ -1,8 +1,8 @@
 # Plan: game_canvas
 
-File: `docs/plans/plan_game_canvas_2026-09-15.md`. Status: **built 2026-09-16 (zoom
-mechanism + fit-to-screen rules + feedback round 1); open: T2 phone card design, T5
-owner real-device pass.**
+File: `docs/completed/plan_game_canvas_2026-09-15.md`. Status: **done 2026-09-16** — the
+owner's feedback rounds on the S26+ were the real-device pass (T5); T2 (phone card
+design) moved to `docs/ROADMAP.md` as its own not-yet-planned row.
 Sequence: 3 in `docs/ROADMAP.md` (replaces the remaining scope of `mobile_responsive`;
 its T1-T4/T6 work and tests are kept as-is). Depends on: `ui_foundation` (done),
 `deckbuilder_ux` (done). Files owned: `frontend/src/app/globals.css` (zoom rule, `dvh-z`

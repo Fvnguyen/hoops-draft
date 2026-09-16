@@ -19,11 +19,11 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
-| 3 | [game_canvas](plans/plan_game_canvas_2026-09-15.md) — phones (coarse pointer, <1000px) get CSS `zoom: 0.7` + `dvh-z` shells; Home and the draft (two rows of four) fit with no scroll, deck builder scrolls only inside columns, game/season scroll vertically by decision; audit encodes the rules and is 0 findings at 780/830/1244. Only T5 (owner real-device pass) is open | T5 owner | — (ui_foundation, deckbuilder_ux, mobile_responsive T1-T4/T6 done) | `GameCanvas.tsx`, `app/layout.tsx`, `OrientationGate.tsx` (merges in), every route's `page.tsx`/screen component (dvh audit), `playwright.config.ts`, `tests/mobile-audit.spec.ts` | 1-2 days |
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
 | 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content | planned | 4 (game_engine done; needs contested-draft data) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
 | 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, playback controls | planned | — (game_engine done, unblocked) | `engine/game.ts` narration, new `src/narration/`, `GameView.tsx` | 2 days |
-| 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once #3 is signed off on the real devices and the installed web app is something the owner would hand to a friend | not yet planned | 3 | — | 2-3 days |
+| 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
+| 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (new variant), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 
 Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
 `mobile_responsive` because its tokens and primitives resolve most of the mobile
@@ -31,7 +31,7 @@ audit's punch list (absolute-px type/hit-area defects, not breakpoints) in one p
 mobile T6 then re-audits and fixes only what is left. Earlier that day:
 `mobile_responsive` took over the manifest/icons/auto-login work; `mobile_pwa_shell` is removed (a service worker and offline page cannot work while
 `proxy.ts` gates every route on a live Supabase session — revisit only with an offline-
-tolerant auth design) and `android_twa` (#7) is conditional on #3's real-device sign-off. `deckbuilder_ux` (done)
+tolerant auth design) and `android_twa` (#7) is conditional on the owner wanting to hand the installed app to a friend (`game_canvas` done 2026-09-16). `deckbuilder_ux` (done)
 was added after the owner's live review of ui_foundation the same evening: one deck-builder
 redesign for all devices, canvas-signed first, absorbing the mobile plan's tap-to-place.
 The 2026-09-14 note still holds: card_balance keeps its hard dependency on draft_ai (needs
@@ -43,9 +43,9 @@ value. Scope sketch for #7 is proposal G.2 in
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [game_canvas](completed/plan_game_canvas_2026-09-15.md) | 2026-09-16 | Phones (coarse pointer, <1000px) render at CSS `zoom: 0.7` with `h-dvh-z` shells; Home and the draft (two rows of four) fit with no scroll, deck builder scrolls only inside columns, game/season scroll by decision; text-position + no-scroll audit rules at 780/830/1244 = 0 findings; long-press card preview (front + back + badge legend), touch tap contract (select/deselect, dock confirms), headshots via next/image + preload; supersedes `mobile_responsive`; commits `11348e4`..`f2a05bb` |
 | [deckbuilder_ux](completed/plan_deckbuilder_ux_2026-09-15.md) | 2026-09-15 | Design-first (8 signed artboards): 56px HUD band with overlay report, plays + roster as dockable sidebars, depth chart per artboard with 148px column floor, play tiles, click-to-assign through pure engine helpers; `deckbuilder.spec` at 3 tiers; mobile audit deck-builder 0/0; commits `9f036b3`..`237afff` |
 | [ui_foundation](completed/plan_ui_foundation_2026-09-15.md) | 2026-09-15 | Semantic tokens + `data-theme` (court/night), five `components/ui` primitives, blocking style gate 1,358 -> 0, 12px/44px floors, dvh; header never reflows, gear menu on game routes, one confirm dock, pack-pass flicker fixed; mobile audit phone 200 -> 2, tablet 201 -> 0; commits `68b3096`..`695d5dc` |
-| [season_lifecycle_notifications](completed/plan_season_lifecycle_notifications_2026-09-14.md) | 2026-09-14 | Derived Pre-Season/Live/Completed status, UI-enforced roster/season lock, per-roster records + user W/L stats, notification bell (changelog + season-complete) — all verified live in-browser |
 
 ## Model tiers used in plans
 
