@@ -309,10 +309,13 @@ describe('ARCHETYPES catalog', () => {
     expect(names).not.toContain('Four-Out One-In');
   });
 
-  it('every Gold plan spans both sides and lists at least one keystone', () => {
+  it('every Gold plan spans both sides and gates on a keystone or a roster-wide gate', () => {
+    // card_balance T3 (2026-09-17): Positionless Revolution gates on rosterGate (a sum
+    // across the active roster) instead of a per-player keystone - either is valid, a
+    // Gold plan just needs one special requirement beyond plain colour thresholds.
     for (const a of ARCHETYPES.filter(a => a.kind === 'gold')) {
       expect(a.side).toBe('both');
-      expect(a.keystones && a.keystones.length).toBeGreaterThan(0);
+      expect((a.keystones && a.keystones.length > 0) || !!a.rosterGate).toBe(true);
       expect(a.colors.support).toBeDefined();
       expect(a.colors.tertiary).toBeDefined();
     }

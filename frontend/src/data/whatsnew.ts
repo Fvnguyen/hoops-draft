@@ -70,4 +70,19 @@ export const WHATS_NEW: ChangelogEntry[] = [
     ],
     cta: 'Back to the court',
   },
+  {
+    id: 'card-balance-game-theater-2026-09-17',
+    date: '2026-09-17',
+    eyebrow: 'Patch notes',
+    title: 'A fairer game, a livelier one',
+    subtitle: 'Card balance got a full pass, and every game now tells its own story.',
+    highlights: [
+      { icon: 'sparkles', title: 'Badges, retuned', body: 'Every badge tier now means something real and consistent across every skill, and four new combo badges reward players who are genuinely elite at two things at once, not just one.' },
+      { icon: 'grid', title: 'Two new ways to build', body: 'Point Forward is a new play built around a playmaking big who kicks out to shooters. Positionless Revolution is a new team identity that rewards a roster full of versatile, multi-position players.' },
+      { icon: 'chart', title: 'Positions and rarity, fixed', body: 'Player positions now reflect how they actually play, rarity leans more on real accolades and reputation, and the card pool overall plays fairer from top to bottom.' },
+      { icon: 'activity', title: 'Game Theater', body: 'Watch a game unfold with real play-by-play narration, a fuller live box score, and playback controls, not just a score ticking up.' },
+      { icon: 'zap', title: 'Plays feel more real', body: 'Play and identity activation now reflects genuine roster construction — build toward an archetype and you can actually reach it.' },
+    ],
+    cta: 'Back to the court',
+  },
 ];

@@ -1,5 +1,5 @@
 /**
- * Test fixture: the 9 play definitions used by the game.
+ * Test fixture: the 10 play definitions used by the game.
  *
  * Copied verbatim (ids/names/rarity/playCategory/badges) from the `playsDB`
  * array in `src/components/DraftRoom.tsx` so engine-level tests can exercise
@@ -22,4 +22,5 @@ export const PLAYS: Play[] = [
   { type: 'Play', id: 'play-std-3', name: 'Horns', rarity: 'Common', playCategory: 'special', badges: [], mechanicText: 'Provides small scoring boost to PFs and Cs.' },
   { type: 'Play', id: 'play-std-4', name: 'Full Court Press', rarity: 'Common', playCategory: 'special', badges: ['Lockdown Defender'], mechanicText: 'Increases forced turnovers. Costs high stamina.' },
   { type: 'Play', id: 'play-std-5', name: 'Four Out One In', rarity: 'Common', playCategory: 'special', badges: ['Sharpshooter', 'Glass Cleaner'], mechanicText: 'Boosts Sharpshooter effectiveness when paired with a Glass Cleaner.' },
+  { type: 'Play', id: 'play-std-6', name: 'Point Forward', rarity: 'Rare', playCategory: 'special', badges: ['Floor General', 'Glass Cleaner', 'Sharpshooter'], mechanicText: 'Requires a playmaking big (Floor General and Glass Cleaner together) and 2 Sharpshooters. Boosts 3-point shooting off the big’s playmaking.' },
 ];

@@ -54,6 +54,14 @@ export interface ArchetypeDef {
   colors: { primary: Color; support?: Color; tertiary?: Color };
   /** Gold plans require one of these trait names on an active player. */
   keystones?: string[];
+  /**
+   * card_balance T3 (2026-09-17, owner-approved): an alternate gold gate for identities
+   * that aren't about any single player, but the whole active roster's SUM of some
+   * per-player score (built for Positionless's "sum of multipositional levels"
+   * requirement). Mutually exclusive with keystones in practice, though nothing stops a
+   * plan from using both.
+   */
+  rosterGate?: { onlineThreshold: number; dedicatedThreshold: number; score: (p: PlayerCardData) => number; label: string };
   /** Full-strength (Dedicated) effect; Online is ARCHETYPE_ONLINE_SCALE of it. */
   dedicated: ArchetypeEffect;
   description: string;
@@ -206,6 +214,20 @@ export const KEYSTONE_CONDITIONS: Record<string, (p: PlayerCardData) => boolean>
   'Stretch-5': p => hasBadgeLevel(p, 'Sharpshooter', 1) && hasBadgeLevel(p, 'Paint Protector', 1),
 };
 
+/**
+ * card_balance T3 (2026-09-17, owner-approved): per-player score for the Positionless
+ * gold plan's roster gate. The Positionless trait (a genuinely versatile, hand-rolled
+ * name — see balance.ts POSITIONLESS_PLAYERS) counts 3; a stats-driven two-position
+ * crossover card (e.g. 'SG/SF', 'PF/C' — T1's blend_bio_crossover) counts 1; anyone
+ * else counts 0. Classification, not additive — a Positionless holder never also adds
+ * their (nonexistent, in practice) crossover slash on top.
+ */
+export function multipositionalLevel(p: PlayerCardData): number {
+  if ((p.traits ?? []).some(t => t.name === 'Positionless')) return 3;
+  if (p.player.position.includes('/')) return 1;
+  return 0;
+}
+
 /** True when any active player satisfies one of a gold plan's keystone combo conditions. */
 function hasKeystone(activePlayers: PlayerCardData[], keystones: string[] | undefined): boolean {
   if (!keystones || keystones.length === 0) return true;
@@ -345,6 +367,24 @@ export const ARCHETYPES: ArchetypeDef[] = [
     },
     description: 'Own Rim -3%, Mid -7%, 3PT +10%; own 3PT efficiency +2%. Opponent Rim -5%, Mid +2%, 3PT +3%; opponent Rim efficiency -3%',
   },
+  {
+    // card_balance T3 (2026-09-17, owner-approved): not gated by a single keystone
+    // player — Positionless has only 3 pool-wide holders (LeBron, Giannis, Barnes), so a
+    // single-player gate would make this nearly unreachable most seasons. Instead a
+    // roster-wide gate: sum(multipositionalLevel) across the active 12 >= threshold.
+    // Colours (Floor General/Glass Cleaner/Finisher) mirror the Point Forward archetype's
+    // skill spread deliberately, so building toward that identity's colours also builds
+    // toward this one — "somewhat supported, doesn't need many cards" per the owner.
+    id: 'positionless-revolution', name: 'Positionless Revolution', kind: 'gold', side: 'both',
+    colors: { primary: 'Floor General', support: 'Glass Cleaner', tertiary: 'Finisher' },
+    rosterGate: { onlineThreshold: 6, dedicatedThreshold: 9, score: multipositionalLevel, label: 'Multipositional levels' },
+    dedicated: {
+      ownEff: { rim: 0.02, mid: 0.02, three: 0.02 },
+      oppEff: { rim: -0.02, mid: -0.02, three: -0.02 },
+      possessions: 2,
+    },
+    description: 'Own efficiency +2% at rim, mid, 3PT. Opponent efficiency -2% at rim, mid, 3PT (no position to scheme against). +2 possessions',
+  },
 ];
 
 // ── Evaluation ───────────────────────────────────────────────────────────────
@@ -426,17 +466,21 @@ function evaluateGold(def: ArchetypeDef, activePlayers: PlayerCardData[], starte
   const tt = tallies[tertiary];
   const { distinct, starters: relevantStarters } = unionCarrierStats(activePlayers, starterIds, [primary, secondary, tertiary]);
   const keystoneOk = hasKeystone(activePlayers, def.keystones);
+  const gateSum = def.rosterGate ? activePlayers.reduce((s, p) => s + def.rosterGate!.score(p), 0) : 0;
   const on = GOLD_THRESHOLDS.online;
   const ded = GOLD_THRESHOLDS.dedicated;
 
-  const meets = (th: typeof on) =>
+  const meets = (th: typeof on, gateThreshold: number) =>
     pt.carriers >= th.primary.carriers && pt.points >= th.primary.points &&
     st.carriers >= th.secondary.carriers && st.points >= th.secondary.points &&
     tt.carriers >= th.tertiary.carriers && tt.points >= th.tertiary.points &&
-    distinct >= th.distinct && relevantStarters >= th.relevantStarters && keystoneOk;
+    distinct >= th.distinct && relevantStarters >= th.relevantStarters && keystoneOk &&
+    (!def.rosterGate || gateSum >= gateThreshold);
 
-  const tier: ArchetypeTier = meets(ded) ? 'dedicated' : meets(on) ? 'online' : 'none';
+  const tier: ArchetypeTier = meets(ded, def.rosterGate?.dedicatedThreshold ?? 0) ? 'dedicated'
+    : meets(on, def.rosterGate?.onlineThreshold ?? 0) ? 'online' : 'none';
   const next = tier === 'none' ? on : tier === 'online' ? ded : null;
+  const nextGateThreshold = tier === 'none' ? def.rosterGate?.onlineThreshold : def.rosterGate?.dedicatedThreshold;
   const missing: string[] = [];
   if (next) {
     for (const m of [
@@ -448,6 +492,7 @@ function evaluateGold(def: ArchetypeDef, activePlayers: PlayerCardData[], starte
       fmtMissing(tertiary, tt.points, next.tertiary.points, 'points'),
       fmtMissing('Distinct players', distinct, next.distinct, ''),
       fmtMissing('Starters', relevantStarters, next.relevantStarters, ''),
+      def.rosterGate && nextGateThreshold !== undefined ? fmtMissing(def.rosterGate.label, gateSum, nextGateThreshold, '') : null,
     ]) if (m) missing.push(m);
     if (!keystoneOk) missing.push(`Keystone trait needed: ${(def.keystones ?? []).join(' or ')}`);
   }
@@ -456,6 +501,7 @@ function evaluateGold(def: ArchetypeDef, activePlayers: PlayerCardData[], starte
     ratio(st.carriers, on.secondary.carriers), ratio(st.points, on.secondary.points),
     ratio(tt.carriers, on.tertiary.carriers), ratio(tt.points, on.tertiary.points),
     ratio(distinct, on.distinct), ratio(relevantStarters, on.relevantStarters),
+    def.rosterGate ? ratio(gateSum, def.rosterGate.onlineThreshold) : 1,
     keystoneOk ? 1 : 0,
   );
   return { tier, missing, progress };

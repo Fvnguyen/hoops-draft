@@ -26,6 +26,16 @@ export interface PlayRole {
   minLevel?: number;
   altBadge?: string;
   altMinLevel?: number;
+  /**
+   * card_balance T3 (2026-09-17, owner-approved): a combo requirement — the player needs
+   * `badge`/`minLevel` AND `andBadge`/`andMinLevel` both (mutually exclusive with
+   * altBadge/altMinLevel — a role is either an OR role or an AND role, never both).
+   * Built for Point Forward's playmaking-big role (Floor General + Glass Cleaner
+   * simultaneously), matching the same badge combo archetypes.ts's KEYSTONE_CONDITIONS
+   * checks for the Point Forward gold-plan keystone.
+   */
+  andBadge?: string;
+  andMinLevel?: number;
 }
 
 /** Deltas applied on the play's called possessions (offense) / covered possessions (defense). */
@@ -95,8 +105,8 @@ export interface PlaybookStatus {
 
 // ── Catalog ────────────────────────────────────────────────────────────────
 
-const R = (id: string, name: string, badge?: string, minLevel?: number, altBadge?: string, altMinLevel?: number): PlayRole =>
-  ({ id, name, badge, minLevel, altBadge, altMinLevel });
+const R = (id: string, name: string, badge?: string, minLevel?: number, altBadge?: string, altMinLevel?: number, andBadge?: string, andMinLevel?: number): PlayRole =>
+  ({ id, name, badge, minLevel, altBadge, altMinLevel, andBadge, andMinLevel });
 
 /** Keyed by stable play id (the card's `playId`). Basic plays use 'basic-offense' / 'basic-defense'. */
 export const PLAYBOOK: Record<string, PlayDef> = {
@@ -166,6 +176,20 @@ export const PLAYBOOK: Record<string, PlayDef> = {
     mods: { rimShare: 0.04, midShare: -0.18, threeShare: 0.14, threeEff: 0.03, possessions: 1 },
     summary: 'On calls: rim +4%, mid −18%, 3pt +14%; 3pt eff +3%; +1 possession per game',
   },
+  // card_balance T3 (2026-09-17, owner-approved): the playmaking-big role is an AND
+  // requirement, not the usual OR (andBadge, not altBadge) — the point-forward archetype
+  // is specifically a player who does BOTH at once, the same combo the Point Forward
+  // gold-plan keystone checks (archetypes.ts KEYSTONE_CONDITIONS).
+  'play-std-6': {
+    playId: 'play-std-6', name: 'Point Forward', side: 'offense', rarity: 'Rare', allocation: 0.15,
+    roles: [
+      R('playmaker', 'Playmaking Big', 'Floor General', 1, undefined, undefined, 'Glass Cleaner', 1),
+      R('shooter1', 'Shooter 1', 'Sharpshooter', 1),
+      R('shooter2', 'Shooter 2', 'Sharpshooter', 1),
+    ],
+    mods: { rimShare: 0.02, midShare: -0.12, threeShare: 0.10, threeEff: 0.02, possessions: 1 },
+    summary: 'On calls: rim +2%, mid −12%, 3pt +10%; 3pt eff +2%; +1 possession per game',
+  },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -189,15 +213,18 @@ function badgeLevel(player: PlayerCardData, badge: string): number {
 /** Does this player satisfy the role's badge requirement? (Roles without a badge accept anyone.) */
 export function isEligibleForRole(player: PlayerCardData, role: PlayRole): boolean {
   if (!role.badge) return true;
-  if (badgeLevel(player, role.badge) >= (role.minLevel ?? 1)) return true;
+  const hasPrimary = badgeLevel(player, role.badge) >= (role.minLevel ?? 1);
+  if (role.andBadge) return hasPrimary && badgeLevel(player, role.andBadge) >= (role.andMinLevel ?? 1);
+  if (hasPrimary) return true;
   if (role.altBadge && badgeLevel(player, role.altBadge) >= (role.altMinLevel ?? 1)) return true;
   return false;
 }
 
-/** "Finisher 1+" / "Glass Cleaner 1+ or Mid-Range Maestro 1+" / "any player" */
+/** "Finisher 1+" / "Glass Cleaner 1+ or Mid-Range Maestro 1+" / "Floor General 1+ and Glass Cleaner 1+" / "any player" */
 export function describeRoleRequirement(role: PlayRole): string {
   if (!role.badge) return 'any player';
   const main = `${role.badge} ${role.minLevel ?? 1}+`;
+  if (role.andBadge) return `${main} and ${role.andBadge} ${role.andMinLevel ?? 1}+`;
   return role.altBadge ? `${main} or ${role.altBadge} ${role.altMinLevel ?? 1}+` : main;
 }
 

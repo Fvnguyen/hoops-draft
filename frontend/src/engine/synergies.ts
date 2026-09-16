@@ -222,6 +222,17 @@ const PLAY_EFFECTS: Record<string, PlayEffect> = {
     fullBonus: { ...emptyModifiers(), perShareBonus: 0.05, perEffBonus: 0.02, rimShareBonus: -0.02, description: ['☄️ Four Out One In (+5% 3pt share, +2% 3pt eff, -2% rim share)'] },
     halfBonus: { ...emptyModifiers(), perShareBonus: 0.02, description: ['☄️ Four Out One In (partial, +2% 3pt share)'] },
   },
+  // Point Forward (card_balance T3, 2026-09-17): a playmaking big (Floor General AND
+  // Glass Cleaner together — the same combo as the archetypes.ts keystone) kicks out to
+  // two shooters. requirements is a flat list (this UI helper has no AND concept of its
+  // own), but the real play role in playbook.ts does enforce the combo on one player.
+  'play-std-6': {
+    name: 'Point Forward',
+    summary: '+10% 3pt share, +2% 3pt eff, +2% rim share, +1 possession',
+    requirements: [{ badge: 'Floor General', levels: 1 }, { badge: 'Glass Cleaner', levels: 1 }, { badge: 'Sharpshooter', levels: 2 }],
+    fullBonus: { ...emptyModifiers(), perShareBonus: 0.10, perEffBonus: 0.02, rimShareBonus: 0.02, possessionSwing: 1, description: ['\u{1F3C0} Point Forward (+10% 3pt share, +2% 3pt eff, +2% rim share, +1 poss)'] },
+    halfBonus: { ...emptyModifiers(), perShareBonus: 0.04, description: ['\u{1F3C0} Point Forward (partial, +4% 3pt share)'] },
+  },
 };
 
 /** Stable effect id for a play card (draft packs suffix `id` with `_pack{N}` for React keys). */

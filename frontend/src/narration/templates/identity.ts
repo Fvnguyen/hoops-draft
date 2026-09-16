@@ -128,6 +128,15 @@ export const IDENTITY_TEMPLATES: Record<string, string[]> = {
     'Five shooters out, one wall back for {team}: {tpm}-{tpa} from deep in {q}.',
     '{team} stretch it on offence and pack it on defence: {opprimm} of {opprima} allowed at the rim.',
   ],
+  // card_balance T3 (2026-09-17): no single stat category is "positionless" the way
+  // threes or rim makes are — mixes scoring (paint/pts) with playmaking (ast) since the
+  // identity's whole point is a lineup that doesn't specialize in one thing.
+  'positionless-revolution': [
+    'Positionless Revolution: {team} have {paint} paint points and {ast} assists in {q} — no fixed jobs.',
+    'No set positions for {team} tonight, {pts} points on {ast} assists so far in {q}.',
+    '{team} play five interchangeable pieces: {paint} paint points, {ast} assists, no defender knows who to guard.',
+    'Everyone does everything for {team} in {q}: {ast} assists and {paint} points inside from all over the floor.',
+  ],
 };
 
 /** Fill `{key}` placeholders from vars; unknown keys are left as-is. */
