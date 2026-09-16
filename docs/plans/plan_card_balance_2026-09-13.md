@@ -40,14 +40,16 @@ after every T1-T5 commit.
 - **2026-09-16, `PROFILES` cleanup**: removed dead `G`/`F` rating profiles; confirmed no
   card can structurally reach a 3-way position combo (neither bref nor NBA Stats bio has
   a 3-way slot). `cards.json` byte-identical.
-- **2026-09-16, pedigree paradigm + proposal**: fixed `fetch_players.py` silently
-  discarding the real awards.html scrape (commit `264d71c`, no data change today but
-  would have frozen future seasons). Owner locked rarity-as-pedigree and asked for a
-  reputation-based (not stats-based) positional/"Positionless" proposal, a corrected
-  root-cause read of Duren/LaMelo/Hart/Mitchell, and flagged two real engine quirks
-  (DBPM small-sample noise, All-D floor targeting) — all in
-  [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md),
-  awaiting approval before any position/badge/`LEGENDARY_PLAYERS` edit.
+- **2026-09-16, pedigree paradigm applied**: fixed the awards.html scrape being
+  discarded (commit `264d71c`). Owner approved and shipped: `Positionless` trait +
+  true no-penalty depth-chart eligibility for LeBron/Giannis/Barnes, Jokić hand-rolled
+  to `PF/C`, `LEGENDARY_PLAYERS` dropped Chris Paul (retired, kept the 3 injured),
+  DBPM tapered by minutes (real but doesn't move the most extreme outlier — percentile
+  compression), All-D floor now targets the player's real position (3 verified fixes:
+  Adebayo, White, Anunoby). Two questions still open (more Positionless/legendary
+  candidates) in
+  [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
+  254/254 tests, `tsc` clean.
 
 ## Decisions (locked)
 

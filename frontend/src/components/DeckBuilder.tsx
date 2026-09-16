@@ -15,7 +15,7 @@ import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
-import { DEPTH_COLUMNS, canPlaceAt, positionFit, type DepthColumn } from '@/engine/positions';
+import { DEPTH_COLUMNS, canPlaceAt, positionFit, effectivePosition, type DepthColumn } from '@/engine/positions';
 import {
   MAX_ROSTER,
   countPlayers,
@@ -407,7 +407,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const depthChartEngineState = (): DepthChartState => ({
     chart: toIdChart(depthChart),
     benchIds: rosterPlayers.map(p => p.id),
-    positionsById: Object.fromEntries(rosterPlayers.map(p => [p.id, p.player.position])),
+    positionsById: Object.fromEntries(rosterPlayers.map(p => [p.id, effectivePosition(p.player.position, p.traits)])),
   });
 
   const placePlayerFailureMessage: Record<PlacePlayerFailureReason, string> = {
@@ -439,7 +439,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   /** Move a player already on the chart to another column / slot. */
   const moveOnChart = (player: PlayerCardData, column: DepthColumn, slotIndex?: number, opts: { silent?: boolean } = {}) => {
     const snap = takeSnapshot();
-    const result = moveWithinChart(toIdChart(depthChart), player.id, player.player.position, column, slotIndex);
+    const result = moveWithinChart(toIdChart(depthChart), player.id, effectivePosition(player.player.position, player.traits), column, slotIndex);
     if (!result.ok) {
       toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
       return;
@@ -930,7 +930,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     ? 'Roster is valid'
     : checklist.unmet.map(i => `${i.label}${i.detail ? ` (${i.detail})` : ''}`).join(' · ');
 
-  const filteredRosterPlayers = rosterPlayers.filter(p => matchesPosFilter(p.player.position, posFilter));
+  const filteredRosterPlayers = rosterPlayers.filter(p => matchesPosFilter(effectivePosition(p.player.position, p.traits), posFilter));
 
   // The player whose placement the depth chart is currently previewing: a selected
   // bench row, or the card being dragged.
@@ -940,7 +940,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
 
   /** Roster candidates eligible for a column — feeds an empty slot's AssignPopover. */
   const slotCandidates = (column: DepthColumn) =>
-    rosterPlayers.filter(p => canPlaceAt(p.player.position, column));
+    rosterPlayers.filter(p => canPlaceAt(effectivePosition(p.player.position, p.traits), column));
 
   /** D19: "Save" lands on `/rosters`; "Save & play season" jumps straight into the
    *  season for this draft session (only offered when there IS a session). */
@@ -1382,7 +1382,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
                 column={col}
                 players={depthChart[col] ?? []}
                 selectionActive={!!pendingPlayer}
-                pendingFit={pendingPlayer ? positionFit(pendingPlayer.player.position, col) : undefined}
+                pendingFit={pendingPlayer ? positionFit(effectivePosition(pendingPlayer.player.position, pendingPlayer.traits), col) : undefined}
                 rosterFull={rosterFull}
                 rolesByPlayer={rolesByPlayer}
                 assigning={!!assigning}

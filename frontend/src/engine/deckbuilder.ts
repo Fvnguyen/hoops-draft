@@ -11,7 +11,7 @@ import { getPlaybookId, getPlayDef, isEligibleForRole, type PlayAssignment, type
 import { evaluateArchetypes, bestSelection, type ArchetypeSelection } from './archetypes';
 import { BotProfile } from './draft';
 import { TARGET_ROSTER } from './balance';
-import { DEPTH_COLUMNS, canPlaceAt, type DepthColumn } from './positions';
+import { DEPTH_COLUMNS, canPlaceAt, effectivePosition, type DepthColumn } from './positions';
 import { placeFromBench, type DenseDepthChart } from './depthChart';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -186,7 +186,8 @@ export interface DraftSession {
 
 const POSITIONS = DEPTH_COLUMNS;
 
-function getEligiblePositions(rawPos: string): string[] {
+function getEligiblePositions(player: PlayerCardData): string[] {
+  const rawPos = effectivePosition(player.player.position, player.traits);
   const natural = DEPTH_COLUMNS.filter(col => canPlaceAt(rawPos, col, false));
   return natural.length > 0 ? natural : ['SF'];
 }
@@ -284,7 +285,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
 
   // First pass: assign the best player to each position
   for (const pos of POSITIONS) {
-    const best = sortedPlayers.find(p => !assigned.has(p.id) && getEligiblePositions(p.player.position).includes(pos));
+    const best = sortedPlayers.find(p => !assigned.has(p.id) && getEligiblePositions(p).includes(pos));
     if (best) {
       depthChart[pos].push(best);
       assigned.add(best.id);
@@ -299,7 +300,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
   for (const player of remaining) {
     if (activeCount() >= TARGET_ROSTER) break;
 
-    const eligible = getEligiblePositions(player.player.position);
+    const eligible = getEligiblePositions(player);
     // Pick the position with the fewest players
     const bestPos = eligible.sort((a, b) => depthChart[a].length - depthChart[b].length)[0];
     if (bestPos) {

@@ -51,3 +51,15 @@ export function canPlaceAt(raw: string, column: string, allowAdjacent = true): b
 export function defaultColumn(raw: string): DepthColumn {
   return naturalPositions(raw)[0] ?? 'SF';
 }
+
+/**
+ * card_balance T2 (2026-09-16, owner-approved): a 'Positionless' badge holder slots
+ * into any depth-chart column with no penalty - naturally, not just adjacently. Resolves
+ * to the literal 'ALL' raw string `naturalPositions` already special-cases, leaving
+ * `player.position` itself untouched (still their real position for display and OVR
+ * pool weighting). Call this wherever a full player card (with `traits`) is available,
+ * before passing the result into `naturalPositions`/`positionFit`/`canPlaceAt`/`defaultColumn`.
+ */
+export function effectivePosition(raw: string, traits?: { name: string }[] | null): string {
+  return traits?.some(t => t.name === 'Positionless') ? 'ALL' : raw;
+}

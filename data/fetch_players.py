@@ -161,8 +161,25 @@ def fetch_and_generate_players():
     df_filtered['Inside_Raw'] = (df_filtered['PTS'] * 2.0) + (df_filtered['2PM'] * 5.0) + (df_filtered['2P%'] * 50) + (df_filtered['FTr'] * 25)
     df_filtered['Playmaking_Raw'] = (df_filtered['AST'] * 8.0) + (df_filtered['AST'] / df_filtered['TOV'].replace(0, 0.1))
     df_filtered['Rebounding_Raw'] = (df_filtered['TRB'] * 6.0) + (df_filtered['ORB'] * 2.0)
-    df_filtered['PerimDef_Raw'] = (df_filtered['STL'] * 15.0) + (df_filtered['DBPM'] * 5.0)
-    df_filtered['PostDef_Raw'] = (df_filtered['BLK'] * 15.0) + (df_filtered['DBPM'] * 5.0)
+    # card_balance T2 finding (2026-09-16, owner-approved minimally-invasive fix): DBPM is
+    # a per-100-possession advanced stat that gets extreme in small samples (a 16 MPG
+    # specialist can post a DBPM higher than any full-season great defender). Taper its
+    # weight by minutes played, capped at 1 for anyone at or above 24 MPG (a reliable
+    # rotation/starter load) so full-time players are untouched and low-minute noise is
+    # softened, not zeroed - a specialist's real signal still comes through, just not at
+    # face value. Only DBPM's contribution is scaled; STL/BLK counting stats are not.
+    # CAVEAT (verified 2026-09-16): this moves raw scores and RE-RANKS players relative
+    # to each other (confirmed: Matisse Thybulle drops from raw rank #1 to #2), but the
+    # rating pipeline scales by PERCENTILE then a cubic curve, and the very top of a
+    # 448-player pool is compressed enough that even a rank change doesn't move the
+    # rounded 40-99 output for the single most extreme outlier - so Thybulle's
+    # perimeterDefense still reads 99 despite a real, measurable raw-score drop. A
+    # steeper taper doesn't fix this either (tested, still ranks #3). Fixing the visible
+    # number for the most extreme case would need a rating-level minutes floor/cap on
+    # top of this, a separate decision from "scale the input weight."
+    df_filtered['DBPM_scaled'] = df_filtered['DBPM'] * (df_filtered['MP'].clip(upper=24.0) / 24.0)
+    df_filtered['PerimDef_Raw'] = (df_filtered['STL'] * 15.0) + (df_filtered['DBPM_scaled'] * 5.0)
+    df_filtered['PostDef_Raw'] = (df_filtered['BLK'] * 15.0) + (df_filtered['DBPM_scaled'] * 5.0)
     
     # Calculate Percentiles & 40-99 Scale
     for dim in ['Shooting', 'Inside', 'Playmaking', 'Rebounding', 'PerimDef', 'PostDef']:
@@ -239,6 +256,15 @@ def fetch_and_generate_players():
         'Cooper Flagg': ['ROTY'],
         'Victor Wembanyama': ['DPOY'],
         'Nickeil Alexander-Walker': ['MIP']
+    }
+
+    # card_balance T2, owner hand-roll (2026-09-16): bref/bio give Jokic a plain 'C' this
+    # season (no crossover - see T1's blend_bio_crossover), but his real-world reputation
+    # as a "point-center" means he should be slottable at PF without a depth-chart
+    # penalty. A manual override, not stats-driven - same pattern as major_awards/
+    # LEGENDARY_PLAYERS. Keyed by the unidecode'd ASCII name used everywhere else.
+    POSITION_OVERRIDES = {
+        'Nikola Jokic': 'PF/C',
     }
 
     import sqlite3
@@ -350,6 +376,7 @@ def fetch_and_generate_players():
                 pos = blend_bio_crossover(pos, bio["pos"])
         else:
             pos = bio["pos"]
+        pos = POSITION_OVERRIDES.get(name, pos)
         height = bio["height"]
         weight = bio["weight"]
         team = latest_teams.get(raw_name, row['Team'])

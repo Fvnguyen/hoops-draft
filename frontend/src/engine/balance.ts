@@ -313,12 +313,27 @@ export const RATING_CONFIG = {
   },
 };
 
+// card_balance T2 pedigree paradigm (2026-09-16, owner): a manual narrative bump so a
+// recognizable name's rarity matches what a user already expects - not a performance
+// claim, allowed to diverge from measured win-shares by design (see
+// docs/plans/proposal_pedigree_tuning_2026-09-16.md). Chris Paul dropped (retired
+// February 2026); Lillard/Irving/Beal kept despite being out this season (injured, not
+// retired) as fallback bumps for when they return.
 export const LEGENDARY_PLAYERS = new Set([
   'LeBron James', 'Stephen Curry', 'Kevin Durant', 'Kawhi Leonard',
-  'Chris Paul', 'Russell Westbrook', 'James Harden', 'Damian Lillard',
+  'Russell Westbrook', 'James Harden', 'Damian Lillard',
   'Kyrie Irving', 'Paul George', 'Jimmy Butler', 'Anthony Davis',
   'Giannis Antetokounmpo', 'Nikola Jokic', 'Joel Embiid', 'Rudy Gobert',
   'Bradley Beal', 'CJ McCollum',
+]);
+
+// card_balance T2 (2026-09-16, owner-approved): genuinely positionless by real-world
+// reputation, not stats - initiates offense and defends across traditional position
+// lines. Drives both the 'Positionless' trait (ratings.ts) and no-penalty depth-chart
+// slotting (engine/positions.ts). A short, high-bar list by design; distinct from
+// LEGENDARY_PLAYERS (fame) and from a stats-driven position crossover (T1).
+export const POSITIONLESS_PLAYERS = new Set([
+  'LeBron James', 'Giannis Antetokounmpo', 'Scottie Barnes',
 ]);
 
 /** Badge (Trait) level thresholds: rating >= threshold[i] -> level i+1 (3 is highest). */

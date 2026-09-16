@@ -11,7 +11,7 @@
 import {
   SeasonStat, Trait, Rarity, PlayerCard, AwardRow, RatingsInput,
 } from './types';
-import { RATING_CONFIG, LEGENDARY_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS } from './balance';
+import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS } from './balance';
 
 function getBadge(val: number, name: string): Trait | null {
   for (const t of BADGE_THRESHOLDS) {
@@ -202,8 +202,13 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     if (isAllDef) {
       const defTeam = r.awards.find((a: AwardRow) => a.name === 'All-Defensive')?.level || 2;
       const floor = defTeam === 1 ? 96 : 90;
-      if (perimeterDefense >= postDefense) perimeterDefense = Math.max(perimeterDefense, floor);
-      else postDefense = Math.max(postDefense, floor);
+      // card_balance T2 finding (2026-09-16, owner-approved): flooring "whichever
+      // dimension is already higher" could floor the wrong one for a player's real
+      // defensive role (a center's perimeter score outscoring their post score, e.g.
+      // Bam Adebayo). Floor the dimension matching the player's position pool instead.
+      const isBigPool = r.pool === 'C' || r.pool === 'PF' || r.pool === 'F/C';
+      if (isBigPool) postDefense = Math.max(postDefense, floor);
+      else perimeterDefense = Math.max(perimeterDefense, floor);
     }
 
     const pool = r.pool;
@@ -311,6 +316,7 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
     if (isLegendary) traits.push({ name: 'Legend', level: 3 });
     if (isLeagueLeader) traits.push({ name: 'League Leader', level: 3 });
+    if (POSITIONLESS_PLAYERS.has(p.name)) traits.push({ name: 'Positionless', level: 3 });
 
     if (stat.gp >= 75 && stat.mpg >= 34.0) traits.push({ name: 'Ironman', level: 3 });
     if (stat.ts >= 0.65 && stat.fga >= 10.0) traits.push({ name: 'Efficiency Savant', level: 3 });
