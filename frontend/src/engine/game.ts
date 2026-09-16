@@ -30,6 +30,7 @@ import {
   NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT,
   LINEUP_CENTRE, EDGE_WEIGHT, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_DEF_WEIGHT, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
+  STEER_NARRATE_MIN, BLOCK_SHARE_OF_MISSES, STEAL_SHARE_OF_TURNOVERS,
 } from './balance';
 import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
 
@@ -51,6 +52,56 @@ export interface PlayerBoxScore {
   assists: number;
   /** engine_possession_model D6: boards that kept a possession alive. */
   offensiveRebounds: number;
+  /** game_theater D9 — traditional + shooting + plus/minus. */
+  defensiveRebounds: number;
+  steals: number;
+  blocks: number;
+  fieldGoalsMade: number;
+  fieldGoalsAttempted: number;
+  threesMade: number;
+  threesAttempted: number;
+  freeThrowsMade: number;
+  freeThrowsAttempted: number;
+  plusMinus: number;
+}
+
+// ── game_theater contracts (plan D1, D9, D10) ───────────────────────────────
+
+export type ShotChannel = 'rim' | 'mid' | 'three';
+
+/** D1: what happened, as data. Prose is rendered outside the engine (src/narration). */
+export type NarrativeKind = 'miss' | 'block' | 'turnover' | 'steal' | 'rim_make' | 'rim_ft' | 'mid_make' | 'three_make' | 'and1';
+
+export interface PossessionNarrative {
+  kind: NarrativeKind;
+  /** Shot channel of the last shot; absent on turnover/steal. */
+  channel?: ShotChannel;
+  /** Shooter, or the ball-handler charged with the turnover. */
+  actorId: string;
+  assistId?: string;
+  /** Credited stealer / blocker / defensive rebounder (D9 attribution). */
+  defenderId?: string;
+  calledPlayId?: string;
+  coverageId?: string;
+  isAnd1: boolean;
+  isPossessionWin: boolean;
+  /** The last shot came after at least one offensive rebound. */
+  isSecondChance: boolean;
+  /** Creator steer moved the shot profile toward this channel by >= STEER_NARRATE_MIN share. */
+  steeredTo?: ShotChannel;
+  /** Free throws on this possession (rim_ft trip: 2 attempts; and1: 1/1). */
+  ftMade: number;
+  ftAttempted: number;
+  tags: string[];
+}
+
+/** D9: one field-goal attempt. A possession has 0 (turnover) to 1 + OREB_MAX_CHAIN of them. */
+export interface ShotAttempt {
+  shooterId: string;
+  channel: ShotChannel;
+  made: boolean;
+  /** Set when the miss is credited as a block. */
+  blockerId?: string;
 }
 
 export interface PossessionEvent {
@@ -71,6 +122,16 @@ export interface PossessionEvent {
   /** D6: players who grabbed an offensive rebound on this possession, in order. */
   offensiveRebounders?: string[];
   narrativeText: string;
+  /** D1 structured narration (T1). */
+  narrative: PossessionNarrative;
+  /** D9 every field-goal attempt in order (misses included), for FGA/3PA and blocks. */
+  shots: ShotAttempt[];
+  /** D9 credited defender on a turnover (steal), absent for an unforced turnover. */
+  stealPlayerId?: string;
+  /** D9 defender credited with the board that ended a missed possession. */
+  defensiveRebounderId?: string;
+  /** D10 inside the crunch-time window (closing fives on the floor). */
+  isClutch?: boolean;
   runningScore: [number, number]; // [home, away]
   /** Assigned-player plays that applied to this possession (§7): an offense entry when
    *  the offense team called one of its plays, a defense entry when the defending team's
@@ -299,7 +360,6 @@ function calcPossessionSplit(
 //     5. Points + and-1 check; a missed FG may be rebounded (rebounding vs rebounding)
 //        and the possession continues, up to OREB_MAX_CHAIN times
 
-type ShotChannel = 'rim' | 'mid' | 'three';
 
 /** Shot profile: [rim%, mid%, per%] for the five on the floor */
 export interface TeamShotProfile {
@@ -368,9 +428,21 @@ export function steerShotProfile(
   centre: Record<ShotChannel, { off: number; def: number }>,
   tuning?: EdgeTuning
 ): TeamShotProfile {
+  return steerShotProfileDetailed(profile, offenseLineup, defenseLineup, centre, tuning).profile;
+}
+
+/** game_theater D1: `steerShotProfile` plus WHERE the share went — `steeredTo` is the channel
+ *  that gained `shift` share (absent when nothing moved). Same maths, no rng. */
+export function steerShotProfileDetailed(
+  profile: TeamShotProfile,
+  offenseLineup: PlayerCardData[],
+  defenseLineup: PlayerCardData[],
+  centre: Record<ShotChannel, { off: number; def: number }>,
+  tuning?: EdgeTuning
+): { profile: TeamShotProfile; steeredTo?: ShotChannel; shift: number } {
   const creator = (lineupValue(offenseLineup, 'playmaking') - LINEUP_CENTRE.playmaking) / 100;
   const steer = clampTo(creator * STEER_SCALE, STEER_CAP);
-  if (steer === 0) return profile;
+  if (steer === 0) return { profile, shift: 0 };
 
   const effScale = tuning?.efficiencyScale ?? EFFICIENCY_SCALE;
   const maxShift = tuning?.maxEffShift ?? MAX_EFF_SHIFT;
@@ -382,7 +454,7 @@ export function steerShotProfile(
   const channels: ShotChannel[] = ['rim', 'mid', 'three'];
   const best = channels.reduce((a, b) => (xp[b] > xp[a] ? b : a));
   const worst = channels.reduce((a, b) => (xp[b] < xp[a] ? b : a));
-  if (best === worst) return profile;
+  if (best === worst) return { profile, shift: 0 };
 
   const shares: Record<ShotChannel, number> = { rim: profile.rim, mid: profile.mid, three: profile.per };
   // Positive steer: from worst to best. Negative: from best to worst. Never below 0.
@@ -391,7 +463,8 @@ export function steerShotProfile(
   const moved = Math.min(Math.abs(steer), shares[from]);
   shares[from] -= moved;
   shares[to] += moved;
-  return { rim: shares.rim, mid: shares.mid, per: shares.three };
+  const steered = { rim: shares.rim, mid: shares.mid, per: shares.three };
+  return moved > 0 ? { profile: steered, steeredTo: to, shift: moved } : { profile: steered, shift: 0 };
 }
 
 /** Channel edge in rating points / 100 (EDGE_WEIGHT per side), clamped so the efficiency
@@ -714,6 +787,12 @@ function playOnePossession(params: {
   } = params;
   const isHome = team === 'home';
 
+  // D9: attribution draws (blocker / stealer / defensive rebounder) come from a rng
+  // DERIVED from the game seed and the possession index, so the sim stream (`rng`) draws
+  // exactly what it drew before the box score existed — outcomes and balance numbers are
+  // untouched by anything in this function that reads `attrRng`.
+  const attrRng = createRng((rng.seed ^ Math.imul(index + 1, 0x9E3779B1)) >>> 0);
+
   let offenseIds = Array.from(offenseLineupMap.values());
   let defenseIds = Array.from(defenseLineupMap.values());
 
@@ -750,7 +829,8 @@ function playOnePossession(params: {
   // shift, then the creator steer toward this matchup's best shot.
   const baseShotProfile = calcLineupShotProfile(offenseLineup, offenseMods, defFromOpp);
   const calledProfile = calledOffense ? applyCalledShareShift(baseShotProfile, calledOffense.def.mods) : baseShotProfile;
-  const shotProfile = steerShotProfile(calledProfile, offenseLineup, defenseLineup, centre, tuning);
+  const steered = steerShotProfileDetailed(calledProfile, offenseLineup, defenseLineup, centre, tuning);
+  const shotProfile = steered.profile;
 
   const rimEffDelta = clampTo((calledOffense?.def.mods.rimEff ?? 0) + (calledCoverage?.def.mods.rimEff ?? 0), IDENTITY_CAPS.eff);
   const midEffDelta = clampTo((calledOffense?.def.mods.midEff ?? 0) + (calledCoverage?.def.mods.midEff ?? 0), IDENTITY_CAPS.eff);
@@ -769,6 +849,13 @@ function playOnePossession(params: {
   let result: Resolved;
   let turnoverPlayerId: string | undefined;
   const offensiveRebounders: string[] = [];
+  // D9: every field-goal attempt in order. A rim_ft trip is a shooting foul on the drive —
+  // no FGA (2 FTA instead), so it is NOT a ShotAttempt.
+  const shots: ShotAttempt[] = [];
+  const recordShot = (r: Resolved) => {
+    if (r.isTurnover || r.narrativeHint === 'rim_ft') return;
+    shots.push({ shooterId: r.scorerId ?? offenseIds[0] ?? '', channel: r.channel, made: r.outcome !== 'miss' });
+  };
   if (rng.next() < turnoverChance(offenseLineup, defenseLineup)) {
     const handler = weightedRandom(offenseLineup, offenseLineup.map(p => (p.ratings?.playmaking ?? 0) + 1), rng);
     turnoverPlayerId = handler?.id;
@@ -776,14 +863,44 @@ function playOnePossession(params: {
   } else {
     // Steps 2-5: shoot; a missed field goal may be rebounded and shot again.
     result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
+    recordShot(result);
     let chain = 0;
     while (result.outcome === 'miss' && chain < OREB_MAX_CHAIN && rng.next() < offensiveReboundChance(offenseLineup, defenseLineup)) {
       const rebounder = weightedRandom(offenseLineup, offenseLineup.map(p => (p.ratings?.rebounding ?? 0) + 1), rng);
       if (rebounder) offensiveRebounders.push(rebounder.id);
       chain++;
       result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
+      recordShot(result);
     }
   }
+
+  // ── D9 attribution (attrRng only — see the comment at the top of this function) ──
+  // Blocks: a share of misses is labelled a block, credited by post defence at the rim and
+  // perimeter defence elsewhere. Steals: a share of turnovers, credited by perimeter
+  // defence. Defensive rebound: a possession that ends on a missed FGA (never a turnover
+  // or a FT trip) credits a board, weighted by rebounding.
+  const defWeights = (dim: 'postDefense' | 'perimeterDefense' | 'rebounding') =>
+    defenseLineup.map(p => (p.ratings?.[dim] ?? 0) + 1);
+  for (const shot of shots) {
+    if (shot.made || defenseLineup.length === 0) continue;
+    if (attrRng.next() < BLOCK_SHARE_OF_MISSES) {
+      shot.blockerId = weightedRandom(defenseLineup, defWeights(shot.channel === 'rim' ? 'postDefense' : 'perimeterDefense'), attrRng)?.id;
+    }
+  }
+  let stealPlayerId: string | undefined;
+  if (result.isTurnover && defenseLineup.length > 0 && attrRng.next() < STEAL_SHARE_OF_TURNOVERS) {
+    stealPlayerId = weightedRandom(defenseLineup, defWeights('perimeterDefense'), attrRng)?.id;
+  }
+  let defensiveRebounderId: string | undefined;
+  // The miss that ended the possession, if it ended on one (a rim_ft trip after an
+  // earlier miss ends at the line — no board, no block on the narrative).
+  const endingMiss = result.outcome === 'miss' && shots.length ? shots[shots.length - 1] : undefined;
+  if (endingMiss && !endingMiss.made && defenseLineup.length > 0) {
+    defensiveRebounderId = weightedRandom(defenseLineup, defWeights('rebounding'), attrRng)?.id;
+  }
+  // Free throws: a rim_ft trip is two attempts with `points` made; an and-1 is 1-for-1.
+  const ftAttempted = result.narrativeHint === 'rim_ft' ? 2 : result.isAnd1 ? 1 : 0;
+  const ftMade = result.narrativeHint === 'rim_ft' ? result.points : result.isAnd1 ? 1 : 0;
 
   // Playbook recording (§7): tag this possession with whichever calls applied.
   const calledPlays: PossessionEvent['calledPlays'] = [];
@@ -823,6 +940,26 @@ function playOnePossession(params: {
     const bs = boxStats.get(result.assistId);
     if (bs) bs.assists++;
   }
+  // D9 shooting / defensive columns.
+  for (const shot of shots) {
+    const bs = boxStats.get(shot.shooterId);
+    if (bs) {
+      bs.fieldGoalsAttempted++;
+      if (shot.made) bs.fieldGoalsMade++;
+      if (shot.channel === 'three') { bs.threesAttempted++; if (shot.made) bs.threesMade++; }
+    }
+    if (shot.blockerId) { const b = boxStats.get(shot.blockerId); if (b) b.blocks++; }
+  }
+  if (ftAttempted > 0 && result.scorerId) {
+    const bs = boxStats.get(result.scorerId);
+    if (bs) { bs.freeThrowsAttempted += ftAttempted; bs.freeThrowsMade += ftMade; }
+  }
+  if (stealPlayerId) { const bs = boxStats.get(stealPlayerId); if (bs) bs.steals++; }
+  if (defensiveRebounderId) { const bs = boxStats.get(defensiveRebounderId); if (bs) bs.defensiveRebounds++; }
+  if (result.points > 0) {
+    for (const id of offenseIds) { const bs = boxStats.get(id); if (bs) bs.plusMinus += result.points; }
+    for (const id of defenseIds) { const bs = boxStats.get(id); if (bs) bs.plusMinus -= result.points; }
+  }
 
   const scorerName = result.scorerId ? (playerNameMap.get(result.scorerId) || '???') : offenseLineup[0]?.player?.name || '???';
   const assistName = result.assistId ? playerNameMap.get(result.assistId) : undefined;
@@ -831,6 +968,38 @@ function playOnePossession(params: {
     : result.channel === 'three' ? '3pt' as const
     : result.isAnd1 ? 'and1' as const
     : '2pt' as const;
+
+  // D1 structured narrative. `kind` follows the possession model: a turnover happens
+  // before any shot (steal = turnover with a credited defender); a miss is the LAST shot
+  // (block = credited blocker on it); makes reuse the resolve hint. Tags (small, documented
+  // set): 'second_chance' (a shot after an offensive rebound), 'clutch' (D10 window),
+  // 'poss_win' (possession-battle extra possession).
+  const kind: NarrativeKind = result.isTurnover
+    ? (stealPlayerId ? 'steal' : 'turnover')
+    : result.outcome === 'miss'
+      ? (endingMiss?.blockerId ? 'block' : 'miss')
+      : (result.narrativeHint as NarrativeKind);
+  const isSecondChance = offensiveRebounders.length > 0;
+  const tags: string[] = [];
+  if (isSecondChance) tags.push('second_chance');
+  if (isPossWin) tags.push('poss_win');
+  const narrative: PossessionNarrative = {
+    kind,
+    ...(result.isTurnover ? {} : { channel: result.channel }),
+    actorId: result.scorerId ?? turnoverPlayerId ?? offenseIds[0] ?? '',
+    ...(result.assistId ? { assistId: result.assistId } : {}),
+    ...((stealPlayerId ?? endingMiss?.blockerId ?? defensiveRebounderId)
+      ? { defenderId: stealPlayerId ?? endingMiss?.blockerId ?? defensiveRebounderId } : {}),
+    ...(calledOffense ? { calledPlayId: calledOffense.def.playId } : {}),
+    ...(calledCoverage ? { coverageId: calledCoverage.def.playId } : {}),
+    isAnd1: result.isAnd1,
+    isPossessionWin: isPossWin,
+    isSecondChance,
+    ...(steered.steeredTo && steered.shift >= STEER_NARRATE_MIN ? { steeredTo: steered.steeredTo } : {}),
+    ftMade,
+    ftAttempted,
+    tags,
+  };
 
   const event: PossessionEvent = {
     index, quarter, segment, team,
@@ -844,6 +1013,10 @@ function playOnePossession(params: {
     offensiveRebounders: offensiveRebounders.length ? offensiveRebounders : undefined,
     narrativeText: generateNarrative(result.narrativeHint, scorerName, rng, assistName, isPossWin,
       offensiveRebounders.length ? (playerNameMap.get(offensiveRebounders[offensiveRebounders.length - 1]) || '???') : undefined),
+    narrative,
+    shots,
+    ...(stealPlayerId ? { stealPlayerId } : {}),
+    ...(defensiveRebounderId ? { defensiveRebounderId } : {}),
     runningScore: [0, 0], // filled in by the caller once it's updated home/awayScore
     calledPlays,
   };
@@ -1131,12 +1304,7 @@ export function simulateGame(
   // Box score tracking
   const boxStats = new Map<string, PlayerBoxScore>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
-    boxStats.set(p.id, {
-      playerId: p.id, playerName: p.player?.name || p.id,
-      minutes: 0, possessions: 0, points: 0,
-      twoPointers: 0, threePointers: 0, andOnes: 0,
-      turnovers: 0, assists: 0, offensiveRebounds: 0,
-    });
+    boxStats.set(p.id, emptyBoxScore(p.id, p.player?.name || p.id));
   }
 
   // Possession-winning events to distribute
@@ -1330,6 +1498,111 @@ export function simulateGame(
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/** A zeroed PlayerBoxScore row (every D9 field present). */
+export function emptyBoxScore(playerId: string, playerName: string): PlayerBoxScore {
+  return {
+    playerId, playerName,
+    minutes: 0, possessions: 0, points: 0,
+    twoPointers: 0, threePointers: 0, andOnes: 0,
+    turnovers: 0, assists: 0, offensiveRebounds: 0,
+    defensiveRebounds: 0, steals: 0, blocks: 0,
+    fieldGoalsMade: 0, fieldGoalsAttempted: 0, threesMade: 0, threesAttempted: 0,
+    freeThrowsMade: 0, freeThrowsAttempted: 0, plusMinus: 0,
+  };
+}
+
+/**
+ * game_theater D9: the full box score after `theater.possessions[0..throughIndex]`, derived
+ * from the events alone (GameView's live box during playback). Minutes: regulation
+ * possessions share 48 minutes equally, each OT period's possessions share
+ * OT_PERIOD_MINUTES — the same per-possession increments simulateGame accrued, summed in
+ * the same order, so at the last index this reproduces `theater.boxScore` exactly
+ * (boxscore.test.ts). The one non-event point — the MAX_OT_PERIODS tiebreak +1 that
+ * simulateGame credits to the winner's first starter — is re-applied here when
+ * `throughIndex` covers the last possession and `finalScore` exceeds its runningScore.
+ */
+export function boxScoreThrough(theater: GameTheater, throughIndex: number): { home: PlayerBoxScore[]; away: PlayerBoxScore[] } {
+  const stats = new Map<string, PlayerBoxScore>();
+  const homeIds = new Set<string>();
+  for (const p of theater.homeTeam.players) { homeIds.add(p.id); stats.set(p.id, emptyBoxScore(p.id, p.player?.name ?? p.id)); }
+  for (const p of theater.awayTeam.players) { stats.set(p.id, emptyBoxScore(p.id, p.player?.name ?? p.id)); }
+
+  const events = theater.possessions;
+  const regulationPoss = events.filter(e => e.quarter <= 4).length || 1;
+  const otPoss = new Map<number, number>();
+  for (const e of events) if (e.quarter > 4) otPoss.set(e.quarter, (otPoss.get(e.quarter) ?? 0) + 1);
+
+  const last = Math.min(throughIndex, events.length - 1);
+  let prev: [number, number] = [0, 0];
+  for (let i = 0; i <= last; i++) {
+    const e = events[i];
+    const minPerPoss = e.quarter <= 4 ? 48 / regulationPoss : OT_PERIOD_MINUTES / (otPoss.get(e.quarter) ?? OT_POSS_PER_TEAM * 2);
+    for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) { b.possessions++; b.minutes += minPerPoss; } }
+    for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.minutes += minPerPoss; }
+    const points = e.team === 'home' ? e.runningScore[0] - prev[0] : e.runningScore[1] - prev[1];
+    prev = e.runningScore;
+
+    const shots = e.shots ?? [];
+    const lastShot = shots.length ? shots[shots.length - 1] : undefined;
+    if (points > 0 && e.scoringPlayerId) {
+      const b = stats.get(e.scoringPlayerId);
+      if (b) {
+        b.points += points;
+        if (e.shots && e.narrative) {
+          // A scoring possession ends on the made shot (lastShot) or at the line (rim_ft:
+          // no FGA, so lastShot is an earlier miss or absent). Mirrors simulateGame.
+          const madeFg = e.narrative.kind !== 'rim_ft' && !!lastShot?.made;
+          if (madeFg && lastShot!.channel !== 'three') b.twoPointers++;
+          if (madeFg && lastShot!.channel === 'three') b.threePointers++;
+          if (e.narrative.isAnd1) b.andOnes++;
+        } else {
+          // Pre-D9 event (no shots/narrative): infer from outcome + points.
+          if (e.outcome === '3pt') { b.threePointers++; if (points === 4) b.andOnes++; }
+          else if (points >= 2) { b.twoPointers++; if (e.outcome === 'and1') b.andOnes++; }
+        }
+      }
+      if (e.assistPlayerId) { const a = stats.get(e.assistPlayerId); if (a) a.assists++; }
+    }
+    if (e.turnoverPlayerId) { const b = stats.get(e.turnoverPlayerId); if (b) b.turnovers++; }
+    for (const id of e.offensiveRebounders ?? []) { const b = stats.get(id); if (b) b.offensiveRebounds++; }
+    for (const shot of shots) {
+      const b = stats.get(shot.shooterId);
+      if (b) {
+        b.fieldGoalsAttempted++;
+        if (shot.made) b.fieldGoalsMade++;
+        if (shot.channel === 'three') { b.threesAttempted++; if (shot.made) b.threesMade++; }
+      }
+      if (shot.blockerId) { const d = stats.get(shot.blockerId); if (d) d.blocks++; }
+    }
+    const ftA = e.narrative?.ftAttempted ?? 0;
+    if (ftA > 0 && e.scoringPlayerId) {
+      const b = stats.get(e.scoringPlayerId);
+      if (b) { b.freeThrowsAttempted += ftA; b.freeThrowsMade += e.narrative?.ftMade ?? 0; }
+    }
+    if (e.stealPlayerId) { const d = stats.get(e.stealPlayerId); if (d) d.steals++; }
+    if (e.defensiveRebounderId) { const d = stats.get(e.defensiveRebounderId); if (d) d.defensiveRebounds++; }
+    if (points > 0) {
+      for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) b.plusMinus += points; }
+      for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.plusMinus -= points; }
+    }
+  }
+
+  // Tiebreak point (see simulateGame): not an event, credited to the winner's first starter.
+  if (last === events.length - 1 && events.length > 0) {
+    const [h, a] = events[last].runningScore;
+    const [fh, fa] = theater.finalScore;
+    if (fh === h + 1 && fa === a) { const b = stats.get(theater.homeTeam.starters[0]); if (b) b.points += 1; }
+    else if (fa === a + 1 && fh === h) { const b = stats.get(theater.awayTeam.starters[0]); if (b) b.points += 1; }
+  }
+
+  const rows = Array.from(stats.values()).map(b => ({ ...b, minutes: Math.round(b.minutes * 10) / 10 }));
+  const byPoints = (x: PlayerBoxScore, y: PlayerBoxScore) => y.points - x.points;
+  return {
+    home: rows.filter(b => homeIds.has(b.playerId)).sort(byPoints),
+    away: rows.filter(b => !homeIds.has(b.playerId)).sort(byPoints),
+  };
+}
 
 function distributeQuarters(
   homePoss: number,
