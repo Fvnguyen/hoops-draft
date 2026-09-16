@@ -49,14 +49,16 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
   const cards: PlayerCard[] = [];
 
+  // card_balance T1 follow-up (2026-09-16): 'G' and 'F' pools removed — bref-primary
+  // positions never produce a bare letter, so they were dead code (see balance.ts's
+  // PROFILES comment). Any position string that isn't a specific PG-C column or one of
+  // the two adjacent crossovers (G/F, F/C) falls to the neutral 'Gold' profile.
   const getPool = (pos: string) => {
     if (pos === 'PG') return 'PG';
     if (pos === 'SG') return 'SG';
     if (pos === 'SF') return 'SF';
     if (pos === 'PF') return 'PF';
     if (pos === 'C') return 'C';
-    if (pos === 'G' || pos === 'PG/SG' || pos === 'SG/PG') return 'G';
-    if (pos === 'F' || pos === 'SF/PF' || pos === 'PF/SF') return 'F';
     if (pos.includes('G/F') || pos.includes('F/G') || pos.includes('SG/SF') || pos.includes('SF/SG')) return 'G/F';
     if (pos.includes('F/C') || pos.includes('C/F') || pos.includes('PF/C') || pos.includes('C/PF')) return 'F/C';
     return 'Gold';

@@ -298,10 +298,16 @@ export const RATING_CONFIG = {
       'SF':   [20, 14, 18, 10, 14, 17,  7],
       'PF':   [24, 13,  9,  5, 20, 11, 18],
       'C':    [24,  8,  4,  5, 29,  7, 23],
-      'G':    [15, 14, 24, 22,  5, 15,  5],
-      'F':    [22, 13, 13,  7, 17, 14, 14],
       'G/F':  [18, 14, 21, 14, 10, 16,  7],
       'F/C':  [24, 11,  6,  5, 24,  9, 21],
+      // 'Gold': catch-all for any position string that isn't a specific PG-C or one of the
+      // two adjacent crossovers above (card_balance T1 follow-up, 2026-09-16). Neither of
+      // our position sources (bref Pos, NBA Stats bio) can produce a 3-way combo — bref
+      // gives one specific position or a 2-way split, bio's field is a fixed X or X-Y
+      // format — so nothing routes here today; it exists so a future data change (or a
+      // genuinely versatile player some season) degrades to a neutral profile instead of
+      // crashing on an unmapped pool. The bare 'G'/'F' profiles this replaced (PG/SG and
+      // SF/PF blends) are gone: bref-primary positions (T1) never produce a bare letter.
       'Gold': [14, 14, 14, 14, 14, 15, 15],
     } as Record<string, number[]>,
   },

@@ -1,7 +1,7 @@
 # Plan: card_balance
 
-File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: in progress (started 2026-09-16, baseline captured; owner started it ahead of
-draft_ai — T2/T5 re-verify against contested drafts once draft_ai lands).
+File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: in progress (started
+2026-09-16; owner started ahead of draft_ai — T2/T5 re-verify once draft_ai lands).
 Sequence: 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
 reflect the final simulation and contested drafts). Files owned: `data/fetch_players.py`,
 `frontend/game.db` (regenerated), `engine/ratings.ts`, `engine/balance.ts` (rating,
@@ -21,49 +21,51 @@ backbone of a strategy), and positions are real.
 
 ## Real-data findings (update timestamp when a newer dump lands)
 
-**2026-09-14** — one real-user 168-card cube export (`full_dump_2026-09-14T08-27-49-961Z.json`):
-cube rarity Mythic 12 / Rare 15 / Uncommon 57 / Common 108; early-pick OVR 71.6. Spot-check only.
+**2026-09-14** — one real-user 168-card cube export: cube rarity Mythic 12 / Rare 15 /
+Uncommon 57 / Common 108; early-pick OVR 71.6. Spot-check only.
 
-**2026-09-16, pre-merge** — full-pool win-side bootstrap, method + tables in
+**2026-09-16, pre-merge** — full-pool win-side bootstrap, superseded by the baseline
+below; method + original tables in
 [analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md):
-`corr(OVR, winSharesPerGame) = 0.617`; interior badges predict winning 2-3x better than
-Sharpshooter/Floor General; 204/448 cards clipped at the OVR-40 floor.
+`corr(OVR, WS/g) = 0.617`, interior badges beat Sharpshooter/Floor General 2-3x.
 
 **2026-09-16, baseline on the merged engine (engine_possession_model, `3226cf2`), pre-T1**
 — the D9 "before": `balance -- 500 --seed 42` PPP 1.050, home win 57.2%, OT 1.4%;
 `player-bootstrap` corr(OVR, WS/g) 0.691, corr(OVR, win%) 0.313, WS/g separates cleanly
-by rarity tier (Mythic .052 > Rare .049 > Uncommon .047 > Common .036) though Common's
-own sd still exceeds the Mythic-Rare gap; lever table (`2000 --seed 777 --levers`)
-playmaking 2.27 down to mid-range 0.74 — Mid-Range Maestro's badge r (.32) is out of line
-with that lever, a trap for T2. Pool pre-T1: rarity 20/22/58/348, OVR floor 204/448,
-only 9 cards with a real position label. Full tables in the analysis doc below. Rerun
-both commands after every T1-T5 commit (D9).
+by rarity tier (Mythic .052 > Rare .049 > Uncommon .047 > Common .036); lever table
+(`2000 --seed 777 --levers`) playmaking 2.27 down to mid-range 0.74 — Mid-Range
+Maestro's badge r (.32) is out of line with that lever, a trap for T2. Pool pre-T1:
+rarity 20/22/58/348, OVR floor 204/448, only 9 real position labels (D9).
 
-**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary
-(`sort_pos` hoisted to module scope): 448/448 cards now carry a real PG/SG/SF/PF/C
-primary, exceeding D1's ≥300 bar. Bref gave zero combo positions this season, which
-alone would have left every card eligible for exactly one depth-chart column
-(`engine/positions.ts`) — a real loss vs. the old broad G/F/C labels. Fixed by blending
-in the NBA Stats bio's broad category as one adjacent crossover column when it implies
-a side bref alone doesn't cover (mirrors `positions.ts`'s ADJACENT map); output lands
-on exactly the `SG/SF`/`PF/C` strings `ratings.ts`'s `getPool` already special-cases —
-no engine change needed. Result: PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44.
-Mechanical side effects (no rating/rarity retune yet): rarity Mythic 20→24, Uncommon
-58→70; OVR-40 floor 204→188. `LINEUP_CENTRE` regenerated twice (once per position
-pass) as bot-drafted lineups shifted; `game.test.ts`'s starter-minutes floor lowered
-18→16 after a legitimate low-share starter (HANDOVER issue 5's documented case) —
-floor lowered per that issue's own guidance, not reseeded. `balance -- 500 --seed 42`:
-PPP 1.050→1.052, home win 57.2%→52.4% (noise at n=500, rerun at 2000+ before reacting).
-Bootstrap: corr(OVR, WS/g) 0.691→0.677 — positions now gate who plays where, moving
+**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary: 448/448
+cards carry a real PG/SG/SF/PF/C primary, exceeding D1's ≥300 bar. Bref gave zero combo
+positions this season, which alone would have left every card eligible for exactly one
+depth-chart column — a real loss vs. the old broad G/F/C labels — so bio's broad category
+is blended in as one adjacent crossover column when it implies a side bref alone doesn't
+cover (mirrors `positions.ts`'s ADJACENT map). Output lands on exactly the `SG/SF`/`PF/C`
+strings `getPool` already special-cases, no engine change needed: PG 76, SG 98, SG/SF 53,
+SF 50, PF 71, PF/C 56, C 44. Mechanical side effects (no retune yet): rarity Mythic
+20→24, Uncommon 58→70; OVR-40 floor 204→188. `LINEUP_CENTRE` regenerated twice as bot-
+drafted lineups shifted; `game.test.ts`'s starter-minutes floor lowered 18→16 after a
+legitimate low-share starter (HANDOVER issue 5's documented case, its own guidance
+followed). `balance -- 500 --seed 42`: PPP 1.050→1.052, home win 57.2%→52.4% (noise at
+n=500). Bootstrap: corr(OVR, WS/g) 0.691→0.677 — positions now gate who plays where, moving
 some cards out of roles their OVR was scored for; T2's retune should recover this.
 254/254 tests, `tsc` clean, lint unchanged.
 
 **2026-09-16, eyeball pass over Mythic/Rare/Uncommon** — full findings in
 [analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md).
-Headline: `LEGENDARY_PLAYERS` rewards Gobert/Butler/Kawhi (all z ≤ −1.2 for their tier)
-while missing the engine's real standouts (A. Davis, J. Johnson); Duren and D. Mitchell
-are Mythic misses (z ≤ −1.7); Josh Hart and Cooper Flagg are two-tier promotion cases;
-multiposition cards (T1) read correctly — no further fix needed there.
+Headline: `LEGENDARY_PLAYERS` rewards Gobert/Butler/Kawhi (z ≤ −1.2 for their tier) while
+missing the real standouts (A. Davis, J. Johnson); Duren and D. Mitchell are Mythic
+misses; Josh Hart and Cooper Flagg are two-tier promotion cases; multiposition cards
+(T1) read correctly — no further fix needed there.
+
+**2026-09-16, `PROFILES` cleanup** — removed the now-dead `G`/`F` rating profiles (T1's
+bref-primary positions never produce a bare letter); confirmed no 448-player card
+qualifies for a 3-way combo — bref gives at most a 2-way split, NBA Stats bio's
+POSITION field is a fixed X/X-Y format with no 3-way slot at all, so `'Gold'`'s
+catch-all stays a structural safety net, not a populated tier. `cards.json` byte-
+identical (dead code only); 254/254 tests, `tsc` clean.
 
 ## Decisions (locked)
 
