@@ -5,6 +5,7 @@ import time
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
+from unidecode import unidecode
 
 # Use a realistic User-Agent to avoid immediate 403s from B-Ref
 HEADERS = {
@@ -113,15 +114,18 @@ def fetch_and_generate_players():
             awards_html = f.read()
         soup = BeautifulSoup(awards_html, 'html.parser')
         
-        # Scrape All-NBA
+        # Scrape All-NBA. Names are unidecode'd to match the ASCII lookup key used at
+        # insert time (`name = unidecode(raw_name)`) — bref's anchor text keeps accents
+        # (e.g. 'Luka Dončić'), which silently failed the `name in all_nba_players` check
+        # and dropped the award (card_balance T2 finding, 2026-09-16).
         div_all_nba = soup.find('div', id='div_all-nba')
         if div_all_nba:
             for div_team in div_all_nba.find_all('div', class_='data_grid_box'):
                 team_level = 1 if '1' in div_team.get('id', '') else (2 if '2' in div_team.get('id', '') else 3)
                 for a in div_team.find_all('a'):
                     if '/players/' in a.get('href', ''):
-                        all_nba_players[a.text.strip()] = team_level
-                    
+                        all_nba_players[unidecode(a.text.strip())] = team_level
+
         # Scrape All-Defensive
         div_all_def = soup.find('div', id='div_all-defensive')
         if div_all_def:
@@ -129,17 +133,20 @@ def fetch_and_generate_players():
                 team_level = 1 if '1' in div_team.get('id', '') else 2
                 for a in div_team.find_all('a'):
                     if '/players/' in a.get('href', ''):
-                        all_defensive_players[a.text.strip()] = team_level
-                    
+                        all_defensive_players[unidecode(a.text.strip())] = team_level
+
         # Scrape All-Star
         div_all_star = soup.find('div', id='div_all_star_game_rosters')
         if div_all_star:
             for a in div_all_star.find_all('a'):
                 if '/players/' in a.get('href', ''):
-                    all_star_players.add(a.text.strip())
+                    all_star_players.add(unidecode(a.text.strip()))
                     
     except Exception as e:
         print(f"Could not read local awards html: {e}")
+
+    print(f"Scraped awards: {len(all_nba_players)} All-NBA, {len(all_defensive_players)} "
+          f"All-Defensive, {len(all_star_players)} All-Star")
 
     # Calculate Raw Scores for Dimensions
     df_filtered['3PM'] = df_filtered['3P']
@@ -173,8 +180,7 @@ def fetch_and_generate_players():
     
     # 3. Load Hard Bio Data
     df_bio = pd.read_csv("bio.csv")
-    from unidecode import unidecode
-    
+
     # Deterministic sorting for positions (module scope: used for both the NBA Stats
     # bio position below and basketball-reference's Pos column at insert time, D1).
     def sort_pos(p_str):
@@ -221,17 +227,13 @@ def fetch_and_generate_players():
         weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
         bio_map[name] = {"pos": pos, "height": height, "weight": weight}
     
-    all_nba_players = {
-        'Cade Cunningham': 1, 'Luka Doncic': 1, 'Shai Gilgeous-Alexander': 1, 'Nikola Jokic': 1, 'Victor Wembanyama': 1,
-        'Jaylen Brown': 2, 'Kawhi Leonard': 2, 'Donovan Mitchell': 2, 'Kevin Durant': 2, 'Jalen Brunson': 2,
-        'Tyrese Maxey': 3, 'Jamal Murray': 3, 'Jalen Johnson': 3, 'Jalen Duren': 3, 'Chet Holmgren': 3
-    }
-    
-    all_defensive_players = {
-        'Victor Wembanyama': 1, 'Rudy Gobert': 1, 'Chet Holmgren': 1, 'Derrick White': 1, 'Ausar Thompson': 1,
-        'Scottie Barnes': 2, 'Cason Wallace': 2, 'Bam Adebayo': 2, 'OG Anunoby': 2, 'Dyson Daniels': 2
-    }
-    
+    # card_balance T2 finding (2026-09-16): this block used to reassign all_nba_players
+    # and all_defensive_players to a hardcoded snapshot right here, silently discarding
+    # whatever the awards.html scrape above just found. It happened to match this
+    # season's real scrape (verified), but would have frozen every future season's
+    # All-NBA/All-Defensive teams to 2025-26's forever. Removed — the scraped dicts from
+    # above are used as-is. major_awards has no scrape source (MVP/ROTY/DPOY/MIP aren't
+    # decided mid-season on bref's awards page) and needs manual upkeep each season.
     major_awards = {
         'Shai Gilgeous-Alexander': ['MVP'],
         'Cooper Flagg': ['ROTY'],
@@ -239,8 +241,6 @@ def fetch_and_generate_players():
         'Nickeil Alexander-Walker': ['MIP']
     }
 
-    all_star_players = set()
-    
     import sqlite3
     db_path = "../frontend/game.db"
     conn = sqlite3.connect(db_path)
