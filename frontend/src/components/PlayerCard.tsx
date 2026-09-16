@@ -28,7 +28,12 @@ function useLongPressPreview() {
   const onClickCapture = (e: React.MouseEvent) => {
     if (fired.current) { e.stopPropagation(); e.preventDefault(); fired.current = false; }
   };
-  return { open, fired, handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchMove, onClickCapture } };
+  // No browser context menu on a card, anywhere (owner): Android and the installed PWA
+  // open a "Copy image / Share" sheet on long-press that competes with the preview, and
+  // a desktop right-click's "Save image" is never a game action. The iOS equivalent is
+  // the `-webkit-touch-callout` CSS on the card roots.
+  const onContextMenu = (e: React.MouseEvent) => { e.preventDefault(); };
+  return { open, fired, handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchMove, onClickCapture, onContextMenu } };
 }
 import { ClipboardList, MoreHorizontal, X } from 'lucide-react';
 
@@ -719,7 +724,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
   return (
     <div
-      className={`group @container w-full select-none transition-transform duration-200 hover:-translate-y-1 ${onClick ? 'cursor-pointer' : ''}`}
+      className={`group @container w-full select-none [-webkit-touch-callout:none] transition-transform duration-200 hover:-translate-y-1 ${onClick ? 'cursor-pointer' : ''}`}
       style={{ perspective: 1000, aspectRatio: '5 / 7' }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
@@ -729,6 +734,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
       onTouchCancel={longPress.handlers.onTouchCancel}
       onTouchEnd={longPress.handlers.onTouchEnd}
       onClickCapture={longPress.handlers.onClickCapture}
+      onContextMenu={longPress.handlers.onContextMenu}
     >
       {longPress.open && <PlayerHoverPreview player={player} />}
       <motion.div
@@ -894,7 +900,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
   return (
     <div
-      className={`group relative w-full aspect-[5/7] cursor-pointer transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
+      className={`group relative w-full aspect-[5/7] cursor-pointer select-none [-webkit-touch-callout:none] transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
@@ -904,6 +910,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
       onTouchCancel={longPress.handlers.onTouchCancel}
       onTouchEnd={longPress.handlers.onTouchEnd}
       onClickCapture={longPress.handlers.onClickCapture}
+      onContextMenu={longPress.handlers.onContextMenu}
     >
       {longPress.open && <PlayHoverPreview play={play} />}
 
