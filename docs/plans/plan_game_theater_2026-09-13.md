@@ -1,20 +1,17 @@
 # Plan: game_theater
 
-File: `docs/plans/plan_game_theater_2026-09-13.md`. Status: planned (decisions re-locked
-2026-09-16 against `engine_possession_model`: box score, runs, crunch time).
-Sequence: 6 in `docs/ROADMAP.md`. Depends on: engine_possession_model (done, unmerged —
-develop on `claude/game-engine-card-balance-0toacl`, shipping gate applies). Files owned:
-`engine/game.ts` (narration, `PossessionEvent.narrative`, box score fields, clutch lineup
-rule), `engine/balance.ts` (clutch + attribution constants), new `frontend/src/narration/`
-(templates, beats, renderer), `components/GameView.tsx`, `engine/season.ts` (per-player
-season totals), `app/debug` export, `tests/unit/{narration*,boxscore,clutch}.test.ts`.
+File: `docs/plans/plan_game_theater_2026-09-13.md`. Status: planned (re-locked 2026-09-16:
+box score, runs, crunch time, UI pass). Sequence: 6 in `docs/ROADMAP.md`. Depends on:
+engine_possession_model (done, unmerged — develop on `claude/game-engine-card-balance-0toacl`,
+shipping gate applies). Files owned: `engine/game.ts`, `engine/balance.ts` (clutch +
+attribution constants), new `src/narration/`, `components/GameView.tsx`, `SeasonView.tsx`
+(context prop), `engine/season.ts` (per-player totals), `app/debug`, `tests/unit/`.
 
 ## Goal
 
 The game theater is the payoff of drafting and building; today it is one line of
-template text per possession picked from eight small pools, unaware of the play that was
-called, the identity on the floor, runs, lead changes or the clock. After this plan the
-narration reads like a broadcast: called plays, coverages, turnovers before the shot,
+template text per possession from eight small pools, unaware of the play called, the
+identity on the floor, runs, lead changes or the clock. After this plan it reads like a broadcast: called plays, coverages, turnovers before the shot,
 second chances and the creator steer are named; scoring runs and lead changes are called
 out; quarters get a summary; crunch time is a moment (closing fives, playback drops to 1x,
 a "Crunchtime!" pop); the box score is a real one (traditional, shooting, plus/minus) and
@@ -45,11 +42,9 @@ is logged for analytics.
   in unanswered points**; a run ends on any opponent score and emits a "run answered"
   beat), lead changes, ties, largest lead, quarter summaries (score, top scorer, shooting
   split), clutch start (D10), OT start, game winner. Beats are interleaved into the
-  play-by-play at the right possession index. Measured 2026-09-16 on the possession-model
-  branch (400 games, seed 42): 3.4 runs of 8-0+ and 1.3 of 10-0+ per game, 4.9 lead
-  changes, largest lead 21, 24% of games within 5 at the 2:00 mark of Q4 — runs need no
-  momentum model (possessions stay independent draws); the low lead-change count is a
-  variance/balance matter for `card_balance`, not narration.
+  play-by-play at the right possession index. Measured 2026-09-16 (400 games, seed 42):
+  3.4 runs of 8-0+ per game, 4.9 lead changes, 24% of games within 5 at 2:00 of Q4 — runs
+  need no momentum model; the low lead-change count is `card_balance`'s, not narration's.
 - D5 Identity flavour: once per quarter, if the offense's selected identity is Online or
   better, one line references it. Never more than one identity line per quarter per team.
 - D6 Playback in `GameView.tsx`: speeds 1x / 2x / 4x, pause, and a separate "End" action
@@ -62,12 +57,11 @@ is logged for analytics.
   re-simulates games from seeds. Note: D9/D10 add rng draws and change Q4 lineup draws,
   so seeds simulated before this plan do not replay identically — accepted, the branch
   is unmerged.
-- D8 No audio, no images, no commentator personas, no per-player catchphrases.
+- D8 No audio, no commentator personas, no per-player catchphrases.
 - D9 **Box score** (`PlayerBoxScore`), locked 2026-09-16. Traditional: minutes, points,
   rebounds (offensive + defensive, total derived), assists, steals, blocks, turnovers.
-  Shooting: FGM/FGA, 3PM/3PA, FTM/FTA (percentages derived in the UI). Plus/minus:
-  computed from `lineupOnCourt`/`defenseOnCourt` and `runningScore`, stored on the box
-  for convenience. Attribution is **attribution only** — possession outcomes and balance
+  Shooting: FGM/FGA, 3PM/3PA, FTM/FTA (percentages derived). Plus/minus from the on-court
+  lists and `runningScore`, stored on the box. **Attribution only** — outcomes and balance
   numbers are unchanged: the shooter is the scorer already drawn before the make roll
   (misses now count an attempt); a share of misses (`BLOCK_SHARE_OF_MISSES`) is labelled
   a block and credited to a defender weighted by post defence at the rim / perimeter
@@ -92,6 +86,23 @@ is logged for analytics.
   management (no real clock; the derived 12-minute display stays and the window's "2:00"
   is computed from the same formula so pop-up and clock agree).
 
+- D11 **UI pass** (prettier, more readable, more exciting), locked 2026-09-16. (a) Home/
+  Away: one colour token per side (home warm, away cool) used everywhere — score band, log
+  row chip, box tabs; header reads `AWAY @ HOME`; the user's team carries a "YOU" chip and
+  its rows are tinted. `GameView` gains an optional `context` prop
+  `{ userSeatId, home: { wins, losses, streak, rank }, away: {...}, headToHead? }` filled
+  by `SeasonView`; absent = "Exhibition". (b) Header: team names with logos/initials,
+  record + streak + rank under each, identity tier chips, live score large, quarter strip,
+  derived clock, the beat ticker line. (c) Box score: sortable columns, starters above a
+  divider, top value per column highlighted, DNP rows collapsed, percentages derived. (d)
+  "Summary" section on completion: player of the game (both teams, pure
+  `playerOfTheGame(box)` in `src/narration/summary.ts` on a fixed game-score formula),
+  the user team's top and low performer (low = worst game score among players with at
+  least 15 possessions), each with one data-backed hint from a rule table in
+  `src/narration/hints.ts` (e.g. volume at a low FG%, high +/- off the bench = closing-five
+  candidate, turnovers per touch, a rebounding hole). Hints cite box stats, badges and
+  positions only — **never OVR or engine ratings** (product rule). At most 2 hints.
+
 ## Out of scope
 
 Simulation changes beyond D10's lineup rule and D9's attribution; balance retunes
@@ -103,34 +114,30 @@ Simulation changes beyond D10's lineup rule and D9's attribution; balance retune
   test: a fixed seed produces the same `narrative` sequence; purity test passes. Tier: mid.
 - T2 Renderer per D2 and the no-repeat rule per D3; test: determinism and no repeats
   within 5. Tier: mid.
-- T3 Template content per D3 and D5 as data files in `src/narration/templates/` (one file
-  per kind, one per play, one per coverage). Tier: low (reviewed by the driver).
+- T3 Template content per D3 and D5 as data files in `src/narration/templates/` (one per
+  kind, play and coverage). Tier: low (reviewed by the driver).
 - T4 Beats per D4; tests for runs, run-answered, lead changes, quarter summaries and
   clutch start on a synthetic theater. Tier: mid.
 - T5 GameView playback per D6, D7 and the D10 UI (1x snap + pop-up); screenshots of a
   quarter summary, a run line and the pop-up. Tier: mid.
-- T6 Remove `narrativeText` production from the engine after T5 ships and D7 fallback is
-  verified in the app. Tier: low.
+- T6 Remove `narrativeText` from the engine once T5 ships and D7 is verified. Tier: low.
 - T7 Box score per D9: fields, derived-rng attribution, plus/minus, season totals, debug
   export, GameView columns (MIN PTS REB AST STL BLK TOV FG 3P FT +/-); `boxscore.test.ts`
   pins that a fixed seed's outcomes and `npm run balance` numbers are unchanged before/
   after. Tier: mid.
+- T9 UI pass per D11 after T5: context prop from SeasonView, header, side tokens, box
+  score, summary + hints with `summary.test.ts`; screenshots desktop and phone (zoom 0.7
+  shells from game_canvas); ui_foundation style gate stays at 0. Tier: mid (hints: top).
 - T8 Clutch rule per D10: constants, `isClutch`, closers draw; `clutch.test.ts` (window
   entry/no entry, starters on the floor 5 of 5 inside it, OT); quote `npm run balance`
   before/after (expect home win/PPP within the D5 bands of game_engine). Tier: top.
 
-## Parallelization
+## Parallelization / model tier
 
-- Wave 0 (driver): `src/narration/types.ts` with the `narrative` shape, renderer
-  signature, template format, `Beat` union, and the D9/D10 field names as contracts.
-- Wave 1 (parallel, disjoint files): T1 + T7 + T8 (all `game.ts`, one agent, T8 first),
-  T2 (`render.ts`), T3 (templates), T4 (`beats.ts`).
-- Wave 2: T5 once T2, T4, T7, T8 exist. Wave 3: T6.
-
-## Recommended model tier
-
-Main driver: Sonnet 5 / Gemini 3 Pro. T8 and the T7 balance check: top tier (they touch
-the possession loop). T1, T2, T4, T5, T7: mid. T3, T6: low.
+Wave 0 (driver): `src/narration/types.ts` — `narrative` shape, renderer signature, template
+format, `Beat` union, D9/D10 field names. Wave 1 (disjoint files): T1 + T7 + T8 (`game.ts`,
+one agent, T8 first), T2, T3, T4. Wave 2: T5. Wave 3: T9, then T6. Driver Sonnet 5 /
+Gemini 3 Pro; T8, the T7 balance check and the hint rules top tier; T3, T6 low; rest mid.
 
 ## Verification / exit criteria
 
@@ -139,5 +146,5 @@ the possession loop). T1, T2, T4, T5, T7: mid. T3, T6: low.
 - Play a full game in the app: every possession renders text, play names appear on
   called possessions, at least one run and one quarter summary appear, a close game
   drops to 1x with the pop-up and shows the closing fives, the box score shows every D9
-  column; screenshots captured.
+  column, the summary names a player of the game and two hints; screenshots captured.
 - Load a season saved before this plan: it still plays through (D7).
