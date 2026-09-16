@@ -10,8 +10,7 @@ import {
 import {
   RATING_NORM, RATING_DIMS, LINEUP_AGG, LINEUP_CENTRE, CHANNEL_CENTRE, HOLE_BOTTOM_N, STANDARDISE,
 } from '@/engine/balance';
-import { createRng } from '@/engine/rng';
-import { loadPlayers } from './helpers';
+import { loadPlayers, measureLineupCentres } from './helpers';
 import type { PlayerCardData } from '@/engine/types';
 
 const players = loadPlayers();
@@ -97,18 +96,9 @@ describe('owner-locked lineup numbers (2025-26 starting fives, 2026-09-16)', () 
 });
 
 describe('LINEUP_CENTRE / CHANNEL_CENTRE (D3)', () => {
-  it('matches a fresh seeded measurement over random rotation lineups within ±1.5', () => {
-    const rot = players.filter(p => (p.stats?.mpg ?? 0) >= 15);
-    const rng = createRng(42);
-    const N = 6000;
-    const sums: Record<string, number> = {};
-    for (let i = 0; i < N; i++) {
-      const idx = new Set<number>();
-      while (idx.size < 5) idx.add(Math.floor(rng.next() * rot.length));
-      const lineup = [...idx].map(j => rot[j]);
-      for (const d of RATING_DIMS) sums[d] = (sums[d] ?? 0) + lineupValue(lineup, d);
-    }
-    for (const d of RATING_DIMS) expect(Math.abs(sums[d] / N - LINEUP_CENTRE[d]), d).toBeLessThan(1.5);
+  it('matches a fresh seeded measurement over in-game (drafted, minutes-weighted) lineups within ±1.5', () => {
+    const measured = measureLineupCentres(players, 6, 100, 42);
+    for (const d of RATING_DIMS) expect(Math.abs(measured[d] - LINEUP_CENTRE[d]), `${d}: measured ${measured[d].toFixed(1)} vs ${LINEUP_CENTRE[d]}`).toBeLessThan(1.5);
   });
   it('is derived from LINEUP_CENTRE per channel', () => {
     expect(CHANNEL_CENTRE.rim.off).toBe(LINEUP_CENTRE.finishing);

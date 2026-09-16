@@ -13,8 +13,9 @@ import { getAllCards } from '@/engine/cards';
 import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
 import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
-import { type EdgeTuning, buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
-import { CUBE_PLAYER_CARDS_PER_PACK } from '@/engine/balance';
+import { type EdgeTuning, calcPossessionShares, buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
+import { CUBE_PLAYER_CARDS_PER_PACK, RATING_DIMS, type RatingDim } from '@/engine/balance';
+import { lineupValue } from '@/engine/lineup';
 import { createRng, randomSeed, type Rng } from '@/engine/rng';
 import { PLAYS } from './fixtures/plays';
 
@@ -217,4 +218,43 @@ export function activationRates(games: GameTheater[]): ActivationRates {
   }
 
   return { synergyCounts, playCounts, teamSamples };
+}
+
+// ── Lineup centres (engine_possession_model D3) ─────────────────────────────
+
+/**
+ * Mean lineup value per dimension over lineups drawn the way the engine draws them: bot
+ * drafts -> bot rosters -> five per depth-chart slot weighted by calcPossessionShares.
+ * Used by the balance script header (to regenerate LINEUP_CENTRE) and by lineup.test.ts
+ * (to catch drift). Seeded, so the same inputs give the same centres.
+ */
+export function measureLineupCentres(players: PlayerCardData[], drafts: number, drawsPerTeam: number, seed: number): Record<RatingDim, number> {
+  const rng = createRng(seed);
+  const sums = Object.fromEntries(RATING_DIMS.map(d => [d, 0])) as Record<RatingDim, number>;
+  let n = 0;
+  for (let d = 0; d < drafts; d++) {
+    const teams = buildTeams(runHeadlessDraft(players, PLAYS, Math.floor(rng.next() * 4294967296)));
+    for (const t of teams) {
+      const shares = calcPossessionShares(t.depthChart, t.players);
+      const byId = new Map(t.players.map(p => [p.id, p]));
+      for (let i = 0; i < drawsPerTeam; i++) {
+        const lineup: PlayerCardData[] = [];
+        for (const ids of Object.values(t.depthChart)) {
+          if (ids.length === 0) continue;
+          const w = ids.map(id => shares.get(id) ?? 0);
+          const tot = w.reduce((a, b) => a + b, 0);
+          let r = rng.next() * tot;
+          let pick = ids[ids.length - 1];
+          for (let j = 0; j < ids.length; j++) { r -= w[j]; if (r <= 0) { pick = ids[j]; break; } }
+          const p = byId.get(pick);
+          if (p) lineup.push(p);
+        }
+        if (lineup.length !== 5) continue;
+        for (const dim of RATING_DIMS) sums[dim] += lineupValue(lineup, dim);
+        n++;
+      }
+    }
+  }
+  for (const dim of RATING_DIMS) sums[dim] = n > 0 ? sums[dim] / n : 0;
+  return sums;
 }

@@ -136,15 +136,20 @@ export const LINEUP_AGG: Record<RatingDim, { k: number; holeFloor: number; holeC
 export const HOLE_BOTTOM_N = 2;
 
 /**
- * D3: expected lineup value per dimension for a random 5-man lineup of rotation players
- * (mpg >= 15), 20,000 seeded draws — the centre an edge is measured from. Not 50: with
- * k > 0 the aggregate of a typical lineup sits above the standardised mean. Regenerate
- * from the balance script header ("Lineup centres"); `tests/unit/lineup.test.ts` asserts
- * these within ±1.5 of a fresh seeded measurement.
+ * D3: expected lineup value per dimension over the lineups the engine actually puts on the
+ * floor — bot-drafted 12-man rosters, five drawn per depth-chart slot with the real
+ * `calcPossessionShares` minutes (40 seeded headless drafts x 8 teams x 150 draws). This is
+ * the centre an edge is measured from, and it is NOT the random-pool value: drafting keeps
+ * the best 264 of 448 cards and deckbuilders start the best of those, so in-game lineups
+ * sit 6-13 points above random rotation lineups in every dimension except perimeter,
+ * where the spacing tax on drafted bigs cancels it. Centring on the random pool made every
+ * channel edge negative on average (three: -10.7) and dragged PPP down as the edge scale
+ * rose. Regenerate from the balance script header ("Lineup centres");
+ * `tests/unit/lineup.test.ts` asserts these within ±1.5 of a fresh seeded measurement.
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
-  finishing: 55.8, midRange: 56.7, perimeter: 54.0, playmaking: 58.4,
-  rebounding: 55.1, perimeterDefense: 51.9, postDefense: 50.7,
+  finishing: 63.8, midRange: 62.6, perimeter: 53.3, playmaking: 70.3,
+  rebounding: 67.9, perimeterDefense: 61.9, postDefense: 61.6,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */

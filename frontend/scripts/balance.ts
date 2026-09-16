@@ -42,11 +42,10 @@
  * for a quick single-question loop; `--report` is what ships.
  */
 
-import { loadPlayers, PLAYS, simulateMany, activationRates, runHeadlessDraft, buildTeams } from '../tests/unit/helpers';
+import { loadPlayers, PLAYS, simulateMany, activationRates, runHeadlessDraft, buildTeams, measureLineupCentres } from '../tests/unit/helpers';
 import { randomSeed, createRng, type Rng } from '../src/engine/rng';
 import { PLAYBOOK, isEligibleForRole, evaluatePlaybook, type PlayAssignment, type PlayRole } from '../src/engine/playbook';
 import { simulateGame, type TeamInfo, type GameTheater, type EdgeTuning } from '../src/engine/game';
-import { lineupValue } from '../src/engine/lineup';
 import { evaluateArchetypes, ARCHETYPES, type ArchetypeTier, type ArchetypeDef, type ArchetypeSelection, type Color } from '../src/engine/archetypes';
 import { generateCubePool } from '../src/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '../src/engine/deckbuilder';
@@ -55,6 +54,9 @@ import type { PlayerCardData, Play, DraftCard } from '../src/engine/types';
 import { pathToFileURL } from 'url';
 import fs from 'fs';
 import path from 'path';
+
+/** Edge-size override for this run (plan D5 sweep); set once in main, read by every harness. */
+let activeTuning: EdgeTuning = {};
 
 function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; catalog: boolean; draftImpact: boolean; report: boolean; tuning: EdgeTuning } {
   const tuning: EdgeTuning = {};
@@ -311,8 +313,8 @@ function reportPlayImpact(players: PlayerCardData[], n: number, seed: number, pl
     const gamesWithout: GameTheater[] = [];
     for (let i = 0; i < n; i++) {
       const gameSeed = seed + i * 7919 + 1; // spread out from the main run's seeds
-      gamesWith.push(simulateGame(withPlay, opponent, { rng: createRng(gameSeed) }));
-      gamesWithout.push(simulateGame(withoutPlay, opponent, { rng: createRng(gameSeed) }));
+      gamesWith.push(simulateGame(withPlay, opponent, { rng: createRng(gameSeed), tuning: activeTuning }));
+      gamesWithout.push(simulateGame(withoutPlay, opponent, { rng: createRng(gameSeed), tuning: activeTuning }));
     }
 
     const winWith = winPctSide(gamesWith, 'home');
@@ -419,8 +421,8 @@ function reportArchetypeImpact(
     const gamesWithout: GameTheater[] = [];
     for (let i = 0; i < n; i++) {
       const gameSeed = seed + i * 7919 + 2;
-      gamesWith.push(simulateGame(withIdentity, opponent, { rng: createRng(gameSeed) }));
-      gamesWithout.push(simulateGame(withoutIdentity, opponent, { rng: createRng(gameSeed) }));
+      gamesWith.push(simulateGame(withIdentity, opponent, { rng: createRng(gameSeed), tuning: activeTuning }));
+      gamesWithout.push(simulateGame(withoutIdentity, opponent, { rng: createRng(gameSeed), tuning: activeTuning }));
     }
 
     const winWith = winPctSide(gamesWith, 'home');
@@ -595,7 +597,7 @@ export function runDraftImpact(players: PlayerCardData[], plays: Play[], nDrafts
         const iHome = (i + j) % 2 === 0;
         const home = iHome ? teams[i] : teams[j];
         const away = iHome ? teams[j] : teams[i];
-        const g = simulateGame(home, away, { rng: createRng(gameSeed) });
+        const g = simulateGame(home, away, { rng: createRng(gameSeed), tuning: activeTuning });
         const [homeScore, awayScore] = g.finalScore;
         const iScore = iHome ? homeScore : awayScore;
         const jScore = iHome ? awayScore : homeScore;
@@ -874,7 +876,7 @@ export function runAbPairs(
       const gameSeed = draftSeed + oi * 104729 + 7;
 
       const playTreatment = (opp: TeamInfo) =>
-        simulateGame(oppHome ? opp : human, oppHome ? human : opp, { rng: createRng(gameSeed) });
+        simulateGame(oppHome ? opp : human, oppHome ? human : opp, { rng: createRng(gameSeed), tuning: activeTuning });
 
       const gT = playTreatment(opponentTreatment);
       const gC = playTreatment(opponentControl);
@@ -969,6 +971,7 @@ function writeUnifiedReport(
 
 function main(): void {
   const { games: n, seed, ab, catalog, draftImpact, report, tuning } = parseArgs(process.argv.slice(2));
+  activeTuning = tuning;
   console.log(`Seed: ${seed}`);
   const t0 = Date.now();
 
@@ -984,23 +987,15 @@ function main(): void {
     console.log(`  ${key.padEnd(18)} ${m.toFixed(2)}`);
   }
 
-  // engine_possession_model D3: the centre each channel edge is measured from. Printed so
-  // LINEUP_CENTRE in balance.ts can be regenerated (the unit test allows ±1.5 drift).
-  console.log(`\n=== Lineup centres (20,000 seeded random 5-man lineups, rotation mpg>=15) ===`);
+  // engine_possession_model D3: the centre each channel edge is measured from — lineups
+  // drawn the way the engine draws them (bot drafts -> rosters -> minutes-weighted five).
+  // Printed so LINEUP_CENTRE in balance.ts can be regenerated (unit test allows ±1.5 drift).
+  console.log(`\n=== Lineup centres (40 seeded drafts x 8 teams x 150 minutes-weighted lineups) ===`);
   console.log(`  ${'dimension'.padEnd(18)} ${'k'.padStart(5)} ${'measured'.padStart(9)} ${'balance.ts'.padStart(11)}`);
   {
-    const rot = players.filter((p) => (p.stats?.mpg ?? 0) >= 15);
-    const crng = createRng(20260916);
-    const sums: Record<string, number> = {};
-    const N = 20000;
-    for (let i = 0; i < N; i++) {
-      const idx = new Set<number>();
-      while (idx.size < 5) idx.add(Math.floor(crng.next() * rot.length));
-      const lineup = [...idx].map((j) => rot[j]);
-      for (const d of RATING_DIMS) sums[d] = (sums[d] ?? 0) + lineupValue(lineup, d);
-    }
+    const measured = measureLineupCentres(players, 40, 150, 20260916);
     for (const d of RATING_DIMS) {
-      console.log(`  ${d.padEnd(18)} ${String(LINEUP_AGG[d].k).padStart(5)} ${(sums[d] / N).toFixed(1).padStart(9)} ${LINEUP_CENTRE[d].toFixed(1).padStart(11)}`);
+      console.log(`  ${d.padEnd(18)} ${String(LINEUP_AGG[d].k).padStart(5)} ${measured[d].toFixed(1).padStart(9)} ${LINEUP_CENTRE[d].toFixed(1).padStart(11)}`);
     }
   }
   console.log(`\nEdge size: EFFICIENCY_SCALE ${tuning.efficiencyScale ?? EFFICIENCY_SCALE}${tuning.efficiencyScale !== undefined ? ' (override)' : ''}, MAX_EFF_SHIFT ${tuning.maxEffShift ?? MAX_EFF_SHIFT}${tuning.maxEffShift !== undefined ? ' (override)' : ''}`);
