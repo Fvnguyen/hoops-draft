@@ -52,9 +52,11 @@ is logged for analytics.
   variance/balance matter for `card_balance`, not narration.
 - D5 Identity flavour: once per quarter, if the offense's selected identity is Online or
   better, one line references it. Never more than one identity line per quarter per team.
-- D6 Playback in `GameView.tsx`: speed 1x / 2x / 4x / "to end", pause, auto-scroll that
-  stops when the user scrolls up, beats rendered as distinct rows (quarter summary as a
-  card, runs as a highlighted line). The existing live box score stays and grows per D9.
+- D6 Playback in `GameView.tsx`: speeds 1x / 2x / 4x, pause, and a separate "End" action
+  that is not a speed: it jumps straight to the final result, box score and full log,
+  skipping every beat and pop-up. Auto-scroll stops when the user scrolls up; beats render
+  as distinct rows (quarter summary as a card, runs as a highlighted line). The existing
+  live box score stays and grows per D9.
 - D7 Backward compatibility: seasons saved with `narrativeText` still play; the renderer
   falls back to the stored text when `narrative` is absent. Removed once data_storage
   re-simulates games from seeds. Note: D9/D10 add rng draws and change Q4 lineup draws,
@@ -82,8 +84,8 @@ is logged for analytics.
   window; inside it both teams draw their **closing five** (depth-chart starters, share
   1.0 — bench never closes), one flag on `drawLineup`. Constants in `balance.ts`. Measured
   before: starters were on the floor 3.5 of 5 in the final 8 possessions. UI: when the
-  first clutch event reaches the play-by-play, playback **snaps to 1x from any speed,
-  "to end" included**, and a centred "Crunchtime!" pop-up shows for ~1.5s and fades
+  first clutch event reaches the play-by-play during 2x or 4x playback, the speed
+  **snaps to 1x** ("End" is not playback and is never interrupted), and a centred "Crunchtime!" pop-up shows for ~1.5s and fades
   (once per window entry, so Q4 and each OT; `prefers-reduced-motion` = fade only). A
   `clutch_start` beat row marks it in the log; clutch points and plus/minus in the
   summary are computed by beats from `isClutch`, not stored. No fouling, timeouts or clock
