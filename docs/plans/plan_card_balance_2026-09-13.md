@@ -53,6 +53,18 @@ after every T1-T5 commit.
   [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
   254/254 tests, `tsc` clean.
 
+- **2026-09-17, T3 done, keystones rebuilt as combo conditions, two new content
+  pieces**: rejected an equal-percentile D3 fix as "absolute balance"; final scheme
+  bins L1/L2/L3 into 70-79/80-89/90-99 (3s), each bin closest to the cross-dimension
+  average count (~62/29/11). Two-Way Disruptor/Playmaking Maestro/Sniper are combo
+  conditions over two badge levels now (`KEYSTONE_CONDITIONS`), never a card trait.
+  New: Point Forward (Rare play, first AND-badge role), Positionless Revolution (gold
+  plan, roster-wide multipositional-level sum gate — Positionless has only 3 pool-wide
+  holders, a single-player keystone would be near-unreachable). Switchblade Pressure
+  kept as designed, per owner. Fixed four duplicate play catalogs found along the way.
+  333/333 tests. **Open**: T2's rarity mechanism (starter floor, badge Rare promotion)
+  was designed but never implemented — rarity still 24/20/70/334.
+
 ## Decisions (locked)
 
 - D1 Positions: `data/fetch_players.py` keeps basketball-reference `Pos` as primary and
