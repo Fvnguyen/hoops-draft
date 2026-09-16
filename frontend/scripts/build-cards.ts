@@ -50,6 +50,17 @@ function main(): void {
     const m = mean(tagged.map((c) => c.ratings[key] ?? 0));
     console.log(`  ${key.padEnd(18)} ${m.toFixed(2)}`);
   }
+
+  // engine_possession_model D1: paste this block over RATING_NORM in src/engine/balance.ts
+  // whenever the pool changes (tests/unit/lineup.test.ts fails on >0.5 drift).
+  console.log('\nRATING_NORM (mean / sd per dimension — copy into engine/balance.ts):');
+  for (const key of ratingKeys) {
+    if (key === 'overall') continue;
+    const v = tagged.map((c) => c.ratings[key] ?? 0);
+    const m = mean(v);
+    const sd = Math.sqrt(mean(v.map((x) => (x - m) ** 2)));
+    console.log(`  ${(key + ':').padEnd(18)} { mean: ${m.toFixed(2)}, sd: ${sd.toFixed(2)} },`);
+  }
 }
 
 main();

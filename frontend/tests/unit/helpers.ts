@@ -13,7 +13,7 @@ import { getAllCards } from '@/engine/cards';
 import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
 import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
-import { buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
+import { type EdgeTuning, buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '@/engine/balance';
 import { createRng, randomSeed, type Rng } from '@/engine/rng';
 import { PLAYS } from './fixtures/plays';
@@ -140,7 +140,7 @@ export function buildTestTeam(players: PlayerCardData[], plays: Play[] = [], sea
  * Pass `seed` to make the entire run (draft + pairing + game) reproducible:
  * the same seed always yields the same sequence of games.
  */
-export function simulateMany(n: number, players?: PlayerCardData[], plays?: Play[], seed?: number): GameTheater[] {
+export function simulateMany(n: number, players?: PlayerCardData[], plays?: Play[], seed?: number, gameOpts?: { tuning?: EdgeTuning }): GameTheater[] {
   const pool = players ?? loadPlayers();
   const playPool = plays ?? PLAYS;
   const rng = createRng(seed ?? randomSeed());
@@ -158,7 +158,7 @@ export function simulateMany(n: number, players?: PlayerCardData[], plays?: Play
     const home = rng.next() < 0.5 ? teams[a] : teams[b];
     const away = home === teams[a] ? teams[b] : teams[a];
 
-    games.push(simulateGame(home, away, { rng }));
+    games.push(simulateGame(home, away, { rng, tuning: gameOpts?.tuning }));
   }
 
   return games;

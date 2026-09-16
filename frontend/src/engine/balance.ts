@@ -73,26 +73,95 @@ export const NBA_BASELINE: Record<ShotChannel, { share: number; efficiency: numb
   three: { share: 0.40, efficiency: 0.36 },  // 36% FG from 3
 };
 
+// ── Lineup model (engine_possession_model D1-D3, 2026-09-16) ─────────────────
+//
+// Everything the per-possession lineup edge needs, in one tunable place. The engine
+// never reads raw ratings for an edge: each rating is standardised (D1), the five on the
+// floor are aggregated per dimension with a designed k / hole tax (D2), and the edge is
+// centred on the measured expectation of that aggregate (D3). Tune the numbers here, then
+// re-run `npm run balance -- 500 --seed 42` and quote before/after in the commit.
+
+export type RatingDim =
+  | 'finishing' | 'midRange' | 'perimeter' | 'playmaking'
+  | 'rebounding' | 'perimeterDefense' | 'postDefense';
+
+export const RATING_DIMS: readonly RatingDim[] = [
+  'finishing', 'midRange', 'perimeter', 'playmaking', 'rebounding', 'perimeterDefense', 'postDefense',
+];
+
 /**
- * League-average ratings per channel (P1-1), used to centre the offense/defense edge
- * so an average lineup facing an average defense gets an edge of ~0, not a
- * structural free bonus. Without this, the edge in resolvePossession was computed as
- * `(offRating - defRating) / 100`, but offense and defense ratings are on different
- * scales in the card pool (offense-side ratings run noticeably higher than
- * defense-side ratings), so nearly every matchup produced a positive edge for the
- * offense regardless of relative team quality.
- *
- * Derivation: mean rating over all 448 players in data/computed_cards.json (pulled
- * 2026-09-12) — finishing 55.5, midRange 49.0, perimeter 57.5, perimeterDefense 53.5,
- * postDefense 46.4. `mid.def` blends perimeterDefense/postDefense the same 0.4/0.6 way
- * resolvePossession does for the mid-range defense rating: 0.4*53.5 + 0.6*46.4 = 49.2.
- * Regenerate these by re-running the same means over an updated card pool (e.g. after
- * a new season import) — this is a plain average, no other transform.
+ * D1: pool mean / sd per dimension over all 448 player cards in `src/data/cards.json`.
+ * Regenerate by `npm run build:cards` (it prints this block); `tests/unit/lineup.test.ts`
+ * fails if it drifts from cards.json by more than 0.5. Raw ratings are NOT on one scale
+ * (playmaking mean 35 / sd 23.5 vs perimeter defence 53.5 / 16.5), which is why k and the
+ * edge are computed in standardised space.
  */
-export const LEAGUE_AVG: Record<ShotChannel, { off: number; def: number }> = {
-  rim:   { off: 55.5, def: 46.4 },  // finishing vs postDefense
-  mid:   { off: 49.0, def: 49.2 },  // midRange vs 0.4*perimeterDefense + 0.6*postDefense
-  three: { off: 57.5, def: 53.5 },  // perimeter vs perimeterDefense
+export const RATING_NORM: Record<RatingDim, { mean: number; sd: number }> = {
+  finishing:        { mean: 55.49, sd: 24.13 },
+  midRange:         { mean: 49.03, sd: 29.51 },
+  perimeter:        { mean: 57.46, sd: 27.31 },
+  playmaking:       { mean: 35.27, sd: 23.51 },
+  rebounding:       { mean: 41.11, sd: 22.09 },
+  perimeterDefense: { mean: 53.47, sd: 16.53 },
+  postDefense:      { mean: 46.41, sd: 17.33 },
+};
+
+/** D1: standardised rating = center + spread * z, clamped to [min, max]. */
+export const STANDARDISE = { center: 50, spread: 15, min: 0, max: 99 };
+
+/**
+ * D2: per-dimension lineup aggregation. Lineup value =
+ *   Σ r^(k+1) / Σ r^k  −  holeCost · max(0, holeFloor − mean(lowest HOLE_BOTTOM_N))
+ * over the five standardised ratings on the floor.
+ *   k = 0   plain mean (everyone counts equally — defence)
+ *   k = 0.5 by committee (shooting, rebounding): players count roughly by how much of
+ *           the activity they do; functional zeros lose their say
+ *   k = 1.5 star channel (playmaking): one elite creator carries, two are elite
+ * The hole tax is the OVR core-gap penalty applied to a lineup: two players below the
+ * floor (one sd under league average) cost the lineup, one never does.
+ * Owner-locked 2026-09-16 on the six 2025-26 starting fives; see the plan for the
+ * numbers and the depth view. Change values here, never inline in game.ts.
+ */
+export const LINEUP_AGG: Record<RatingDim, { k: number; holeFloor: number; holeCost: number }> = {
+  playmaking:       { k: 1.5,  holeFloor: 35, holeCost: 0.30 },
+  perimeter:        { k: 0.5,  holeFloor: 35, holeCost: 0.40 },
+  finishing:        { k: 0.75, holeFloor: 0,  holeCost: 0 },
+  midRange:         { k: 1.0,  holeFloor: 0,  holeCost: 0 },
+  rebounding:       { k: 0.5,  holeFloor: 0,  holeCost: 0 },
+  perimeterDefense: { k: 0,    holeFloor: 35, holeCost: 0.30 },
+  postDefense:      { k: 0,    holeFloor: 35, holeCost: 0.20 },
+};
+
+/** D2: a "hole" is the average of this many lowest players on the floor. */
+export const HOLE_BOTTOM_N = 2;
+
+/**
+ * D3: expected lineup value per dimension for a random 5-man lineup of rotation players
+ * (mpg >= 15), 20,000 seeded draws — the centre an edge is measured from. Not 50: with
+ * k > 0 the aggregate of a typical lineup sits above the standardised mean. Regenerate
+ * from the balance script header ("Lineup centres"); `tests/unit/lineup.test.ts` asserts
+ * these within ±1.5 of a fresh seeded measurement.
+ */
+export const LINEUP_CENTRE: Record<RatingDim, number> = {
+  finishing: 55.8, midRange: 56.7, perimeter: 54.0, playmaking: 58.4,
+  rebounding: 55.1, perimeterDefense: 51.9, postDefense: 50.7,
+};
+
+/** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */
+export const MID_DEFENCE_BLEND = { perimeterDefense: 0.4, postDefense: 0.6 };
+
+/**
+ * Per-channel offence/defence centres derived from LINEUP_CENTRE (replaces the old
+ * LEAGUE_AVG pool means). resolvePossession's edge is
+ * (offValue − centre.off) − (defValue − centre.def), so an average lineup against an
+ * average defence nets ~0 in every channel.
+ */
+export const CHANNEL_CENTRE: Record<ShotChannel, { off: number; def: number }> = {
+  rim:   { off: LINEUP_CENTRE.finishing, def: LINEUP_CENTRE.postDefense },
+  mid:   { off: LINEUP_CENTRE.midRange,
+           def: MID_DEFENCE_BLEND.perimeterDefense * LINEUP_CENTRE.perimeterDefense
+              + MID_DEFENCE_BLEND.postDefense * LINEUP_CENTRE.postDefense },
+  three: { off: LINEUP_CENTRE.perimeter, def: LINEUP_CENTRE.perimeterDefense },
 };
 
 /** And-1 probability per channel (descending by distance). */
@@ -135,7 +204,7 @@ export const PROFILE_WEIGHT = 0.50;
  * P2-2: fraction of missed possessions attributed to the shooter as a turnover rather
  * than a missed field goal, so PlayerBoxScore.turnovers is populated (previously
  * always 0). Rough placeholder in line with NBA team turnover rates (~13-14 per ~100
- * possessions); not derived from the card pool like LEAGUE_AVG, so it's fair game to
+ * possessions); not derived from the card pool like LINEUP_CENTRE, so it's fair game to
  * retune alongside EFFICIENCY_SCALE once real balance numbers are measured.
  */
 export const TURNOVER_RATE = 0.15;

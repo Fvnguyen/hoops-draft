@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { simulateMany, ppp, loadPlayers, buildTestTeam } from './helpers';
 import { calcPossessionShares, clampAnd1Chance, resolvePossession, simulateGame, type TeamInfo, type TeamShotProfile } from '@/engine/game';
-import { AND1_CHANCE_CAP, LEAGUE_AVG, MAX_OT_PERIODS } from '@/engine/balance';
+import { AND1_CHANCE_CAP, CHANNEL_CENTRE, MAX_OT_PERIODS } from '@/engine/balance';
 import { emptyModifiers } from '@/engine/synergies';
 import { createRng } from '@/engine/rng';
 import type { PlayerCardData, SeasonStat } from '@/engine/types';
@@ -309,7 +309,7 @@ describe('rim free-throw trips are never and-1s or assisted (D5)', () => {
     let sawFtTrip = false;
     let sawCleanAnd1 = false;
     for (let i = 0; i < 3000; i++) {
-      const result = resolvePossession(offense, defense, shotProfile, offenseMods, emptyModifiers(), LEAGUE_AVG, rng);
+      const result = resolvePossession(offense, defense, shotProfile, offenseMods, emptyModifiers(), CHANNEL_CENTRE, rng);
       if (!result.isCleanFieldGoal) {
         sawFtTrip = true;
         expect(result.isAnd1).toBe(false);

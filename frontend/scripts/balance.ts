@@ -3,6 +3,8 @@
  * Headless balance report.
  *
  * Usage: tsx scripts/balance.ts [games=500] [--seed N] [--ab] [--catalog] [--draft-impact] [--report]
+ *        [--eff-scale X] [--max-shift Y]   (engine_possession_model D5 lever sweep: override
+ *        EFFICIENCY_SCALE / MAX_EFF_SHIFT for this run only; the header prints both)
  *
  * Runs the same headless draft -> roster -> game pipeline as the vitest
  * suite (tests/unit/helpers.ts) and prints a compact tuning report: PPP,
@@ -43,17 +45,19 @@
 import { loadPlayers, PLAYS, simulateMany, activationRates, runHeadlessDraft, buildTeams } from '../tests/unit/helpers';
 import { randomSeed, createRng, type Rng } from '../src/engine/rng';
 import { PLAYBOOK, isEligibleForRole, evaluatePlaybook, type PlayAssignment, type PlayRole } from '../src/engine/playbook';
-import { simulateGame, type TeamInfo, type GameTheater } from '../src/engine/game';
+import { simulateGame, type TeamInfo, type GameTheater, type EdgeTuning } from '../src/engine/game';
+import { lineupValue } from '../src/engine/lineup';
 import { evaluateArchetypes, ARCHETYPES, type ArchetypeTier, type ArchetypeDef, type ArchetypeSelection, type Color } from '../src/engine/archetypes';
 import { generateCubePool } from '../src/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '../src/engine/deckbuilder';
-import { CUBE_PLAYER_CARDS_PER_PACK } from '../src/engine/balance';
+import { CUBE_PLAYER_CARDS_PER_PACK, RATING_DIMS, LINEUP_CENTRE, LINEUP_AGG, EFFICIENCY_SCALE, MAX_EFF_SHIFT } from '../src/engine/balance';
 import type { PlayerCardData, Play, DraftCard } from '../src/engine/types';
 import { pathToFileURL } from 'url';
 import fs from 'fs';
 import path from 'path';
 
-function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; catalog: boolean; draftImpact: boolean; report: boolean } {
+function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; catalog: boolean; draftImpact: boolean; report: boolean; tuning: EdgeTuning } {
+  const tuning: EdgeTuning = {};
   let games = 500;
   let seed: number | undefined;
   let ab = false;
@@ -63,7 +67,11 @@ function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; 
 
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--seed') {
+    if (argv[i] === '--eff-scale') {
+      tuning.efficiencyScale = Number(argv[++i]);
+    } else if (argv[i] === '--max-shift') {
+      tuning.maxEffShift = Number(argv[++i]);
+    } else if (argv[i] === '--seed') {
       seed = parseInt(argv[++i], 10);
     } else if (argv[i] === '--ab') {
       ab = true;
@@ -79,7 +87,7 @@ function parseArgs(argv: string[]): { games: number; seed: number; ab: boolean; 
   }
   if (positional[0]) games = parseInt(positional[0], 10);
 
-  return { games, seed: seed ?? randomSeed(), ab, catalog, draftImpact, report };
+  return { games, seed: seed ?? randomSeed(), ab, catalog, draftImpact, report, tuning };
 }
 
 /** T8 (D11): the `spread` section of balance_report_*.json — same numbers the plain
@@ -960,7 +968,7 @@ function writeUnifiedReport(
 }
 
 function main(): void {
-  const { games: n, seed, ab, catalog, draftImpact, report } = parseArgs(process.argv.slice(2));
+  const { games: n, seed, ab, catalog, draftImpact, report, tuning } = parseArgs(process.argv.slice(2));
   console.log(`Seed: ${seed}`);
   const t0 = Date.now();
 
@@ -976,8 +984,29 @@ function main(): void {
     console.log(`  ${key.padEnd(18)} ${m.toFixed(2)}`);
   }
 
+  // engine_possession_model D3: the centre each channel edge is measured from. Printed so
+  // LINEUP_CENTRE in balance.ts can be regenerated (the unit test allows ±1.5 drift).
+  console.log(`\n=== Lineup centres (20,000 seeded random 5-man lineups, rotation mpg>=15) ===`);
+  console.log(`  ${'dimension'.padEnd(18)} ${'k'.padStart(5)} ${'measured'.padStart(9)} ${'balance.ts'.padStart(11)}`);
+  {
+    const rot = players.filter((p) => (p.stats?.mpg ?? 0) >= 15);
+    const crng = createRng(20260916);
+    const sums: Record<string, number> = {};
+    const N = 20000;
+    for (let i = 0; i < N; i++) {
+      const idx = new Set<number>();
+      while (idx.size < 5) idx.add(Math.floor(crng.next() * rot.length));
+      const lineup = [...idx].map((j) => rot[j]);
+      for (const d of RATING_DIMS) sums[d] = (sums[d] ?? 0) + lineupValue(lineup, d);
+    }
+    for (const d of RATING_DIMS) {
+      console.log(`  ${d.padEnd(18)} ${String(LINEUP_AGG[d].k).padStart(5)} ${(sums[d] / N).toFixed(1).padStart(9)} ${LINEUP_CENTRE[d].toFixed(1).padStart(11)}`);
+    }
+  }
+  console.log(`\nEdge size: EFFICIENCY_SCALE ${tuning.efficiencyScale ?? EFFICIENCY_SCALE}${tuning.efficiencyScale !== undefined ? ' (override)' : ''}, MAX_EFF_SHIFT ${tuning.maxEffShift ?? MAX_EFF_SHIFT}${tuning.maxEffShift !== undefined ? ' (override)' : ''}`);
+
   console.log(`\nRunning ${n} headless games...`);
-  const games = simulateMany(n, players, PLAYS, seed);
+  const games = simulateMany(n, players, PLAYS, seed, { tuning });
   const dt = Date.now() - t0;
 
   const allTeamScores: number[] = [];

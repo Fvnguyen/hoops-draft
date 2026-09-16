@@ -27,9 +27,13 @@ import {
   BASE_PACE, HOME_NOISE_LO_PCT, HOME_NOISE_HI_PCT, AWAY_NOISE_LO_PCT, AWAY_NOISE_HI_PCT, STRENGTH_SWING_PCT,
   POSSESSION_CLAMP_MIN_PCT, POSSESSION_CLAMP_MAX_PCT,
   OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
-  NBA_BASELINE, LEAGUE_AVG, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
+  NBA_BASELINE, CHANNEL_CENTRE, AND1_BASE, AND1_CHANCE_CAP, EFFICIENCY_SCALE, MAX_EFF_SHIFT, PROFILE_WEIGHT, TURNOVER_RATE,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
 } from './balance';
+import { lineupValue, lineupMidDefence } from './lineup';
+
+/** Edge-size knobs resolvePossession reads (balance script sweeps them; defaults in balance.ts). */
+export interface EdgeTuning { efficiencyScale?: number; maxEffShift?: number }
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -416,11 +420,13 @@ export function resolvePossession(
   shotProfile: TeamShotProfile,
   offenseMods: GameModifiers,
   defenseFromOpponent: GameModifiers,
-  leagueAvg: Record<ShotChannel, { off: number; def: number }>,
+  centre: Record<ShotChannel, { off: number; def: number }>,
   rng: Rng,
   /** Playbook (§7): on a called offensive play, these assigned players' scorer weights
    *  are multiplied by PLAY_SCORER_BOOST so they're favoured to take the shot. */
-  boostedIds?: Set<string>
+  boostedIds?: Set<string>,
+  /** Edge-size override for the balance script's lever sweep (plan D5); defaults to balance.ts. */
+  tuning?: EdgeTuning
 ): { outcome: 'miss' | 'rim' | 'mid' | 'three'; points: number; isAnd1: boolean; isTurnover: boolean; isCleanFieldGoal: boolean; channel: ShotChannel; scorerId?: string; assistId?: string; narrativeHint: string } {
 
   // Step 1: Roll shot type from team distribution
@@ -430,37 +436,34 @@ export function resolvePossession(
   else if (roll < shotProfile.rim + shotProfile.mid)   channel = 'mid';
   else                                                 channel = 'three';
 
-  // Step 2: Compute channel-specific edge from lineup ratings
-  const avgRating = (lineup: PlayerCardData[], fn: (p: PlayerCardData) => number) =>
-    lineup.length > 0 ? lineup.reduce((s, p) => s + fn(p), 0) / lineup.length : 50;
-
+  // Step 2: Compute channel-specific edge from the five on the floor (engine_possession_model
+  // D1-D3): standardised ratings, aggregated per dimension with LINEUP_AGG's k / hole tax
+  // (engine/lineup.ts), centred on the measured expectation for that dimension
+  // (CHANNEL_CENTRE) so an average lineup against an average defence nets ~0 edge.
   let offRating: number, defRating: number;
   switch (channel) {
     case 'rim':
-      offRating = avgRating(offenseLineup, p => p.ratings?.finishing ?? 50);
-      defRating = avgRating(defenseLineup, p => p.ratings?.postDefense ?? 50);
+      offRating = lineupValue(offenseLineup, 'finishing');
+      defRating = lineupValue(defenseLineup, 'postDefense');
       break;
     case 'mid':
-      offRating = avgRating(offenseLineup, p => p.ratings?.midRange ?? 50);
-      defRating = avgRating(defenseLineup, p =>
-        (p.ratings?.perimeterDefense ?? 50) * 0.4 + (p.ratings?.postDefense ?? 50) * 0.6
-      );
+      offRating = lineupValue(offenseLineup, 'midRange');
+      defRating = lineupMidDefence(defenseLineup);
       break;
     case 'three':
-      offRating = avgRating(offenseLineup, p => p.ratings?.perimeter ?? 50);
-      defRating = avgRating(defenseLineup, p => p.ratings?.perimeterDefense ?? 50);
+      offRating = lineupValue(offenseLineup, 'perimeter');
+      defRating = lineupValue(defenseLineup, 'perimeterDefense');
       break;
   }
 
-  // P1-1: centre both ratings on their league-average means before differencing, so a
-  // league-average offense vs a league-average defense in this channel nets ~0 edge
-  // instead of a permanent structural bonus (see LEAGUE_AVG comment in balance.ts).
-  const edge = ((offRating - leagueAvg[channel].off) - (defRating - leagueAvg[channel].def)) / 100;
+  const edge = ((offRating - centre[channel].off) - (defRating - centre[channel].def)) / 100;
   const clampedEdge = Math.max(-0.25, Math.min(0.25, edge));
 
   // Step 3: Roll efficiency
   const baseEff = NBA_BASELINE[channel].efficiency;
-  const effShift = Math.max(-MAX_EFF_SHIFT, Math.min(MAX_EFF_SHIFT, clampedEdge * EFFICIENCY_SCALE));
+  const effScale = tuning?.efficiencyScale ?? EFFICIENCY_SCALE;
+  const maxShift = tuning?.maxEffShift ?? MAX_EFF_SHIFT;
+  const effShift = Math.max(-maxShift, Math.min(maxShift, clampedEdge * effScale));
 
   // Apply synergy/play efficiency bonuses. P0-1: defenseFromOpponent deltas are ADDED
   // (see the sign-convention comment on GameModifiers/TeamBonuses in synergies.ts) —
@@ -688,14 +691,15 @@ function playOnePossession(params: {
   minutesPerPoss: number;
   isPossWin: boolean;
   rng: Rng;
-  leagueAvg: Record<ShotChannel, { off: number; def: number }>;
+  centre: Record<ShotChannel, { off: number; def: number }>;
+  tuning?: EdgeTuning;
   boxStats: Map<string, PlayerBoxScore>;
   playerNameMap: Map<string, string>;
 }): { event: PossessionEvent; points: number } {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
     offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp, baseShotProfile,
-    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, rng, leagueAvg, boxStats, playerNameMap,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
   } = params;
   const isHome = team === 'home';
 
@@ -745,7 +749,7 @@ function playOnePossession(params: {
   const boostedIds = calledOffense ? new Set(calledOffense.playerIds) : undefined;
 
   // Resolve the possession (multi-channel: shot type → edge → efficiency)
-  const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, leagueAvg, rng, boostedIds);
+  const result = resolvePossession(offenseLineup, defenseLineup, shotProfile, possessionOffenseMods, defFromOpp, centre, rng, boostedIds, tuning);
 
   // Playbook recording (§7): tag this possession with whichever calls applied.
   const calledPlays: PossessionEvent['calledPlays'] = [];
@@ -1011,10 +1015,11 @@ export function buildTeamInfo(
 export function simulateGame(
   homeTeam: TeamInfo,
   awayTeam: TeamInfo,
-  opts?: { rng?: Rng; leagueAvg?: typeof LEAGUE_AVG }
+  opts?: { rng?: Rng; centre?: typeof CHANNEL_CENTRE; tuning?: EdgeTuning }
 ): GameTheater {
   const rng = opts?.rng ?? createRng(randomSeed());
-  const leagueAvg = opts?.leagueAvg ?? LEAGUE_AVG;
+  const centre = opts?.centre ?? CHANNEL_CENTRE;
+  const tuning = opts?.tuning;
   const playerNameMap = new Map<string, string>();
   for (const p of [...homeTeam.players, ...awayTeam.players]) {
     playerNameMap.set(p.id, p.player?.name || p.id);
@@ -1147,7 +1152,7 @@ export function simulateGame(
         offenseLineupMap: drawLineup(offenseTeam.depthChart, offenseShares, rng),
         defenseLineupMap: drawLineup(defenseTeam.depthChart, defenseShares, rng),
         offenseMods, defFromOpp, baseShotProfile, offenseScaled, coverageScaled,
-        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, rng, leagueAvg, boxStats, playerNameMap,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, rng, centre, tuning, boxStats, playerNameMap,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
@@ -1213,7 +1218,7 @@ export function simulateGame(
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
         offenseMods, defFromOpp, baseShotProfile: otShotProfile, offenseScaled, coverageScaled,
-        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, rng, leagueAvg, boxStats, playerNameMap,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, rng, centre, tuning, boxStats, playerNameMap,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
