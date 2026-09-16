@@ -81,6 +81,11 @@ three buttons on a 385px-tall phone. That reopened the idea as scaling, not clip
   deselects, no flip on tap (long-press preview shows the card), no double-tap pick, no
   2s auto-pick — the dock's Confirm/Take is the only way to pick. Pointer keeps hover
   flip, click-select and double-click-to-pick, now in the pack opener too (it had none).
+- D6c **Images (2026-09-16):** headshots go through `next/image` (WebP at ~640px on a
+  3x phone, ~22 KB instead of the 182 KB 1040x760 PNG; `HEADSHOT_SIZES` shared) and the
+  draft room preloads this pack's and the incoming pack's headshots via `getImageProps`
+  so cards never render empty; the pack cover gets `sizes="208px"`. Cards cancel the
+  browser context menu on every pointer (Android long-press sheet, desktop right-click).
 - D7 **Phone card (open, design-first).** The owner wants a wider "phone card" for the
   draft room so the unused horizontal space carries the name and badges. That is a new
   card variant, not a class tweak: it goes through a canvas mock-up and sign-off before

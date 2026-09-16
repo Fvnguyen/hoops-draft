@@ -318,6 +318,7 @@ export function PackOpener({
                 alt="Magic Ball 2025-26 draft pack"
                 width={1024}
                 height={1536}
+                sizes="208px"
                 priority
                 className="w-full rounded-2xl"
               />

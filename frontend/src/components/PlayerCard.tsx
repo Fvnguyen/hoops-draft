@@ -2,6 +2,7 @@
 
 import { useRef, useState, type ReactNode, type JSX } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { useHoverPreview } from './useHoverPreview';
 
@@ -9,6 +10,11 @@ import { useHoverPreview } from './useHoverPreview';
  *  `LONG_PRESS_MS`) shows the screen-centred preview while the finger stays down; a
  *  short tap keeps its existing meaning (flip / select). Any movement cancels it, and a
  *  press that opened the preview swallows the following click so it never also picks. */
+/** `sizes` for the card-front headshot: the 1040x760 source PNGs (~180 KB each) are
+ *  served by next/image as WebP at the requested width — ~640px on a 3x phone instead
+ *  of the full original. Exported so DraftRoom can preload the SAME candidate URLs. */
+export const HEADSHOT_SIZES = '200px';
+
 const LONG_PRESS_MS = 450;
 function useLongPressPreview() {
   const [open, setOpen] = useState(false);
@@ -323,9 +329,11 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
       <div className={rowClasses} onClick={onClick}>
         <RarityGem rarity={card.rarity} size="sm" />
         <PositionIcon position={card.player.position} />
-        <img
+        <Image
           src={headshotUrl}
           alt=""
+          width={28}
+          height={28}
           className="w-7 h-7 rounded-full object-cover object-top border border-line shrink-0 bg-surface-sunken"
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
         />
@@ -394,9 +402,11 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
         <RarityGem rarity={player.rarity} size="sm" />
       </div>
       <div className="w-full h-full p-[2px] pt-5 flex flex-col items-center justify-start overflow-hidden rounded bg-surface-sunken">
-        <img
+        <Image
           src={headshotUrl}
           alt={player.player.name}
+          width={36}
+          height={36}
           className="w-[36px] h-[36px] object-cover object-top rounded-sm border border-line bg-surface-raised"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
@@ -449,10 +459,12 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
           )}
         </div>
 
-        <img
+        <Image
           src={headshotUrl}
           alt={player.player.name}
-          className="w-full h-full object-cover object-top"
+          fill
+          sizes={HEADSHOT_SIZES}
+          className="object-cover object-top"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
@@ -690,7 +702,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
         {/* Headshot */}
         <div className="w-9 h-full bg-surface-sunken shrink-0 overflow-hidden relative border-r border-line">
-          <img src={headshotUrl} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <Image src={headshotUrl} alt="" fill sizes="36px" className="object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
 
         {/* Details — two-line header: name + position pill, then gem + badges */}

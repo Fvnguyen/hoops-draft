@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
-import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
+import { PlayerCard, PlayCard, Player, Play, HEADSHOT_SIZES } from './PlayerCard';
+import { getImageProps } from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
@@ -211,7 +212,27 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
     startNextRound,
     expirePick,
     armIntroClock,
+    receivingFromSeat,
   } = useDraftEngine(allPlayers, playsDB, mode);
+
+  // Preload the headshots the player is about to see: this pack (still sealed during
+  // the intro) and the neighbour's pack that will be passed to us next. The URLs come
+  // from next/image's own `getImageProps` with the same `sizes` the card uses, so the
+  // browser picks — and caches — exactly the candidate the card will request.
+  const humanPack = humanSeat?.currentPack;
+  const incomingPack = receivingFromSeat?.currentPack;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const cards = [...(humanPack ?? []), ...(incomingPack ?? [])];
+    for (const card of cards) {
+      if (card.type !== 'Player') continue;
+      const { props } = getImageProps({ src: `/headshots/${card.player.id}.png`, alt: '', fill: true, sizes: HEADSHOT_SIZES });
+      const img = new window.Image();
+      if (props.sizes) img.sizes = props.sizes;
+      if (props.srcSet) img.srcset = props.srcSet;
+      img.src = props.src;
+    }
+  }, [humanPack, incomingPack]);
 
   const podAverageIdentity = averageRosterIdentities(
     seats
