@@ -51,25 +51,25 @@ Sharpshooter/Floor General; 204/448 cards clipped at the OVR-40 floor.
   348; OVR = 40: 204/448; only 9 cards with a PG/SG/SF/PF label — D1 confirmed as T1.
   Rerun both commands after every T1-T5 commit (D9).
 
-**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary, NBA
-Stats bio position fallback (`sort_pos` hoisted to module scope). Regenerated `game.db`
-and `cards.json`: 448/448 cards now carry a real PG/SG/SF/PF/C primary (PG 76, SG 120,
-SF 81, PF 87, C 84) — exceeds D1's ≥300 exit bar with room to spare, no combo positions
-needed this season (bref gave clean singles). Side effects, mechanical from eligibility
-alone, no rating/rarity changes yet: rarity Mythic 20→24, Rare 22→21, Uncommon 58→70,
-Common 348→333; OVR-40 floor count 204→188 (still 42% of the pool). `LINEUP_CENTRE`
-regenerated (perimeter 53.3→56.3, the rest -1 to -3) — different players now fill
-different depth-chart slots, so bot-drafted lineups changed; updated in `balance.ts` and
-`lineup.test.ts` passes again. One further seed-sensitive test broke for the same reason
-(a legitimate starter landed at 17.4 min against `game.test.ts`'s 18-minute floor,
-HANDOVER open issue 5's documented case) — floor lowered to 16 per that issue's own
-guidance, not reseeded. `npm run balance -- 500 --seed 42`: PPP 1.050→1.061, home win
-57.2%→57.0%, OT 1.4%→1.4% (unchanged from D9 baseline within noise). Player bootstrap:
-corr(OVR, WS/g) 0.691→**0.677**, corr(OVR, win%) 0.313→0.287 — both *dropped* slightly;
-positions now gate who can occupy which slot, which moved some cards out of roles their
-OVR was scored for. Not a regression to fix here — T2 (rating retune) is exactly where a
-position-aware profile should recover this. 254/254 tests pass, `tsc --noEmit` clean,
-lint 0 errors (unchanged warnings).
+**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary
+(`sort_pos` hoisted to module scope): 448/448 cards now carry a real PG/SG/SF/PF/C
+primary, exceeding D1's ≥300 bar. Bref gave zero combo positions this season, which
+alone would have left every card eligible for exactly one depth-chart column
+(`engine/positions.ts`) — a real loss vs. the old broad G/F/C labels. Fixed by blending
+in the NBA Stats bio's broad category as one adjacent crossover column when it implies
+a side bref alone doesn't cover (mirrors `positions.ts`'s ADJACENT map); output lands
+on exactly the `SG/SF`/`PF/C` strings `ratings.ts`'s `getPool` already special-cases —
+no engine change needed. Result: PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44.
+Mechanical side effects (no rating/rarity retune yet): rarity Mythic 20→24, Uncommon
+58→70; OVR-40 floor 204→188. `LINEUP_CENTRE` regenerated twice (once per position
+pass) as bot-drafted lineups shifted; `game.test.ts`'s starter-minutes floor lowered
+18→16 after a legitimate low-share starter (HANDOVER issue 5's documented case) —
+floor lowered per that issue's own guidance, not reseeded. `balance -- 500 --seed 42`:
+PPP 1.050→1.052, home win 57.2%→52.4% (noise at n=500, rerun at 2000+ before reacting).
+Bootstrap: corr(OVR, WS/g) 0.691→0.677, corr(OVR, win%) 0.313→0.287 — both dropped
+slightly; positions now gate who plays where, moving some cards out of roles their OVR
+was scored for. T2's retune is where a position-aware profile should recover this.
+254/254 tests, `tsc` clean, lint unchanged.
 
 ## Decisions (locked)
 

@@ -145,8 +145,8 @@ export const HOLE_BOTTOM_N = 2;
  * `tests/unit/lineup.test.ts` asserts these within ±1.5 of a fresh seeded measurement.
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
-  finishing: 63.0, midRange: 62.3, perimeter: 56.3, playmaking: 69.5,
-  rebounding: 65.0, perimeterDefense: 59.9, postDefense: 58.1,
+  finishing: 63.2, midRange: 62.5, perimeter: 54.5, playmaking: 69.5,
+  rebounding: 66.1, perimeterDefense: 60.2, postDefense: 59.4,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */

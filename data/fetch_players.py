@@ -185,6 +185,32 @@ def fetch_and_generate_players():
         # Standardize G/F to SG/SF etc if we want, but B-Ref gives exact F-G which we sort to G/F
         return "/".join(parts)
 
+    # card_balance T1 follow-up (2026-09-16): bref's Pos this season is always a single
+    # specific position (no combos), which on its own would leave every card eligible
+    # for exactly one depth-chart column (engine/positions.ts naturalPositions) — a real
+    # loss of the multi-position flexibility players actually have. The NBA Stats bio
+    # position (broad G/F/C, sometimes a combo like G-F) still carries that signal, so we
+    # blend it in as ONE adjacent crossover column, never a wholesale replacement of the
+    # bref primary. Mirrors engine/positions.ts's ADJACENT map — keep both in sync.
+    _SIDE = {'PG': 'G', 'SG': 'G', 'SF': 'F', 'PF': 'F', 'C': 'C'}
+    _ADJACENT = {'PG': ['SG'], 'SG': ['PG', 'SF'], 'SF': ['SG', 'PF'], 'PF': ['SF', 'C'], 'C': ['PF']}
+
+    def blend_bio_crossover(bref_pos, bio_pos_sorted):
+        """bref_pos: a single specific column (e.g. 'SG'). bio_pos_sorted: the sort_pos'd
+        NBA Stats bio string (e.g. 'G/F'). Returns bref_pos, optionally with one adjacent
+        crossover column appended when bio implies a side bref_pos alone doesn't cover."""
+        if bref_pos not in _SIDE:
+            return bref_pos
+        own_side = _SIDE[bref_pos]
+        bio_sides = {letter for letter in bio_pos_sorted.replace('-', '/').split('/') if letter in ('G', 'F', 'C')}
+        extra_sides = bio_sides - {own_side}
+        if not extra_sides:
+            return bref_pos
+        for candidate in _ADJACENT[bref_pos]:
+            if _SIDE[candidate] in extra_sides:
+                return sort_pos(f"{bref_pos}/{candidate}")
+        return bref_pos
+
     # Pre-process Bio Data
     bio_map = {}
     for _, row in df_bio.iterrows():
@@ -314,9 +340,16 @@ def fetch_and_generate_players():
         bio = bio_map.get(bio_name, {"pos": "", "height": "0-0", "weight": 0})
         # D1 (card_balance): basketball-reference Pos is the primary position source
         # (real PG/SG/SF/PF/C, occasionally a combo like "SG-PG"); the NBA Stats bio
-        # position (broad G/F/C only) is a fallback for the rare row bref leaves blank.
+        # position (broad G/F/C only) is a fallback for the rare row bref leaves blank,
+        # and otherwise blended in as one adjacent crossover column (see
+        # blend_bio_crossover above).
         bref_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
-        pos = sort_pos(bref_pos) if bref_pos else bio["pos"]
+        if bref_pos:
+            pos = sort_pos(bref_pos)
+            if bio["pos"]:
+                pos = blend_bio_crossover(pos, bio["pos"])
+        else:
+            pos = bio["pos"]
         height = bio["height"]
         weight = bio["weight"]
         team = latest_teams.get(raw_name, row['Team'])
