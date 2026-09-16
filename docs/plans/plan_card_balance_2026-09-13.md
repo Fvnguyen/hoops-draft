@@ -21,51 +21,33 @@ backbone of a strategy), and positions are real.
 
 ## Real-data findings (update timestamp when a newer dump lands)
 
-**2026-09-14** — one real-user 168-card cube export: cube rarity Mythic 12 / Rare 15 /
-Uncommon 57 / Common 108; early-pick OVR 71.6. Spot-check only.
+One line each; full tables live in the linked doc. Rerun `balance`/`player-bootstrap` (D9)
+after every T1-T5 commit.
 
-**2026-09-16, pre-merge** — full-pool win-side bootstrap, superseded by the baseline
-below; method + original tables in
-[analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md):
-`corr(OVR, WS/g) = 0.617`, interior badges beat Sharpshooter/Floor General 2-3x.
-
-**2026-09-16, baseline on the merged engine (engine_possession_model, `3226cf2`), pre-T1**
-— the D9 "before": `balance -- 500 --seed 42` PPP 1.050, home win 57.2%, OT 1.4%;
-`player-bootstrap` corr(OVR, WS/g) 0.691, corr(OVR, win%) 0.313, WS/g separates cleanly
-by rarity tier (Mythic .052 > Rare .049 > Uncommon .047 > Common .036); lever table
-(`2000 --seed 777 --levers`) playmaking 2.27 down to mid-range 0.74 — Mid-Range
-Maestro's badge r (.32) is out of line with that lever, a trap for T2. Pool pre-T1:
-rarity 20/22/58/348, OVR floor 204/448, only 9 real position labels (D9).
-
-**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary: 448/448
-cards carry a real PG/SG/SF/PF/C primary, exceeding D1's ≥300 bar. Bref gave zero combo
-positions this season, which alone would have left every card eligible for exactly one
-depth-chart column — a real loss vs. the old broad G/F/C labels — so bio's broad category
-is blended in as one adjacent crossover column when it implies a side bref alone doesn't
-cover (mirrors `positions.ts`'s ADJACENT map). Output lands on exactly the `SG/SF`/`PF/C`
-strings `getPool` already special-cases, no engine change needed: PG 76, SG 98, SG/SF 53,
-SF 50, PF 71, PF/C 56, C 44. Mechanical side effects (no retune yet): rarity Mythic
-20→24, Uncommon 58→70; OVR-40 floor 204→188. `LINEUP_CENTRE` regenerated twice as bot-
-drafted lineups shifted; `game.test.ts`'s starter-minutes floor lowered 18→16 after a
-legitimate low-share starter (HANDOVER issue 5's documented case, its own guidance
-followed). `balance -- 500 --seed 42`: PPP 1.050→1.052, home win 57.2%→52.4% (noise at
-n=500). Bootstrap: corr(OVR, WS/g) 0.691→0.677 — positions now gate who plays where, moving
-some cards out of roles their OVR was scored for; T2's retune should recover this.
-254/254 tests, `tsc` clean, lint unchanged.
-
-**2026-09-16, eyeball pass over Mythic/Rare/Uncommon** — full findings in
-[analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md).
-Headline: `LEGENDARY_PLAYERS` rewards Gobert/Butler/Kawhi (z ≤ −1.2 for their tier) while
-missing the real standouts (A. Davis, J. Johnson); Duren and D. Mitchell are Mythic
-misses; Josh Hart and Cooper Flagg are two-tier promotion cases; multiposition cards
-(T1) read correctly — no further fix needed there.
-
-**2026-09-16, `PROFILES` cleanup** — removed the now-dead `G`/`F` rating profiles (T1's
-bref-primary positions never produce a bare letter); confirmed no 448-player card
-qualifies for a 3-way combo — bref gives at most a 2-way split, NBA Stats bio's
-POSITION field is a fixed X/X-Y format with no 3-way slot at all, so `'Gold'`'s
-catch-all stays a structural safety net, not a populated tier. `cards.json` byte-
-identical (dead code only); 254/254 tests, `tsc` clean.
+- **2026-09-14**: one real-user 168-card cube export, spot-check only, Mythic 12/Rare 15/
+  Uncommon 57/Common 108, early-pick OVR 71.6.
+- **2026-09-16, pre-merge**: full-pool bootstrap, corr(OVR, WS/g) 0.617 — superseded below.
+  [analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md)
+- **2026-09-16, post-merge baseline (pre-T1)**: the D9 "before" — PPP 1.050, home win
+  57.2%, corr(OVR, WS/g) 0.691, rarity tiers separate cleanly by WS/g; pool 20/22/58/348,
+  OVR floor 204/448, only 9 real position labels.
+- **2026-09-16, T1 done**: bref-primary positions + bio adjacent-crossover blend (PG 76,
+  SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); `LINEUP_CENTRE` regenerated twice;
+  `game.test.ts` minutes floor 18→16 (HANDOVER issue 5). corr(OVR, WS/g) 0.691→0.677
+  (positions now gate roles; T2 should recover this). 254/254 tests.
+- **2026-09-16, eyeball pass (stats-only, later corrected below)**:
+  [analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md)
+- **2026-09-16, `PROFILES` cleanup**: removed dead `G`/`F` rating profiles; confirmed no
+  card can structurally reach a 3-way position combo (neither bref nor NBA Stats bio has
+  a 3-way slot). `cards.json` byte-identical.
+- **2026-09-16, pedigree paradigm + proposal**: fixed `fetch_players.py` silently
+  discarding the real awards.html scrape (commit `264d71c`, no data change today but
+  would have frozen future seasons). Owner locked rarity-as-pedigree and asked for a
+  reputation-based (not stats-based) positional/"Positionless" proposal, a corrected
+  root-cause read of Duren/LaMelo/Hart/Mitchell, and flagged two real engine quirks
+  (DBPM small-sample noise, All-D floor targeting) — all in
+  [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md),
+  awaiting approval before any position/badge/`LEGENDARY_PLAYERS` edit.
 
 ## Decisions (locked)
 
