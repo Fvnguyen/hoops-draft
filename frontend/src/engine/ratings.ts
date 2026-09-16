@@ -175,28 +175,40 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
     const scaleRaw = (idx: number) => Math.round(idx * 99.0);
 
+    // card_balance T2 general fix (2026-09-16, owner-approved): getIndex benchmarks a
+    // rate stat against the pool's top-7.5% average (RATING_CONFIG.benchmarkCutoff)
+    // with no minutes normalization at all, so a sub-rotation player can hit the same
+    // benchmark ratio - and therefore the same 99 cap - as a full-time starter on a
+    // single hot stretch. A targeted input reweight (tried, reverted - it never
+    // reached this formula, see git history) doesn't fix that; a minutes floor on the
+    // output does. Under 10 MPG (roughly the bottom of real rotation minutes), no
+    // rating dimension may exceed 85. 16 MPG defensive/3-and-D specialists are
+    // untouched and can still show an elite rating - this only catches the extreme,
+    // sub-rotation small-sample case, not real (if limited) role players.
+    const capLowMinutes = (v: number) => (stat.mpg < 10 ? Math.min(v, 85) : v);
+
     const finVolIdx = getIndex(r.raw.finFGM, b_finFGM);
     const finEffIdx = r.raw.finFGA >= 1.0 ? getIndex(r.raw.finEff, b_finEff) : 0;
     const ftEffIdx = getIndex(r.raw.ftEff, b_ftEff);
-    const finishing = scaleRaw((finVolIdx * RATING_CONFIG.offense.finVol) + (finEffIdx * RATING_CONFIG.offense.finEff) + (ftEffIdx * RATING_CONFIG.offense.finFT));
+    const finishing = capLowMinutes(scaleRaw((finVolIdx * RATING_CONFIG.offense.finVol) + (finEffIdx * RATING_CONFIG.offense.finEff) + (ftEffIdx * RATING_CONFIG.offense.finFT)));
 
     const midVolIdx = getIndex(r.raw.midFGM, b_midFGM);
     const midEffIdx = r.raw.midFGA >= 1.0 ? getIndex(r.raw.midEff, b_midEff) : 0;
-    const midRange = scaleRaw((midVolIdx * RATING_CONFIG.offense.midVol) + (midEffIdx * RATING_CONFIG.offense.midEff));
+    const midRange = capLowMinutes(scaleRaw((midVolIdx * RATING_CONFIG.offense.midVol) + (midEffIdx * RATING_CONFIG.offense.midEff)));
 
     const perVolIdx = getIndex(r.raw.perFGM, b_perFGM);
     const perEffIdx = r.raw.perFGA >= 1.0 ? getIndex(r.raw.perEff, b_perEff) : 0;
-    const perimeter = scaleRaw((perVolIdx * RATING_CONFIG.offense.perVol) + (perEffIdx * RATING_CONFIG.offense.perEff));
+    const perimeter = capLowMinutes(scaleRaw((perVolIdx * RATING_CONFIG.offense.perVol) + (perEffIdx * RATING_CONFIG.offense.perEff)));
 
-    const playmaking = scaleRaw(getIndex(r.raw.playmakingRaw, b_play));
-    const rebounding = scaleRaw(getIndex(r.raw.reboundingRaw, b_reb));
+    const playmaking = capLowMinutes(scaleRaw(getIndex(r.raw.playmakingRaw, b_play)));
+    const rebounding = capLowMinutes(scaleRaw(getIndex(r.raw.reboundingRaw, b_reb)));
 
     const perimVolIdx = getIndex(r.raw.perimDefRaw, b_perim);
     const postVolIdx = getIndex(r.raw.postDefRaw, b_post);
     const dbpmIdx = getIndex(r.raw.dbpmNorm, b_dbpmNorm);
 
-    let perimeterDefense = scaleRaw((perimVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill));
-    let postDefense = scaleRaw((postVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill));
+    let perimeterDefense = capLowMinutes(scaleRaw((perimVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill)));
+    let postDefense = capLowMinutes(scaleRaw((postVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill)));
 
     const isAllDef = r.awards.some((a: AwardRow) => a.name === 'All-Defensive');
     if (isAllDef) {

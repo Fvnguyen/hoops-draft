@@ -57,14 +57,20 @@ with real negative DBPM. None needs a rating fix.
 ## Systematic quirks — 1-3 fixed and verified, 4 is interpretation-only
 
 1. **Awards.html scrape discarding fix** (commit `264d71c`) — see the plan doc.
-2. **DBPM small-sample noise — fixed, with an honest caveat.** Tapered DBPM's weight by
-   minutes played in `fetch_players.py` (`DBPM * min(1, MP/24)`), capped so 24+ MPG
-   players are untouched. **Verified real**: Thybulle's raw perimeter-defense score drops
-   from rank #1 to #2 of 448. **But it doesn't move his displayed rating** — the pipeline
-   scales by percentile then a cubic curve, and the top of a 448-player pool is
-   compressed enough that a rank change at the very top still rounds to 99 (tested a
-   steeper taper too; same result, rank #3). A rating-level minutes floor/cap on top of
-   this would be needed to move the visible number — a separate decision, not implemented.
+2. **DBPM small-sample noise — reverted, replaced with a general MPG rating floor
+   (owner, 2026-09-16).** The original `fetch_players.py` taper was a misdirected fix:
+   `PerimDef_Raw`/`PostDef_Raw` there are **dead code** — `ratings.ts` computes
+   `finishing`/.../`postDefense` independently from `SeasonStat`'s raw columns via its
+   own `getIndex`/`scaleRaw` pipeline (a value-vs-top-7.5%-benchmark ratio,
+   `RATING_CONFIG.benchmarkCutoff`, with **no minutes normalization at all**), never
+   touching the Python-scaled columns. Confirmed empirically: the taper produced zero
+   changes to any of 448 cards. Reverted `fetch_players.py` to its original formula.
+   Replaced with `ratings.ts`'s `capLowMinutes`: **no rating dimension may exceed 85 for
+   anyone under 10 MPG** — the real place the benchmark-ratio formula lives. Owner call:
+   16 MPG specialists (Thybulle) stay untouched and can still hit 99 by design; this
+   catches only the extreme sub-rotation case. Verified inert this season (highest
+   single-dimension rating among the 42 under-10-MPG cards is 73, DaRon Holmes'
+   `perimeter`) — a correct, working safety net for future data, not currently active.
 3. **All-Defensive floor now targets the player's real position** (big pool →
    `postDefense`, else `perimeterDefense`) instead of whichever score is already higher.
    **Verified, 3 real changes**: Bam Adebayo now floors `postDefense` (58→90, his real
@@ -90,3 +96,8 @@ with real negative DBPM. None needs a rating fix.
 500 --seed 42`: PPP 1.052→1.044, home win 52.4%→54.2% (both within n=500 noise).
 `player-bootstrap`: corr(OVR, WS/g) 0.677→0.665 (small, expected — eligibility and
 defense-rating shifts touch a handful of cards). `LINEUP_CENTRE` unchanged, within ±1.5.
+
+**Round 3 (revert DBPM, add MPG floor)**: `cards.json` byte-identical to round 2's
+output — confirmed both changes net to zero visible effect this season (the reverted
+Python code was dead, the new floor doesn't fire below 85 for anyone in the current
+pool). Same balance/tests/tsc/lint results as above.

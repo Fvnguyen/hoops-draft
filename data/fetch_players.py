@@ -161,25 +161,17 @@ def fetch_and_generate_players():
     df_filtered['Inside_Raw'] = (df_filtered['PTS'] * 2.0) + (df_filtered['2PM'] * 5.0) + (df_filtered['2P%'] * 50) + (df_filtered['FTr'] * 25)
     df_filtered['Playmaking_Raw'] = (df_filtered['AST'] * 8.0) + (df_filtered['AST'] / df_filtered['TOV'].replace(0, 0.1))
     df_filtered['Rebounding_Raw'] = (df_filtered['TRB'] * 6.0) + (df_filtered['ORB'] * 2.0)
-    # card_balance T2 finding (2026-09-16, owner-approved minimally-invasive fix): DBPM is
-    # a per-100-possession advanced stat that gets extreme in small samples (a 16 MPG
-    # specialist can post a DBPM higher than any full-season great defender). Taper its
-    # weight by minutes played, capped at 1 for anyone at or above 24 MPG (a reliable
-    # rotation/starter load) so full-time players are untouched and low-minute noise is
-    # softened, not zeroed - a specialist's real signal still comes through, just not at
-    # face value. Only DBPM's contribution is scaled; STL/BLK counting stats are not.
-    # CAVEAT (verified 2026-09-16): this moves raw scores and RE-RANKS players relative
-    # to each other (confirmed: Matisse Thybulle drops from raw rank #1 to #2), but the
-    # rating pipeline scales by PERCENTILE then a cubic curve, and the very top of a
-    # 448-player pool is compressed enough that even a rank change doesn't move the
-    # rounded 40-99 output for the single most extreme outlier - so Thybulle's
-    # perimeterDefense still reads 99 despite a real, measurable raw-score drop. A
-    # steeper taper doesn't fix this either (tested, still ranks #3). Fixing the visible
-    # number for the most extreme case would need a rating-level minutes floor/cap on
-    # top of this, a separate decision from "scale the input weight."
-    df_filtered['DBPM_scaled'] = df_filtered['DBPM'] * (df_filtered['MP'].clip(upper=24.0) / 24.0)
-    df_filtered['PerimDef_Raw'] = (df_filtered['STL'] * 15.0) + (df_filtered['DBPM_scaled'] * 5.0)
-    df_filtered['PostDef_Raw'] = (df_filtered['BLK'] * 15.0) + (df_filtered['DBPM_scaled'] * 5.0)
+    # NOTE: this Shooting/Inside/Playmaking/Rebounding/PerimDef/PostDef_Raw block (and its
+    # 40-99 percentile scaling just below) is DEAD CODE as of card_balance T2
+    # (2026-09-16 finding): ratings.ts computes finishing/midRange/perimeter/playmaking/
+    # rebounding/perimeterDefense/postDefense independently from SeasonStat's raw columns
+    # (stl, blk, dbpm, ...) via its own getIndex/scaleRaw benchmark-ratio pipeline; none of
+    # these Python-scaled columns are written to game.db or read anywhere downstream. A
+    # DBPM small-sample fix was tried here first and reverted when this was discovered -
+    # it never reached the real formula. The real fix lives in ratings.ts (capLowMinutes).
+    # Left in place rather than deleted (cleanup is a separate T2 task, not this fix).
+    df_filtered['PerimDef_Raw'] = (df_filtered['STL'] * 15.0) + (df_filtered['DBPM'] * 5.0)
+    df_filtered['PostDef_Raw'] = (df_filtered['BLK'] * 15.0) + (df_filtered['DBPM'] * 5.0)
     
     # Calculate Percentiles & 40-99 Scale
     for dim in ['Shooting', 'Inside', 'Playmaking', 'Rebounding', 'PerimDef', 'PostDef']:

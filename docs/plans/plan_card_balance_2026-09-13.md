@@ -44,10 +44,12 @@ after every T1-T5 commit.
   discarded (commit `264d71c`). Owner approved and shipped: `Positionless` trait +
   true no-penalty depth-chart eligibility for LeBron/Giannis/Barnes, Jokić hand-rolled
   to `PF/C`, `LEGENDARY_PLAYERS` dropped Chris Paul (retired, kept the 3 injured),
-  DBPM tapered by minutes (real but doesn't move the most extreme outlier — percentile
-  compression), All-D floor now targets the player's real position (3 verified fixes:
-  Adebayo, White, Anunoby). Two questions still open (more Positionless/legendary
-  candidates) in
+  All-D floor now targets the player's real position (3 verified fixes: Adebayo,
+  White, Anunoby). A first DBPM-taper defense fix turned out to target dead Python
+  code (`ratings.ts` computes defense independently) — reverted; replaced with a
+  general `ratings.ts` floor (no dimension over 85 under 10 MPG), verified inert this
+  season (highest under-10-MPG dimension is 73) but a real safety net. Two questions
+  still open (more Positionless/legendary candidates) in
   [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
   254/254 tests, `tsc` clean.
 
