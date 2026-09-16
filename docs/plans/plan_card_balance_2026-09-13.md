@@ -66,10 +66,14 @@ after every T1-T5 commit.
   **Rare 12-14%** (54-63), **Uncommon 28-32%**, rest Common. Achieved by `RARITY_CUTOFFS`
   (Rare cutoff drops from 80) and the legendary/league-leader bumps, never by hand-listing
   players. Draft packs already guarantee rarity slots; pack rules are not changed here.
-- D3 Badge coverage: every colour used by the plan catalog must have at least **40**
-  carriers at level 1 and **12** at level 2 in the pool; achieved via `BADGE_THRESHOLDS`
-  per skill, checked by a new Vitest test over `cards.json`. Defensive colours get the
-  same floor as offensive ones.
+- D3 Badge coverage: **superseded 2026-09-16 (owner)**. No forced 40/12 floor via
+  `BADGE_THRESHOLDS` — uneven coverage reflects genuine scarcity/impact, same pedigree
+  logic as rarity. `npm run feasibility` (T5) is the right tool to catch a badge too
+  scarce to draft around; T4/T5 balance plays and identities against real badge
+  availability, not the other way around. Cosmetic-only traits (Legend, League Leader,
+  Ironman, Efficiency Savant, Young Phenom, Veteran Presence, Microwave, Volume Scorer,
+  Stat Sheet Stuffer) removed entirely — never read by any engine system, confirmed by
+  search; `isLegendary`/`isLeagueLeader`'s real effect (the rarity bump) is untouched.
 - D4 Play catalog grows from 11 to **15**: add two defensive plays (a switch-everything
   scheme keyed on perimeter defence, a drop-coverage scheme keyed on rim protection) and
   two offensive plays (a post-up series keyed on interior scoring, a drive-and-kick series

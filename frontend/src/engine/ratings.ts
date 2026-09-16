@@ -326,20 +326,16 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     b = getBadge(perimeterDefense, 'Lockdown Defender'); if (b) traits.push(b);
     b = getBadge(postDefense, 'Paint Protector'); if (b) traits.push(b);
 
-    if (isLegendary) traits.push({ name: 'Legend', level: 3 });
-    if (isLeagueLeader) traits.push({ name: 'League Leader', level: 3 });
+    // card_balance T3 finding (2026-09-16, owner-approved): Legend/League Leader/Ironman/
+    // Efficiency Savant/Young Phenom/Veteran Presence/Microwave/Volume Scorer/Stat Sheet
+    // Stuffer were cosmetic-only traits, never read by any archetype/playbook/synergy
+    // logic (confirmed by search). Removed. isLegendary/isLeagueLeader still drive their
+    // real mechanic, the rarity bump above (bumpRarity) - only the flavor badge is gone.
     if (POSITIONLESS_PLAYERS.has(p.name)) traits.push({ name: 'Positionless', level: 3 });
 
-    if (stat.gp >= 75 && stat.mpg >= 34.0) traits.push({ name: 'Ironman', level: 3 });
-    if (stat.ts >= 0.65 && stat.fga >= 10.0) traits.push({ name: 'Efficiency Savant', level: 3 });
     if (stat.ast >= 6.0 && (stat.ast / Math.max(0.1, stat.tov)) >= 3.0) traits.push({ name: 'Playmaking Maestro', level: 2 });
-    if (p.age <= 21 && overall >= 80) traits.push({ name: 'Young Phenom', level: 2 });
-    if (p.age >= 33 && stat.vorp >= 2.0) traits.push({ name: 'Veteran Presence', level: 2 });
-    if (stat.mpg <= 25 && stat.pts >= 15) traits.push({ name: 'Microwave', level: 2 });
     if (stat.stl >= 1.0 && stat.blk >= 1.0) traits.push({ name: 'Two-Way Disruptor', level: 2 });
     if (stat.fg3_pct >= 0.40 && stat.fg3a >= 6.0) traits.push({ name: 'Sniper', level: 2 });
-    if (stat.fga >= 20 && stat.pts >= 25) traits.push({ name: 'Volume Scorer', level: 3 });
-    if (stat.pts >= 15 && stat.trb >= 7 && stat.ast >= 5) traits.push({ name: 'Stat Sheet Stuffer', level: 3 });
 
     const formattedAwards: string[] = [];
     for (const a of r.awards) {

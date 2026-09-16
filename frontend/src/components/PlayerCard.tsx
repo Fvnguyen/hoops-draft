@@ -76,11 +76,11 @@ export { basePosColors, getPosColors, rarityTextColor };
 // Plain-English badge tooltip copy (MTG-style keyword reminder text) — what it boosts
 // and, for the badges that gate a roster identity (the 7 mono colors + the 3 gold
 // keystones in engine/archetypes.ts), which identity it unlocks. No exact percentages —
-// matches the game's existing "never show exact ratings/formulas" product rule. The
-// other badges (Legend, League Leader, Ironman, Efficiency Savant, Volume Scorer,
-// Young Phenom, Veteran Presence, Microwave, Stat Sheet Stuffer) aren't wired into any
-// synergy/archetype/play logic anywhere in the engine — they're flavor only, so their
-// copy says that honestly instead of inventing an effect they don't have.
+// matches the game's existing "never show exact ratings/formulas" product rule.
+// card_balance T3 (2026-09-16, owner-approved): the 9 cosmetic-only badges this comment
+// used to list (Legend, League Leader, Ironman, Efficiency Savant, Volume Scorer, Young
+// Phenom, Veteran Presence, Microwave, Stat Sheet Stuffer) are gone — engine/ratings.ts
+// no longer generates them. Every entry below now has a real mechanical effect.
 const BADGE_DESCRIPTIONS: Record<string, string> = {
   'Finisher': "Boosts your team's rim scoring and unlocks the Rim Pressure identity.",
   'Mid-Range Maestro': "Boosts your team's mid-range scoring and unlocks the Midrange Clinic identity.",
@@ -92,15 +92,7 @@ const BADGE_DESCRIPTIONS: Record<string, string> = {
   'Two-Way Disruptor': "Boosts your team on both ends and unlocks the 3-and-D Paradigm identity.",
   'Playmaking Maestro': "Boosts your team's ball movement and unlocks the Switchblade Pressure identity.",
   'Sniper': "Boosts your team's 3-point shooting and unlocks the Five-Out Fortress identity.",
-  'Legend': 'A career-defining talent. Prestige only — no team-wide boost.',
-  'League Leader': 'Led the league in a major stat. Prestige only — no team-wide boost.',
-  'Ironman': 'Elite durability and availability. Flavor only — no team-wide boost.',
-  'Efficiency Savant': 'Elite scoring efficiency. Flavor only — no team-wide boost.',
-  'Volume Scorer': 'A high-usage, high-volume scorer. Flavor only — no team-wide boost.',
-  'Young Phenom': 'A rising star ahead of schedule. Flavor only — no team-wide boost.',
-  'Veteran Presence': 'A seasoned, battle-tested veteran. Flavor only — no team-wide boost.',
-  'Microwave': 'Instant offense off the bench. Flavor only — no team-wide boost.',
-  'Stat Sheet Stuffer': 'Fills the box score everywhere. Flavor only — no team-wide boost.',
+  'Positionless': 'Slots into any lineup spot with no penalty.',
 };
 
 // D5 type floor: 'micro'/'xs'/'cqw' tiers are icon-only — no level digit, no text.
@@ -998,7 +990,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                     >
                       {/* Badge + Level */}
                       <div className="flex-shrink-0 pt-0.5">
-                        <BadgeIcon name={roleStatus.role.badge || 'Veteran Presence'} level={roleStatus.role.minLevel ?? 1} size="xs" />
+                        <BadgeIcon name={roleStatus.role.badge ?? ''} level={roleStatus.role.minLevel ?? 1} size="xs" />
                       </div>
 
                       {/* Role name + player assignment */}
@@ -1089,7 +1081,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                 <div className="px-2 py-2 bg-surface-raised flex flex-col gap-1 border-t border-line">
                   {playDef.roles.map((role, i) => (
                     <div key={i} className="flex items-center gap-1 text-xs">
-                      <BadgeIcon name={role.badge || 'Veteran Presence'} level={role.minLevel ?? 1} size="xs" />
+                      <BadgeIcon name={role.badge ?? ''} level={role.minLevel ?? 1} size="xs" />
                       <div className="flex-1">
                         <div className="font-bold text-ink-strong uppercase">{role.name}</div>
                         <div className="text-ink-muted">{describeRoleRequirement(role)}</div>

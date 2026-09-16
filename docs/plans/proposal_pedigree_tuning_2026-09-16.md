@@ -28,22 +28,15 @@ declined. Implemented as two distinct, regeneration-safe mechanisms:
   untouched — still their real position for display and OVR-pool weighting; only
   eligibility changes. 5 call sites updated (`deckbuilder.ts`, `depthChart.ts` callers in
   `DeckBuilder.tsx`). Verified: all 5 columns come back natural for the three names.
-- **Open**: no strong additional LeBron/Giannis/Barnes-tier candidates found in the 448
-  pool at that bar (initiates *and* defends across position lines) — Alperen Şengün is a
-  Jokić-style "point-center" hand-roll candidate (not full Positionless), if you want
-  the same C/PF treatment applied to him.
+- **Closed (owner, 2026-09-16)**: no further Positionless candidates beyond the three
+  shipped. Şengün's Jokić-style hand-roll not pursued.
 
 ## B. `LEGENDARY_PLAYERS` — implemented
 
 Chris Paul dropped (confirmed retired), Lillard/Irving/Beal kept (confirmed injured, not
 retired) — `engine/balance.ts`, verified.
 
-**Open**: possible pedigree additions not currently on the list, for your call: **Luka
-Dončić** and **Shai Gilgeous-Alexander** (both naturally Mythic already — this would be
-consistency with the AD/Giannis/Jokić pattern, not a functional change), **Klay
-Thompson** (real 5x-champion pedigree, currently OVR 40 Common — a genuine "faded star"
-case), **Zion Williamson** (huge draft/hype pedigree, currently Common 59 — pedigree
-diverging sharply from output, exactly the paradigm's use case). Say which, if any.
+**Closed (owner, 2026-09-16)**: no further additions (Dončić/SGA/Klay/Zion) pursued.
 
 ## Root-cause review — confirmed correct, no action needed
 

@@ -7,14 +7,18 @@
  * constants/helpers and never writes a literal hex or palette class itself.
  */
 import {
-  Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck, Crown,
-  Trophy, Zap, TrendingUp, Bird, Thermometer, Swords, ClipboardList, Sparkles,
-  Wand2, type LucideIcon,
+  Star, Flame, Target, Crosshair, Brain, Dumbbell, Shield, ShieldCheck,
+  Swords, Wand2, type LucideIcon,
 } from 'lucide-react';
 import type { Play } from '@/engine/types';
 
 // ---- Badges -------------------------------------------------------------------
 
+// card_balance T3 (2026-09-16, owner-approved): cosmetic-only badges (Legend, League
+// Leader, Ironman, Efficiency Savant, Young Phenom, Veteran Presence, Microwave, Volume
+// Scorer, Stat Sheet Stuffer) removed — never generated onto a card anymore
+// (engine/ratings.ts). What's left is the 7 mono skill colours plus the 3 gold-plan
+// keystone traits (Two-Way Disruptor, Sniper, Playmaking Maestro).
 export const badgeConfig: Record<string, { icon: LucideIcon; color: string }> = {
   'Finisher':            { icon: Flame,         color: '#F97316' },
   'Mid-Range Maestro':   { icon: Target,        color: '#3B82F6' },
@@ -23,17 +27,8 @@ export const badgeConfig: Record<string, { icon: LucideIcon; color: string }> = 
   'Glass Cleaner':       { icon: Dumbbell,       color: '#22C55E' },
   'Lockdown Defender':   { icon: Shield,         color: '#EF4444' },
   'Paint Protector':     { icon: ShieldCheck,    color: '#DC2626' },
-  'Legend':              { icon: Crown,          color: '#F59E0B' },
-  'League Leader':       { icon: Trophy,         color: '#F59E0B' },
-  'Ironman':             { icon: Zap,            color: '#EAB308' },
-  'Efficiency Savant':   { icon: TrendingUp,     color: '#06B6D4' },
   'Sniper':              { icon: Crosshair,      color: '#6366F1' },
-  'Volume Scorer':       { icon: Flame,          color: '#F97316' },
-  'Young Phenom':        { icon: Sparkles,       color: '#F59E0B' },
-  'Veteran Presence':    { icon: Bird,           color: '#78716C' },
-  'Microwave':           { icon: Thermometer,    color: '#EF4444' },
   'Two-Way Disruptor':   { icon: Swords,         color: '#8B5CF6' },
-  'Stat Sheet Stuffer':  { icon: ClipboardList,  color: '#10B981' },
   'Playmaking Maestro':  { icon: Wand2,          color: '#14B8A6' },
 };
 
