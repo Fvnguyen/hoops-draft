@@ -61,6 +61,19 @@ function main(): void {
     const sd = Math.sqrt(mean(v.map((x) => (x - m) ** 2)));
     console.log(`  ${(key + ':').padEnd(18)} { mean: ${m.toFixed(2)}, sd: ${sd.toFixed(2)} },`);
   }
+
+  // card_balance T3 (2026-09-16, owner-approved): the same top-X% cutoff per dimension,
+  // guaranteeing badge coverage is consistent by construction across all 7 skills — no
+  // dimension's L3 can be easier than another's L2. Paste over BADGE_THRESHOLDS in
+  // engine/balance.ts whenever the pool changes.
+  const L1_PCT = 0.09, L2_PCT = 0.035, L3_PCT = 0.013;
+  console.log('\nBADGE_THRESHOLDS (per-dimension percentile cutoffs — copy into engine/balance.ts):');
+  for (const key of ratingKeys) {
+    if (key === 'overall') continue;
+    const v = tagged.map((c) => c.ratings[key] ?? 0).sort((a, b) => b - a);
+    const at = (pct: number) => v[Math.max(0, Math.floor(v.length * pct))];
+    console.log(`  ${(key + ':').padEnd(18)} { l1: ${at(L1_PCT)}, l2: ${at(L2_PCT)}, l3: ${at(L3_PCT)} },`);
+  }
 }
 
 main();

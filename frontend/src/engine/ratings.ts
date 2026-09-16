@@ -11,12 +11,13 @@
 import {
   SeasonStat, Trait, Rarity, PlayerCard, AwardRow, RatingsInput,
 } from './types';
-import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS } from './balance';
+import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS, type RatingDim } from './balance';
 
-function getBadge(val: number, name: string): Trait | null {
-  for (const t of BADGE_THRESHOLDS) {
-    if (val >= t.min) return { name, level: t.level };
-  }
+function getBadge(val: number, name: string, dim: RatingDim): Trait | null {
+  const t = BADGE_THRESHOLDS[dim];
+  if (val >= t.l3) return { name, level: 3 };
+  if (val >= t.l2) return { name, level: 2 };
+  if (val >= t.l1) return { name, level: 1 };
   return null;
 }
 
@@ -318,13 +319,13 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
     const traits: Trait[] = [];
     let b;
-    b = getBadge(finishing, 'Finisher'); if (b) traits.push(b);
-    b = getBadge(midRange, 'Mid-Range Maestro'); if (b) traits.push(b);
-    b = getBadge(perimeter, 'Sharpshooter'); if (b) traits.push(b);
-    b = getBadge(playmaking, 'Floor General'); if (b) traits.push(b);
-    b = getBadge(rebounding, 'Glass Cleaner'); if (b) traits.push(b);
-    b = getBadge(perimeterDefense, 'Lockdown Defender'); if (b) traits.push(b);
-    b = getBadge(postDefense, 'Paint Protector'); if (b) traits.push(b);
+    b = getBadge(finishing, 'Finisher', 'finishing'); if (b) traits.push(b);
+    b = getBadge(midRange, 'Mid-Range Maestro', 'midRange'); if (b) traits.push(b);
+    b = getBadge(perimeter, 'Sharpshooter', 'perimeter'); if (b) traits.push(b);
+    b = getBadge(playmaking, 'Floor General', 'playmaking'); if (b) traits.push(b);
+    b = getBadge(rebounding, 'Glass Cleaner', 'rebounding'); if (b) traits.push(b);
+    b = getBadge(perimeterDefense, 'Lockdown Defender', 'perimeterDefense'); if (b) traits.push(b);
+    b = getBadge(postDefense, 'Paint Protector', 'postDefense'); if (b) traits.push(b);
 
     // card_balance T3 finding (2026-09-16, owner-approved): Legend/League Leader/Ironman/
     // Efficiency Savant/Young Phenom/Veteran Presence/Microwave/Volume Scorer/Stat Sheet

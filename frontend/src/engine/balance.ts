@@ -145,8 +145,8 @@ export const HOLE_BOTTOM_N = 2;
  * `tests/unit/lineup.test.ts` asserts these within ±1.5 of a fresh seeded measurement.
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
-  finishing: 63.2, midRange: 62.5, perimeter: 54.5, playmaking: 69.5,
-  rebounding: 66.1, perimeterDefense: 60.2, postDefense: 59.4,
+  finishing: 63.2, midRange: 62.3, perimeter: 54.0, playmaking: 68.8,
+  rebounding: 66.6, perimeterDefense: 60.0, postDefense: 59.9,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */
@@ -336,12 +336,25 @@ export const POSITIONLESS_PLAYERS = new Set([
   'LeBron James', 'Giannis Antetokounmpo', 'Scottie Barnes',
 ]);
 
-/** Badge (Trait) level thresholds: rating >= threshold[i] -> level i+1 (3 is highest). */
-export const BADGE_THRESHOLDS = [
-  { min: 96, level: 3 },
-  { min: 90, level: 2 },
-  { min: 80, level: 1 },
-];
+/**
+ * Badge (Trait) level thresholds, per dimension (card_balance T3, 2026-09-16,
+ * owner-approved). D3's original flat 80/90/96 cutoff applied the same absolute number
+ * to all seven skill ratings despite very different underlying distributions
+ * (playmaking mean 35 vs perimeter mean 57) — some badges (Finisher L3) were nearly
+ * unreachable while others (Sharpshooter L1) were common. Replaced with the same
+ * top-9% / top-3.5% / top-1.3% cutoff on every dimension, so no dimension's L3 can be
+ * easier than another's L2 — consistency by construction, not hand-tuned per badge.
+ * Regenerate via `npm run build:cards` (it prints this block) whenever the pool changes.
+ */
+export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: number }> = {
+  finishing:         { l1: 83, l2: 88, l3: 92 },
+  midRange:          { l1: 81, l2: 89, l3: 96 },
+  perimeter:         { l1: 87, l2: 91, l3: 94 },
+  playmaking:        { l1: 77, l2: 95, l3: 99 },
+  rebounding:        { l1: 75, l2: 94, l3: 99 },
+  perimeterDefense:  { l1: 76, l2: 86, l3: 94 },
+  postDefense:       { l1: 72, l2: 82, l3: 90 },
+};
 
 /** Card rarity cutoffs on `overall` before award/legendary/league-leader bumps. */
 export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
