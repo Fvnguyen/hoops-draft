@@ -29,27 +29,15 @@ cube rarity Mythic 12 / Rare 15 / Uncommon 57 / Common 108; early-pick OVR 71.6.
 `corr(OVR, winSharesPerGame) = 0.617`; interior badges predict winning 2-3x better than
 Sharpshooter/Floor General; 204/448 cards clipped at the OVR-40 floor.
 
-**2026-09-16, baseline on the merged engine (engine_possession_model, `3226cf2`)** — the
-"before" for D9. Same commands, same seeds, pre-merge `c0fa02e` vs merged:
-- `npm run balance -- 500 --seed 42`: PPP 1.061 → 1.050, score sd 13.2 → 13.1, [90,130]
-  87.7% → 86.6%, home win 55.0% → 57.2%, OT 3.4% → 1.4%, margin mean 15.5 → 15.3.
-- `npm run player-bootstrap -- 150 --seed 42 --json` (4,200 games, all 448 played):
-  corr(OVR, WS/g) 0.617 → **0.691**, corr(OVR, team win%) 0.160 → 0.313. WS/g by rarity
-  Mythic .048→.052, Rare .047→.049, Uncommon .046→.047, Common .037→.036 — tiers now
-  separate in order, but Common sd (.0078) still exceeds the Mythic-Rare gap. Badge r:
-  Finisher .34→.40, Glass Cleaner .31→.38, Mid-Range .25→.32, Paint Protector .31→.30,
-  Floor General .17→.26, Lockdown .14→.19, Sharpshooter .10→.12 (76 holders, still last
-  of the skill badges). Persistent OVR-residual outliers (over: LeBron, Maxey, LaMelo,
-  Mitchell, Curry; under: Oubre, Marshall, Horford, Jović, Ingram, Turner, Siakam) —
-  see the analysis doc's tables for full detail, not repeated here.
-- Lever table (`2000 --seed 777 --levers`, Δ margin/game for +10 std points): playmaking
-  2.27, finishing 2.21, perimeter 1.99, perimeter D 1.80, post D 1.48, rebounding 1.40,
-  mid-range 0.74. Mid-Range Maestro's r (.32) is out of line with its lever (0.74):
-  the badge marks players who are good at everything else too — T2 should not read
-  badge r as lever size.
-- Pool as shipped pre-T1 (`cards.json`): rarity Mythic 20 / Rare 22 / Uncommon 58 / Common
-  348; OVR = 40: 204/448; only 9 cards with a PG/SG/SF/PF label — D1 confirmed as T1.
-  Rerun both commands after every T1-T5 commit (D9).
+**2026-09-16, baseline on the merged engine (engine_possession_model, `3226cf2`), pre-T1**
+— the D9 "before": `balance -- 500 --seed 42` PPP 1.050, home win 57.2%, OT 1.4%;
+`player-bootstrap` corr(OVR, WS/g) 0.691, corr(OVR, win%) 0.313, WS/g separates cleanly
+by rarity tier (Mythic .052 > Rare .049 > Uncommon .047 > Common .036) though Common's
+own sd still exceeds the Mythic-Rare gap; lever table (`2000 --seed 777 --levers`)
+playmaking 2.27 down to mid-range 0.74 — Mid-Range Maestro's badge r (.32) is out of line
+with that lever, a trap for T2. Pool pre-T1: rarity 20/22/58/348, OVR floor 204/448,
+only 9 cards with a real position label. Full tables in the analysis doc below. Rerun
+both commands after every T1-T5 commit (D9).
 
 **2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary
 (`sort_pos` hoisted to module scope): 448/448 cards now carry a real PG/SG/SF/PF/C
@@ -66,17 +54,26 @@ pass) as bot-drafted lineups shifted; `game.test.ts`'s starter-minutes floor low
 18→16 after a legitimate low-share starter (HANDOVER issue 5's documented case) —
 floor lowered per that issue's own guidance, not reseeded. `balance -- 500 --seed 42`:
 PPP 1.050→1.052, home win 57.2%→52.4% (noise at n=500, rerun at 2000+ before reacting).
-Bootstrap: corr(OVR, WS/g) 0.691→0.677, corr(OVR, win%) 0.313→0.287 — both dropped
-slightly; positions now gate who plays where, moving some cards out of roles their OVR
-was scored for. T2's retune is where a position-aware profile should recover this.
+Bootstrap: corr(OVR, WS/g) 0.691→0.677 — positions now gate who plays where, moving
+some cards out of roles their OVR was scored for; T2's retune should recover this.
 254/254 tests, `tsc` clean, lint unchanged.
+
+**2026-09-16, eyeball pass over Mythic/Rare/Uncommon** — full findings in
+[analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md).
+Headline: `LEGENDARY_PLAYERS` rewards Gobert/Butler/Kawhi (all z ≤ −1.2 for their tier)
+while missing the engine's real standouts (A. Davis, J. Johnson); Duren and D. Mitchell
+are Mythic misses (z ≤ −1.7); Josh Hart and Cooper Flagg are two-tier promotion cases;
+multiposition cards (T1) read correctly — no further fix needed there.
 
 ## Decisions (locked)
 
 - D1 Positions: `data/fetch_players.py` keeps basketball-reference `Pos` as primary and
   uses the NBA Stats bio position only as fallback. `game.db` and `cards.json` are
   regenerated. Depth-chart eligibility and the ten rating profiles then work as designed.
-  Combined positions (G/F, F/C) stay as they are in bref.
+  **Amended 2026-09-16 (T1)**: bref gave zero combo positions this season, so a raw
+  bref-only primary blends in the NBA Stats bio's broad category (G/F/C) as one adjacent
+  depth-chart crossover column when it implies a side bref alone doesn't cover — see the
+  T1 finding above for the mechanism and `ratings.ts`'s `getPool`.
 - D2 Rarity distribution target on the 448-player pool: **Mythic 4-5%** (18-22),
   **Rare 12-14%** (54-63), **Uncommon 28-32%**, rest Common. Achieved by `RARITY_CUTOFFS`
   (Rare cutoff drops from 80) and the legendary/league-leader bumps, never by hand-listing
