@@ -39,19 +39,37 @@ Sharpshooter/Floor General; 204/448 cards clipped at the OVR-40 floor.
   separate in order, but Common sd (.0078) still exceeds the Mythic-Rare gap. Badge r:
   Finisher .34→.40, Glass Cleaner .31→.38, Mid-Range .25→.32, Paint Protector .31→.30,
   Floor General .17→.26, Lockdown .14→.19, Sharpshooter .10→.12 (76 holders, still last
-  of the skill badges). Persistent OVR residual outliers: LeBron (Rare 79), Maxey (Mythic
-  95), LaMelo (Rare 84), now Donovan Mitchell (Mythic 92) and Curry (Mythic 77, z -1.6 in
-  tier); persistent underrated Commons: Oubre (60), Naji Marshall (56), Horford (42),
-  Jović (40), plus Ingram (63), Turner (58), Siakam (64).
+  of the skill badges). Persistent OVR-residual outliers (over: LeBron, Maxey, LaMelo,
+  Mitchell, Curry; under: Oubre, Marshall, Horford, Jović, Ingram, Turner, Siakam) —
+  see the analysis doc's tables for full detail, not repeated here.
 - Lever table (`2000 --seed 777 --levers`, Δ margin/game for +10 std points): playmaking
   2.27, finishing 2.21, perimeter 1.99, perimeter D 1.80, post D 1.48, rebounding 1.40,
   mid-range 0.74. Mid-Range Maestro's r (.32) is out of line with its lever (0.74):
   the badge marks players who are good at everything else too — T2 should not read
   badge r as lever size.
-- Pool as shipped (`cards.json`): rarity Mythic 20 / Rare 22 / Uncommon 58 / Common
-  348; **OVR = 40: 204, ≤ 45: 241, 40-49 band: 268 of 448**; positions G 176 / F 130 /
-  C 47 / G/F 44 / F/C 42 and only 9 cards with a PG/SG/SF/PF label — D1 confirmed as
-  the first task. Rerun both commands after every T1-T5 commit (D9).
+- Pool as shipped pre-T1 (`cards.json`): rarity Mythic 20 / Rare 22 / Uncommon 58 / Common
+  348; OVR = 40: 204/448; only 9 cards with a PG/SG/SF/PF label — D1 confirmed as T1.
+  Rerun both commands after every T1-T5 commit (D9).
+
+**2026-09-16, T1 done** — `data/fetch_players.py` flipped to bref `Pos` primary, NBA
+Stats bio position fallback (`sort_pos` hoisted to module scope). Regenerated `game.db`
+and `cards.json`: 448/448 cards now carry a real PG/SG/SF/PF/C primary (PG 76, SG 120,
+SF 81, PF 87, C 84) — exceeds D1's ≥300 exit bar with room to spare, no combo positions
+needed this season (bref gave clean singles). Side effects, mechanical from eligibility
+alone, no rating/rarity changes yet: rarity Mythic 20→24, Rare 22→21, Uncommon 58→70,
+Common 348→333; OVR-40 floor count 204→188 (still 42% of the pool). `LINEUP_CENTRE`
+regenerated (perimeter 53.3→56.3, the rest -1 to -3) — different players now fill
+different depth-chart slots, so bot-drafted lineups changed; updated in `balance.ts` and
+`lineup.test.ts` passes again. One further seed-sensitive test broke for the same reason
+(a legitimate starter landed at 17.4 min against `game.test.ts`'s 18-minute floor,
+HANDOVER open issue 5's documented case) — floor lowered to 16 per that issue's own
+guidance, not reseeded. `npm run balance -- 500 --seed 42`: PPP 1.050→1.061, home win
+57.2%→57.0%, OT 1.4%→1.4% (unchanged from D9 baseline within noise). Player bootstrap:
+corr(OVR, WS/g) 0.691→**0.677**, corr(OVR, win%) 0.313→0.287 — both *dropped* slightly;
+positions now gate who can occupy which slot, which moved some cards out of roles their
+OVR was scored for. Not a regression to fix here — T2 (rating retune) is exactly where a
+position-aware profile should recover this. 254/254 tests pass, `tsc --noEmit` clean,
+lint 0 errors (unchanged warnings).
 
 ## Decisions (locked)
 

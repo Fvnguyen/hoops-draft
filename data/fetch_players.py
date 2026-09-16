@@ -175,23 +175,22 @@ def fetch_and_generate_players():
     df_bio = pd.read_csv("bio.csv")
     from unidecode import unidecode
     
+    # Deterministic sorting for positions (module scope: used for both the NBA Stats
+    # bio position below and basketball-reference's Pos column at insert time, D1).
+    def sort_pos(p_str):
+        order = {'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5, 'G': 1, 'F': 3}
+        parts = p_str.replace('-', '/').split('/')
+        parts.sort(key=lambda x: order.get(x, 99))
+
+        # Standardize G/F to SG/SF etc if we want, but B-Ref gives exact F-G which we sort to G/F
+        return "/".join(parts)
+
     # Pre-process Bio Data
     bio_map = {}
     for _, row in df_bio.iterrows():
         name = unidecode(row['PLAYER'])
-        pos = str(row['POSITION']).replace('-', '/')
-        
-        # Deterministic sorting for positions
-        def sort_pos(p_str):
-            order = {'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5, 'G': 1, 'F': 3}
-            parts = p_str.split('/')
-            parts.sort(key=lambda x: order.get(x, 99))
-            
-            # Standardize G/F to SG/SF etc if we want, but B-Ref gives exact F-G which we sort to G/F
-            return "/".join(parts)
-            
-        pos = sort_pos(pos)
-        
+        pos = sort_pos(str(row['POSITION']))
+
         height = str(row['HEIGHT'])
         weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
         bio_map[name] = {"pos": pos, "height": height, "weight": weight}
@@ -312,8 +311,12 @@ def fetch_and_generate_players():
             if matches:
                 bio_name = matches[0]
                 
-        bio = bio_map.get(bio_name, {"pos": str(row['Pos']), "height": "0-0", "weight": 0})
-        pos = bio["pos"]
+        bio = bio_map.get(bio_name, {"pos": "", "height": "0-0", "weight": 0})
+        # D1 (card_balance): basketball-reference Pos is the primary position source
+        # (real PG/SG/SF/PF/C, occasionally a combo like "SG-PG"); the NBA Stats bio
+        # position (broad G/F/C only) is a fallback for the rare row bref leaves blank.
+        bref_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
+        pos = sort_pos(bref_pos) if bref_pos else bio["pos"]
         height = bio["height"]
         weight = bio["weight"]
         team = latest_teams.get(raw_name, row['Team'])
