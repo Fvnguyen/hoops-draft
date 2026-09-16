@@ -1,7 +1,7 @@
 # Plan: game_theater
 
-File: `docs/plans/plan_game_theater_2026-09-13.md`. Status: planned (re-locked 2026-09-16:
-box score, runs, crunch time, UI pass). Sequence: 6 in `docs/ROADMAP.md`. Depends on:
+File: `docs/plans/plan_game_theater_2026-09-13.md`. Status: implemented 2026-09-16 (T1-T9; owner
+in-app pass + legacy-season load pending before `/roadmap done`). Sequence: 6 in `docs/ROADMAP.md`. Depends on:
 engine_possession_model (done, unmerged — develop on `claude/game-engine-card-balance-0toacl`,
 shipping gate applies). Files owned: `engine/game.ts`, `engine/balance.ts` (clutch +
 attribution constants), new `src/narration/`, `components/GameView.tsx`, `SeasonView.tsx`

@@ -8,7 +8,9 @@ selection) -> single game or round-robin season -> in-app analytics export. The 
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model
 resolved per possession from the five on the floor (standardised, designed lineup
 aggregation; turnovers, offensive rebounds and a creator steer — engine_possession_model),
-archetype identities and assigned-player plays. Persistence is IndexedDB behind
+archetype identities and assigned-player plays, narrated outside the engine by
+`src/narration/` (structured events -> broadcast prose, game-flow beats, crunch time —
+game_theater). Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 (`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
@@ -16,7 +18,7 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-254 Vitest tests pass, type-check is clean, `npm run lint` is
+333 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -45,29 +47,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **game-results-visibility** (2026-09-14, `2cd44e5`): a game result commits only when watched to the end and continued; leaving early discards it.
 - **mobile_responsive** (superseded 2026-09-15, closed 2026-09-16): audit harness + projects, manifest/icons, `OrientationGate`, `/rosters` lineup row; folded into `game_canvas`.
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
-
-## deckbuilder_ux — done 2026-09-15
-
-Plan: `docs/completed/plan_deckbuilder_ux_2026-09-15.md`. Design-first: eight artboards on the
-canvas "Deck Builder HUD" (https://claude.ai/artifact/Vixm9Jj2yx6xwzbHGVc22K), sources and
-2x PNGs in `docs/design/deckbuilder_ux/`, all signed by the owner the same day. Commits
-`9f036b3` (wave 1), `7e98612` (wave 2) + fixes. What changed: the builder's top band is
-a 56px HUD (Players/Plays/Identity chips, radar peak/valley words, shot-diet mini from
-1440, Clear/Save icons + one "Save & play season" primary; expanded = radar, shot diet,
-identity lanes); the ACTIVE ROSTER validity row is gone; Plays and Roster are the same
-collapsible sidebar (docked / 48px strip / compact drawer), tiers measured on the shell
-(compact < 960, regular < 1440 with the two sidebars mutually exclusive, wide both dock);
-depth chart per artboard (d) with 5/7 starter and 44px bench rows; plays are 72px tiles
-(56px in lists); a click assigns a play (first open slot) or a player (highlighted
-slots), through pure `engine/deckbuilder.ts` helpers the drag path shares (11 unit tests).
-`tests/deckbuilder.spec.ts` covers overflow, 44px, both click flows and the exclusivity
-rule at 900/1100/1440. Mobile audit: deck-builder 0 findings on both projects; phone
-total 2 (the /rosters grid row, mobile T6). Chromium e2e 35/35, vitest 229/229.
-
-Seams caught only by integration: the roster-list Add button was swallowed (handler on
-a wrapper the tile never bubbled to); role avatars must be CSS backgrounds (an <img>'s
-onError misses a 404 that lands before hydration); `--update-snapshots` keeps a stale
-baseline that still passes the diff ratio — use `=all` to force a rewrite.
+- **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
 
 ## game_canvas — done 2026-09-16
 
@@ -141,6 +121,48 @@ Next, on this branch: `game_theater` (narrate turnovers before the shot, second 
 the steer) and `card_balance` (ratings/OVR-40 floor against this engine); then merge.
 `badge_effects` later.
 
+## game_theater — implemented 2026-09-16 (UNMERGED; owner in-app pass pending)
+
+Plan: `docs/plans/plan_game_theater_2026-09-13.md` (stays in plans/ until the owner plays
+a season game on the branch and loads an older season — the two exit criteria this
+container cannot run, every route sits behind the Supabase gate). Commits `be99ef0`
+(T1/T7), `8215a45` (T2-T4), `5f2d777` (T8), `fed411a` (T5/T9), then T6. What changed:
+- **Engine** (`game.ts`, `balance.ts`): every event carries `narrative` (kind, channel,
+  actor, assist, credited defender, called play/coverage, second chance, `steeredTo`,
+  free throws, tags) and `shots`; the box score has REB off/def, STL, BLK, FG/3P/FT
+  made-attempted, +/-. Attribution (blocks 10% of misses, steals 55% of turnovers,
+  defensive rebounds) rolls on a per-possession rng derived from the seed, so the sim
+  stream was untouched by T7 (balance byte-identical). `boxScoreThrough(theater, i)` is
+  the live box; `seasonPlayerTotals(season)` sums the human rows. Crunch time (D10):
+  `CLUTCH_WINDOW_POSS` 4 / `CLUTCH_MARGIN` 5, `isClutch` on events, closing fives with no
+  bench even under a play call; 23% of games enter Q4 clutch (300, seed 777), starters on
+  the floor inside it 5.00 (was 3.5). The engine produces no prose any more (T6);
+  `narrativeText` survives only on legacy theaters. `BALANCE_VERSION` 7.
+- **Narration** (`src/narration/`): `render.ts` (deterministic pools per kind x channel,
+  play/coverage-aware lines, no-repeat window 5, < 110 chars), `beats.ts` (runs 8-0
+  unanswered + run-answered, lead changes, ties, largest lead, quarter cards with top
+  scorer + shooting split, clutch start, OT, identity lines once per quarter, game
+  winner, final), `summary.ts` + `hints.ts` (player of the game, user top/low, rule
+  table for roster notes — box stats/badges/positions only, never OVR), `context.ts`
+  (record/streak/rank as of the game day). 298 template bodies under `templates/`.
+- **UI** (`GameView.tsx`, `BoxScore.tsx`, `SeasonView.tsx`): 1x/2x/4x + pause, End =
+  result now (never interrupted), 2x/4x snap to 1x at the first clutch possession with a
+  fading "Crunchtime!" pop-up (`.crunch-pop`, reduced-motion fade), auto-scroll that
+  pauses on scroll-up, side tokens (home warm / away cool), AWAY @ HOME header with the
+  season context prop, derived per-possession clock, beat ticker, quarter strip, sortable
+  box score with starters divider / column tops / DNP toggle / totals, Summary panel.
+- **Verification**: vitest 333/333; tsc, lint (0 errors), `check:styles` 0, `next build`
+  green. Balance 500/seed 42 after everything: PPP 1.049, sd 13.1, [90,130] 87.0%, home
+  win 52.6%, margin 14.5 (the script chains games on one rng stream, so runs before/after
+  an rng change are not paired; a paired rule-off/on check over seeds 42-44 put the
+  clutch rule inside noise). Screenshots: `npx tsx scripts/theater-shot.ts` (static
+  `GameView` render with the built CSS; `PW_CHROMIUM=/opt/pw-browsers/chromium` here) —
+  crunch pop-up, feed, final box + summary, phone reviewed. In-app fixture:
+  `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1` (seeds 4 (OT), 5, 13, 17 reach crunch time).
+Gotchas: games re-simulate from their seed, so any rng-order change needs a
+`BALANCE_VERSION` bump; the D7 text fallback only matters for `legacyTheater` saves. The
+phone-landscape header takes most of the 385px screen — next mobile item is compacting it.
+
 ## How to run everything
 
 ```bash
@@ -162,24 +184,17 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (`engine_possession_model` is done but unmerged;
-`game_theater` and `card_balance` come next on the same branch; `game_canvas`, `deckbuilder_ux`, `ui_foundation` and
-earlier are done; `mobile_responsive` was folded into `game_canvas`). Owner actions outside the repo:
+What to do next is `docs/ROADMAP.md` (`engine_possession_model` and `game_theater` are
+done but unmerged; `card_balance` comes next on the same branch, then the merge;
+`game_canvas`, `deckbuilder_ux`, `ui_foundation` and earlier are done). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
 `docs/completed/review_code_and_architecture_2026-09-12.md`; the list below predates it.
 
-Item 1 below is from `docs/analytics/analysis_report.md`/`analytics_summary.md` (both
-banner-marked stale, generated by the retired `scripts/analyze_game_data.js`) —
-`docs/analytics/report_2026-09.md` is the current tool's output but has no fresh
-draft/season data yet; re-run `npm run analyze` after playing a session.
-
-1. **Offense-too-powerful / turnover-rate / synergy-frequency findings (stale)** — PPP
-   1.290, a suspected compounding per-channel edge, ~0.8% turnover rate, uneven synergy/
-   play activation. All measured against the old `gameEngine.ts`/`PLAY_EFFECTS`, which no
-   longer exist; PPP is now ≈1.05 and turnovers are 13.9% of possessions
-   (engine_possession_model). Re-run `npm run analyze` before treating as current.
+1. **Stale analytics findings** (PPP 1.29, ~0.8% turnovers, uneven activation) were
+   measured against the retired engine; PPP is ≈1.05 and turnovers 13.9% now. Re-run
+   `npm run analyze` before treating `docs/analytics/*` as current.
 2. **Cube draft duplicate bug — likely already resolved, unverified.** One early session
    log showed 113/264 unique cards; `game.db` now has 448 players (needs ≥264 for a
    duplicate-free cube) and every later session shows 264/264 unique. Worth a targeted
@@ -202,7 +217,14 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
 7. **Shipping gate**: do not open a PR or merge `claude/game-engine-card-balance-0toacl`
-   until game_theater and card_balance are complete on it (owner, 2026-09-16).
+   until game_theater (owner in-app pass) and card_balance are complete on it (owner,
+   2026-09-16). game_theater's work sits on `claude/game-theater-plan-summary-k3smz3`,
+   rebased on that branch — fast-forward it there.
+8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce
+   a depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`,
+   game 3: PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that
+   team every possession. Fix belongs in `engine/deckbuilder.ts` (bot roster must cover
+   all five slots, or the draft bot must guarantee eligibility) — `draft_ai` territory.
 
 ## Where to look
 
@@ -224,4 +246,5 @@ draft/season data yet; re-run `npm run analyze` after playing a session.
 | Original code review (2026-09-12) | `docs/completed/review_code_and_architecture_2026-09-12.md` |
 | Balance findings | `docs/analytics/analysis_report.md`, `docs/analytics/analytics_summary.md` |
 | How to regenerate a balance report | `npm run balance` (headless; `--ab`/`--catalog`/`--draft-impact` flags) or `frontend/scripts/analyze.ts` (`npm run analyze`, from a `/debug` export) |
-| Screenshotting a route | `scripts/screenshot.js` (`npm run screenshot`) |
+| Screenshotting a route | `scripts/screenshot.js` (`npm run screenshot`); the game theater without a login: `frontend/scripts/theater-shot.ts` |
+| How is a possession narrated / what are beats? | `frontend/src/narration/` (`render.ts`, `beats.ts`, `summary.ts`, `hints.ts`, `templates/`), consumed by `components/GameView.tsx` |

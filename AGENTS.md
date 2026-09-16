@@ -23,6 +23,7 @@ frontend/        The Next.js app (see frontend/README.md)
   src/storage/   GameStore interface + IndexedDB (Dexie) and in-memory backends,
                  one-time migration from the old localStorage keys.
   src/data/      cards.json — the player cards, a BUILD ARTIFACT (npm run build:cards)
+  src/narration/ PURE prose over engine events (render + templates/, beats, summary, hints)
   src/hooks/     useDraftEngine.ts (draft state machine)
   src/components/ DraftRoom, DeckBuilder, GameView, SeasonView, FranchiseDashboard,
                  TopKPIBand, DonutChart, PlayerCard, TopNav
@@ -32,7 +33,7 @@ frontend/        The Next.js app (see frontend/README.md)
   tests/         Playwright specs (visual.spec.ts, home.spec.ts, smoke.spec.ts) + win32
                  snapshots; tests/unit/ = Vitest unit tests importing the real engine
   scripts/       balance.ts (headless balance simulator, `npm run balance`),
-                 build-cards.ts (game.db -> src/data/cards.json, `npm run build:cards`)
+                 build-cards.ts (game.db -> cards.json), theater-shot.ts (GameView PNGs, no login)
 ```
 
 ## Commands
@@ -145,6 +146,5 @@ scrapes HTML -> `fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` 
   relative to cwd; disabled in production builds.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
   player cards when the player pool has at least 264 players; the pool has 448.
-- Not junk: `/test-ui` (fixture page for `visual.spec.ts`/`smoke.spec.ts`), `/debug`
-  (analytics export), `/deckbuilder-test`, `/data`, `/rosters`, `/draft`, `/season` are all
-  real, linked-from-home-page pages — see `page.tsx` and `components/TopNav.tsx`.
+- Not junk: `/test-ui` (fixture for `visual.spec.ts`/`smoke.spec.ts`), `/theater-preview`, `/debug`,
+  `/deckbuilder-test`, `/data`, `/rosters`, `/draft`, `/season` are real pages — see `page.tsx`, `TopNav.tsx`.
