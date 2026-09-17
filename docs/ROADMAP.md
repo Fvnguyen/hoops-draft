@@ -20,16 +20,14 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content, rating retune + OVR-40 floor against the new engine | in progress (baseline 2026-09-16) | engine_possession_model (merged to local main 2026-09-16, unpushed) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
-| 6 | [game_theater](plans/plan_game_theater_2026-09-13.md) — structured narration, game-flow beats, crunch time, playback, box score + summary | merged to local main 2026-09-17 (unpushed); owner in-app pass done | engine_possession_model (done, merged) | `engine/game.ts`, `src/narration/`, `GameView.tsx`, `BoxScore.tsx` | done |
+| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content, rating retune + OVR-40 floor against the new engine | in progress (T1-T3, T6 done; T4 four new plays open) | engine_possession_model (done, pushed) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
-| 9 | badge_effects — badge levels as "individual brilliance" special effects on top of the lineup model (owner 2026-09-16); not dimension mechanics | not yet planned | engine_possession_model | `engine/game.ts`, `engine/balance.ts` badge section | 1-2 days |
-| 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (new variant), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
+| 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (redesigned with per-play badge-emblem faces 2026-09-17 — build the phone variant on that, not the old generic diagram), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 
-**Shipping gate (owner, 2026-09-16):** `engine_possession_model` was fast-forwarded into
-local `main` on 2026-09-16 (`3226cf2`); `game_theater` merged to local `main` on
-2026-09-17 after an in-app UI pass. `main` is still NOT pushed (origin/main deploys to
-Vercel) — push only once `card_balance` has landed too. No PR before then.
+**Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`
+(commit `7c89111`) with `card_balance` still missing T4/T6 — the 2026-09-16 gate ("wait
+for card_balance to land before any push") did not hold. Nothing to revert; treat
+`card_balance` as still open even though it is already live.
 
 Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
 `mobile_responsive` because its tokens and primitives resolve most of the mobile
@@ -49,9 +47,9 @@ its T2/T5 numbers are re-checked once draft_ai lands. Scope sketch for #7 is pro
 
 | Plan | Completed | Outcome |
 |---|---|---|
-| [engine_possession_model](completed/plan_engine_possession_model_2026-09-16.md) | 2026-09-16 | Standardised, designed lineup aggregation (k / hole tax per dimension in one `balance.ts` table), edges centred on in-game lineups, edge 0.20/0.08 with per-side channel weights, possession battle replaced by per-possession turnovers / offensive rebounds / creator steer, shot profile from the on-court five; `--levers` table finishing 2.66 … mid 0.75; talent share 21.9% game / 49.3% season; unmerged until game_theater + card_balance; commits `ff6a59a`..`18eb277` |
-| [game_canvas](completed/plan_game_canvas_2026-09-15.md) | 2026-09-16 | Phones (coarse pointer, <1000px) render at CSS `zoom: 0.7` with `h-dvh-z` shells; Home and the draft (two rows of four) fit with no scroll, deck builder scrolls only inside columns, game/season scroll by decision; text-position + no-scroll audit rules at 780/830/1244 = 0 findings; long-press card preview (front + back + badge legend), touch tap contract (select/deselect, dock confirms), headshots via next/image + preload; supersedes `mobile_responsive`; commits `11348e4`..`f2a05bb` |
-| [deckbuilder_ux](completed/plan_deckbuilder_ux_2026-09-15.md) | 2026-09-15 | Design-first (8 signed artboards): 56px HUD band with overlay report, plays + roster as dockable sidebars, depth chart per artboard with 148px column floor, play tiles, click-to-assign through pure engine helpers; `deckbuilder.spec` at 3 tiers; mobile audit deck-builder 0/0; commits `9f036b3`..`237afff` |
+| [game_theater](completed/plan_game_theater_2026-09-13.md) | 2026-09-17 (manual override) | Structured `narrative` per event, broadcast-style play-by-play, game-flow beats, crunch time (Q4/OT closing fives, 1x snap + pop-up), full box score with season totals; 333/333 tests, `npm run balance` before/after unchanged. Closed before its own two exit criteria ran (in-app season game, legacy-season load) — T6 (removing `narrativeText`) is still open; commits `be99ef0`..`579ae51` |
+| [badge_effects](completed/plan_badge_effects_2026-09-17.md) | 2026-09-17 | Closed without a full plan — its badge-levels-as-content scope shipped inside `card_balance` T2/T3 (rarity mechanism, keystone combo conditions); the originally named "special effects on top of the lineup model" mechanic was not built and is not planned; commits `9e2910d`, `c5c034c`, `58fd82d`, `d96b96f`, `037710d` |
+| [engine_possession_model](completed/plan_engine_possession_model_2026-09-16.md) | 2026-09-16 | Standardised, designed lineup aggregation (k / hole tax per dimension in one `balance.ts` table), edges centred on in-game lineups, edge 0.20/0.08 with per-side channel weights, possession battle replaced by per-possession turnovers / offensive rebounds / creator steer, shot profile from the on-court five; `--levers` table finishing 2.66 … mid 0.75; talent share 21.9% game / 49.3% season; commits `ff6a59a`..`18eb277` |
 
 ## Model tiers used in plans
 

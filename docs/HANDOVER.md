@@ -1,4 +1,4 @@
-# Handover — 2026-09-16
+# Handover — 2026-09-17
 
 ## Current state
 
@@ -47,6 +47,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **mobile_responsive** (superseded 2026-09-15, closed 2026-09-16): audit harness + projects, manifest/icons, `OrientationGate`, `/rosters` lineup row; folded into `game_canvas`.
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
 - **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
+- **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
 
 ## game_canvas — done 2026-09-16
 
@@ -71,14 +72,13 @@ headshots via `next/image` (~22 KB WebP) with the draft room preloading the next
 Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
 (`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
 
-## engine_possession_model — done 2026-09-16 (UNMERGED: ships with game_theater + card_balance)
+## engine_possession_model — done 2026-09-16 (merged and pushed to origin/main)
 
-Plan: `docs/completed/plan_engine_possession_model_2026-09-16.md`. **Shipping gate:** the
-branch `claude/game-engine-card-balance-0toacl` is not merged to `main` (Vercel deploys
-main) until `game_theater` and `card_balance`, which depend on it, land on the same branch. Commits `ff6a59a` (lineup model), `b8c233a` (in-game
-centres), `0332b3a` (edge 0.20/0.08), `5b46e5e` (possession events), plus the lever tuning
-commit. Owner reframing that drove it: meaningful play and NBA feel, dimensions unequally
-important *by design*. What changed in the engine, all constants in `balance.ts`:
+Plan: `docs/completed/plan_engine_possession_model_2026-09-16.md`. Commits `ff6a59a`
+(lineup model), `b8c233a` (in-game centres), `0332b3a` (edge 0.20/0.08), `5b46e5e`
+(possession events), plus the lever tuning commit. Owner reframing that drove it:
+meaningful play and NBA feel, dimensions unequally important *by design*. What changed in
+the engine, all constants in `balance.ts`:
 - **Lineup model** (`engine/lineup.ts`): ratings standardised to 50 ± 15 per dimension
   (`RATING_NORM`), the five on the floor aggregated per dimension by `LINEUP_AGG` (k /
   hole floor / hole cost: playmaking k=1.5 star channel, shooting + rebounding k=0.5 by
@@ -111,51 +111,30 @@ Gotchas: `LINEUP_CENTRE`/`RATING_NORM` are regenerated constants with drift test
 ±0.5); the six-lineup numbers are pinned in `lineup.test.ts`, so retuning `LINEUP_AGG`
 means updating those expectations deliberately; the steer ranks channels by absolute
 expected points (a relative-edge version steered into mid-range).
-Next, on this branch: `game_theater` (narrate turnovers before the shot, second chances,
-the steer) and `card_balance` (ratings/OVR-40 floor against this engine); then merge.
-`badge_effects` later.
+`game_theater` and `badge_effects` are done (see below); `card_balance` (ratings/OVR-40
+floor against this engine) is the one still open.
 
-## game_theater — implemented 2026-09-16 (UNMERGED; owner in-app pass pending)
+## game_theater — done 2026-09-17 (manual override)
 
-Plan: `docs/plans/plan_game_theater_2026-09-13.md` (stays in plans/ until the owner plays
-a season game on the branch and loads an older season — the two exit criteria this
-container cannot run, every route sits behind the Supabase gate). Commits `be99ef0`
-(T1/T7), `8215a45` (T2-T4), `5f2d777` (T8), `fed411a` (T5/T9), then T6. What changed:
-- **Engine** (`game.ts`, `balance.ts`): every event carries `narrative` (kind, channel,
-  actor, assist, credited defender, called play/coverage, second chance, `steeredTo`,
-  free throws, tags) and `shots`; the box score has REB off/def, STL, BLK, FG/3P/FT
-  made-attempted, +/-. Attribution (blocks 10% of misses, steals 55% of turnovers,
-  defensive rebounds) rolls on a per-possession rng derived from the seed, so the sim
-  stream was untouched by T7 (balance byte-identical). `boxScoreThrough(theater, i)` is
-  the live box; `seasonPlayerTotals(season)` sums the human rows. Crunch time (D10):
-  `CLUTCH_WINDOW_POSS` 4 / `CLUTCH_MARGIN` 5, `isClutch` on events, closing fives with no
-  bench even under a play call; 23% of games enter Q4 clutch (300, seed 777), starters on
-  the floor inside it 5.00 (was 3.5). The engine produces no prose any more (T6);
-  `narrativeText` survives only on legacy theaters. `BALANCE_VERSION` 7.
-- **Narration** (`src/narration/`): `render.ts` (deterministic pools per kind x channel,
-  play/coverage-aware lines, no-repeat window 5, < 110 chars), `beats.ts` (runs 8-0
-  unanswered + run-answered, lead changes, ties, largest lead, quarter cards with top
-  scorer + shooting split, clutch start, OT, identity lines once per quarter, game
-  winner, final), `summary.ts` + `hints.ts` (player of the game, user top/low, rule
-  table for roster notes — box stats/badges/positions only, never OVR), `context.ts`
-  (record/streak/rank as of the game day). 298 template bodies under `templates/`.
-- **UI** (`GameView.tsx`, `BoxScore.tsx`, `SeasonView.tsx`): 1x/2x/4x + pause, End =
-  result now (never interrupted), 2x/4x snap to 1x at the first clutch possession with a
-  fading "Crunchtime!" pop-up (`.crunch-pop`, reduced-motion fade), auto-scroll that
-  pauses on scroll-up, side tokens (home warm / away cool), AWAY @ HOME header with the
-  season context prop, derived per-possession clock, beat ticker, quarter strip, sortable
-  box score with starters divider / column tops / DNP toggle / totals, Summary panel.
-- **Verification**: vitest 333/333; tsc, lint (0 errors), `check:styles` 0, `next build`
-  green. Balance 500/seed 42 after everything: PPP 1.049, sd 13.1, [90,130] 87.0%, home
-  win 52.6%, margin 14.5 (the script chains games on one rng stream, so runs before/after
-  an rng change are not paired; a paired rule-off/on check over seeds 42-44 put the
-  clutch rule inside noise). Screenshots: `npx tsx scripts/theater-shot.ts` (static
-  `GameView` render with the built CSS; `PW_CHROMIUM=/opt/pw-browsers/chromium` here) —
-  crunch pop-up, feed, final box + summary, phone reviewed. In-app fixture:
-  `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1` (seeds 4 (OT), 5, 13, 17 reach crunch time).
-Gotchas: games re-simulate from their seed, so any rng-order change needs a
-`BALANCE_VERSION` bump; the D7 text fallback only matters for `legacyTheater` saves. The
-phone-landscape header takes most of the 385px screen — next mobile item is compacting it.
+Plan: `docs/completed/plan_game_theater_2026-09-13.md`. Closed by owner override before
+its own two exit criteria ran (an in-app season game with a close finish, and loading a
+season saved before this plan) — run both when convenient; if either turns up a bug, the
+fix is scoped to this feature, not a new plan. T6 (removing `narrativeText` once those
+pass) was skipped for the same reason and is still open: `engine/game.ts` still emits it,
+`narration/render.ts` still falls back to it (D7).
+What shipped (commits `be99ef0`, `8215a45`, `5f2d777`, `fed411a`, `579ae51`): every event
+carries a structured `narrative` (kind, channel, actor, assist, credited defender, called
+play/coverage, second chance, `steeredTo`) that `src/narration/` renders into
+broadcast-style play-by-play (298 template bodies, no-repeat window 5), game-flow beats
+(runs, lead changes, quarter cards, identity lines), crunch time (Q4/OT closing fives,
+1x-snap + "Crunchtime!" pop-up, 23% of games enter it), and a full box score (REB off/
+def, STL, BLK, FG/3P/FT, +/-, season totals) with a completion Summary (player of the
+game, two data-backed hints, never OVR). Attribution rolls on a derived rng so the sim
+stream is untouched. Verified: 333/333 tests, tsc/lint/`check:styles` clean, `npm run
+balance -- 500 --seed 42` before/after unchanged; screenshots via `theater-shot.ts`,
+in-app fixture `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
+Gotchas: any rng-order change needs a `BALANCE_VERSION` bump; the phone-landscape header
+takes most of the 385px screen — next mobile item is compacting it.
 
 ## How to run everything
 
@@ -178,9 +157,9 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (`engine_possession_model` and `game_theater` are
-done but unmerged; `card_balance` comes next on the same branch, then the merge;
-`game_canvas`, `deckbuilder_ux`, `ui_foundation` and earlier are done). Owner actions outside the repo:
+What to do next is `docs/ROADMAP.md` (`card_balance` is the only in-progress plan — T4,
+four new plays, is the one open task; everything else through `game_theater` and
+`badge_effects` is done). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
@@ -210,10 +189,10 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
-7. **Shipping gate**: do not open a PR or merge `claude/game-engine-card-balance-0toacl`
-   until game_theater (owner in-app pass) and card_balance are complete on it (owner,
-   2026-09-16). game_theater's work sits on `claude/game-theater-plan-summary-k3smz3`,
-   rebased on that branch — fast-forward it there.
+7. **Shipping gate — already crossed.** `main` was pushed to `origin/main` on 2026-09-17
+   (commit `7c89111`) with `card_balance` still missing T4 — the 2026-09-16 gate ("wait
+   for card_balance to land before any push") did not hold. Nothing to revert; just
+   don't treat card_balance as finished because it's live.
 8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce
    a depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`,
    game 3: PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that
