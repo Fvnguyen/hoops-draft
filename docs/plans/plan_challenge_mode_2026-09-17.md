@@ -28,10 +28,11 @@ D2. **Theme.** Challenge routes are dark (`surface-inverse-deep` shell, Bebas di
     a gold "82:0" header badge marks a challenge session. Rename scope: home button and
     SeasonView title only.
 D3. **Opponents.** Pure `buildNbaTeamRoster(cards, teamAbbr)`: top 15 by OVR on `player.team`
-    into `buildBotRoster` with the full play catalog (so it picks the best 3 staffable plays
-    + `chooseBotArchetypes`), trimmed to 12; any empty depth-chart slot is backfilled
-    regardless of position (MEM is the one team that hits this; four-on-five is unacceptable).
-    Fix `PHX/CHA/BKN` vs `PHO/CHO/BRK` in `cardColors.ts` first.
+    into `buildBotRoster` with the full play catalog (best 3 staffable plays +
+    `chooseBotArchetypes`), trimmed to 12; any empty depth-chart slot is backfilled regardless
+    of position (MEM is the one team that hits this). Fix `PHX/CHA/BKN` vs `PHO/CHO/BRK` in
+    `cardColors.ts` first. NBA rosters are LOCKED IN (owner, 2026-09-17): a drafted Luka faces
+    Lakers Luka, so `simulateGame` keys box stats by side + id.
 D4. **Schedule and seeds.** 30 teams shuffled by the run seed, sequence repeated 3x, first
     82 taken; user is home on even indices. Every game's seed is derived from
     (run seed, game index) and the trade pack from (run seed, 'trade'), never from a shared
@@ -88,8 +89,7 @@ new pack artwork.
 T1 (top). DONE. `scripts/challenge-sim.ts` = `npm run challenge [drafts] [--seed N] [--sweep]`.
 T2 (top). DONE, less the ghost run (moved to T8, which consumes it): `engine/challenge.ts`,
 `balance.ts` constants, the `cardColors.ts` fix, and `engine/plays.ts` — the play catalog left
-`DraftRoom.tsx` for a pure module (opponents need it at runtime; the engine may not import
-components). 21 tests.
+`DraftRoom.tsx` for a pure module (the engine may not import components). 25 tests.
 T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 25 tests incl. the
 no-rating/no-record scan. OPEN: four factors are offense-only — board 4's defensive
 rebound-rate line needs opponent totals kept in `simulateHalf`. Owner decision pending.
@@ -113,7 +113,7 @@ exports of the signed boards.
 
 ## T1 calibration (measured 2026-09-17)
 
-`npm run challenge 40 --seed 42 --sweep`; "best seat" = highest starter-five OVR of the eight.
+`npm run challenge 40 --seed 42 --sweep`; "best seat" = best starter-five OVR of the eight.
 
 | effScale / maxShift | all mean | best median | best p90 | best A+ | best S |
 |---|---|---|---|---|---|
@@ -121,12 +121,12 @@ exports of the signed boards.
 | **0.50 / 0.20 (chosen)** | **47.8** | **63** | **72** | **12.5%** | **0%** |
 | 0.90 / 0.36 | 49.4 | 68 | 77 | 30.0% | 2.5% |
 
-Confirmation, `npm run challenge 250 --seed 7` (2,000 seat-seasons): best seat mean 60.0,
-median 60, p90 70, max 78, A+ 8.8%, S 0/250; wins fall monotonically by seat rank (#1 60.0 ->
-#8 32.3), so the draft decides the run. Two gaps against D5 — the top decile lands at 70, not
-72, and S never appeared where the target was "one in hundreds" — but both are measured
-WITHOUT the front office, which only adds wins. Tuning until S appeared in the sim would make
-it too common in the product, so 0.50/0.20 stands; T7/T8 re-measure with the trade in.
+Confirmation, `npm run challenge 250 --seed 7` (2,000 seat-seasons), re-run identical after the
+box-score fix: best seat mean 60.0, median 60, p90 70, max 78, A+ 8.8%, S 0/250; wins fall
+monotonically by seat rank (#1 60.0 -> #8 32.3), so the draft decides the run. Two gaps against
+D5 — the top decile lands at 70 not 72, and S never appeared where the target was "one in
+hundreds" — but both are measured WITHOUT the front office, which only adds wins, so 0.50/0.20
+stands and T7/T8 re-measure with the trade in place.
 
 ## Parallelization
 
