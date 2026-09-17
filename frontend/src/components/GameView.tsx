@@ -446,7 +446,14 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
     for (let i = from; i <= currentPoss && i < totalPoss; i++) {
       const e = game.possessions[i];
       out.push({ key: `p${i}`, kind: 'poss', event: e, text: texts[i] ?? e.narrativeText, clock: clocks[i] });
-      for (const b of beatsByIndex.get(i) ?? []) out.push({ key: `b${i}-${b.type}`, kind: 'beat', beat: b, text: renderBeat(b, game) });
+      // card_balance narration fix (2026-09-17): keyed by type alone, home and away
+      // identity beats at the same quarter share one atIndex — same key, so React's
+      // keyed reconciliation of this sliding window could strand duplicate DOM nodes
+      // as it scrolled (worse at higher playback speed, more re-renders per second).
+      // Include the position within this index's beat list so every key is unique.
+      (beatsByIndex.get(i) ?? []).forEach((b, bi) => {
+        out.push({ key: `b${i}-${bi}-${b.type}`, kind: 'beat', beat: b, text: renderBeat(b, game) });
+      });
     }
     return out;
   }, [game, currentPoss, totalPoss, texts, clocks, beatsByIndex]);
