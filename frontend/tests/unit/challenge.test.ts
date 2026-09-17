@@ -240,6 +240,39 @@ describe('simulateHalf (D7)', () => {
   });
 });
 
+describe('the ghost half (D10)', () => {
+  // The results screen's dashed line: the same 41 seeds replayed with the pre-deadline
+  // roster, so "the trade was worth +N wins" is a real counterfactual and not a guess.
+  const opponents = buildNbaTeams(players, PLAY_CATALOG);
+  const seats = runHeadlessDraft(players, PLAY_CATALOG, 4242);
+  const teamA = buildTeams(seats)[0];
+  const teamB = buildTeams(seats)[1];
+  const schedule = buildChallengeSchedule(909);
+
+  it('replays the identical schedule and seeds for a different roster', () => {
+    const real = simulateHalf(teamA, opponents, schedule, 2, 909);
+    const ghost = simulateHalf(teamB, opponents, schedule, 2, 909);
+    expect(ghost.games.map((g) => g.seed)).toEqual(real.games.map((g) => g.seed));
+    expect(ghost.games.map((g) => g.opponent)).toEqual(real.games.map((g) => g.opponent));
+    expect(ghost.games.map((g) => g.isHome)).toEqual(real.games.map((g) => g.isHome));
+    // Different rosters over the same seeds must actually diverge, or the ghost says nothing.
+    expect(ghost.results).not.toBe(real.results);
+  });
+
+  it('is deterministic, so the verdict never changes between visits', () => {
+    const a = simulateHalf(teamB, opponents, schedule, 2, 909);
+    const b = simulateHalf(teamB, opponents, schedule, 2, 909);
+    expect(b.results).toBe(a.results);
+    expect(b.wins).toBe(a.wins);
+  });
+
+  it('an unchanged roster reproduces the real half exactly (so the UI can skip it)', () => {
+    const real = simulateHalf(teamA, opponents, schedule, 2, 909);
+    const same = simulateHalf(teamA, opponents, schedule, 2, 909);
+    expect(same.results).toBe(real.results);
+  });
+});
+
 describe('trade pack (D9)', () => {
   const owned = new Set(players.slice(0, 12).map((p) => p.id));
 

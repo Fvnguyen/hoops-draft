@@ -154,7 +154,21 @@ export default function ChallengePage() {
         const source = needsHalf === 2 ? (run.rosterPost ?? run.rosterPre) : run.rosterPre;
         const userTeam = buildTeamInfo(seatFromRoster(source), true, source.name || 'Your team');
         const half = simulateHalf(userTeam, opponents, schedule, needsHalf, run.seed);
-        void commit({ ...run, halves: [...run.halves, half] });
+
+        // D10's ghost: the SAME 41 seeds replayed with the roster as it stood at the
+        // deadline, so the results screen can say what the trade and the lineup edits were
+        // actually worth. Only meaningful when the roster changed — with no edit the ghost
+        // would be the real run, and a dashed line lying exactly on top of the solid one
+        // reads as a bug rather than as "you changed nothing".
+        const changed = needsHalf === 2 && run.rosterPost && run.rosterPost !== run.rosterPre;
+        const ghost = changed
+          ? simulateHalf(
+              buildTeamInfo(seatFromRoster(run.rosterPre), true, run.rosterPre.name || 'Your team'),
+              opponents, schedule, 2, run.seed,
+            )
+          : undefined;
+
+        void commit({ ...run, halves: [...run.halves, half], ...(ghost ? { ghost } : {}) });
       } catch (err) {
         console.error('Challenge simulation failed:', err);
         setError('The season could not be simulated for this roster.');
