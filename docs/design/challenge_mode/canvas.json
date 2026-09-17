@@ -1,0 +1,25 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-09-17T18:00:00Z" },
+  "title": "82:0 Challenge Mode",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Home.dc.html": { "x": 0, "y": 0, "w": 1280, "h": 720, "title": "1a Start page (click a mode)", "is_interactive": true },
+    "HomePickTournament.dc.html": { "x": 1360, "y": 0, "w": 1280, "h": 720, "title": "1b Tournament picked, cream option cards" },
+    "HomePickChallenge.dc.html": { "x": 2720, "y": 0, "w": 1280, "h": 720, "title": "1c 82:0 picked, dark option cards" },
+    "ReelStart.dc.html": { "x": 0, "y": 840, "w": 1280, "h": 720, "title": "2 Reel, first week (readable)" },
+    "ReelBlur.dc.html": { "x": 1360, "y": 840, "w": 1280, "h": 720, "title": "3 Reel, full speed (sealed)" },
+    "FrontOffice.dc.html": { "x": 2720, "y": 840, "w": 1280, "h": 720, "title": "4 Front office, pace band + quotes", "is_interactive": true },
+    "Trade.dc.html": { "x": 0, "y": 1680, "w": 1280, "h": 720, "title": "5 Trade deadline" },
+    "ReelFinal.dc.html": { "x": 1360, "y": 1680, "w": 1280, "h": 720, "title": "6 Reel, final stretch (readable again)" },
+    "Results.dc.html": { "x": 2720, "y": 1680, "w": 1280, "h": 720, "title": "7 Results" },
+    "Main.dc.html": { "x": 0, "y": 2820, "w": 1280, "h": 720, "title": "Backlog: limited-style mode picker (not in this plan)" }
+  },
+  "order": ["Home.dc.html", "HomePickTournament.dc.html", "HomePickChallenge.dc.html", "ReelStart.dc.html", "ReelBlur.dc.html", "FrontOffice.dc.html", "Trade.dc.html", "ReelFinal.dc.html", "Results.dc.html", "Main.dc.html"],
+  "notes": {
+    "flow": { "x": 0, "y": -300, "text": "82:0 Challenge: two spins, one deadline", "kind": "title1", "maxW": 4000 },
+    "backlog": { "x": 0, "y": 2520, "text": "Backlog", "kind": "title1", "maxW": 1280 }
+  },
+  "designSystems": []
+}

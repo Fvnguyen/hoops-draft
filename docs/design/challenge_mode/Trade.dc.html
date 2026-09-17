@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #fafaf9; }
+    a { color: #fbbf24; } a:hover { color: #f59e0b; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #0c0a09; display: flex; flex-direction: column;">
+
+  <div style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; border-bottom: 1px solid #292524; display: flex; align-items: center; gap: 16px;">
+    <a href="FrontOffice.dc.html" aria-label="Back to the front office" style="width: 44px; height: 44px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; color: #a8a29e;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <div style="font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: #fbbf24;">Trade deadline</div>
+    <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e;">One out, one in</div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; gap: 24px; padding: 24px; box-sizing: border-box; min-height: 0;">
+
+    <!-- step 1: who goes. Season averages and plus-minus only, never ratings -->
+    <div style="width: 380px; flex-shrink: 0; box-sizing: border-box; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden;">
+      <div style="padding: 16px 16px 10px; display: flex; align-items: baseline; gap: 8px;">
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">1 &middot; Who goes</div>
+        <div style="flex-grow: 1;"></div>
+        <div style="font-size: 12px; font-weight: 700; color: #78716c;">MIN &nbsp; PTS &nbsp; +/-</div>
+      </div>
+      <div style="display: flex; flex-direction: column;">
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">PG</span><span style="flex-grow: 1; font-weight: 700;">T. Haliburton</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">34 &nbsp; 19.2 &nbsp; +6.8</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">SG</span><span style="flex-grow: 1; font-weight: 700;">D. Mitchell</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">33 &nbsp; 24.1 &nbsp; +5.2</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">SF</span><span style="flex-grow: 1; font-weight: 700;">M. Bridges</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">32 &nbsp; 14.6 &nbsp; +3.9</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">PF</span><span style="flex-grow: 1; font-weight: 700;">P. Siakam</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">31 &nbsp; 17.3 &nbsp; +4.4</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">C</span><span style="flex-grow: 1; font-weight: 700;">N. Claxton</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">27 &nbsp; 10.1 &nbsp; +1.0</span></div>
+        <div style="height: 1px; background: #292524;"></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">SG</span><span style="flex-grow: 1; font-weight: 700;">R. Sheppard</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">18 &nbsp; 13.8 &nbsp; +2.7</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px; background: #451a03; box-shadow: inset 3px 0 0 #fbbf24;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #fbbf24;">PG</span><span style="flex-grow: 1; font-weight: 700;">T. Jones</span><span style="width: 120px; text-align: right; color: #fbbf24; font-variant-numeric: tabular-nums;">16 &nbsp; 5.4 &nbsp; -4.1</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px;"><span style="width: 24px; font-size: 12px; font-weight: 900; color: #78716c;">C</span><span style="flex-grow: 1; font-weight: 700;">I. Zubac</span><span style="width: 120px; text-align: right; color: #a8a29e; font-variant-numeric: tabular-nums;">21 &nbsp; 9.0 &nbsp; +3.1</span></div>
+        <div style="height: 44px; padding: 0 16px; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #78716c;"><span style="flex-grow: 1;">4 more in the rotation</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="padding: 14px 16px; border-top: 1px solid #292524; font-size: 12px; line-height: 1.45; color: #a8a29e;">Outgoing: <span style="color: #fafaf9; font-weight: 700;">T. Jones</span>, an Uncommon. The pack leans toward the rarity you give up.</div>
+    </div>
+
+    <!-- step 2: the trade pack, five offers, gold trim on the existing pack art -->
+    <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; border: 1px solid #b45309; border-radius: 12px; background: #1c1917; box-shadow: inset 0 0 0 3px #0c0a09, inset 0 0 0 4px #fbbf24; display: flex; flex-direction: column; padding: 20px 24px; gap: 16px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">2 &middot; Five offers on the table</div>
+        <div style="flex-grow: 1;"></div>
+        <div style="font-size: 12px; font-weight: 700; color: #78716c;">Pick one. The other four walk.</div>
+      </div>
+
+      <div style="flex-grow: 1; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: center;">
+
+        <div style="height: 300px; box-sizing: border-box; border-radius: 12px; background: #292524; border: 1px solid #44403c; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 150px; background: #0e7490; display: flex; align-items: flex-start; justify-content: space-between; padding: 10px; box-sizing: border-box;"><span style="font-size: 12px; font-weight: 900; color: #ffffff;">C</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l6 7-6 7-6-7z" fill="#a8a29e" stroke="#ffffff" stroke-width="1"></path></svg></div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 14px; font-weight: 900;">M. Williams</div><div style="font-size: 12px; color: #a8a29e;">CHO &middot; Common</div><div style="font-size: 12px; font-weight: 700; color: #d6d3d1; font-variant-numeric: tabular-nums;">11.2 PTS &middot; 9.8 REB</div></div>
+        </div>
+
+        <div style="height: 300px; box-sizing: border-box; border-radius: 12px; background: #292524; border: 1px solid #44403c; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 150px; background: #7c2d12; display: flex; align-items: flex-start; justify-content: space-between; padding: 10px; box-sizing: border-box;"><span style="font-size: 12px; font-weight: 900; color: #ffffff;">SF</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l6 7-6 7-6-7z" fill="#94a3b8" stroke="#ffffff" stroke-width="1"></path></svg></div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 14px; font-weight: 900;">R. O'Neale</div><div style="font-size: 12px; color: #a8a29e;">PHO &middot; Uncommon</div><div style="font-size: 12px; font-weight: 700; color: #d6d3d1; font-variant-numeric: tabular-nums;">9.1 PTS &middot; 40% 3P</div></div>
+        </div>
+
+        <!-- the picked offer: lifted, amber ring -->
+        <div style="height: 324px; box-sizing: border-box; border-radius: 12px; background: #292524; border: 2px solid #fbbf24; box-shadow: 0 12px 32px rgba(251,191,36,0.25); display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 162px; background: #1e3a8a; display: flex; align-items: flex-start; justify-content: space-between; padding: 10px; box-sizing: border-box;"><span style="font-size: 12px; font-weight: 900; color: #ffffff;">C</span><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l6 7-6 7-6-7z" fill="#fbbf24" stroke="#ffffff" stroke-width="1"></path></svg></div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 14px; font-weight: 900;">R. Gobert</div><div style="font-size: 12px; color: #fbbf24;">MIN &middot; Rare</div><div style="font-size: 12px; font-weight: 700; color: #d6d3d1; font-variant-numeric: tabular-nums;">12.0 PTS &middot; 12.4 REB</div><div style="margin-top: 6px; font-size: 12px; font-weight: 700; color: #34d399;">Answers the coach</div></div>
+        </div>
+
+        <div style="height: 300px; box-sizing: border-box; border-radius: 12px; background: #292524; border: 1px solid #44403c; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 150px; background: #14532d; display: flex; align-items: flex-start; justify-content: space-between; padding: 10px; box-sizing: border-box;"><span style="font-size: 12px; font-weight: 900; color: #ffffff;">PG</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l6 7-6 7-6-7z" fill="#94a3b8" stroke="#ffffff" stroke-width="1"></path></svg></div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 14px; font-weight: 900;">P. Pritchard</div><div style="font-size: 12px; color: #a8a29e;">BOS &middot; Uncommon</div><div style="font-size: 12px; font-weight: 700; color: #d6d3d1; font-variant-numeric: tabular-nums;">14.3 PTS &middot; 41% 3P</div></div>
+        </div>
+
+        <div style="height: 300px; box-sizing: border-box; border-radius: 12px; background: #292524; border: 1px solid #44403c; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="height: 150px; background: #581c87; display: flex; align-items: flex-start; justify-content: space-between; padding: 10px; box-sizing: border-box;"><span style="font-size: 12px; font-weight: 900; color: #ffffff;">PF</span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l6 7-6 7-6-7z" fill="#a8a29e" stroke="#ffffff" stroke-width="1"></path></svg></div>
+          <div style="padding: 10px; display: flex; flex-direction: column; gap: 4px;"><div style="font-size: 14px; font-weight: 900;">K. Ellis</div><div style="font-size: 12px; color: #a8a29e;">SAC &middot; Common</div><div style="font-size: 12px; font-weight: 700; color: #d6d3d1; font-variant-numeric: tabular-nums;">8.3 PTS &middot; 1.5 STL</div></div>
+        </div>
+
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-size: 13px; color: #a8a29e;">R. Gobert takes T. Jones's bench spot. Put him in the lineup yourself before the second half.</div>
+        <div style="flex-grow: 1;"></div>
+        <a href="FrontOffice.dc.html" style="height: 52px; padding: 0 28px; border-radius: 8px; background: #d97706; display: inline-flex; align-items: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; text-decoration: none; white-space: nowrap;">Confirm trade</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

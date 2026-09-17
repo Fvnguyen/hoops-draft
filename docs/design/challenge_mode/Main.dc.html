@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #292524; }
+    a { color: #d97706; } a:hover { color: #b45309; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #f5f0ea; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; padding: 48px;">
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+    <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #78716c;">Roster saved</div>
+    <h1 style="margin: 0; font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 1; letter-spacing: 0.02em; color: #1c1917;">Where does this team play?</h1>
+  </div>
+
+  <div style="display: flex; gap: 24px; align-items: stretch;">
+
+    <!-- Round robin: the existing mode, unchanged -->
+    <div style="width: 440px; box-sizing: border-box; padding: 32px; background: #ffffff; border: 1px solid #e7e5e4; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #78716c;">Draft league</div>
+      <div style="font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 1; color: #1c1917;">Round Robin Season</div>
+      <div style="font-size: 15px; line-height: 1.5; color: #57534e;">Seven games against the seven teams from your draft table. Watch every possession in the game theater.</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 700; color: #78716c;">
+        <div>7 games, watched one by one</div>
+        <div>Full play-by-play and box scores</div>
+        <div>Standings against your draft rivals</div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <button style="height: 52px; border-radius: 8px; border: 1px solid #d6d3d1; background: #ffffff; font-family: inherit; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #1c1917; cursor: pointer;">Play season</button>
+    </div>
+
+    <!-- 82:0 Challenge: the new mode -->
+    <div style="width: 440px; box-sizing: border-box; padding: 32px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Against the real NBA</div>
+      <div style="display: flex; align-items: baseline; gap: 12px;">
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 72px; line-height: 0.9; color: #fafaf9;">82:0</div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 32px; line-height: 1; color: #a8a29e;">Challenge</div>
+      </div>
+      <div style="font-size: 15px; line-height: 1.5; color: #d6d3d1;">One 82-game season against all 30 NBA rosters. Two spins of the reel, one trade deadline in between, one final grade.</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 700; color: #a8a29e;">
+        <div>About 4 minutes, no single-game screens</div>
+        <div>One trade and a lineup reset at the All-Star break</div>
+        <div>Graded from Tanking to Immortal</div>
+      </div>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 8px;">
+        <button style="flex-grow: 1; height: 52px; border-radius: 8px; border: 0; background: #d97706; font-family: inherit; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; cursor: pointer;">Start the season</button>
+        <button style="height: 52px; padding: 0 16px; border-radius: 8px; border: 1px solid #44403c; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #d6d3d1; cursor: pointer;">Enter seed</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #fafaf9; }
+    a { color: #fbbf24; } a:hover { color: #f59e0b; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #0c0a09; display: flex; flex-direction: column;">
+
+  <div style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; border-bottom: 1px solid #292524; display: flex; align-items: center; gap: 16px;">
+    <div style="font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: #fbbf24;">82:0</div>
+    <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e;">All-Star break &middot; 41 games played &middot; trade deadline</div>
+    <div style="flex-grow: 1;"></div>
+    <!-- the record stays sealed: same flaps, still spinning, shrunk into the header -->
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="font-size: 12px; font-weight: 700; color: #78716c;">Record sealed</div>
+      <div style="display: flex; align-items: center; gap: 3px;">
+        <div style="position: relative; width: 22px; height: 30px; border-radius: 4px; background: #1c1917; border: 1px solid #44403c; overflow: hidden;"><span style="position: absolute; left: 0; right: 0; top: 0; text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 30px; color: #fafaf9; filter: blur(3px); opacity: 0.5;">2</span></div>
+        <div style="position: relative; width: 22px; height: 30px; border-radius: 4px; background: #1c1917; border: 1px solid #44403c; overflow: hidden;"><span style="position: absolute; left: 0; right: 0; top: 0; text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 30px; color: #fafaf9; filter: blur(3px); opacity: 0.5;">8</span></div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 24px; line-height: 1; color: #57534e;">:</div>
+        <div style="position: relative; width: 22px; height: 30px; border-radius: 4px; background: #1c1917; border: 1px solid #44403c; overflow: hidden;"><span style="position: absolute; left: 0; right: 0; top: 0; text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 30px; color: #fafaf9; filter: blur(3px); opacity: 0.5;">1</span></div>
+        <div style="position: relative; width: 22px; height: 30px; border-radius: 4px; background: #1c1917; border: 1px solid #44403c; overflow: hidden;"><span style="position: absolute; left: 0; right: 0; top: 0; text-align: center; font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 30px; color: #fafaf9; filter: blur(3px); opacity: 0.5;">6</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px; padding: 0 64px;">
+
+    <!-- ============ variant: a normal pace, things to fix ============ -->
+    <sc-if value="{{ isContender }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #78716c;">On pace for</div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 1; color: #fafaf9;">Contender <span style="color: #78716c;">to</span> Dynasty</div>
+        <div style="width: 1000px; display: flex; gap: 4px;">
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">F <span style="font-weight: 500;">Tanking</span></div></div>
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">D <span style="font-weight: 500;">Lottery</span></div></div>
+          <div style="flex: 7 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">C <span style="font-weight: 500;">Playoff</span></div></div>
+          <div style="flex: 5 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #fbbf24;"></div><div style="font-size: 12px; font-weight: 900; color: #fbbf24;">B <span style="font-weight: 500;">Contender</span></div></div>
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #fbbf24;"></div><div style="font-size: 12px; font-weight: 900; color: #fbbf24;">A <span style="font-weight: 500;">Dynasty</span></div></div>
+          <div style="flex: 8 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">A+ <span style="font-weight: 500;">Historic</span></div></div>
+          <div style="flex: 3 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">S</div></div>
+        </div>
+      </div>
+
+      <div style="width: 1152px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Coach</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #292524; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #d6d3d1;">Lineup</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;We get killed on the glass. Every miss is a second chance for them. Start a real rebounder at the five.&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">Opponents rebound 31% of their misses against you. League average is 25%.</div>
+        </div>
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Owner</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #292524; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #d6d3d1;">Trade</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;Your backup point guard has been on the floor for our worst stretches. Move him while he still has value.&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">Lowest plus-minus per game in the rotation: T. Jones, -4.1 in 16 minutes.</div>
+        </div>
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Fans</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #292524; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #d6d3d1;">Lineup</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;FREE SHEPPARD. The kid scores every time he touches it and he is stuck behind a guy shooting 29% from three.&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">R. Sheppard: 13.8 points in 18 minutes off the bench, best scoring rate on the roster.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ============ variant: the pace is already historic, everyone says hold ============ -->
+    <sc-if value="{{ isHistoric }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #78716c;">On pace for</div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 64px; line-height: 1; color: #fafaf9;">Historic <span style="color: #78716c;">to</span> Perfect</div>
+        <div style="width: 1000px; display: flex; gap: 4px;">
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">F <span style="font-weight: 500;">Tanking</span></div></div>
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">D <span style="font-weight: 500;">Lottery</span></div></div>
+          <div style="flex: 7 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">C <span style="font-weight: 500;">Playoff</span></div></div>
+          <div style="flex: 5 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">B <span style="font-weight: 500;">Contender</span></div></div>
+          <div style="flex: 10 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #292524;"></div><div style="font-size: 12px; font-weight: 900; color: #57534e;">A <span style="font-weight: 500;">Dynasty</span></div></div>
+          <div style="flex: 8 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #fbbf24;"></div><div style="font-size: 12px; font-weight: 900; color: #fbbf24;">A+ <span style="font-weight: 500;">Historic</span></div></div>
+          <div style="flex: 3 1 0; display: flex; flex-direction: column; gap: 6px;"><div style="height: 14px; border-radius: 4px; background: #fbbf24;"></div><div style="font-size: 12px; font-weight: 900; color: #fbbf24;">S</div></div>
+        </div>
+      </div>
+
+      <div style="width: 1152px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Coach</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #064e3b; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #34d399;">Hold</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;Do not touch my rotation. I mean it. Whatever this is, it is working.&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">Top five in the league in both points scored and points allowed per game.</div>
+        </div>
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Owner</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #064e3b; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #34d399;">Hold</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;I am already planning the parade route. The deadline can pass. Do nothing.&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">Pace band starts at Historic. A trade is a gamble on a roster that is not losing.</div>
+        </div>
+        <div style="box-sizing: border-box; padding: 20px; background: #1c1917; border: 1px solid #44403c; border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">Fans</div>
+            <div style="flex-grow: 1;"></div>
+            <div style="height: 24px; padding: 0 10px; border-radius: 999px; background: #292524; display: flex; align-items: center; font-size: 12px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: #d6d3d1;">Trade</div>
+          </div>
+          <div style="font-size: 17px; line-height: 1.4; font-weight: 500; color: #fafaf9;">&ldquo;Greedy take: the twelfth man has not played in a month. Flip him for a lottery ticket. What is the downside?&rdquo;</div>
+          <div style="flex-grow: 1;"></div>
+          <div style="font-size: 12px; line-height: 1.4; color: #a8a29e;">K. Looney: 3 minutes per game, last in the rotation.</div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <!-- action bar -->
+  <div style="height: 84px; flex-shrink: 0; box-sizing: border-box; padding: 0 64px; border-top: 1px solid #292524; display: flex; align-items: center; gap: 12px;">
+    <button style="height: 52px; padding: 0 20px; border-radius: 8px; border: 1px solid #44403c; background: transparent; font-family: inherit; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #fafaf9; cursor: pointer;">Adjust lineup and plays</button>
+    <a href="Trade.dc.html" style="height: 52px; padding: 0 20px; border-radius: 8px; border: 1px solid #fbbf24; display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #fbbf24; text-decoration: none;">Make a trade <span style="height: 22px; padding: 0 8px; border-radius: 999px; background: #451a03; display: inline-flex; align-items: center; font-size: 12px;">1 left</span></a>
+    <div style="flex-grow: 1;"></div>
+    <div style="font-size: 13px; color: #78716c;">Both are optional. Changes apply to games 42 to 82.</div>
+    <a href="ReelFinal.dc.html" style="height: 52px; padding: 0 28px; border-radius: 8px; background: #d97706; display: inline-flex; align-items: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; text-decoration: none;">Spin the second half</a>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"pace":{"editor":"enum","options":["contender","historic"],"default":"contender"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const pace = this.props.pace ?? 'contender';
+    return { isContender: pace !== 'historic', isHistoric: pace === 'historic' };
+  }
+}
+</script>
+</body>
+</html>

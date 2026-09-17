@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #fafaf9; }
+    a { color: #fbbf24; } a:hover { color: #f59e0b; }
+    .arena { background-image: url(/_blob/ea480af06bc935a34c2c9cdbef7c9d98); background-size: cover; background-position: center; }
+  </style>
+</helmet>
+<div style="position: relative; width: 1280px; height: 720px; box-sizing: border-box; background: #0c0a09; overflow: hidden;">
+
+  <!-- existing home background: arena photo + the two darkening gradients -->
+  <div class="arena" style="position: absolute; inset: 0;"></div>
+  <div style="position: absolute; inset: 0; background: linear-gradient(to top, #0c0a09, rgba(28,25,23,0.6), rgba(12,10,9,0.4));"></div>
+  <div style="position: absolute; inset: 0; background: linear-gradient(to right, #0c0a09, transparent, rgba(12,10,9,0.8));"></div>
+
+  <div style="position: absolute; inset: 0; box-sizing: border-box; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+
+    <!-- LEFT: menu. Two mode buttons replace Premier / Quick -->
+    <div style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 40px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'Bebas Neue', sans-serif; font-style: italic; font-size: 72px; line-height: 1; color: #fafaf9; text-shadow: 0 4px 4px rgba(0,0,0,0.8);">HOOPS DRAFT</div>
+        <div style="font-size: 20px; font-weight: 900; font-style: italic; letter-spacing: 0.25em; color: #f59e0b;">ALL-STARS</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+
+        <!-- In-Season Tournament: the cream mode -->
+        <button onClick="{{ pickTournament }}" style="position: relative; width: 100%; min-height: 76px; box-sizing: border-box; padding: 14px 24px; border-radius: 4px; border: 1px solid #d97706; background: #f5f0ea; box-shadow: 0 0 25px rgba(234,179,8,0.25); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; font-family: inherit; cursor: pointer; opacity: {{ tournamentOpacity }};">
+          <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #d97706;"></span>
+          <span style="font-size: 20px; font-weight: 900; font-style: italic; letter-spacing: 0.05em; color: #1c1917;">IN-SEASON TOURNAMENT</span>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #78716c;">7 games vs your draft table &middot; watch them all</span>
+        </button>
+
+        <!-- 82:0 Challenge: the dark mode -->
+        <button onClick="{{ pickChallenge }}" style="position: relative; width: 100%; min-height: 76px; box-sizing: border-box; padding: 14px 24px; border-radius: 4px; border: 1px solid #fbbf24; background: #0c0a09; box-shadow: 0 0 25px rgba(251,191,36,0.15); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; font-family: inherit; cursor: pointer; opacity: {{ challengeOpacity }};">
+          <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #fbbf24;"></span>
+          <span style="display: flex; align-items: baseline; gap: 10px;"><span style="font-family: 'Bebas Neue', sans-serif; font-size: 30px; line-height: 0.9; color: #fbbf24;">82:0</span><span style="font-size: 20px; font-weight: 900; font-style: italic; letter-spacing: 0.05em; color: #fafaf9;">CHALLENGE</span></span>
+          <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #a8a29e;">82 games vs the real NBA &middot; one trade &middot; one grade</span>
+        </button>
+
+        <button style="position: relative; width: 100%; min-height: 52px; box-sizing: border-box; padding: 12px 24px; border-radius: 4px; border: 1px solid rgba(68,64,60,0.5); background: linear-gradient(to right, rgba(28,25,23,0.8), transparent); display: flex; align-items: center; text-align: left; font-family: inherit; cursor: pointer;">
+          <span style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #44403c;"></span>
+          <span style="font-size: 18px; font-weight: 900; font-style: italic; letter-spacing: 0.05em; color: #a8a29e;">MY ROSTERS</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- CENTER: hero card (live PlayerCard in the app) -->
+    <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center;">
+      <div style="width: 300px; height: 420px; box-sizing: border-box; border-radius: 12px; background: #1c1917; border: 2px solid rgba(217,119,6,0.5); box-shadow: 0 0 25px rgba(234,179,8,0.4); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #78716c;">Hero card (unchanged)</div>
+    </div>
+
+    <!-- RIGHT: pack fan (unchanged) -->
+    <div style="width: 450px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 32px;">
+      <div style="font-family: 'Bebas Neue', sans-serif; font-style: italic; font-size: 48px; line-height: 1; color: #fafaf9;">DRAFT PACK</div>
+      <div style="position: relative; width: 100%; height: 260px;">
+        <div style="position: absolute; left: 50px; top: 24px; width: 170px; height: 238px; border-radius: 12px; background: #292524; border: 1px solid #44403c; transform: rotate(-14deg);"></div>
+        <div style="position: absolute; left: 140px; top: 0; width: 170px; height: 238px; border-radius: 12px; background: #292524; border: 1px solid #57534e; box-shadow: 0 10px 24px rgba(0,0,0,0.5);"></div>
+        <div style="position: absolute; left: 230px; top: 24px; width: 170px; height: 238px; border-radius: 12px; background: #292524; border: 1px solid #44403c; transform: rotate(14deg); box-shadow: 0 10px 24px rgba(0,0,0,0.5);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ picker: In-Season Tournament, cream option cards ============ -->
+  <sc-if value="{{ isTournament }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 404px; top: 0; right: 0; bottom: 0; background: rgba(12,10,9,0.8); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #f59e0b;">In-Season Tournament</div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 1; color: #fafaf9;">How do you want to draft?</div>
+      </div>
+      <div style="display: flex; gap: 32px; align-items: center;">
+        <button style="width: 300px; height: 380px; box-sizing: border-box; padding: 28px; border-radius: 12px; border: 1px solid #d6d3d1; background: #f5f0ea; box-shadow: 0 30px 60px rgba(0,0,0,0.6), 0 0 0 4px rgba(217,119,6,0.35); transform: rotate(-2deg) translateY(-8px); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; text-align: left; font-family: inherit; cursor: pointer;">
+          <span style="align-self: stretch; height: 88px; border-radius: 8px; background: #fef3c7; display: flex; align-items: center; justify-content: center; gap: 20px;"><svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="23" stroke="#b45309" stroke-opacity="0.25" stroke-width="5"></circle><path d="M28 5a23 23 0 1 1-23 23" stroke="#b45309" stroke-width="5" stroke-linecap="round"></path><path d="M28 16v12l8 5" stroke="#b45309" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 6px;"><span style="width: 28px; height: 8px; border-radius: 999px; background: #b45309;"></span><span style="width: 28px; height: 8px; border-radius: 999px; background: #b45309; opacity: 0.55;"></span><span style="width: 28px; height: 8px; border-radius: 999px; background: #b45309; opacity: 0.25;"></span></span><span style="font-size: 12px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: #b45309;">3 rounds, on the clock</span></span></span>
+          <span style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #d97706;">The full table</span>
+          <span style="font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; color: #1c1917;">Premier Draft</span>
+          <span style="font-size: 15px; line-height: 1.5; color: #57534e;">Timed picks and a summary after every round.</span>
+          <span style="flex-grow: 1;"></span>
+          <span style="align-self: stretch; height: 52px; border-radius: 8px; background: #d97706; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff;">Start draft</span>
+        </button>
+        <button style="width: 300px; height: 380px; box-sizing: border-box; padding: 28px; border-radius: 12px; border: 1px solid #d6d3d1; background: #f5f0ea; box-shadow: 0 30px 60px rgba(0,0,0,0.6); transform: rotate(2deg); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; text-align: left; font-family: inherit; cursor: pointer;">
+          <span style="align-self: stretch; height: 88px; border-radius: 8px; background: #eff6ff; display: flex; align-items: center; justify-content: center; gap: 20px;"><svg width="84" height="48" viewBox="0 0 84 48" fill="none" aria-hidden="true"><path d="M8 8l16 16L8 40" stroke="#2563eb" stroke-opacity="0.3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M32 8l16 16-16 16" stroke="#2563eb" stroke-opacity="0.6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M56 8l16 16-16 16" stroke="#2563eb" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 12px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: #2563eb;">Your pace</span></span>
+          <span style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #2563eb;">Straight to the picks</span>
+          <span style="font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; color: #1c1917;">Quick Draft</span>
+          <span style="font-size: 15px; line-height: 1.5; color: #57534e;">No timer, quick animations.</span>
+          <span style="flex-grow: 1;"></span>
+          <span style="align-self: stretch; height: 52px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2563eb; background: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #1d4ed8;">Start draft</span>
+        </button>
+      </div>
+      <button onClick="{{ close }}" style="height: 44px; padding: 0 16px; border-radius: 8px; border: 0; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e; cursor: pointer;">Back</button>
+    </div>
+  </sc-if>
+
+  <!-- ============ picker: 82:0 Challenge, dark option cards ============ -->
+  <sc-if value="{{ isChallenge }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 404px; top: 0; right: 0; bottom: 0; background: rgba(12,10,9,0.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+        <div style="display: flex; align-items: baseline; gap: 8px;"><span style="font-family: 'Bebas Neue', sans-serif; font-size: 22px; line-height: 1; color: #fbbf24;">82:0</span><span style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #fbbf24;">Challenge</span></div>
+        <div style="font-family: 'Bebas Neue', sans-serif; font-size: 48px; line-height: 1; color: #fafaf9;">How do you want to draft?</div>
+      </div>
+      <div style="display: flex; gap: 32px; align-items: center;">
+        <button style="width: 300px; height: 380px; box-sizing: border-box; padding: 28px; border-radius: 12px; border: 1px solid #fbbf24; background: #1c1917; box-shadow: 0 30px 60px rgba(0,0,0,0.7), 0 0 60px rgba(251,191,36,0.2); transform: rotate(-2deg) translateY(-8px); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; text-align: left; font-family: inherit; cursor: pointer;">
+          <span style="align-self: stretch; height: 88px; border-radius: 8px; background: #451a03; display: flex; align-items: center; justify-content: center; gap: 20px;"><svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="23" stroke="#fbbf24" stroke-opacity="0.25" stroke-width="5"></circle><path d="M28 5a23 23 0 1 1-23 23" stroke="#fbbf24" stroke-width="5" stroke-linecap="round"></path><path d="M28 16v12l8 5" stroke="#fbbf24" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="display: flex; flex-direction: column; gap: 6px;"><span style="display: flex; gap: 6px;"><span style="width: 28px; height: 8px; border-radius: 999px; background: #fbbf24;"></span><span style="width: 28px; height: 8px; border-radius: 999px; background: #fbbf24; opacity: 0.55;"></span><span style="width: 28px; height: 8px; border-radius: 999px; background: #fbbf24; opacity: 0.25;"></span></span><span style="font-size: 12px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: #fbbf24;">3 rounds, on the clock</span></span></span>
+          <span style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #fbbf24;">The full table</span>
+          <span style="font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; color: #fafaf9;">Premier Draft</span>
+          <span style="font-size: 15px; line-height: 1.5; color: #d6d3d1;">Timed picks and a summary after every round.</span>
+          <span style="flex-grow: 1;"></span>
+          <span style="align-self: stretch; height: 52px; border-radius: 8px; background: #d97706; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff;">Start draft</span>
+        </button>
+        <button style="width: 300px; height: 380px; box-sizing: border-box; padding: 28px; border-radius: 12px; border: 1px solid #1e40af; background: #1c1917; box-shadow: 0 30px 60px rgba(0,0,0,0.7); transform: rotate(2deg); display: flex; flex-direction: column; align-items: flex-start; gap: 14px; text-align: left; font-family: inherit; cursor: pointer;">
+          <span style="align-self: stretch; height: 88px; border-radius: 8px; background: #172554; display: flex; align-items: center; justify-content: center; gap: 20px;"><svg width="84" height="48" viewBox="0 0 84 48" fill="none" aria-hidden="true"><path d="M8 8l16 16L8 40" stroke="#60a5fa" stroke-opacity="0.3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M32 8l16 16-16 16" stroke="#60a5fa" stroke-opacity="0.6" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M56 8l16 16-16 16" stroke="#60a5fa" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="font-size: 12px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: #60a5fa;">Your pace</span></span>
+          <span style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #60a5fa;">Straight to the picks</span>
+          <span style="font-family: 'Bebas Neue', sans-serif; font-size: 44px; line-height: 0.95; color: #fafaf9;">Quick Draft</span>
+          <span style="font-size: 15px; line-height: 1.5; color: #d6d3d1;">No timer, quick animations.</span>
+          <span style="flex-grow: 1;"></span>
+          <span style="align-self: stretch; height: 52px; box-sizing: border-box; border-radius: 8px; border: 1px solid #60a5fa; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #60a5fa;">Start draft</span>
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button onClick="{{ close }}" style="height: 44px; padding: 0 16px; border-radius: 8px; border: 0; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e; cursor: pointer;">Back</button>
+        <button style="height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #44403c; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #d6d3d1; cursor: pointer;">Enter a seed</button>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"open":{"editor":"enum","options":["none","tournament","challenge"],"default":"none"},"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const open = (this.state && this.state.open) ?? this.props.open ?? 'none';
+    return {
+      isTournament: open === 'tournament',
+      isChallenge: open === 'challenge',
+      tournamentOpacity: open === 'challenge' ? 0.4 : 1,
+      challengeOpacity: open === 'tournament' ? 0.4 : 1,
+      pickTournament: () => this.setState({ open: 'tournament' }),
+      pickChallenge: () => this.setState({ open: 'challenge' }),
+      close: () => this.setState({ open: 'none' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

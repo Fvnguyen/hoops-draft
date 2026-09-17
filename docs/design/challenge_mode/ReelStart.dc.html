@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Bebas+Neue&display=swap">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; color: #fafaf9; }
+    a { color: #fbbf24; } a:hover { color: #f59e0b; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 720px; box-sizing: border-box; background: #0c0a09; display: flex; flex-direction: column;">
+
+  <!-- header: 56px, same height as the app nav -->
+  <div style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 24px; border-bottom: 1px solid #292524; display: flex; align-items: center; gap: 16px;">
+    <div style="font-family: 'Bebas Neue', sans-serif; font-size: 28px; line-height: 1; color: #fbbf24;">82:0</div>
+    <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #a8a29e;">First half</div>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; border: 1px solid #44403c; border-radius: 8px; overflow: hidden;">
+      <button style="height: 44px; padding: 0 16px; border: 0; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #a8a29e; cursor: pointer;">Slower</button>
+      <button style="height: 44px; padding: 0 16px; border: 0; background: #fafaf9; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #1c1917; cursor: pointer;">Normal</button>
+      <button style="height: 44px; padding: 0 16px; border: 0; background: transparent; font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #a8a29e; cursor: pointer;">Instant</button>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; padding: 0 140px;">
+
+    <!-- current game line: the only per-game information on screen -->
+    <div style="display: flex; align-items: center; gap: 12px; height: 44px;">
+      <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.15em; text-transform: uppercase; color: #78716c;">Game 7 of 82</div>
+      <div style="width: 1px; height: 20px; background: #44403c;"></div>
+      <div style="width: 36px; height: 36px; border-radius: 999px; background: #1c1917; border: 1px solid #44403c; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; color: #a8a29e;">DEN</div>
+      <div style="font-size: 15px; font-weight: 700; color: #e7e5e4;">at Denver</div>
+    </div>
+
+    <!-- flip clock: crisp and slow for the first games -->
+    <div style="display: flex; align-items: center; gap: 28px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        <div style="display: flex; gap: 10px;">
+          <div style="position: relative; width: 132px; height: 176px; border-radius: 12px; background: #1c1917; border: 1px solid #44403c; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <span style="font-family: 'Bebas Neue', sans-serif; font-size: 168px; line-height: 1; padding-top: 14px; color: #57534e;">0</span>
+            <div style="position: absolute; left: 0; right: 0; top: 50%; height: 3px; margin-top: -1px; background: #0c0a09;"></div>
+          </div>
+          <div style="position: relative; width: 132px; height: 176px; border-radius: 12px; background: #1c1917; border: 1px solid #44403c; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <span style="font-family: 'Bebas Neue', sans-serif; font-size: 168px; line-height: 1; padding-top: 14px; color: #fafaf9;">5</span>
+            <div style="position: absolute; left: 0; right: 0; top: 50%; height: 3px; margin-top: -1px; background: #0c0a09;"></div>
+          </div>
+        </div>
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #34d399;">Wins</div>
+      </div>
+      <div style="font-family: 'Bebas Neue', sans-serif; font-size: 120px; line-height: 1; color: #57534e; padding-bottom: 28px;">:</div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        <div style="display: flex; gap: 10px;">
+          <div style="position: relative; width: 132px; height: 176px; border-radius: 12px; background: #1c1917; border: 1px solid #44403c; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <span style="font-family: 'Bebas Neue', sans-serif; font-size: 168px; line-height: 1; padding-top: 14px; color: #57534e;">0</span>
+            <div style="position: absolute; left: 0; right: 0; top: 50%; height: 3px; margin-top: -1px; background: #0c0a09;"></div>
+          </div>
+          <div style="position: relative; width: 132px; height: 176px; border-radius: 12px; background: #1c1917; border: 1px solid #44403c; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <span style="font-family: 'Bebas Neue', sans-serif; font-size: 168px; line-height: 1; padding-top: 14px; color: #fafaf9;">1</span>
+            <div style="position: absolute; left: 0; right: 0; top: 50%; height: 3px; margin-top: -1px; background: #0c0a09;"></div>
+          </div>
+        </div>
+        <div style="font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #f87171;">Losses</div>
+      </div>
+    </div>
+
+    <!-- season progress: neutral fill, never coloured by result -->
+    <div style="width: 1000px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="position: relative; height: 8px; border-radius: 999px; background: #292524;">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 7.3%; border-radius: 999px; background: #fbbf24;"></div>
+        <div style="position: absolute; left: 50%; top: -6px; width: 2px; height: 20px; background: #78716c;"></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; font-size: 12px; font-weight: 700; color: #78716c;">
+        <div>Opening night</div>
+        <div style="text-align: center;">All-Star break &middot; trade deadline</div>
+        <div style="text-align: right;">Game 82</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #78716c;">The clock speeds up after the first week. The record comes back into view for the final stretch.</div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
