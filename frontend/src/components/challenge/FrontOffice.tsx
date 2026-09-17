@@ -121,10 +121,16 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
     });
   };
 
+  /**
+   * The acquired card lands on the BENCH (D9), so a trade always leaves the depth chart a
+   * man short. Go straight into the lineup editor instead of back to the quotes: otherwise
+   * the natural path — trade, then spin — silently plays games 42-82 with eleven.
+   */
   const handleTradeConfirm = (updatedRoster: SavedRoster, madeTrade: ChallengeTrade) => {
     setRosterDraft(updatedRoster);
     setTrade(madeTrade);
     setShowTrade(false);
+    setShowEditor(true);
     void getGameStore().saveChallengeRun({ ...run, rosterPost: updatedRoster, trade: madeTrade }).catch((err) => {
       console.error('Failed to save the front office trade:', err);
     });
@@ -218,7 +224,6 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
         <Trade
           run={run}
           roster={rosterDraft}
-          advice={advice}
           onCancel={() => setShowTrade(false)}
           onConfirm={handleTradeConfirm}
         />

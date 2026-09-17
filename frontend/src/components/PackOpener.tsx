@@ -52,16 +52,13 @@ export interface PackOpenerProps {
   onPick?: (pick: PackPick) => void;
   /** Fired right after `onPick` (or on its own for preview/legacy callers). */
   onComplete?: () => void;
-  /** plan_challenge_mode D9: 'trade' rings the sealed pack in the amber accent (gold
-   *  trim on the SAME pack art — no new artwork) for the 82:0 trade deadline. */
+  /** plan_challenge_mode D9: 'trade' is the 82:0 trade-deadline pack — its own artwork
+   *  (`pack_2025_2026_variant_820.png`, the 82:0 pack) plus an amber ring on the seal. */
   variant?: 'default' | 'trade';
   /** Overrides the "Pack N of 3" heading — the trade pack isn't a draft pack. */
   titleOverride?: string;
   /** Overrides the mode eyebrow ("Quick Draft" / "Premier Draft") above the heading. */
   eyebrowOverride?: string;
-  /** plan_challenge_mode D9: returns the "Answers the coach" style tag for a revealed
-   *  card, or undefined for none. Only shown once the spread is pickable. */
-  badgeFor?: (card: DraftCard) => string | undefined;
 }
 
 const OPEN_MS = 650;
@@ -111,7 +108,6 @@ export function PackOpener({
   variant = 'default',
   titleOverride,
   eyebrowOverride,
-  badgeFor,
 }: PackOpenerProps) {
   // Reveal TIMING is fixed on mount: Common -> Mythic, so the guaranteed Rare+
   // slot flips last (D6). This is separate from GRID POSITION below — `ordered`
@@ -330,8 +326,8 @@ export function PackOpener({
               aria-label={titleOverride ?? `Open pack ${packNumber} of ${totalPacks}`}
             >
               <Image
-                src="/pack_2025_2026.png"
-                alt="Magic Ball 2025-26 draft pack"
+                src={variant === 'trade' ? '/pack_2025_2026_variant_820.png' : '/pack_2025_2026.png'}
+                alt={variant === 'trade' ? 'Magic Ball 82:0 challenge pack' : 'Magic Ball 2025-26 draft pack'}
                 width={1024}
                 height={1536}
                 sizes="208px"
@@ -419,11 +415,6 @@ export function PackOpener({
                         transition={{ duration: 0.45, times: [0, 0.25, 1] }}
                         className="pointer-events-none absolute -inset-1 z-20 rounded-xl border-2 border-white"
                       />
-                    )}
-                    {pickable && badgeFor?.(card) && (
-                      <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 rounded-control bg-positive-soft px-2 py-1 text-center text-xs font-black uppercase tracking-wide text-positive">
-                        {badgeFor(card)}
-                      </div>
                     )}
                     <motion.div
                       animate={{ rotateY: isFlipped ? 180 : 0 }}

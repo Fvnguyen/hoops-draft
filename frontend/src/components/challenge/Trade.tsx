@@ -24,7 +24,7 @@ import type { PlayerCardData, Rarity } from '@/engine/types';
 import { getAllCards } from '@/engine/cards';
 import { drawTradeOffers, tradeSeed } from '@/engine/challenge';
 import { createRng } from '@/engine/rng';
-import { shortName, type ChallengeAdvice } from '@/engine/challengeAdvice';
+import { shortName } from '@/engine/challengeAdvice';
 import { PackOpener, type PackPick } from '@/components/PackOpener';
 import { Button } from '@/components/ui';
 
@@ -71,32 +71,14 @@ function buildRows(roster: SavedRoster, run: ChallengeRun): RosterRow[] {
   return rows;
 }
 
-/** D9's tag: an offer "answers" a quote when it is a trade-actioned reason about the
- *  exact player being dropped, or a four-factor rebounding problem the offer's own
- *  season rebounding rate would help with. A simplification of "solves the evidence" —
- *  the engine doesn't score hypothetical trades, so this reads the same reason data the
- *  quote itself was built from rather than inventing a new signal. */
-function answers(advice: ChallengeAdvice, offer: PlayerCardData, droppedId: string): string[] {
-  const hits: string[] = [];
-  for (const q of advice.quotes) {
-    if (q.action !== 'trade') continue;
-    const playerMatch = q.playerId && q.playerId === droppedId;
-    const reboundMatch =
-      (q.reasonId === 'four-factor' || q.reasonId === 'def-four-factor') && offer.stats.trb >= 8;
-    if (playerMatch || reboundMatch) hits.push(q.speaker);
-  }
-  return hits;
-}
-
 export interface TradeProps {
   run: ChallengeRun;
   roster: SavedRoster;
-  advice: ChallengeAdvice;
   onCancel: () => void;
   onConfirm: (updatedRoster: SavedRoster, trade: ChallengeTrade) => void;
 }
 
-export function Trade({ run, roster, advice, onCancel, onConfirm }: TradeProps) {
+export function Trade({ run, roster, onCancel, onConfirm }: TradeProps) {
   const rows = useMemo(() => buildRows(roster, run), [roster, run]);
   const [droppedId, setDroppedId] = useState<string | null>(null);
   const dropped = rows.find((r) => r.id === droppedId) ?? null;
@@ -207,12 +189,6 @@ export function Trade({ run, roster, advice, onCancel, onConfirm }: TradeProps) 
               eyebrowOverride="2 · The trade pack"
               pack={offers}
               onPick={handlePick}
-              badgeFor={(card) => {
-                if (card.type !== 'Player') return undefined;
-                const speakers = answers(advice, card, dropped.id);
-                if (speakers.length === 0) return undefined;
-                return `Answers the ${speakers.join(' & ')}`;
-              }}
             />
           ) : (
             <div className="flex h-full items-center justify-center px-8 text-center text-sm text-ink-muted">
