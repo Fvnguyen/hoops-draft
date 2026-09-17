@@ -106,6 +106,10 @@ export const teamColors: Record<string, string> = {
   MIA: '#98002E', MIL: '#00471B', MIN: '#0C2340', NOP: '#0C2340', NYK: '#006BB6',
   OKC: '#007AC1', ORL: '#0077C0', PHI: '#006BB6', PHX: '#1D1160', POR: '#E03A3E',
   SAC: '#5A2D81', SAS: '#C4CED4', TOR: '#CE1141', UTA: '#002B5C', WAS: '#002B5C',
+  // basketball-reference spells three franchises differently from the NBA feed, and
+  // `player.team` on every card comes from bref — without these aliases BRK/CHO/PHO
+  // players silently fell back to the grey default swatch and had no logo at all.
+  BRK: '#000000', CHO: '#1D1160', PHO: '#1D1160',
 };
 
 // Fallback swatches for an unknown/missing team abbreviation.
@@ -119,6 +123,8 @@ export const teamIds: Record<string, string> = {
   MIA: '1610612748', MIL: '1610612749', MIN: '1610612750', NOP: '1610612740', NYK: '1610612752',
   OKC: '1610612760', ORL: '1610612753', PHI: '1610612755', PHX: '1610612756', POR: '1610612757',
   SAC: '1610612758', SAS: '1610612759', TOR: '1610612761', UTA: '1610612762', WAS: '1610612764',
+  // bref spellings, see teamColors above.
+  BRK: '1610612751', CHO: '1610612766', PHO: '1610612756',
 };
 
 // ---- Play category --------------------------------------------------------------

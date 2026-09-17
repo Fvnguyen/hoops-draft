@@ -18,7 +18,8 @@
     "player-bootstrap": "tsx scripts/player_bootstrap.ts",
     "bootstrap:admin": "node scripts/bootstrap-admin.mjs",
     "bootstrap:e2e": "node --env-file=.env.local scripts/bootstrap-e2e-user.mjs",
-    "migrate": "node scripts/run-migration.mjs"
+    "migrate": "node scripts/run-migration.mjs",
+    "challenge": "tsx scripts/challenge-sim.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

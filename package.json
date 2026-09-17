@@ -12,7 +12,8 @@
     "analyze": "npm --prefix frontend run analyze --",
     "screenshot": "node scripts/screenshot.js",
     "feasibility": "npm --prefix frontend run feasibility",
-    "player-bootstrap": "npm --prefix frontend run player-bootstrap --"
+    "player-bootstrap": "npm --prefix frontend run player-bootstrap --",
+    "challenge": "npm --prefix frontend run challenge --"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

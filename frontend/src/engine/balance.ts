@@ -434,3 +434,31 @@ export const IDENTITY_CAPS = {
   possessions: 5,     // net possession swing, ±
   and1: 0.04,         // net and-1 shift, ±
 };
+
+// ── 82:0 Challenge (docs/plans/plan_challenge_mode_2026-09-17.md) ───────────
+
+/** Games in a challenge run — a full NBA season, revealed in two halves of 41. */
+export const CHALLENGE_GAMES = 82;
+
+/** Cards per NBA opponent handed to `buildBotRoster`, which trims to TARGET_ROSTER. */
+export const NBA_ROSTER_POOL = 15;
+
+/**
+ * Challenge-only difficulty (D5). These override EFFICIENCY_SCALE / MAX_EFF_SHIFT for
+ * challenge games ONLY — `simulateGame`'s defaults, and therefore every tournament game
+ * and `npm run balance`, are untouched. A steeper edge means a talent gap converts into
+ * wins more reliably, which is what makes 82-0 conceivable for a great draft and hopeless
+ * for an average one. Calibrated by `npm run challenge`; see the plan's T1 table.
+ */
+export const CHALLENGE_TUNING = { efficiencyScale: 0.50, maxEffShift: 0.20 };
+
+/** Offers in the deadline trade pack (D9). */
+export const TRADE_OFFERS = 5;
+
+/** Base rarity weights for a trade offer, before the dropped card's rarity boost. */
+export const TRADE_RARITY_WEIGHTS: Record<Rarity, number> = {
+  Common: 55, Uncommon: 30, Rare: 12, Mythic: 3,
+};
+
+/** The dropped card's own rarity is this much likelier to come back. */
+export const TRADE_DROPPED_RARITY_BOOST = 4;

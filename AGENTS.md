@@ -17,9 +17,10 @@ docs/            ROADMAP.md = which plans in which order; plans/plan_<topic>_<da
 scripts/         Node dev scripts: check_card_counts.js, screenshot.js
 frontend/        The Next.js app (see frontend/README.md)
   src/engine/    PURE game engine (no react/next/fs): types, rng, balance (all tuning
-                 constants), ratings (computeCards), cards (static JSON), draft,
-                 deckbuilder, game, season, synergies, rosterStats. Purity is enforced
-                 by tests/unit/engine-purity.test.ts.
+                 constants), ratings (computeCards), cards (static JSON), plays (the play
+                 catalog — DraftRoom re-exports it as playsDB), draft, deckbuilder, game,
+                 season, synergies, rosterStats, challenge (82:0 mode: NBA opponents,
+                 schedule, grades, simulateHalf). Purity: tests/unit/engine-purity.test.ts.
   src/storage/   GameStore interface + IndexedDB (Dexie) and in-memory backends,
                  one-time migration from the old localStorage keys.
   src/data/      cards.json — the player cards, a BUILD ARTIFACT (npm run build:cards)
@@ -39,24 +40,26 @@ frontend/        The Next.js app (see frontend/README.md)
 ## Commands
 
 Root (from repo root):
-- `npm run dev` — starts the frontend dev server (`npm --prefix frontend run dev`)
-- `npm run build` — production build
-- `npm test` — Vitest unit tests in `frontend/tests/unit/` that import the REAL engine
-  modules (ratings, draft, synergies/plays, game sim, season). Run from the repo root or
-  `frontend/`. `npm run test:watch` inside `frontend/` for watch mode.
+- `npm run dev` / `npm run build` — frontend dev server (`npm --prefix frontend run dev`) / production build
+- `npm test` — Vitest unit tests in `frontend/tests/unit/` importing the REAL engine modules
+  (ratings, draft, synergies/plays, game sim, season, challenge). Run from the repo root or
+  `frontend/`; `npm run test:watch` inside `frontend/` for watch mode.
 - `npm run balance [-- 1000]` — `frontend/scripts/balance.ts`: simulates N headless games
-  (draft → bot rosters → sim) and prints PPP, score distribution, synergy and play
-  activation rates. Use it after ANY engine or balance-constant change.
-- `npm run test:e2e` — Playwright specs in `frontend/tests/` (needs `npm run dev` running
-  in another terminal first — baseURL is `http://localhost:3000`); `tests/smoke.spec.ts`
-  loads every real route and fails on any console/page error — run before committing.
+  (draft → bot rosters → sim), printing PPP, score distribution, synergy and play activation
+  rates. Use after ANY engine or balance-constant change.
+- `npm run test:e2e` — Playwright specs in `frontend/tests/` (needs `npm run dev` running in
+  another terminal — baseURL `http://localhost:3000`); `tests/smoke.spec.ts` loads every real
+  route and fails on any console/page error. Run before committing.
+- `npm run challenge [-- 40 --seed 42 --sweep]` — `frontend/scripts/challenge-sim.ts`: N
+  seeded drafts x 8 seats x an 82-game challenge season vs the 30 NBA opponents, printing wins
+  by seat rank + grade shares. `--sweep` walks an `EdgeTuning` grid. Run after any change to
+  `CHALLENGE_TUNING` or the challenge opponents.
 - `npm run analyze` — runs `frontend/scripts/analyze.ts` (tsx) against the latest
   `data/game_logs/full_dump_*.json` and prints a balance report
-- `npm run screenshot` — `node scripts/screenshot.js [route] [outfile] [--full]` (needs the
-  dev server running)
-- CI (`.github/workflows/ci.yml`): GitHub Actions runs `tsc --noEmit`, lint, `npm test`,
-  and `npm run build` on every push/PR (ubuntu, Node 22). Playwright is not run in CI
-  (win32 snapshots, needs a server) — `test:e2e`/smoke stays a local gate.
+- `npm run screenshot` — `node scripts/screenshot.js [route] [outfile] [--full]` (needs dev)
+- CI (`.github/workflows/ci.yml`): GitHub Actions runs `tsc --noEmit`, lint, `npm test` and
+  `npm run build` on every push/PR (ubuntu, Node 22). Playwright is not run in CI (win32
+  snapshots, needs a server) — `test:e2e`/smoke stays a local gate.
 
 Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`.
 
@@ -68,60 +71,57 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
   `refactor_*.js`, `data/analyze_*.py`, etc.) are gone — history is in git log.
   **Edit ratings.ts directly, then run `npm run build:cards` and commit the regenerated
   `src/data/cards.json`. Never recreate a generator or patcher script.**
-- **Game simulation**: `frontend/src/engine/game.ts` (possession battle, multi-channel
-  shot resolution) and `frontend/src/engine/synergies.ts` (badge-driven synergy/play
-  modifiers). **Every tuning number lives in `frontend/src/engine/balance.ts`.**
+- **Game simulation**: `frontend/src/engine/game.ts` (possession battle, multi-channel shot
+  resolution) and `frontend/src/engine/synergies.ts` (badge-driven synergy/play modifiers).
+  **Every tuning number lives in `frontend/src/engine/balance.ts`.**
 - **Identities and plays**: `engine/archetypes.ts` (colour thresholds, 16-plan catalog,
   tiers, caps, `bestSelection` for bots) and `engine/playbook.ts` (play roles, fixed
   allocations, `evaluatePlaybook`); possessions resolved in `engine/game.ts`. Tune
   thresholds with `npm run feasibility`. No mastery tiers, no chemistry synergies.
-- **Randomness**: engine code never calls `Math.random()`; it takes an `Rng`
-  (`engine/rng.ts`, mulberry32). Drafts, seasons and games store their seed, so any
-  result can be reproduced. Pass `--seed N` to `npm run balance` for a deterministic run.
+- **Randomness**: engine code never calls `Math.random()`; it takes an `Rng` (`engine/rng.ts`,
+  mulberry32). Drafts, seasons, games and challenge runs store their seed, so any result can
+  be reproduced. Pass `--seed N` to `npm run balance` for a deterministic run.
 - **Persistence**: UI code talks only to `getGameStore()` (`src/storage`), never to
   `localStorage` directly — IndexedDB in the browser, in-memory during SSR/tests.
-  `initStorage()` (called once by `StorageProvider`) migrates the old localStorage keys.
+  `initStorage()` (once, by `StorageProvider`) migrates the old localStorage keys.
   `docs/game_mechanics.md` describes the model in prose; the code is authoritative.
-- **Do not commit generated/runtime output**: `data/game_logs/*.json` (draft/season/roster
-  exports from `/debug`), screenshots, `.next/`, `tsbuildinfo`. All gitignored — regenerate
-  instead of hand-editing.
+- **Do not commit generated/runtime output**: `data/game_logs/*.json` (exports from
+  `/debug`), screenshots, `.next/`, `tsbuildinfo` — all gitignored, regenerate them.
 
 ## Product rules (from the owner — do not "improve" these away)
 
-- **Never show a player's OVR or the seven engine ratings to users** — not on cards, lists,
-  or rosters; they exist only for the engine and the dev-only `/data` page. Season
-  averages (PPG, RPG, …) are fine to show.
-- **Rarity is a MtG-style gem/icon, never a coloured frame** (frames fight with position
-  and team colours). Rare and Mythic should feel splashy.
-- **One draft-time list**: every drafted card lands in a single "Roster" list, no
-  Roster/G-League split. No card "inspect" panel; bot pick ticker is wanted. No auto-fill
-  in the deck builder either: the depth chart starts empty, the human builds the lineup.
-- Locked identity plans are not selectable; one nearest-progress hint per lane (muted,
-  non-clickable) explains what's missing — replaces the old "locked plans hidden" rule.
+- **Never show a player's OVR or the seven engine ratings to users** — not on cards, lists or
+  rosters; they exist only for the engine and the dev-only `/data` page. Season averages
+  (PPG, RPG, …) are fine to show.
+- **Rarity is a MtG-style gem/icon, never a coloured frame** (frames fight with position and
+  team colours). Rare and Mythic should feel splashy.
+- **One draft-time list**: every drafted card lands in a single "Roster" list, no Roster/
+  G-League split. No card "inspect" panel; bot pick ticker is wanted. No auto-fill in the deck
+  builder either: the depth chart starts empty, the human builds the lineup.
+- Locked identity plans are not selectable; one nearest-progress hint per lane (muted, non-
+  clickable) explains what's missing — replaces the old "locked plans hidden" rule.
 
 ## Conventions
 
-- TypeScript strict mode, Next.js App Router (`src/app/**/page.tsx`,
-  `src/app/api/**/route.ts`).
+- TypeScript strict mode, Next.js App Router (`src/app/**/page.tsx`, `src/app/api/**/route.ts`).
 - Path alias `@/*` -> `frontend/src/*` (see `frontend/tsconfig.json`).
-- Client components are explicitly marked `'use client'` (state, localStorage, hooks);
-  API routes and `lib/engine.ts` run server-side only.
+- Client components are marked `'use client'` (state, localStorage, hooks); API routes and
+  `lib/engine.ts` run server-side only.
 - Styling: Tailwind 4 utility classes, no CSS modules.
 - Player data: the app never opens a database. `src/data/cards.json` is generated from
-  `frontend/game.db` by `scripts/build-cards.ts` (better-sqlite3 is a devDependency used
-  only there). `/api/cards` serves that JSON statically.
+  `frontend/game.db` by `scripts/build-cards.ts` (better-sqlite3 is a devDependency used only
+  there). `/api/cards` serves that JSON statically.
 - State persistence is client-side IndexedDB via `GameStore` (draft sessions, rosters,
-  seasons), per browser. A remote backend can be added behind the same interface.
-- Windows dev machine, `core.autocrlf=true` — LF/CRLF diff noise in `git diff` is normal,
-  not a real change.
+  seasons), per browser. A remote backend fits behind the same interface.
+- Windows dev machine, `core.autocrlf=true` — LF/CRLF diff noise in `git diff` is expected.
 
 ## Data pipeline
 
-Lives in `data/`, run from `data/`. Full script order, inputs/outputs, and table schema
-are in `data/README.md` — don't duplicate it here. Short version: `download_bref.js`
-scrapes HTML -> `fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` and
-`players.json` -> `download_images.py`/`download_logos.py` pull media into
-`frontend/public` -> `npm run build:cards` turns `game.db` into `src/data/cards.json`.
+Lives in `data/`, run from `data/`. Full script order, inputs/outputs and table schema are in
+`data/README.md` — don't duplicate it here. Short version: `download_bref.js` scrapes HTML ->
+`fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` and `players.json` ->
+`download_images.py`/`download_logos.py` pull media into `frontend/public` ->
+`npm run build:cards` turns `game.db` into `src/data/cards.json`.
 
 ## Verifying game balance
 
@@ -145,6 +145,6 @@ scrapes HTML -> `fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` 
   script. `/api/game-logs` (dev-only, used by `/debug`) writes to `../data/game_logs`
   relative to cwd; disabled in production builds.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
-  player cards when the player pool has at least 264 players; the pool has 448.
-- Not junk: `/test-ui` (fixture for `visual.spec.ts`/`smoke.spec.ts`), `/theater-preview`, `/debug`,
-  `/deckbuilder-test`, `/data`, `/rosters`, `/draft`, `/season` are real pages — see `page.tsx`, `TopNav.tsx`.
+  player cards when the pool has 264+ players; it has 448.
+- Not junk: `/test-ui` (fixture for `visual.spec.ts`/`smoke.spec.ts`), `/theater-preview`,
+  `/debug`, `/deckbuilder-test`, `/data`, `/rosters`, `/draft`, `/season` are real pages.
