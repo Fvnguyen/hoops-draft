@@ -51,6 +51,25 @@ export interface SeasonStat {
   vorp: number;
   dbpm: number;
   tov: number;
+  /** card_ratings_rebalance D1 — advanced-table rate stats (0-1 fractions), and
+   *  shooting-table assist-rate columns the pipeline discarded before. Optional so
+   *  existing test/fixture SeasonStat literals don't all need updating; ratings.ts
+   *  treats a missing value as 0, same as every other optional stat here. */
+  usg_pct?: number;
+  ast_pct?: number;
+  tov_pct?: number;
+  stl_pct?: number;
+  blk_pct?: number;
+  orb_pct?: number;
+  drb_pct?: number;
+  trb_pct?: number;
+  obpm?: number;
+  dws?: number;
+  ws_per_48?: number;
+  /** Share of made 2PT/3PT field goals that were assisted — the self-creation term
+   *  (D4): `self = 1 - pct_ast_fgN`. */
+  pct_ast_fg2?: number;
+  pct_ast_fg3?: number;
 }
 
 export interface ComputedRatings {

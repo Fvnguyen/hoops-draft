@@ -41,6 +41,12 @@
   --line-strong: #d6d3d1;        /* stone-300 */
   --line-inverse: #44403c;       /* stone-700 */
 
+  /* gold: the level-4 "off the charts" badge (card_ratings_rebalance D7). A metal, not a
+     theme colour — it reads as gold under every theme, so night does not override it. */
+  --gold: #f5d78e;               /* highlight face */
+  --gold-deep: #b8860b;          /* shadow face, gradient end */
+  --gold-ink: #3a2a06;           /* the icon/number sitting on gold */
+
   /* accent: the amber/orange brand */
   --accent: #d97706;             /* amber-600 */
   --accent-hover: #b45309;       /* amber-700 */
@@ -127,6 +133,9 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-line-inverse: var(--line-inverse);
+  --color-gold: var(--gold);
+  --color-gold-deep: var(--gold-deep);
+  --color-gold-ink: var(--gold-ink);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);

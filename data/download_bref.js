@@ -40,6 +40,30 @@ async function scrapeBRef() {
         console.log("Failed to fetch awards", e);
     }
 
+    // card_ratings_rebalance D10 (2026-09-18): the 26 letter-index pages
+    // (/players/a/ .. /players/z/) carry each player's Pos and career "To" year —
+    // bref-native, so fetch_players.py can match it against per_game/advanced/shooting's
+    // Player column exactly instead of bio.csv's fuzzy cross-source match. Rate-limited
+    // to one request every 3 seconds, same as every other page here.
+    const posDir = path.join(__dirname, 'bref_positions');
+    if (!fs.existsSync(posDir)) fs.mkdirSync(posDir);
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    for (const letter of letters) {
+        const outPath = path.join(posDir, `players_${letter}.html`);
+        console.log(`Fetching position index ${letter}...`);
+        await page.waitForTimeout(3000);
+        try {
+            const resp = await page.goto(`https://www.basketball-reference.com/players/${letter}/`, { waitUntil: 'domcontentloaded' });
+            if (resp && resp.status() === 200) {
+                fs.writeFileSync(outPath, await page.content());
+            } else {
+                console.log(`status ${resp && resp.status()} for letter ${letter}`);
+            }
+        } catch (e) {
+            console.log(`Failed to fetch position index for ${letter}`, e);
+        }
+    }
+
     await browser.close();
     console.log("HTML successfully downloaded to disk.");
 }

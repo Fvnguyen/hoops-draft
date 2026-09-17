@@ -8,9 +8,12 @@ describe('ratings (engine.ts getAllCards)', () => {
     expect(players.length).toBe(448);
   });
 
-  it('every overall rating is within [40, 99]', () => {
+  // card_ratings_rebalance D8 (2026-09-18): OVR is now the flat mean of the seven
+  // dimension ratings, with no floor multiplier — a deep-bench player weak across every
+  // dimension can legitimately land in the teens (AJ Johnson at 16, 9.5 mpg).
+  it('every overall rating is within [0, 99]', () => {
     for (const p of players) {
-      expect(p.ratings.overall).toBeGreaterThanOrEqual(40);
+      expect(p.ratings.overall).toBeGreaterThanOrEqual(0);
       expect(p.ratings.overall).toBeLessThanOrEqual(99);
     }
   });
