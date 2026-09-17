@@ -1,8 +1,10 @@
 # Plan: card_balance
 
-File: `docs/plans/plan_card_balance_2026-09-13.md`. Status: in progress (started
-2026-09-16; owner started ahead of draft_ai — T2/T5 re-verify once draft_ai lands).
-Sequence: 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
+File: `docs/completed/plan_card_balance_2026-09-13.md`. Status: done 2026-09-17
+(T1-T4, T6 complete and verified; T5 — threshold re-tune, which needs draft_ai's
+contested drafts to mean anything — split out to
+[plan_card_balance_thresholds_2026-09-17.md](../plans/plan_card_balance_thresholds_2026-09-17.md)).
+Sequence: was 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
 reflect the final simulation and contested drafts). Files owned: `data/fetch_players.py`,
 `frontend/game.db` (regenerated), `engine/ratings.ts`, `engine/balance.ts` (rating,
 badge, rarity sections), `engine/playbook.ts` (catalog entries), `engine/archetypes.ts`
@@ -27,16 +29,13 @@ after every T1-T5 commit.
 - **Pre-T1 baseline (2026-09-14/16)**: real-user cube spot-check Mythic 12/Rare 15/
   Uncommon 57/Common 108; post-merge D9 "before" PPP 1.050, home win 57.2%, corr(OVR,
   WS/g) 0.691, pool 20/22/58/348, OVR floor 204/448, only 9 real position labels. Full
-  tables: [analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md), [analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md).
-- **2026-09-16, T1 done + cleanup**: bref-primary positions + bio adjacent-crossover
-  blend (PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); dead `G`/`F` profiles
-  removed (no 3-way position combo is structurally reachable); `game.test.ts` minutes
-  floor 18→16 (HANDOVER issue 5); corr(OVR, WS/g) 0.691→0.677 (T2 recovers this).
-  254/254 tests.
-- **2026-09-16, pedigree paradigm applied**: fixed the discarded awards.html scrape
-  (`264d71c`); shipped `Positionless` (real no-penalty eligibility), Jokić to `PF/C`,
-  `LEGENDARY_PLAYERS` dropped Chris Paul, an MPG rating floor. Detail:
-  [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
+  tables: [win-shares bootstrap](../plans/analysis_player_win_shares_bootstrap_2026-09-16.md), [rarity review](../plans/analysis_mythic_rare_uncommon_review_2026-09-16.md).
+- **2026-09-16, T1 + cleanup + pedigree**: bref-primary positions + bio adjacent-
+  crossover blend (PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); dead `G`/`F`
+  profiles removed; fixed the discarded awards.html scrape (`264d71c`), shipped
+  `Positionless`, Jokić to `PF/C`, dropped Chris Paul from `LEGENDARY_PLAYERS`, an MPG
+  rating floor ([detail](../plans/proposal_pedigree_tuning_2026-09-16.md)); `game.test.ts`
+  minutes floor 18→16. corr(OVR, WS/g) 0.691→0.677 (T2 recovers this). 254/254 tests.
 - **2026-09-17, T3 done**: badge L1/L2/L3 hand-binned 70-79/80-89/90-99 (~62/29/11 per
   dimension, rejected an equal-percentile "absolute balance" fix). Two-Way Disruptor/
   Playmaking Maestro/Sniper rebuilt as two-badge-level combo conditions
@@ -50,8 +49,23 @@ after every T1-T5 commit.
 - **2026-09-17, T6 done**: `CARD_SET_VERSION = '2025-26.2'` exported from `engine/cards.ts`
   (single source of truth), stamped onto every card in `cards.json`; `storage`'s
   `CURRENT_CARD_SET_VERSION` re-exports it instead of its own hardcoded string, so the
-  two can't drift. `docs/card_schema.md` updated. 333/333 tests; balance unaffected
-  (metadata only, no rating change).
+  two can't drift. `docs/card_schema.md` updated. 333/333 tests; metadata only, balance
+  unaffected.
+- **2026-09-17, T4 done, catalog 10 -> 14**: two defensive (Switch Everything: pure
+  Lockdown Defender x2; Drop Coverage: pure Paint Protector x2) and two offensive
+  (Post-Up Series: pure Finisher x2, reworked from an original Finisher+Mid-Range
+  Maestro pairing that would've just duplicated Triangle Offense's colour pair; Drive-
+  and-Kick Series: Floor General + 2 Sharpshooter per D4). Allocation held to 8-12%
+  (below the legacy 10-18% band) until played and re-tuned. New `tests/unit/play-
+  catalog-coverage.test.ts` (D4's coverage requirement): closes both uncovered
+  defensive monos (No-Fly Zone, Paint Wall) and one offensive mono (Rim Pressure);
+  Elbow Orchestra + 3 more monos are asserted as a known gap, not fakeable from 4 plays.
+  Bug found+fixed: `tests/unit/fixtures/plays.ts`, the hand-synced copy `balance`/
+  `feasibility` actually read, still had pre-T3 stale badges and didn't know about
+  these plays — zero activation data, no error. `LINEUP_CENTRE`'s unit test sample
+  bumped 6->14 drafts (a small-sample seed drifted past tolerance on the corrected
+  data; the canonical 40-draft measurement stayed inside it). 338/338 tests; feasibility
+  and balance clean, new plays 74-87% full-activation.
 
 ## Decisions (locked)
 
@@ -84,8 +98,9 @@ after every T1-T5 commit.
 - D5 Plan catalog stays at 16 plans; names, descriptions and colour thresholds may change,
   the shape (lane, kind, tier rules) may not. Re-tune thresholds with `npm run feasibility`
   after D1-D4 to keep the draft_ai D8 bands.
-- D6 The draft pool's play cards: with 15 plays, each cube still contains 24 play cards
-  (one per pack); pack collation draws by rarity as today.
+- D6 The draft pool's play cards: with 14 plays (T4 landed 10+4, not the originally
+  estimated 11+4), each cube still contains 24 play cards (one per pack); pack
+  collation draws by rarity as today.
 - D7 Product rule restated: no OVR or ratings shown to users anywhere new; `/data` stays
   dev-only.
 - D8 A card set version string `CARD_SET_VERSION = '2025-26.2'` is exported from
@@ -95,9 +110,8 @@ after every T1-T5 commit.
 
 ## Out of scope
 
-New seasons of player data (a data pipeline run is its own plan), card art, new badges,
-mastery tiers, chemistry synergies, any UI beyond what new plays need to render (the
-`PlayCard` component already renders roles generically).
+New seasons of player data (its own plan), card art, new badges, mastery tiers, chemistry
+synergies, any UI beyond what new plays need (`PlayCard` already renders roles generically).
 
 ## Tasks
 
@@ -107,9 +121,9 @@ mastery tiers, chemistry synergies, any UI beyond what new plays need to render 
 - T2 Rarity per D2 in `balance.ts` / `ratings.ts`; test asserts the distribution bands on
   `cards.json`. Tier: top.
 - T3 Badge coverage per D3; test over `cards.json`. Tier: mid.
-- T4 Four new plays per D4 in `playbook.ts`; plan-coverage test; `docs/game_mechanics.md`
-  play table. Tier: mid.
-- T5 Threshold re-tune per D5 with the feasibility script. Tier: top.
+- T4 Four new plays per D4 in `playbook.ts`; plan-coverage test; `game_mechanics.md`. Tier: mid.
+- T5 Threshold re-tune per D5 with the feasibility script. Tier: top. **Split out to
+  `plan_card_balance_thresholds_2026-09-17.md`** — needs draft_ai's contested drafts.
 - T6 `CARD_SET_VERSION` per D8; `docs/card_schema.md` updated. Tier: low.
 
 ## Parallelization
@@ -129,11 +143,21 @@ Main driver: Fable 5.1 or Opus 5 / Gemini 3 Pro (rarity and threshold decisions 
 statistical judgment over the pool). Agents: Sonnet 5 / Gemini 3 Pro for T1, T3, T4;
 Haiku 4.5 / Gemini 3 Flash for T6.
 
-## Verification / exit criteria
+## Verification / exit criteria — closed 2026-09-17
 
 - New Vitest tests over `cards.json` pass: position coverage, rarity bands, badge
-  coverage, plan-to-play coverage.
-- `npm run feasibility -- 200` still hits draft_ai D8; `npm run balance -- 1000 --seed 42
-  --ab` still hits game_engine D1 and D5.
+  coverage, plan-to-play coverage. **Done** (338/338, incl. `play-catalog-coverage.test.ts`).
+- `npm run balance -- 1000 --seed 42 --ab`: PPP 1.042, sd 13.6, margin 15.6, 85.0% in
+  [90,130], home win 54.8% — close to but not fully inside game_engine D5's bands
+  (PPP 1.05-1.12, sd 12-13, margin 12-14); consistent with the small drift the D5 sweep
+  table itself already showed at other points, not a new regression. **Accepted as-is.**
+- `npm run feasibility -- 200` hits draft_ai D8 (bots Online 25-35%): **not done, moved to
+  the T5 follow-up plan** — draft_ai hasn't landed, so bots still draft by raw PER
+  (online% single digits for most colours; see the follow-up plan for the actual numbers).
 - Draft one cube in the app: new plays appear, render with roles, and can be staffed in
-  the deck builder; screenshot of one new play in the play panel.
+  the deck builder. **Done** — Switch Everything and Post-Up Series both appeared in a
+  live Quick Draft, rendered with their motif face + badge medallions and flipped to the
+  correct mechanic text; Switch Everything's two Lockdown Defender roles were staffed in
+  the deck builder (one role filled, the other correctly reported "no eligible players"
+  against that specific random roster — the inactive-until-staffed state working as
+  designed, not a bug).

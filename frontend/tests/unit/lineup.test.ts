@@ -97,7 +97,14 @@ describe('owner-locked lineup numbers (2025-26 starting fives, 2026-09-16)', () 
 
 describe('LINEUP_CENTRE / CHANNEL_CENTRE (D3)', () => {
   it('matches a fresh seeded measurement over in-game (drafted, minutes-weighted) lineups within ±1.5', () => {
-    const measured = measureLineupCentres(players, 6, 100, 42);
+    // K bumped 6->14 (card_balance T4, 2026-09-17): the K=6 sample was noisy enough that
+    // fixing tests/unit/fixtures/plays.ts's stale badges (silently unused by any real
+    // draft until now) and adding T4's 4 plays pushed perimeter to 54.6 vs pinned 53
+    // (diff 1.57, just over tolerance) at this exact seed, while the canonical
+    // K=40/N=150 balance.ts measurement over the same corrected data still lands at
+    // 53.2 - no real population shift, just small-sample variance. K=14 converges to
+    // within ~0.5 of every dimension at seed 42 and still runs in well under 100ms.
+    const measured = measureLineupCentres(players, 14, 100, 42);
     for (const d of RATING_DIMS) expect(Math.abs(measured[d] - LINEUP_CENTRE[d]), `${d}: measured ${measured[d].toFixed(1)} vs ${LINEUP_CENTRE[d]}`).toBeLessThan(1.5);
   });
   it('is derived from LINEUP_CENTRE per channel', () => {

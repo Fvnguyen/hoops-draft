@@ -20,14 +20,14 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 5 | [card_balance](plans/plan_card_balance_2026-09-13.md) — position data, rarity/badge distribution, play & plan content, rating retune + OVR-40 floor against the new engine | in progress (T1-T3, T6 done; T4 four new plays open) | engine_possession_model (done, pushed) | `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` rating section, `engine/playbook.ts` catalog, `engine/archetypes.ts` catalog, `src/data/cards.json` | 2-3 days |
+| 5 | [card_balance_thresholds](plans/plan_card_balance_thresholds_2026-09-17.md) — re-tune archetype thresholds to draft_ai's D8 bands once bots actually chase a plan (split out of card_balance's T5) | planned | draft_ai | `engine/archetypes.ts` (threshold constants only) | half a day |
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
 | 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (redesigned with per-play badge-emblem faces 2026-09-17 — build the phone variant on that, not the old generic diagram), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 
 **Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`
-(commit `7c89111`) with `card_balance` still missing T4/T6 — the 2026-09-16 gate ("wait
-for card_balance to land before any push") did not hold. Nothing to revert; treat
-`card_balance` as still open even though it is already live.
+(commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
+for card_balance to land before any push") did not hold. Nothing to revert; `card_balance`
+itself closed 2026-09-17 with T1-T4/T6 done, T5 split into `card_balance_thresholds` above.
 
 Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
 `mobile_responsive` because its tokens and primitives resolve most of the mobile
@@ -38,18 +38,16 @@ mobile T6 then re-audits and fixes only what is left. Earlier that day:
 tolerant auth design) and `android_twa` (#7) is conditional on the owner wanting to hand the installed app to a friend (`game_canvas` done 2026-09-16). `deckbuilder_ux` (done)
 was added after the owner's live review of ui_foundation the same evening: one deck-builder
 redesign for all devices, canvas-signed first, absorbing the mobile plan's tap-to-place.
-The 2026-09-14 note (card_balance waits for draft_ai's contested-draft data) was set
-aside by the owner on 2026-09-16: card_balance starts first on the merged engine, and
-its T2/T5 numbers are re-checked once draft_ai lands. Scope sketch for #7 is proposal G.2 in
+Scope sketch for #7 is proposal G.2 in
 `docs/completed/review_code_and_architecture_2026-09-12.md`.
 
 ## Recently completed (latest three)
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [card_balance](completed/plan_card_balance_2026-09-13.md) | 2026-09-17 | Real bref-primary positions, rarity redistribution (23/55/117/253, on D2's target), badge L1/L2/L3 hand-binning + keystone combo conditions, play catalog 10→14 (4 new plays close 3 previously-uncovered plans), `CARD_SET_VERSION`. 338/338 tests. T5 (threshold re-tune against draft_ai's D8) split into `card_balance_thresholds` — needs draft_ai's contested drafts to mean anything |
 | [game_theater](completed/plan_game_theater_2026-09-13.md) | 2026-09-17 (manual override) | Structured `narrative` per event, broadcast-style play-by-play, game-flow beats, crunch time (Q4/OT closing fives, 1x snap + pop-up), full box score with season totals; 333/333 tests, `npm run balance` before/after unchanged. Closed before its own two exit criteria ran (in-app season game, legacy-season load) — T6 (removing `narrativeText`) is still open; commits `be99ef0`..`579ae51` |
 | [badge_effects](completed/plan_badge_effects_2026-09-17.md) | 2026-09-17 | Closed without a full plan — its badge-levels-as-content scope shipped inside `card_balance` T2/T3 (rarity mechanism, keystone combo conditions); the originally named "special effects on top of the lineup model" mechanic was not built and is not planned; commits `9e2910d`, `c5c034c`, `58fd82d`, `d96b96f`, `037710d` |
-| [engine_possession_model](completed/plan_engine_possession_model_2026-09-16.md) | 2026-09-16 | Standardised, designed lineup aggregation (k / hole tax per dimension in one `balance.ts` table), edges centred on in-game lineups, edge 0.20/0.08 with per-side channel weights, possession battle replaced by per-possession turnovers / offensive rebounds / creator steer, shot profile from the on-court five; `--levers` table finishing 2.66 … mid 0.75; talent share 21.9% game / 49.3% season; commits `ff6a59a`..`18eb277` |
 
 ## Model tiers used in plans
 

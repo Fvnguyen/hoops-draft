@@ -12,7 +12,7 @@ proxy), Uncommon->Rare badge-level gates, Two-Way Disruptor/Playmaking Maestro/S
 rebuilt as two-badge-level combo conditions (`KEYSTONE_CONDITIONS`, no longer card
 traits), and Point Forward (first AND-badge play role). Commits `9e2910d`, `c5c034c`,
 `58fd82d`, `d96b96f`, `037710d` — full detail in
-[plan_card_balance_2026-09-13.md](../plans/plan_card_balance_2026-09-13.md).
+[plan_card_balance_2026-09-13.md](plan_card_balance_2026-09-13.md).
 
 The scope this roadmap row originally named — badge levels as their own
 "individual-brilliance" special effects layered on top of the lineup model (a badge

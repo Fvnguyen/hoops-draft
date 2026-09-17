@@ -110,13 +110,17 @@ A play card names roles with badge minimums (for example High Pick & Roll: Handl
 Floor General 1+, Roller = Finisher 1+). The player assigns active-roster players to the
 roles; a play is **active** only when every role holds a distinct eligible player. Each
 card has a fixed allocation of possessions (offense plays: share of own possessions;
-defense plays: share of opponent possessions), raised by rarity (Common ~10%, Uncommon
-~13%, Rare ~15%, Mythic ~18%) and capped by team budgets (40% offense, 35% defense;
-over-budget allocations are scaled down). On a called possession the assigned players
-are guaranteed on court in their own depth-chart position, their scorer weight is
-doubled, and the play's share and efficiency modifiers apply to that possession only —
-overtime possessions call plays exactly like regulation. Catalog:
-`frontend/src/engine/playbook.ts`; simulation: `engine/game.ts`.
+defense plays: share of opponent possessions), raised by rarity and capped by team
+budgets (40% offense, 35% defense; over-budget allocations are scaled down) — the
+original 10 plays span Common ~10% to Mythic ~18%; the 4 plays added in card_balance T4
+(Switch Everything, Drop Coverage, Post-Up Series, Drive-and-Kick Series) hold to a
+tighter 8-12% band until they've been played and re-tuned. On a called possession the
+assigned players are guaranteed on court in their own depth-chart position, their scorer
+weight is doubled, and the play's share and efficiency modifiers apply to that possession
+only — overtime possessions call plays exactly like regulation. 14 plays total, one per
+skill-badge colour or colour-pair that's short a natural play (`tests/unit/play-catalog-
+coverage.test.ts` tracks which plans still have none). Catalog: `frontend/src/engine/
+playbook.ts`; simulation: `engine/game.ts`.
 
 ## How much of a win is skill vs. luck?
 

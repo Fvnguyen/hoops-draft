@@ -48,6 +48,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
 - **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
+- **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 
 ## game_canvas — done 2026-09-16
 
@@ -72,47 +73,38 @@ headshots via `next/image` (~22 KB WebP) with the draft room preloading the next
 Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
 (`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
 
-## engine_possession_model — done 2026-09-16 (merged and pushed to origin/main)
+## card_balance — done 2026-09-17
 
-Plan: `docs/completed/plan_engine_possession_model_2026-09-16.md`. Commits `ff6a59a`
-(lineup model), `b8c233a` (in-game centres), `0332b3a` (edge 0.20/0.08), `5b46e5e`
-(possession events), plus the lever tuning commit. Owner reframing that drove it:
-meaningful play and NBA feel, dimensions unequally important *by design*. What changed in
-the engine, all constants in `balance.ts`:
-- **Lineup model** (`engine/lineup.ts`): ratings standardised to 50 ± 15 per dimension
-  (`RATING_NORM`), the five on the floor aggregated per dimension by `LINEUP_AGG` (k /
-  hole floor / hole cost: playmaking k=1.5 star channel, shooting + rebounding k=0.5 by
-  committee, defence k=0; a hole is the average of the two lowest players below 35),
-  edges centred on `LINEUP_CENTRE` measured over lineups the engine actually draws (bot
-  drafts, minutes-weighted — 6-13 points above the random pool; centring on the pool made
-  every edge negative and PPP fall with the edge scale). Real readings: Lakers playmaking
-  79, Pistons perimeter 44 vs 57 for five 70s. Owner chose edge size 0.20 / 0.08 from a
-  sweep (talent share per game 5.3% → 10.2%, season 17.5% → 29.1%).
-- **Possession events** replace the pre-game possession battle: turnover before the shot
-  (playmaking vs 0.3 × opponent perimeter defence, 13.9% of possessions), offensive
-  rebound after a missed FG (rebounding vs rebounding, ~30% of misses, up to 2 extra
-  shots), creator steer (up to 8pp of share toward the channel worth the most absolute
-  expected points in this matchup), shot profile from the on-court five. Per-side
-  `EDGE_WEIGHT` per channel is the deliberate size table.
-- **Measured** (`npm run balance -- 5000 --seed 777 --levers`, margin per game for +10
-  standardised points on one rating for a whole roster): finishing 2.66, playmaking 2.66,
-  perimeter defence 2.12, perimeter 1.98, post defence 1.58, rebounding 1.38, mid-range
-  0.75 (was 4.37 for perimeter defence and 1.11 for finishing at equal weights). Spread
-  (500, seed 42): PPP 1.050, sd 13.1, margin 15.3, [90,130] 86.6%, home win 57.2%.
-  `player_bootstrap` corr(OVR, win shares) 0.617 → 0.691. **`--report` talent share after
-  tuning: 21.9% per game / 49.3% per 7-game season** — double the 10.2% / 29.1% the owner
-  chose 0.20 for before the possession events existed (turnovers + rebounds + weighted
-  levers add talent signal on top of the efficiency edge). Owner call whether to keep it
-  or pull `EFFICIENCY_SCALE` back toward 0.12-0.15 (see open issue 6).
-- **Tooling**: balance script `--eff-scale`/`--max-shift`/`--levers`, header prints measured
-  lineup centres; `build-cards` prints the `RATING_NORM` block; `game.test.ts`'s 200-game
-  fixture is now seeded (it was the HANDOVER #5 flake).
-Gotchas: `LINEUP_CENTRE`/`RATING_NORM` are regenerated constants with drift tests (±1.5 /
-±0.5); the six-lineup numbers are pinned in `lineup.test.ts`, so retuning `LINEUP_AGG`
-means updating those expectations deliberately; the steer ranks channels by absolute
-expected points (a relative-edge version steered into mid-range).
-`game_theater` and `badge_effects` are done (see below); `card_balance` (ratings/OVR-40
-floor against this engine) is the one still open.
+Plan: `docs/completed/plan_card_balance_2026-09-13.md`. T1-T4 and T6 complete and
+verified; T5 (re-tune archetype thresholds against draft_ai's D8 bands) needs bots that
+actually chase a plan, so it's split into `docs/plans/plan_card_balance_thresholds_2026-09-17.md`,
+blocked on `draft_ai`.
+What shipped: bref-primary positions with an NBA-Stats-bio crossover blend; rarity
+redistribution via a real-starter-aware mechanism (`SeasonStat.gs`) — 23/55/117/253
+Mythic/Rare/Uncommon/Common, on the D2 target; badge L1/L2/L3 hand-binned to
+70-79/80-89/90-99 per dimension; keystones (Two-Way Disruptor/Playmaking Maestro/Sniper)
+rebuilt as two-badge-level combo conditions, never a card trait; Point Forward (first
+AND-badge play role) and Positionless Revolution (gold plan). Play catalog grew 10→14:
+Switch Everything (pure Lockdown Defender) and Drop Coverage (pure Paint Protector) each
+close a previously-uncovered defensive mono plan (No-Fly Zone, Paint Wall); Post-Up
+Series (pure Finisher) closes an offensive one (Rim Pressure); Drive-and-Kick Series
+(Floor General + Sharpshooter) per D4. `tests/unit/play-catalog-coverage.test.ts` tracks
+which plans still lack a natural play (Elbow Orchestra + 3 more monos, a known gap — full
+coverage needs more mono-focused plays than this batch budgeted). `CARD_SET_VERSION`
+(`2025-26.2`) now lives in `engine/cards.ts` as the single source of truth; `storage`'s
+`CURRENT_CARD_SET_VERSION` re-exports it.
+Verified: 338/338 tests; `npm run balance -- 1000 --seed 42 --ab` PPP 1.042/sd 13.6/
+margin 15.6/85.0% in [90,130]/home win 54.8% (close to but not fully inside game_engine
+D5's bands — consistent with variance the D5 sweep itself showed, not new drift, but
+worth a fresh read once draft_ai's contested drafts change the roster mix); a live Quick
+Draft confirmed Switch Everything and Post-Up Series render with their motif face + badge
+medallions and can be staffed in the deck builder.
+Gotcha found and fixed: `tests/unit/fixtures/plays.ts` (a hand-synced copy of
+`playsDB` that `npm run balance`/`feasibility` actually read) had drifted stale twice
+already — flagged in its own header comment now; extract a shared module if it drifts a
+third time. `LINEUP_CENTRE`'s unit test sample size bumped 6→14 drafts (small-sample
+noise crossed tolerance on the corrected play data; the canonical 40-draft measurement
+held).
 
 ## game_theater — done 2026-09-17 (manual override)
 
@@ -157,9 +149,9 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (`card_balance` is the only in-progress plan — T4,
-four new plays, is the one open task; everything else through `game_theater` and
-`badge_effects` is done). Owner actions outside the repo:
+What to do next is `docs/ROADMAP.md` (`draft_ai` is next up; `card_balance_thresholds`
+follows once it lands; `card_balance`, `game_theater` and `badge_effects` are done).
+Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
@@ -182,7 +174,7 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
    starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
    18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-6. **engine_possession_model follow-ups, revisit during card_balance** — owner accepted
+6. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
    the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
    (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
    (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
@@ -190,9 +182,10 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
 7. **Shipping gate — already crossed.** `main` was pushed to `origin/main` on 2026-09-17
-   (commit `7c89111`) with `card_balance` still missing T4 — the 2026-09-16 gate ("wait
-   for card_balance to land before any push") did not hold. Nothing to revert; just
-   don't treat card_balance as finished because it's live.
+   (commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
+   for card_balance to land before any push") did not hold. Nothing to revert;
+   `card_balance` closed 2026-09-17 with `card_balance_thresholds` split out, blocked on
+   `draft_ai`.
 8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce
    a depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`,
    game 3: PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that

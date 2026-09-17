@@ -190,6 +190,34 @@ export const PLAYBOOK: Record<string, PlayDef> = {
     mods: { rimShare: 0.02, midShare: -0.12, threeShare: 0.10, threeEff: 0.02, possessions: 1 },
     summary: 'On calls: rim +2%, mid −12%, 3pt +10%; 3pt eff +2%; +1 possession per game',
   },
+  // card_balance T4 (2026-09-17): four new plays, allocation held to the tighter
+  // 0.08-0.12 band D4 sets for this batch (below the legacy 0.10-0.18 range) until
+  // they've been played and re-tuned. Each role is deliberately single-colour, no
+  // altBadge, so it counts cleanly toward its mono plan's colour-coverage test.
+  'play-std-7': {
+    playId: 'play-std-7', name: 'Switch Everything', side: 'defense', rarity: 'Uncommon', allocation: 0.10,
+    roles: [R('switcher1', 'Switcher 1', 'Lockdown Defender', 1), R('switcher2', 'Switcher 2', 'Lockdown Defender', 1)],
+    mods: { rimEff: -0.02, threeEff: -0.01 },
+    summary: 'On coverage: opp rim eff −2%, 3pt eff −1%',
+  },
+  'play-std-8': {
+    playId: 'play-std-8', name: 'Drop Coverage', side: 'defense', rarity: 'Rare', allocation: 0.12,
+    roles: [R('anchor', 'Anchor', 'Paint Protector', 1), R('helper', 'Weak-side helper', 'Paint Protector', 1)],
+    mods: { rimEff: -0.04 },
+    summary: 'On coverage: opp rim eff −4%',
+  },
+  'play-std-9': {
+    playId: 'play-std-9', name: 'Post-Up Series', side: 'offense', rarity: 'Uncommon', allocation: 0.10,
+    roles: [R('low-post', 'Low post', 'Finisher', 2), R('kick-out', 'Kick-out threat', 'Finisher', 1)],
+    mods: { rimShare: 0.08, midShare: 0.02, threeShare: -0.10, rimEff: 0.02 },
+    summary: 'On calls: rim +8%, mid +2%, 3pt −10%; rim eff +2%',
+  },
+  'play-std-10': {
+    playId: 'play-std-10', name: 'Drive-and-Kick Series', side: 'offense', rarity: 'Common', allocation: 0.08,
+    roles: [R('driver', 'Driver', 'Floor General', 1), R('corner1', 'Corner shooter 1', 'Sharpshooter', 1), R('corner2', 'Corner shooter 2', 'Sharpshooter', 1)],
+    mods: { rimShare: 0.04, midShare: -0.10, threeShare: 0.06, rimEff: 0.01, threeEff: 0.01, and1: 0.01 },
+    summary: 'On calls: rim +4%, mid −10%, 3pt +6%; rim/3pt eff +1%, and-1 +1%',
+  },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────

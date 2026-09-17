@@ -199,7 +199,8 @@ export const playCategoryMotifStroke: Record<PlayCategory, string> = {
 // back to the old category-generic PlayBoardGraphic look.
 export type PlayMotif =
   | 'triangle' | 'speed' | 'wall' | 'orbit' | 'screen'
-  | 'box' | 'horns' | 'court' | 'four' | 'pointForward';
+  | 'box' | 'horns' | 'court' | 'four' | 'pointForward'
+  | 'switch' | 'drop' | 'post' | 'kickout';
 
 export const playMotifByEffectId: Record<string, PlayMotif> = {
   'play-sys-1': 'triangle',
@@ -212,4 +213,9 @@ export const playMotifByEffectId: Record<string, PlayMotif> = {
   'play-std-4': 'court',
   'play-std-5': 'four',
   'play-std-6': 'pointForward',
+  // card_balance T4 (2026-09-17)
+  'play-std-7': 'switch',
+  'play-std-8': 'drop',
+  'play-std-9': 'post',
+  'play-std-10': 'kickout',
 };

@@ -233,6 +233,40 @@ const PLAY_EFFECTS: Record<string, PlayEffect> = {
     fullBonus: { ...emptyModifiers(), perShareBonus: 0.10, perEffBonus: 0.02, rimShareBonus: 0.02, possessionSwing: 1, description: ['\u{1F3C0} Point Forward (+10% 3pt share, +2% 3pt eff, +2% rim share, +1 poss)'] },
     halfBonus: { ...emptyModifiers(), perShareBonus: 0.04, description: ['\u{1F3C0} Point Forward (partial, +4% 3pt share)'] },
   },
+  // card_balance T4 (2026-09-17): four new plays. Badge names here match playbook.ts's
+  // roles exactly (this record is UI/bot-draft-scoring only, not read by
+  // calcTeamBonuses — see the module comment above); `levels` is its own independently
+  // tuned roster-wide threshold, same as every other entry in this table.
+  'play-std-7': {
+    name: 'Switch Everything',
+    summary: '-2% opp rim eff, -1% opp 3pt eff',
+    defensive: true,
+    requirements: [{ badge: 'Lockdown Defender', levels: 2 }],
+    fullBonus: { ...emptyModifiers(), rimEffBonus: -0.02, perEffBonus: -0.01, description: ['\u{1F504} Switch Everything (-2% opp rim eff, -1% opp 3pt eff)'] },
+    halfBonus: { ...emptyModifiers(), rimEffBonus: -0.01, description: ['\u{1F504} Switch Everything (partial, -1% opp rim eff)'] },
+  },
+  'play-std-8': {
+    name: 'Drop Coverage',
+    summary: '-4% opp rim eff',
+    defensive: true,
+    requirements: [{ badge: 'Paint Protector', levels: 2 }],
+    fullBonus: { ...emptyModifiers(), rimEffBonus: -0.04, description: ['\u{1F6E1}\u{FE0F} Drop Coverage (-4% opp rim eff)'] },
+    halfBonus: { ...emptyModifiers(), rimEffBonus: -0.02, description: ['\u{1F6E1}\u{FE0F} Drop Coverage (partial, -2% opp rim eff)'] },
+  },
+  'play-std-9': {
+    name: 'Post-Up Series',
+    summary: '+8% rim share, +2% rim eff',
+    requirements: [{ badge: 'Finisher', levels: 3 }],
+    fullBonus: { ...emptyModifiers(), rimShareBonus: 0.08, midShareBonus: 0.02, rimEffBonus: 0.02, description: ['\u{1F4AA} Post-Up Series (+8% rim share, +2% mid share, +2% rim eff)'] },
+    halfBonus: { ...emptyModifiers(), rimShareBonus: 0.03, description: ['\u{1F4AA} Post-Up Series (partial, +3% rim share)'] },
+  },
+  'play-std-10': {
+    name: 'Drive-and-Kick Series',
+    summary: '+4% rim share, +6% 3pt share, +1% rim / +1% 3pt eff, +1% and-1',
+    requirements: [{ badge: 'Floor General', levels: 1 }, { badge: 'Sharpshooter', levels: 2 }],
+    fullBonus: { ...emptyModifiers(), rimShareBonus: 0.04, perShareBonus: 0.06, rimEffBonus: 0.01, perEffBonus: 0.01, and1Bonus: 0.01, description: ['\u{1F3C0} Drive-and-Kick Series (+4% rim share, +6% 3pt share, +1/+1% eff, +1% and-1)'] },
+    halfBonus: { ...emptyModifiers(), perShareBonus: 0.02, description: ['\u{1F3C0} Drive-and-Kick Series (partial, +2% 3pt share)'] },
+  },
 };
 
 /** Stable effect id for a play card (draft packs suffix `id` with `_pack{N}` for React keys). */

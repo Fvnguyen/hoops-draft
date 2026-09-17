@@ -896,6 +896,44 @@ function PlayMotifSvg({ motif, stroke }: { motif: PlayMotif; stroke: string }) {
           <line x1="100" y1="25" x2="160" y2="115" stroke="currentColor" strokeWidth="2.5" />
         </>
       )}
+      {motif === 'switch' && (
+        <>
+          <circle cx="40" cy="40" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="160" cy="40" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="40" cy="100" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="160" cy="100" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="40" y1="40" x2="160" y2="100" stroke="currentColor" strokeWidth="2.5" />
+          <line x1="160" y1="40" x2="40" y2="100" stroke="currentColor" strokeWidth="2.5" />
+        </>
+      )}
+      {motif === 'drop' && (
+        <>
+          <rect x="70" y="90" width="60" height="35" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="100" cy="40" r="8" fill="currentColor" />
+          <line x1="100" y1="48" x2="100" y2="85" stroke="currentColor" strokeWidth="2.5" />
+          <polygon points="100,85 92,73 108,73" fill="currentColor" />
+        </>
+      )}
+      {motif === 'post' && (
+        <>
+          <circle cx="150" cy="105" r="10" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="60" cy="110" r="7" fill="currentColor" />
+          <circle cx="90" cy="50" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="60" y1="110" x2="150" y2="105" stroke="currentColor" strokeWidth="2" />
+          <line x1="90" y1="50" x2="150" y2="105" stroke="currentColor" strokeWidth="2" />
+        </>
+      )}
+      {motif === 'kickout' && (
+        <>
+          <circle cx="100" cy="20" r="7" fill="currentColor" />
+          <circle cx="100" cy="100" r="9" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="20" cy="120" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="180" cy="120" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="100" y1="20" x2="100" y2="95" stroke="currentColor" strokeWidth="2.5" />
+          <line x1="100" y1="60" x2="20" y2="120" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3" />
+          <line x1="100" y1="60" x2="180" y2="120" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3" />
+        </>
+      )}
     </svg>
   );
 }
