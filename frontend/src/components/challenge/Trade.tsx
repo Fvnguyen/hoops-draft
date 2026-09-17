@@ -123,7 +123,7 @@ export function Trade({ run, roster, onCancel, onConfirm }: TradeProps) {
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-surface text-ink">
-      <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line px-6">
+      <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line pl-6 pr-nav-gear">
         <Button variant="ghost" size="md" onClick={onCancel} aria-label="Back to the front office">
           Back
         </Button>

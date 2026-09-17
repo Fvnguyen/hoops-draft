@@ -23,10 +23,15 @@ D1. **Mode is chosen before the draft.** Start page (board 1a): primary buttons 
     tournament). The deck builder's save CTA routes by `gameMode` ("Save & play season" /
     "Save & start 82:0" -> `/challenge/[rosterId]`); no post-draft choice, and a roster can
     only start the mode it was drafted for.
-D2. **Theme.** Challenge routes are dark (`surface-inverse-deep` shell, Bebas digits, amber
-    accent); tournament stays cream. Draft room and deck builder are NOT re-themed in v1;
+D2. **Theme and chrome** (amended 2026-09-17 after the live review). Challenge routes are
+    dark via `data-theme="night"` on the subtree, NOT the literal `surface-inverse-deep`
+    first written here: under night the ordinary tokens already resolve to the signed
+    boards' palette, while the inverse tokens give the court theme's amber. Components stay
+    theme-agnostic. Tournament stays cream. Draft room and deck builder are NOT re-themed;
     a gold "82:0" header badge marks a challenge session. Rename scope: home button and
-    SeasonView title only.
+    SeasonView title. `/challenge` is a GAME route, not a bare one — a 4-minute run needs
+    the gear menu's confirm-then-Home; the challenge headers reserve `pr-nav-gear` so their
+    own controls clear it.
 D3. **Opponents.** Pure `buildNbaTeamRoster(cards, teamAbbr)`: top 15 by OVR on `player.team`
     into `buildBotRoster` with the full play catalog (best 3 staffable plays +
     `chooseBotArchetypes`), trimmed to 12; any empty depth-chart slot is backfilled regardless
@@ -46,20 +51,20 @@ D6. **Grades** (reference-game ladder with +/-): S+ 82 Immortal; S 80-81 Perfect
     Historic; A 66-71 / A- 62-65 Dynasty; B+ 61 / B 59-60 / B- 57-58 Contender; C+ 55-56 /
     C 52-54 / C- 50-51 Playoff; D+ 47-49 / D 43-46 / D- 40-42 Lottery; F 0-39 Tanking.
 D7. **The reveal is presentation over a finished sim.** `simulateHalf` runs 41 games in one
-    call (~3 ms per game), committed before the animation starts; reloading replays it. Flip
-    clock W:L (boards 2, 3, 6): slow and readable for the first week, accelerating until the
-    flaps blur, sealed through the break, readable again for the last five at locked speed.
-    Speeds Slower / Normal / Instant; tap skips to the next stop. Progress bar never coloured
-    by result; streak call-outs (10/25/41/60/82) are the only mid-reel result signal.
+    call, committed before the animation starts; reloading replays it. Flip clock W:L (boards
+    2, 3, 6): slow and readable for the first week, accelerating until the flaps blur, sealed
+    through the break, readable again for the last five at locked speed. Speeds Slower /
+    Normal / Instant; tap skips to the next stop. Progress bar never coloured by result;
+    streak call-outs (10/25/41/60/82) are the only mid-reel result signal.
 D8. **Front office (board 4), once, after game 41.** A pace band on the tier ladder
     (projected wins 2x first-half +/- 7, snapped outward to grade bands), never the record.
     Three quotes, Coach / Owner / Fans, from pure `engine/challengeAdvice.ts`: a ranked reason
-    catalogue over first-half data (weakest four-factor vs league, bench player out-producing
-    a starter, worst rotation plus-minus, unstaffed or failing play, identity one step from
-    online, pace band) -> each reason carries an action chip (Lineup / Plays / Trade / Hold),
-    an evidence line, and 3-4 templates per speaker; a band starting at Historic yields Hold
-    quotes. Never OVR or ratings, never W-L. Actions: adjust lineup, plays and identity (same
-    12 plus the trade), one optional trade, "Spin the second half".
+    catalogue over first-half data (weakest four-factor either side vs league, bench player
+    out-producing a starter, worst rotation plus-minus, unstaffed or failing play, identity one
+    step from online, pace band) -> each reason carries an action chip (Lineup / Plays / Trade
+    / Hold), an evidence line, and 3-4 templates per speaker; a band starting at Historic
+    yields Hold quotes. Never OVR or ratings, never W-L. Actions: adjust lineup, plays and
+    identity, one optional trade, "Spin the second half".
 D9. **Trade (board 5).** Drop one roster card; five offers drawn without replacement from all
     448 cards minus the user's, weights per RARITY CLASS `{Common 55, Uncommon 30, Rare 12,
     Mythic 3}` with the dropped card's class x4, renormalised (per-card weighting instead
@@ -72,10 +77,10 @@ D10. **Results (board 7).** Grade slam + title, record on the same flaps, win tr
     log, no per-game drill-in.
 D11. **Storage.** New `ChallengeRun`: `id, ownerId, sessionId, rosterId, timestamp, seed,
     balanceVersion, phase ('first'|'break'|'second'|'done'), rosterPre, rosterPost?, trade?,
-    halves[]: { results: W/L string, scores, topPerformer per game, player totals }, ghost?`.
-    No box scores. Own store methods and Dexie table; Supabase copies the Season pattern with
-    one merge rule: the later `phase` wins. `rosterPre/Post` are snapshots — a trade never
-    mutates the saved roster.
+    halves[] (W/L string, scores, top performer, player totals, opponent totals), ghost?`. No
+    box scores. Own store methods and Dexie table; Supabase copies the Season pattern, one
+    merge rule: the later `phase` wins. `rosterPre/Post` are snapshots — a trade never mutates
+    the saved roster.
 
 ## Out of scope
 
@@ -86,30 +91,28 @@ draft rules and the limited-style picker (backlog `Main`), per-team playbooks, n
 ## Tasks
 
 T1 (top). DONE. `npm run challenge [drafts] [--seed N] [--sweep]`.
-T2 (top). DONE, less the ghost run (moved to T8): `engine/challenge.ts`, `balance.ts`
-constants, the `cardColors.ts` fix, and `engine/plays.ts` (the catalog left `DraftRoom.tsx`
-for a pure module — the engine may not import components). 25 tests.
+T2 (top). DONE: `engine/challenge.ts`, `balance.ts` constants, the `cardColors.ts` fix, and
+`engine/plays.ts` (the catalog left `DraftRoom.tsx` for a pure module). 28 tests.
 T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 28 tests incl. the
-no-rating/no-record scan. Defensive four factors via `opponentTotals`, so board 4's
-"opponents rebound X% of their misses" is real output.
+no-rating/no-record scan. Defensive four factors via `opponentTotals`.
 T4 (mid). DONE. `ChallengeRun` in all four backends, Dexie 3 -> 4, `mergeChallengeRun`.
-Migration `202609170001_challenge_runs.sql` APPLIED to the live project 2026-09-17 (table, RLS
-and `cas_upsert` allowlist verified); cleared the 404 on every route.
+Migration `202609170001_challenge_runs.sql` APPLIED to the live project 2026-09-17.
 T5 (mid). DONE. Start page, `HomeModePicker`, `gameMode` draft -> session -> roster -> CTA,
 82:0 badge, SeasonView title; Button gained a `stacked` size (the primitive had no multi-line
-CTA height). Verified live against 1a-1c. `home.spec.ts` rewritten. "Enter a seed" disabled
-until T8. Smoke 8/9: only `/data` is red, on a pre-existing missing headshot (card 08d0e9d2).
+CTA height). Verified live against 1a-1c. "Enter a seed" is still disabled — `parseSeed` (T8)
+is what it needs; wiring it belongs to `mode_picker`.
 T6 (top). DONE. FlipClock, TierLadder (families derived from `CHALLENGE_GRADES`),
 ChallengeReel, the phase machine, and `/challenge/preview` — boards 2/3/6 with no auth or
-storage, which is the sign-off route. Verified at 1280x720.
+storage. Verified at 1280x720.
 T7 (mid). DONE. FrontOffice + Trade; lineup/plays reuse the whole DeckBuilder via
-`embedOverride`, so edits write `rosterPost`, never the drafted roster. Verified live: drop ->
-pick -> spin keeps the trade. OPEN: the acquired card lands on the bench per D9 with no prompt
-to slot him, so spinning without opening the lineup plays 42-82 with ELEVEN. Owner decision.
-T8 (mid). Results (board 7) incl. ghost line, verdict, seed copy/paste, share card. Done-when:
-screenshot for a forced-seed run; pasted seed reproduces the schedule.
-T9 (low). Docs: "82:0 Challenge" in `game_mechanics.md`, `AGENTS.md`, `ARCHITECTURE.md`; PNG
-exports of the signed boards.
+`embedOverride`, so edits write `rosterPost`, never the drafted roster. Confirming a trade now
+opens the lineup editor (the acquired card lands on the bench per D9, so trade-then-spin used
+to play 42-82 with eleven). The trade pack uses its own art; the "Answers the X" tag is cut —
+it fired on all five offers, so it said nothing.
+T8 (mid). DONE. `Results.tsx` + the ghost half + `/challenge/preview-results` (the sign-off
+route, no auth or storage). The seed chip copies the code it displays and `parseSeed` inverts
+it; the code is 7 base36 chars because 6 truncates a 32-bit seed into a different season.
+T9 (low). Docs: "82:0 Challenge" in `game_mechanics.md`, `AGENTS.md`, `ARCHITECTURE.md`.
 
 ## T1 calibration (measured 2026-09-17)
 
@@ -119,30 +122,27 @@ exports of the signed boards.
 |---|---|---|---|---|---|
 | 0.20 / 0.08 (engine default) | 44.9 | 57 | 65 | 0.0% | 0% |
 | **0.50 / 0.20 (chosen)** | **47.8** | **63** | **72** | **12.5%** | **0%** |
-| 0.90 / 0.36 | 49.4 | 68 | 77 | 30.0% | 2.5% |
 
 Confirmation, `npm run challenge 250 --seed 7` (2,000 seat-seasons), re-run identical after the
 box-score fix: best seat mean 60.0, median 60, p90 70, max 78, A+ 8.8%, S 0/250; wins fall
-monotonically by seat rank (#1 60.0 -> #8 32.3), so the draft decides the run. Two gaps against
-D5 — the top decile lands at 70 not 72, and S never appeared where the target was "one in
-hundreds" — but both are measured WITHOUT the front office, which only adds wins, so 0.50/0.20
-stands and T7/T8 re-measure with the trade in place.
+monotonically by seat rank (#1 60.0 -> #8 32.3), so the draft decides the run. The top decile
+lands at 70 not 72 and S never appeared, but both were measured WITHOUT the front office, which
+only adds wins — so 0.50/0.20 stands, to be re-measured with the trade in place.
 
 ## Parallelization
 
-Waves 0-2 DONE (T1-T7). Wave 3: T8. Wave 4: T9. Agents never run git; the driver verifies,
-re-checks against the boards in a browser, and commits.
+Waves 0-3 DONE (T1-T8). Wave 4: T9. Agents never run git; the driver verifies, re-checks
+against the boards in a browser, and commits.
 
 ## Recommended model tier
 
-Main driver: top — owns T1/T2, reviews every wave against the boards. T3/T6 top; T4, T5, T7,
-T8 mid (Sonnet 5); T9 low (Haiku 4.5).
+Main driver: top — owns T1/T2, reviews every wave against the boards. T3/T6 top; T4/T5/T7/T8 mid; T9 low.
 
 ## Verification / exit criteria
 
 - `npm test` green; tsc, lint, `check:styles` clean; `npm run balance -- 500 --seed 42`
-  before/after identical. After Wave 2: 412/412, 0 errors, 0 violations, PPP 1.044 both sides;
-  smoke 8/9 (`/data` red on a pre-existing missing headshot, card 08d0e9d2).
+  before/after identical. After Wave 3: 419/419, 0 errors, 0 violations, PPP 1.044 both sides,
+  smoke 9/9 (the missing headshot is fetched; `npm run ensure:headshots` backfills future gaps).
 - Screenshots per task compared against the signed boards; owner verifies live in the browser
   (design-first) before the plan closes — `/challenge/preview` needs no draft.
 - One full dev playthrough per draft style: start page -> draft -> deck builder -> first spin

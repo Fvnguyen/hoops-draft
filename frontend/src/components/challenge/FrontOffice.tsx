@@ -141,7 +141,7 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
 
   return (
     <div className="flex h-dvh-z flex-col">
-      <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line px-6">
+      <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line pl-6 pr-nav-gear">
         <span className="font-display text-3xl leading-none text-accent">82:0</span>
         <span className="text-xs font-black uppercase tracking-widest text-ink-muted">
           All-Star break &middot; {CHALLENGE_GAMES / 2} games played &middot; trade deadline

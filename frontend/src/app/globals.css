@@ -163,6 +163,10 @@
   --spacing-control: 44px;     /* every interactive control */
   --spacing-control-lg: 52px;  /* primary CTAs */
   --spacing-nav: 56px;         /* the one nav-bar height; replaces pt-[56|60|70px] */
+  /* Right gutter for a header that shares the top-right corner with TopNav's fixed gear
+   * menu (`fixed right-4 top-4`, a 44px control). 24px page gutter + 44px + 16px inset,
+   * so the 82:0 headers' own controls never sit under it. */
+  --spacing-nav-gear: 84px;
   --radius-panel: 12px;
   --radius-control: 8px;
 }
