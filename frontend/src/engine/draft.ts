@@ -119,17 +119,17 @@ export function generateCubePool(allPlayers: Player[], playsDB: Play[], rng: Rng
       packCards.push(popPool(shuffledCommon, comRef));
     }
 
-    // 4. Sort: Mythic > Rare > Uncommon > Common > Play (always last)
+    // 4. Sort by rarity (Mythic > Rare > Uncommon > Common); within a rarity tier,
+    // the play sorts after players of that same tier, not after every player overall.
     const rarityValue: Record<string, number> = { Mythic: 4, Rare: 3, Uncommon: 2, Common: 1 };
     packCards.sort((a, b) => {
-      if (a.type === 'Play' && b.type !== 'Play') return 1;
-      if (b.type === 'Play' && a.type !== 'Play') return -1;
-      if (a.type === 'Play' && b.type === 'Play') return 0; // should only be 1 play anyway
-
       const rvA = rarityValue[a.rarity] || 1;
       const rvB = rarityValue[b.rarity] || 1;
       if (rvA !== rvB) return rvB - rvA;
-      
+
+      if (a.type === 'Play' && b.type !== 'Play') return 1;
+      if (b.type === 'Play' && a.type !== 'Play') return -1;
+
       // Secondary sort to keep deterministic ordering for same rarities
       return a.id.localeCompare(b.id);
     });

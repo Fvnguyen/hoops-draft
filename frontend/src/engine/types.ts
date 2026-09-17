@@ -18,6 +18,11 @@ export interface PlayerBio {
 
 export interface SeasonStat {
   gp: number;
+  /** Games started (card_balance T2, 2026-09-17) — the real starter signal for the
+   *  Uncommon rarity floor; `gs / gp >= 0.5` is a real starter for the season. Optional
+   *  so existing test/fixture SeasonStat literals don't all need updating — absent
+   *  means "not known to be a starter", never inflates rarity by accident. */
+  gs?: number;
   mpg: number;
   pts: number;
   trb: number;

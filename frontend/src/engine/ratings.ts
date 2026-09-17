@@ -307,6 +307,14 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     else if ((hasAllNba || hasDpoy) && rarity !== 'Mythic' && rarity !== 'Rare') rarity = 'Rare';
     else if (hasAllDef && rarity === 'Common') rarity = 'Uncommon';
 
+    // card_balance T2 (2026-09-17, owner-approved): a real 2025-26 starter (games
+    // started / games played >= 0.5 - the real signal, not a minutes proxy, see
+    // SeasonStat.gs) is never Common. The NBA is top-heavy (D2's ~24 all-stars out of
+    // 400+ baseline), so this floor is deliberately the only lever that moves Uncommon
+    // toward D2's target - Rare stays scarce by design (below target is accepted).
+    const isStarter = (stat.gs ?? 0) / Math.max(1, stat.gp) >= 0.5;
+    if (isStarter && rarity === 'Common') rarity = 'Uncommon';
+
     // 2. LEGENDARY BUMP (Adds 1 tier, making drafting harder)
     if (isLegendary) {
       rarity = bumpRarity(rarity);
@@ -326,6 +334,17 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     b = getBadge(rebounding, 'Glass Cleaner', 'rebounding'); if (b) traits.push(b);
     b = getBadge(perimeterDefense, 'Lockdown Defender', 'perimeterDefense'); if (b) traits.push(b);
     b = getBadge(postDefense, 'Paint Protector', 'postDefense'); if (b) traits.push(b);
+
+    // card_balance T2 (2026-09-17, owner-approved): Uncommon -> Rare promotion by badge
+    // level, not a raw OVR band - one skill badge at level 3, or two at level 2+.
+    // Positionless is excluded (not a skill badge; would let 3 specific names promote
+    // for a reason unrelated to skill). Rare stays scarce (D2's ~24-all-star baseline);
+    // this is meant to promote a modest, real number of standout Uncommons, not hit a
+    // percentage target.
+    const skillBadgeLevels = traits.filter(t => t.name !== 'Positionless').map(t => t.level);
+    if (rarity === 'Uncommon' && (skillBadgeLevels.some(l => l >= 3) || skillBadgeLevels.filter(l => l >= 2).length >= 2)) {
+      rarity = 'Rare';
+    }
 
     // card_balance T3 finding (2026-09-16, owner-approved): Legend/League Leader/Ironman/
     // Efficiency Savant/Young Phenom/Veteran Presence/Microwave/Volume Scorer/Stat Sheet

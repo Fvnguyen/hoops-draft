@@ -145,8 +145,8 @@ export const HOLE_BOTTOM_N = 2;
  * `tests/unit/lineup.test.ts` asserts these within ±1.5 of a fresh seeded measurement.
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
-  finishing: 63.2, midRange: 62.3, perimeter: 54.0, playmaking: 68.8,
-  rebounding: 66.6, perimeterDefense: 61.7, postDefense: 61.7,
+  finishing: 60.7, midRange: 60.1, perimeter: 53.0, playmaking: 64.4,
+  rebounding: 61.8, perimeterDefense: 57.1, postDefense: 57.0,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */
@@ -315,14 +315,22 @@ export const RATING_CONFIG = {
     REF: 60,
     CORE_PEN: 1.0,
     CORE_REF: 70,
+    // card_balance T2 (2026-09-17, owner-approved): a light, bounded retune — trims
+    // mid-range weight by 2-3 points per position (its lever is now 0.28, the lowest by
+    // far, vs playmaking/finishing at 3.10) and redistributes to finishing/playmaking/
+    // perimeter defense, the top of the lever table. Deliberately modest, not a rewrite
+    // toward the lever table: OVR staying a little out of sync with in-game impact is
+    // intentional, it keeps bot drafters from optimizing perfectly onto the exact
+    // strongest build. Every profile still sums to 100; positional shape unchanged (a PG
+    // is still playmaking-heavy, a C still finishing/rebounding/defense-heavy).
     PROFILES: {
-      'PG':   [15, 10, 20, 30,  6, 14,  5],
-      'SG':   [15, 18, 28, 14,  5, 15,  5],
-      'SF':   [20, 14, 18, 10, 14, 17,  7],
-      'PF':   [24, 13,  9,  5, 20, 11, 18],
-      'C':    [24,  8,  4,  5, 29,  7, 23],
-      'G/F':  [18, 14, 21, 14, 10, 16,  7],
-      'F/C':  [24, 11,  6,  5, 24,  9, 21],
+      'PG':   [15,  7, 20, 32,  6, 15,  5],
+      'SG':   [16, 15, 29, 14,  5, 16,  5],
+      'SF':   [21, 11, 18, 12, 14, 17,  7],
+      'PF':   [25, 10,  9,  5, 21, 12, 18],
+      'C':    [25,  6,  4,  5, 29,  7, 24],
+      'G/F':  [19, 11, 21, 16, 10, 16,  7],
+      'F/C':  [25,  8,  6,  5, 25,  9, 22],
       // 'Gold': catch-all for any position string that isn't a specific PG-C or one of the
       // two adjacent crossovers above (card_balance T1 follow-up, 2026-09-16). Neither of
       // our position sources (bref Pos, NBA Stats bio) can produce a 3-way combo — bref
