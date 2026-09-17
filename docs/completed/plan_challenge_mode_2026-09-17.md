@@ -1,7 +1,7 @@
 # Plan: challenge_mode
 
-File: `docs/plans/plan_challenge_mode_2026-09-17.md`. Status: in progress, Wave 0 done.
-Sequence: 9 in `docs/ROADMAP.md`. Depends on: none. Design: canvas "82:0 Challenge Mode"
+File: `docs/completed/plan_challenge_mode_2026-09-17.md`. Status: done 2026-09-18.
+Sequence: was 9 in `docs/ROADMAP.md`. Depends on: none. Design: canvas "82:0 Challenge Mode"
 https://claude.ai/artifact/P7XLqF4kogeY7kvu4h4X7W, sources in `docs/design/challenge_mode/`
 (boards 1a-1c, 2-7 signed; `Main` is backlog, not this plan).
 

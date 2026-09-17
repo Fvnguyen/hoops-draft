@@ -107,9 +107,12 @@ in-app fixture `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
 Gotchas: any rng-order change needs a `BALANCE_VERSION` bump; the phone-landscape header
 takes most of the 385px screen — next mobile item is compacting it.
 
-## challenge_mode — built 2026-09-17, awaiting owner sign-off
+## challenge_mode — done 2026-09-18
 
-Plan: `docs/plans/plan_challenge_mode_2026-09-17.md` (T1-T9 done). The 82:0 Challenge is a
+Plan: `docs/completed/plan_challenge_mode_2026-09-17.md` (T1-T9). Owner signed off live
+2026-09-18 after two rounds of UAT; exit criteria re-run at close: 431/431 vitest, smoke 9/9,
+tsc clean, lint 0 errors, check:styles 0, `npm run balance -- 500 --seed 42` unchanged at PPP
+1.044, and a tournament roster refused at `/challenge/<id>` with no run created. The 82:0 Challenge is a
 second game mode picked on the start page BEFORE the draft: 82 games against all 30 real NBA
 teams, revealed as a flip clock in two spins, with a front office and one trade at game 41 and
 a single grade at the end. `docs/game_mechanics.md` describes it in prose, `ARCHITECTURE.md`
@@ -136,10 +139,13 @@ What to know before touching it:
 - **The record stays sealed until game 82.** The break shows a pace band only, and
   `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
 
-Before this closes the owner should do a full playthrough per draft style (start page -> draft
--> deck builder -> first spin -> front office + trade -> second spin -> results, reloading at
-each phase). `/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render
-the screens against the signed boards with no auth, storage or simulation.
+UAT changed three things worth remembering. The reel was too slow at both ends (a run is now
+~15.6s, not ~29s). The flip blur was twice overcorrected: what seals the record is the strip
+ROLLING, not blur — blur only softens the moving digits, and at 19% of the glyph the cell went
+flat. And the "flicker before the deadline" was a REVEAL: the reel dropped blur to 0 when a
+half ran out, showing the true 41-game record for a frame before the break mounted.
+`/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render the screens
+against the signed boards with no auth, storage or simulation.
 
 Seams: the pack reveal advances on animation frames, so it stalls if the browser pane stops
 painting (which is why the trade -> deck-builder hand-off is code-verified, not clicked);
@@ -168,10 +174,10 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md`. `challenge_mode` is built but NOT closed — it needs the
-owner's live sign-off first (see its section above), then `git mv` the plan to `docs/completed/`
-and update the roadmap tables. After that `draft_ai` is next up, with
-`card_balance_thresholds` behind it.
+What to do next is `docs/ROADMAP.md`. `challenge_mode` closed 2026-09-18 and `main` is pushed
+through `fde605a`. `draft_ai` is next up, with `card_balance_thresholds` behind it (it needs
+bots that actually chase a plan); a `card_ratings_rebalance` plan is being written on the
+`player-ratings-csv-export` branch and will re-sequence ahead of both.
 Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
@@ -188,39 +194,30 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
    bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
    pointer here was stale). `draft_ai` is the plan that owns this.
-4. **82:0 trade -> deck-builder hand-off is verified by code only.** Confirming a trade
-   should drop you into the lineup editor (otherwise the second half plays a man short). The
-   pack reveal advances on animation frames and the browser pane stopped painting during
-   verification, so the spread could never be dealt. Worth one click-through.
-5. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
+4. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
    (`components/challenge/Results.tsx`) is the missing half and already round-trips across
    the full 32-bit range; wiring the input belongs to `mode_picker` (roadmap #10).
-6. **`mobile-audit` deck-builder step flakes when several touch projects run in one
+5. **`mobile-audit` deck-builder step flakes when several touch projects run in one
    invocation** (the three projects share one fixture roster; the "Edit Roster" click
    sometimes fails `toHaveURL(/roster/)` on the second project). Always `--workers=1`,
    and rerun a single project if it hits; never seen on a solo run.
-7. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
+6. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
    flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
    starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
    18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-8. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
+7. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
    the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
    (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
    (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
    1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
-9. **Shipping gate — already crossed.** `main` was pushed to `origin/main` on 2026-09-17
-   (commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
-   for card_balance to land before any push") did not hold. Nothing to revert;
-   `card_balance` closed 2026-09-17 with `card_balance_thresholds` split out, blocked on
-   `draft_ai`.
-10. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
+8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
    depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`, game 3:
    PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that team every
    possession. `engine/challenge.ts` works around it for NBA opponents by backfilling the
    empty column; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
-11. **Jahmai Mashack's headshot — RESOLVED 2026-09-17.** He is absent from the bundled
+9. **Jahmai Mashack's headshot — RESOLVED 2026-09-17.** He is absent from the bundled
    `nba_api` static list (so the resolver could never match him) but present in the LIVE
    player index as 1642942; the real photo is fetched and saved under his hash id. His card
    id stays a hash until `fetch_players.py` is re-run against the live index. Future gaps are
