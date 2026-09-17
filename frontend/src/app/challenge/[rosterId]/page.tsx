@@ -32,15 +32,14 @@ import { getAllCards } from '@/engine/cards';
 import { PLAY_CATALOG } from '@/engine/plays';
 import { buildTeamInfo } from '@/engine/game';
 import { randomSeed } from '@/engine/rng';
-import { BALANCE_VERSION, CHALLENGE_GAMES } from '@/engine/balance';
+import { BALANCE_VERSION } from '@/engine/balance';
 import {
-  buildChallengeSchedule, buildNbaTeams, simulateHalf, gradeForWins,
+  buildChallengeSchedule, buildNbaTeams, simulateHalf,
   type ChallengeHalf,
 } from '@/engine/challenge';
 import { FrontOffice } from '@/components/challenge/FrontOffice';
 import { ChallengeReel } from '@/components/challenge/ChallengeReel';
-import { FlipClock } from '@/components/challenge/FlipClock';
-import { TierLadder } from '@/components/challenge/TierLadder';
+import { ResultsScreen } from '@/components/challenge/Results';
 import { seatFromRoster } from '@/components/challenge/rosterSeat';
 import { Button } from '@/components/ui';
 
@@ -248,7 +247,7 @@ export default function ChallengePage() {
   } else if (run.phase === 'break') {
     body = <FrontOffice run={run} onSpin={startSecondHalf} />;
   } else {
-    body = <DonePlaceholder run={run} />;
+    body = <ResultsScreen run={run} />;
   }
 
   return (
@@ -285,26 +284,3 @@ function Notice({ title, detail, action }: {
  * Until then this renders the break honestly: the record is deliberately NOT shown as a
  * W-L (D8 forbids it), only the projection band the front office is built around.
  */
-/**
- * T8 MOUNT POINT. Board 7's results screen: grade slam, win trend with the ghost line,
- * trade verdict, season MVP, seed chip and share card. This placeholder shows only the
- * final record and grade so the phase machine can be walked end to end.
- */
-function DonePlaceholder({ run }: { run: ChallengeRun }) {
-  const wins = run.halves.reduce((a, h) => a + h.wins, 0);
-  const losses = run.halves.reduce((a, h) => a + h.losses, 0);
-  const grade = gradeForWins(wins);
-
-  return (
-    <div className="flex h-dvh-z flex-col items-center justify-center gap-8 px-8">
-      <div className="flex flex-col items-center gap-2">
-        <span className="font-display text-8xl leading-none text-accent">{grade.grade}</span>
-        <span className="text-sm font-black uppercase tracking-widest text-ink-muted">{grade.title}</span>
-      </div>
-      <FlipClock wins={wins} losses={losses} size="sm" />
-      <TierLadder wins={wins} className="w-full max-w-5xl" />
-      <p className="text-xs text-ink-subtle">Results screen (board 7) is task T8.</p>
-      <Button href="/rosters" variant="secondary">My rosters</Button>
-    </div>
-  );
-}
