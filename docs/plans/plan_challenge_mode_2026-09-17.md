@@ -7,11 +7,11 @@ https://claude.ai/artifact/P7XLqF4kogeY7kvu4h4X7W, sources in `docs/design/chall
 
 ## Goal
 
-A second game mode modelled on the viral "82-0" browser games: pick the mode on the start
-page, draft and build as usual, then one 82-game season against all 30 real NBA rosters (built
-from our cards), revealed as a slot-machine flip clock in two spins with a trade deadline and
-lineup reset between them and one final grade. About four minutes, no single-game screens, no
-narration. The existing 7-game mode is renamed "In-Season Tournament", otherwise untouched.
+A second game mode modelled on the viral "82-0" browser games: pick it on the start
+page, draft and build as usual, then one 82-game season against all 30 real NBA rosters, shown
+as a slot-machine flip clock in two spins with a trade deadline and lineup reset between them
+and one final grade. Four minutes, no single-game screens, no narration. The 7-game mode is
+renamed "In-Season Tournament", otherwise untouched.
 
 ## Decisions (locked)
 
@@ -79,33 +79,33 @@ D11. **Storage.** New `ChallengeRun`: `id, ownerId, sessionId, rosterId, timesta
 
 ## Out of scope
 
-League-wide standings, playoffs, more than one trade, permadeath, re-theming draft room or
-deck builder, renaming beyond D2, phone-specific boards (compact pass after desktop lands),
-mode-specific draft rules and the limited-style picker (backlog `Main`), per-team playbooks,
-new pack artwork.
+League-wide standings, playoffs, more than one trade, permadeath, re-theming draft room or deck
+builder, renaming beyond D2, phone boards (compact pass after desktop lands), mode-specific
+draft rules and the limited-style picker (backlog `Main`), per-team playbooks, new pack art.
 
 ## Tasks
 
-T1 (top). DONE. `scripts/challenge-sim.ts` = `npm run challenge [drafts] [--seed N] [--sweep]`.
-T2 (top). DONE, less the ghost run (moved to T8, which consumes it): `engine/challenge.ts`,
-`balance.ts` constants, the `cardColors.ts` fix, and `engine/plays.ts` — the play catalog left
-`DraftRoom.tsx` for a pure module (the engine may not import components). 25 tests.
-T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 25 tests incl. the
-no-rating/no-record scan. OPEN: four factors are offense-only — board 4's defensive
-rebound-rate line needs opponent totals kept in `simulateHalf`. Owner decision pending.
+T1 (top). DONE. `npm run challenge [drafts] [--seed N] [--sweep]`.
+T2 (top). DONE, less the ghost run (moved to T8): `engine/challenge.ts`, `balance.ts`
+constants, the `cardColors.ts` fix, and `engine/plays.ts` (the catalog left `DraftRoom.tsx`
+for a pure module — the engine may not import components). 25 tests.
+T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 28 tests incl. the
+no-rating/no-record scan. Defensive four factors via `opponentTotals`, so board 4's
+"opponents rebound X% of their misses" is real output.
 T4 (mid). DONE. `ChallengeRun` in all four backends, Dexie 3 -> 4, `mergeChallengeRun`.
-Migration `202609170001_challenge_runs.sql` APPLIED to the live project 2026-09-17 (table +
-RLS + `cas_upsert` allowlist verified); that cleared the 404 on every route.
+Migration `202609170001_challenge_runs.sql` APPLIED to the live project 2026-09-17 (table, RLS
+and `cas_upsert` allowlist verified); cleared the 404 on every route.
 T5 (mid). DONE. Start page, `HomeModePicker`, `gameMode` draft -> session -> roster -> CTA,
 82:0 badge, SeasonView title; Button gained a `stacked` size (the primitive had no multi-line
 CTA height). Verified live against 1a-1c. `home.spec.ts` rewritten. "Enter a seed" disabled
 until T8. Smoke 8/9: only `/data` is red, on a pre-existing missing headshot (card 08d0e9d2).
-T6 (top). Reel: `components/challenge/FlipClock`, `TierLadder`, `ChallengeReel` and
-`app/challenge/[rosterId]/page.tsx` driving phase transitions. Done-when: screenshots
-matching boards 2, 3, 6; reload mid-reel replays without changing the result.
-T7 (mid). Front office + trade (boards 4, 5): quotes, pace band, lineup/plays/identity edit,
-trade flow with `PackOpener variant="trade"`. Done-when: screenshots of both pace variants and
-the trade pack; before/after roster snapshot diff from a dev run.
+T6 (top). DONE. FlipClock, TierLadder (families derived from `CHALLENGE_GRADES`),
+ChallengeReel, the phase machine, and `/challenge/preview` — boards 2/3/6 with no auth or
+storage, which is the sign-off route. Verified at 1280x720.
+T7 (mid). DONE. FrontOffice + Trade; lineup/plays reuse the whole DeckBuilder via
+`embedOverride`, so edits write `rosterPost`, never the drafted roster. Verified live: drop ->
+pick -> spin keeps the trade. OPEN: the acquired card lands on the bench per D9 with no prompt
+to slot him, so spinning without opening the lineup plays 42-82 with ELEVEN. Owner decision.
 T8 (mid). Results (board 7) incl. ghost line, verdict, seed copy/paste, share card. Done-when:
 screenshot for a forced-seed run; pasted seed reproduces the schedule.
 T9 (low). Docs: "82:0 Challenge" in `game_mechanics.md`, `AGENTS.md`, `ARCHITECTURE.md`; PNG
@@ -130,21 +130,21 @@ stands and T7/T8 re-measure with the trade in place.
 
 ## Parallelization
 
-Wave 0 (T1, T2) and Wave 1 (T3, T4, T5) DONE. Wave 2 (parallel): T6 and T7 (need T2+T4; T7
-needs T3). Wave 3: T8. Wave 4: T9. Agents never run git; the driver verifies and commits.
+Waves 0-2 DONE (T1-T7). Wave 3: T8. Wave 4: T9. Agents never run git; the driver verifies,
+re-checks against the boards in a browser, and commits.
 
 ## Recommended model tier
 
-Main driver: top — owns T1/T2, reviews every wave against the boards. T3/T6 top (advice
-ranking, reveal timing); T4, T5, T7, T8 mid (Sonnet 5); T9 low (Haiku 4.5).
+Main driver: top — owns T1/T2, reviews every wave against the boards. T3/T6 top; T4, T5, T7,
+T8 mid (Sonnet 5); T9 low (Haiku 4.5).
 
 ## Verification / exit criteria
 
-- `npm test` green incl. `challenge.test.ts`, advice tests, storage round-trip; tsc, lint,
-  `check:styles` clean; `npm run balance -- 500 --seed 42` before/after identical. After Wave
-  1: 396/396, 0 errors, 0 violations, PPP 1.044 both sides. `smoke.spec.ts` red — see T4/T5.
-- Screenshots per task compared against the signed boards; owner verifies live in the local
-  browser (design-first workflow) before the plan closes.
+- `npm test` green; tsc, lint, `check:styles` clean; `npm run balance -- 500 --seed 42`
+  before/after identical. After Wave 2: 412/412, 0 errors, 0 violations, PPP 1.044 both sides;
+  smoke 8/9 (`/data` red on a pre-existing missing headshot, card 08d0e9d2).
+- Screenshots per task compared against the signed boards; owner verifies live in the browser
+  (design-first) before the plan closes — `/challenge/preview` needs no draft.
 - One full dev playthrough per draft style: start page -> draft -> deck builder -> first spin
   -> front office (edit lineup, trade) -> second spin -> results; a reload at each phase keeps
   `phase`, results and `trade`; a tournament roster cannot enter `/challenge`.
