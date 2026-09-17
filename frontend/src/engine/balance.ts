@@ -94,13 +94,13 @@ export const RATING_DIMS: readonly RatingDim[] = [
  * edge are computed in standardised space.
  */
 export const RATING_NORM: Record<RatingDim, { mean: number; sd: number }> = {
-  finishing:        { mean: 55.49, sd: 24.13 },
-  midRange:         { mean: 49.03, sd: 29.51 },
-  perimeter:        { mean: 57.46, sd: 27.31 },
-  playmaking:       { mean: 35.27, sd: 23.51 },
-  rebounding:       { mean: 41.11, sd: 22.09 },
-  perimeterDefense: { mean: 53.47, sd: 16.53 },
-  postDefense:      { mean: 46.41, sd: 17.33 },
+  finishing:        { mean: 46.74, sd: 19.63 },
+  midRange:         { mean: 45.90, sd: 20.83 },
+  perimeter:        { mean: 46.57, sd: 20.71 },
+  playmaking:       { mean: 45.42, sd: 17.87 },
+  rebounding:       { mean: 46.33, sd: 18.39 },
+  perimeterDefense: { mean: 48.38, sd: 20.38 },
+  postDefense:      { mean: 49.37, sd: 20.86 },
 };
 
 /** D1: standardised rating = center + spread * z, clamped to [min, max]. */
@@ -145,8 +145,8 @@ export const HOLE_BOTTOM_N = 2;
  * `tests/unit/lineup.test.ts` asserts these within ±1.5 of a fresh seeded measurement.
  */
 export const LINEUP_CENTRE: Record<RatingDim, number> = {
-  finishing: 60.7, midRange: 60.1, perimeter: 53.0, playmaking: 64.4,
-  rebounding: 61.8, perimeterDefense: 57.1, postDefense: 57.0,
+  finishing: 60.0, midRange: 60.5, perimeter: 55.0, playmaking: 63.0,
+  rebounding: 59.4, perimeterDefense: 57.2, postDefense: 58.0,
 };
 
 /** Mid-range defence blends perimeter and post defence (game.ts resolvePossession). */
@@ -296,51 +296,38 @@ export const CLUTCH_MARGIN = 5;
 
 // ── ratings.ts (from engine.ts) ─────────────────────────────────────────────
 
+/**
+ * card_ratings_rebalance (2026-09-18): every dimension is now built on rate stats run
+ * through one mean-centred index (D2) instead of the old benchmark-ratio getIndex, and
+ * OVR is a flat mean of the seven ratings (D8) — PROFILES/TOP1/TOP2/FORGIVE/
+ * OFFROLE_MAX_W/REF/CORE_PEN/CORE_REF and the old offense/defense weight knobs (which
+ * fed getIndex's now-deleted benchmark-ratio formula) are gone with it. See the plan's
+ * D2-D8 for the derivations.
+ */
 export const RATING_CONFIG = {
   benchmarkCutoff: 0.075,
-  offense: {
-    finVol: 0.35, finEff: 0.45, finFT: 0.20,
-    midVol: 0.35, midEff: 0.65,
-    perVol: 0.35, perEff: 0.65,
-  },
+  /** D2: mean/elite for the idx() function are measured over rotation players only. */
+  rotationMpg: 15,
+  /** D2: idx() headroom above "elite" (1.0) — feeds D7's gold-badge overflow. */
+  idxMax: 1.25,
+  /** D3: defence = magnitude (DBPM/DWS-48 blend) × shape (perimeter/post signal split). */
   defense: {
-    vol: 0.40,
-    skill: 0.60,
+    magDbpm: 0.6, magDws48: 0.4,
+    shapeBase: 0.55, shapeSwing: 0.45,
+    perimSigStl: 1.0,
+    postSigBlk: 0.65, postSigDrb: 0.35,
   },
-  ovr: {
-    TOP1: 10,
-    TOP2: 5,
-    FORGIVE: 0.5,
-    OFFROLE_MAX_W: 7,
-    REF: 60,
-    CORE_PEN: 1.0,
-    CORE_REF: 70,
-    // card_balance T2 (2026-09-17, owner-approved): a light, bounded retune — trims
-    // mid-range weight by 2-3 points per position (its lever is now 0.28, the lowest by
-    // far, vs playmaking/finishing at 3.10) and redistributes to finishing/playmaking/
-    // perimeter defense, the top of the lever table. Deliberately modest, not a rewrite
-    // toward the lever table: OVR staying a little out of sync with in-game impact is
-    // intentional, it keeps bot drafters from optimizing perfectly onto the exact
-    // strongest build. Every profile still sums to 100; positional shape unchanged (a PG
-    // is still playmaking-heavy, a C still finishing/rebounding/defense-heavy).
-    PROFILES: {
-      'PG':   [15,  7, 20, 32,  6, 15,  5],
-      'SG':   [16, 15, 29, 14,  5, 16,  5],
-      'SF':   [21, 11, 18, 12, 14, 17,  7],
-      'PF':   [25, 10,  9,  5, 21, 12, 18],
-      'C':    [25,  6,  4,  5, 29,  7, 24],
-      'G/F':  [19, 11, 21, 16, 10, 16,  7],
-      'F/C':  [25,  8,  6,  5, 25,  9, 22],
-      // 'Gold': catch-all for any position string that isn't a specific PG-C or one of the
-      // two adjacent crossovers above (card_balance T1 follow-up, 2026-09-16). Neither of
-      // our position sources (bref Pos, NBA Stats bio) can produce a 3-way combo — bref
-      // gives one specific position or a 2-way split, bio's field is a fixed X or X-Y
-      // format — so nothing routes here today; it exists so a future data change (or a
-      // genuinely versatile player some season) degrades to a neutral profile instead of
-      // crashing on an unmapped pool. The bare 'G'/'F' profiles this replaced (PG/SG and
-      // SF/PF blends) are gone: bref-primary positions (T1) never produce a bare letter.
-      'Gold': [14, 14, 14, 14, 14, 15, 15],
-    } as Record<string, number[]>,
+  /** D4: shooting channel = volume/efficiency index × a self-creation boost. */
+  shooting: {
+    vol: 0.45, eff: 0.55, creationBoost: 0.18,
+  },
+  /** D5: playmaking = AST%^astExp × APG^apgExp × a turnover-rate boost. */
+  playmaking: {
+    astPctExp: 0.65, apgExp: 0.35, tovBase: 0.92, tovSwing: 0.16,
+  },
+  /** D6: rebounding = TRB%^trbExp × RPG^rpgExp. */
+  rebounding: {
+    trbPctExp: 0.45, rpgExp: 0.55,
   },
 };
 
@@ -385,6 +372,12 @@ export const POSITIONLESS_PLAYERS = new Set([
  * legible numbers instead of raw percentile artifacts. Hand-set, not auto-regenerated —
  * do not overwrite with `build:cards`'s printed percentile block.
  */
+/**
+ * D7 (2026-09-18): a dimension's uncapped raw can exceed 99 (defence/shooting/
+ * playmaking/rebounding are no longer benchmark-ratio-capped at the input). Above 99 it
+ * earns a gold badge (Trait.level = 4) instead of the ordinary l3, computed in ratings.ts
+ * from the raw value directly — these l1/l2/l3 cutoffs are unchanged from card_balance T3.
+ */
 export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: number }> = {
   finishing:         { l1: 79, l2: 86, l3: 90 },
   midRange:          { l1: 76, l2: 86, l3: 93 },
@@ -397,9 +390,9 @@ export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: n
 
 /** Card rarity cutoffs on `overall` before award/legendary/league-leader bumps. */
 export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
-  { min: 90, rarity: 'Mythic' },
-  { min: 80, rarity: 'Rare' },
-  { min: 65, rarity: 'Uncommon' },
+  { min: 68, rarity: 'Mythic' },
+  { min: 58, rarity: 'Rare' },
+  { min: 58, rarity: 'Uncommon' },
 ];
 
 // ── draft.ts (from draftEngine.ts) ──────────────────────────────────────────

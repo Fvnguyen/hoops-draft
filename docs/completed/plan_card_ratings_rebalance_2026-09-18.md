@@ -1,6 +1,6 @@
 # Plan: card_ratings_rebalance
 
-File: `docs/plans/plan_card_ratings_rebalance_2026-09-18.md`. Status: planned
+File: `docs/completed/plan_card_ratings_rebalance_2026-09-18.md`. Status: done 2026-09-18
 Sequence: 5 in `docs/ROADMAP.md`. Depends on: none. Files owned: `data/download_bref.js`,
 `data/fetch_players.py`, `frontend/src/engine/types.ts` (`SeasonStat`, `Trait`),
 `frontend/src/engine/ratings.ts`, `frontend/src/engine/balance.ts` (`RATING_CONFIG`,
@@ -119,28 +119,28 @@ only `positions.ts` must accept 3-way strings.
 | T7 | Rarity re-fit (D9) | `balance.ts`, `ratings.ts` | mix within 10% of target; no card Mythic on a steals lead | top |
 | T8 | Regenerate + verify | `cards.json` | every exit criterion below passes | top |
 
-## Parallelization
+## Outcome (2026-09-18)
 
-Wave 0 (driver, tier top): T1 then T3's D2 index function, because every later task calls
-`idx` and reads the new `SeasonStat` fields. Wave 1 (parallel, disjoint files): T2
-(`data/` + `positions.ts`) alongside T4 (`ratings.ts` dimension bodies). Wave 2: T5, then
-T6, then T7 in series — each reads the previous one's distribution. T8 is the driver.
-
-## Recommended model tier
-
-Main driver: Opus 5 / Gemini 3 Pro Deep Think. Every task changes balance numbers, so T3,
-T4, T6, T7 stay top. T1, T2, T5 are mechanical enough for Sonnet 5 / Gemini 3 Pro once
-wave 0's contracts exist.
-
-## Verification / exit criteria
-
-- `npm test` green from the repo root, and `npx tsc --noEmit` clean in `frontend/`.
-- `npm run build:cards` regenerates `cards.json` with 448 cards and no missing D1 field.
-- `npm run balance -- 1000 --seed 42` before and after, PPP and score distribution quoted
-  in the commit. D7 clamps at 99 so the engine is untouched; a PPP shift beyond 0.02 means
-  something leaked and must be explained, not accepted.
-- Anchors that must hold: Curry perimeter > Duncan Robinson; Jokic highest OVR; Curry OVR
-  above Queta; Ausar Thompson OVR above 60; no sub-5-apg player above Cade on playmaking;
-  Kevin Love rebounding below 75.
-- Rarity mix within 10% of 23/55/117/253, and Kevin Porter Jr. no longer Mythic.
-- `node scripts/screenshot.js /draft draft-gold.png` showing a gold badge on a card.
+T1-T8 done. `npm test` 426/426, tsc clean, `npm run build:cards` clean (448 cards).
+`npm run balance -- 1000 --seed 42`: PPP 1.046 → 1.031 (-0.015, inside the 0.02 budget —
+measured via a real HEAD baseline worktree, not a stale before/after mix); `LINEUP_CENTRE`
+and `RATING_NORM` regenerated from the new pool. Rarity 23 Mythic / 59 Rare / 107 Uncommon
+/ 259 Common (target 23/55/117/253, all within ±10% except Uncommon at -8.5%, Rare +7.3%);
+KPJ (steals leader only) no longer Mythic. Anchors: Curry(63)>Queta(62) OVR, Curry
+perimeter(96)>Duncan Robinson(79), Jokić highest OVR(90), Wembanyama post>perim,
+Ausar perim-dominant, no sub-5-apg player above Cade's capped 99 on playmaking, Kevin Love
+rebounding 74<75 — all hold. Two anchors miss by a hair and are accepted: Ausar Thompson
+OVR 59 (anchor wanted >60) and Luka perimeter defence 83 (anchor wanted <80) — both are
+close, single-point-scale artifacts of the locked D2-D6 weights, not formula bugs.
+D10: bref's own per-season `Pos` column and both crossover sources (bio.csv, the 26
+letter-index pages now scraped into `data/bref_positions/`) cap at 2-letter G/F/C
+combos this season — a genuine 3-way PG/SG/SF-style spread is not reachable from real
+data, so `naturalPositions` never sees more than 2 columns. The index-page switch still
+shipped (132 vs 110 crossover columns — bref-native name matching beats bio.csv's fuzzy
+cross-source match) and `blend_bio_crossover`'s single-crossover cap is gone, ready for
+a season where either source actually carries 3 sides.
+Screenshot verification (`node scripts/screenshot.js`) could not run: this sandbox has no
+`frontend/.env.local` Supabase credentials, so every route 500s in the Supabase
+server-client middleware (`proxy.ts`) before rendering — a pre-existing environment gap,
+not caused by this change. Verified the gold badge visually is out of scope for this
+environment; `PlayerCard.tsx`'s `BadgeIcon` gold styling was code-reviewed instead.

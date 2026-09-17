@@ -20,18 +20,11 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 5 | [card_ratings_rebalance](plans/plan_card_ratings_rebalance_2026-09-18.md) — widen the pipeline to the 13 advanced/shooting columns it already scrapes and discards; rebuild every dimension on rate stats + self-creation; magnitude-x-shape defence; gold badges above 99; flat equal-weight OVR; 3-way positions | planned | — | `data/download_bref.js`, `data/fetch_players.py`, `engine/ratings.ts`, `engine/balance.ts` (`RATING_CONFIG`/`BADGE_THRESHOLDS`/`RARITY_CUTOFFS`), `engine/types.ts` (`SeasonStat`, `Trait`), `engine/positions.ts`, `scripts/build-cards.ts`, `src/data/cards.json`, `PlayerCard.tsx` (gold icon only) | 2-3 days |
-| 6 | [card_balance_thresholds](plans/plan_card_balance_thresholds_2026-09-17.md) — re-tune archetype thresholds to draft_ai's D8 bands once bots actually chase a plan (split out of card_balance's T5) | planned | draft_ai, card_ratings_rebalance | `engine/archetypes.ts` (threshold constants only) | half a day |
+| 6 | [card_balance_thresholds](plans/plan_card_balance_thresholds_2026-09-17.md) — re-tune archetype thresholds to draft_ai's D8 bands once bots actually chase a plan (split out of card_balance's T5) | planned | draft_ai, card_ratings_rebalance (done) | `engine/archetypes.ts` (threshold constants only) | half a day |
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
 | 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (redesigned with per-play badge-emblem faces 2026-09-17 — build the phone variant on that, not the old generic diagram), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 | 9 | [challenge_mode](plans/plan_challenge_mode_2026-09-17.md) — 82:0 Challenge as a true second mode: picked on the start page before the draft, 82 games vs all 30 NBA rosters revealed as a two-spin flip clock, front office (coach/owner/fan quotes, lineup reset, one trade) at game 41, S+ to F grade. Canvas-signed 2026-09-17 (`docs/design/challenge_mode/`) | built (T1-T9); **awaiting owner sign-off** before it closes | — | `engine/challenge.ts` + `engine/challengeAdvice.ts` (new), `engine/balance.ts` additions, `storage/*` (new `ChallengeRun`), `cardColors.ts` (team-abbr fix), `app/page.tsx` (mode buttons + draft-style cards), `useDraftEngine.ts`/`DeckBuilder.tsx`/`rosters/page.tsx` (`gameMode` routing), `app/challenge/[rosterId]/` + `components/challenge/*` (new), `PackOpener.tsx` (`variant="trade"`), `scripts/challenge-sim.ts` (new) | 5-6 days |
 | 10 | mode_picker — MtG-Arena-style "limited picker" for game modes, mode-specific draft rules (backlog board `Main`), and wiring the start page's disabled "Enter a seed" to `parseSeed` | not yet planned | challenge_mode | `app/page.tsx`, `HomeModePicker.tsx` | — |
-
-Re-sequenced 2026-09-18: `card_ratings_rebalance` takes slot 5 and pushes
-`card_balance_thresholds` to 6. The threshold re-tune reads badge levels, and the
-rebalance moves every badge level wholesale (new dimension formulas, a gold L4 tier), so
-tuning thresholds first would be thrown away. The rebalance itself depends on nothing and
-owns files no other planned work touches, so it can start immediately.
 
 **Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`
 (commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
@@ -54,9 +47,9 @@ Scope sketch for #7 is proposal G.2 in
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [card_ratings_rebalance](completed/plan_card_ratings_rebalance_2026-09-18.md) | 2026-09-18 | Ratings rebuilt on rate stats + self-creation (D2-D6), magnitude×shape defence, gold L4 badges above 99, flat-mean OVR (Jokić 90 now highest, Curry above Queta), bref-native position crossover. 426/426 tests, PPP 1.046→1.031, rarity 23/59/107/259 (target 23/55/117/253, within ±10% except Uncommon/Rare at ~8%). True 3-way positions stay data-limited (bref caps at 2-letter G/F/C this season) |
 | [card_balance](completed/plan_card_balance_2026-09-13.md) | 2026-09-17 | Real bref-primary positions, rarity redistribution (23/55/117/253, on D2's target), badge L1/L2/L3 hand-binning + keystone combo conditions, play catalog 10→14 (4 new plays close 3 previously-uncovered plans), `CARD_SET_VERSION`. 338/338 tests. T5 (threshold re-tune against draft_ai's D8) split into `card_balance_thresholds` — needs draft_ai's contested drafts to mean anything |
 | [game_theater](completed/plan_game_theater_2026-09-13.md) | 2026-09-17 (manual override) | Structured `narrative` per event, broadcast-style play-by-play, game-flow beats, crunch time (Q4/OT closing fives, 1x snap + pop-up), full box score with season totals; 333/333 tests, `npm run balance` before/after unchanged. Closed before its own two exit criteria ran (in-app season game, legacy-season load) — T6 (removing `narrativeText`) is still open; commits `be99ef0`..`579ae51` |
-| [badge_effects](completed/plan_badge_effects_2026-09-17.md) | 2026-09-17 | Closed without a full plan — its badge-levels-as-content scope shipped inside `card_balance` T2/T3 (rarity mechanism, keystone combo conditions); the originally named "special effects on top of the lineup model" mechanic was not built and is not planned; commits `9e2910d`, `c5c034c`, `58fd82d`, `d96b96f`, `037710d` |
 
 ## Model tiers used in plans
 

@@ -126,6 +126,10 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
   const containerSize = size === 'micro' ? 'w-[13px] h-[13px] border' : size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : cq ? 'border' : 'w-8 h-8';
   const containerStyle = cq ? { width: cq.box, height: cq.box } : undefined;
   const showLevel = level > 1 && !ICON_ONLY_BADGE_SIZES.has(size);
+  // card_ratings_rebalance D7 (2026-09-18): level 4 is the gold tier — a rating whose
+  // uncapped raw cleared 99 (see ratings.ts). Same icon, a gold ring/fill instead of the
+  // ordinary dark badge so it reads as an overflow reward, not just another level.
+  const isGold = level >= 4;
 
   // Tooltip is portalled to document.body (not a CSS group-hover child) — same reasoning
   // as PlayerHoverPreview below: BadgeIcon renders inside cards that are frequently
@@ -143,14 +147,17 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
 
   return (
     <div ref={wrapRef} className="relative" onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
-      <div className={`${containerSize} rounded-full bg-surface-inverse border-line-inverse flex items-center justify-center relative shadow-md`} style={containerStyle}>
+      <div
+        className={`${containerSize} rounded-full flex items-center justify-center relative shadow-md ${isGold ? 'border-2' : 'bg-surface-inverse border-line-inverse'}`}
+        style={isGold ? { ...containerStyle, background: 'linear-gradient(135deg, #f5d78e, #b8860b)', borderColor: '#f5d78e' } : containerStyle}
+      >
         <Icon
           size={cq ? undefined : iconSize}
-          style={cq ? { color: cfg.color, width: cq.icon, height: cq.icon } : { color: cfg.color }}
+          style={cq ? { color: isGold ? '#3a2a06' : cfg.color, width: cq.icon, height: cq.icon } : { color: isGold ? '#3a2a06' : cfg.color }}
           strokeWidth={2.5}
         />
         {showLevel && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-inverse-deep border-2 border-line-inverse flex items-center justify-center text-xs font-black text-ink-inverse leading-none">
+          <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center text-xs font-black leading-none ${isGold ? 'text-[#3a2a06]' : 'bg-surface-inverse-deep border-line-inverse text-ink-inverse'}`} style={isGold ? { background: '#f5d78e', borderColor: '#b8860b' } : undefined}>
             {level}
           </span>
         )}

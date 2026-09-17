@@ -123,19 +123,35 @@ def fetch_and_generate_players():
     df_advanced = df_advanced.drop_duplicates(subset=['Player'], keep='first')
     
     # Merge datasets
-    df = pd.merge(df_per_game, df_advanced[['Player', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP']], on='Player', how='inner')
-    
+    # card_ratings_rebalance D1 (2026-09-18): widened from PER/TS%/BPM/DBPM/VORP to the
+    # 13 columns D3-D6's rate-stat formulas need — usg_pct/ast_pct/tov_pct/stl_pct/
+    # blk_pct/orb_pct/drb_pct/trb_pct/obpm/dws/ws_per_48 from the advanced table (already
+    # scraped, never read past this point before) plus pct_ast_fg2/pct_ast_fg3 from the
+    # shooting table (never merged in at all — the self-creation term in D4 needs it).
+    df = pd.merge(df_per_game, df_advanced[[
+        'Player', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', 'USG%', 'AST%', 'TOV%', 'STL%',
+        'BLK%', 'ORB%', 'DRB%', 'TRB%', 'OBPM', 'DWS', 'WS/48',
+    ]], on='Player', how='inner')
+
     # Correctly merge shooting here!
     df_shooting = df_shooting.drop_duplicates(subset=['Player'])
-    df = pd.merge(df, df_shooting[['Player', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P']], on='Player', how='left')
+    df = pd.merge(df, df_shooting[[
+        'Player', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10',
+        '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P',
+        'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16',
+        'FG% by Distance_16-3P', 'FG% by Distance_3P',
+        "% of FG Ast'd_2P", "% of FG Ast'd_3P",
+    ]], on='Player', how='left')
 
-    
+
     # Convert numeric columns
     # card_balance T2 (2026-09-17, owner-approved): GS (games started) added - the real
     # starter signal for T2's Uncommon rarity floor, replacing a 30 MPG proxy that misses
     # real starters who just play a lower-minutes role (real starters 180 vs the 30 MPG
     # proxy's 80, checked in the plan).
-    numeric_cols = ['Age', 'G', 'GS', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P']
+    numeric_cols = ['Age', 'G', 'GS', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P',
+                    'USG%', 'AST%', 'TOV%', 'STL%', 'BLK%', 'ORB%', 'DRB%', 'TRB%', 'OBPM', 'DWS', 'WS/48',
+                    "% of FG Ast'd_2P", "% of FG Ast'd_3P"]
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
@@ -259,8 +275,12 @@ def fetch_and_generate_players():
 
     def blend_bio_crossover(bref_pos, bio_pos_sorted):
         """bref_pos: a single specific column (e.g. 'SG'). bio_pos_sorted: the sort_pos'd
-        NBA Stats bio string (e.g. 'G/F'). Returns bref_pos, optionally with one adjacent
-        crossover column appended when bio implies a side bref_pos alone doesn't cover."""
+        NBA Stats bio string (e.g. 'G/F'). Returns bref_pos, with up to two adjacent
+        crossover columns appended for every side bref_pos alone doesn't cover (D10,
+        card_ratings_rebalance 2026-09-18: the single-crossover cap is gone — both of a
+        column's ADJACENT sides can now be added, not just the first match — so a real
+        three-way player (e.g. Scottie Barnes, bio 'G-F') gets a three-column depth-chart
+        spread instead of being capped at two)."""
         if bref_pos not in _SIDE:
             return bref_pos
         own_side = _SIDE[bref_pos]
@@ -268,10 +288,11 @@ def fetch_and_generate_players():
         extra_sides = bio_sides - {own_side}
         if not extra_sides:
             return bref_pos
+        pos = bref_pos
         for candidate in _ADJACENT[bref_pos]:
             if _SIDE[candidate] in extra_sides:
-                return sort_pos(f"{bref_pos}/{candidate}")
-        return bref_pos
+                pos = sort_pos(f"{pos}/{candidate}")
+        return pos
 
     # Pre-process Bio Data
     bio_map = {}
@@ -282,6 +303,38 @@ def fetch_and_generate_players():
         height = str(row['HEIGHT'])
         weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
         bio_map[name] = {"pos": pos, "height": height, "weight": weight}
+
+    # D10 (card_ratings_rebalance, 2026-09-18): basketball-reference's 26 letter-index
+    # pages (/players/a/ .. /players/z/, scraped by download_bref.js into
+    # bref_positions/players_<letter>.html) carry the same G/F/C-only position
+    # granularity as the NBA Stats bio.csv crossover source blend_bio_crossover already
+    # used — this season's data does not support a true 3-way PG/SG/SF-style combo from
+    # either source (verified: bref's own per-season Pos column never carries a combo,
+    # and every bio/index Pos value is one or two of G/F/C). What the bref index DOES
+    # improve is match accuracy: it's bref-native, so it lines up with the Player column
+    # in per_game/advanced/shooting exactly instead of the fuzzy cross-source name match
+    # bio.csv needs (a real source of mismatches - e.g. suffix/accent drift). Preferred
+    # over bio.csv's crossover when present; bio.csv remains the fallback (and the only
+    # source for height/weight, which the index pages don't carry).
+    bref_pos_index = {}
+    try:
+        import glob
+        for path in sorted(glob.glob('bref_positions/players_*.html')):
+            with open(path, 'r', encoding='utf-8') as f:
+                idx_html = f.read()
+            idx_dfs = pd.read_html(io.StringIO(idx_html))
+            for idx_df in idx_dfs:
+                if 'Player' in idx_df.columns and 'Pos' in idx_df.columns and 'To' in idx_df.columns:
+                    active = idx_df[idx_df['To'].astype(str) == '2026']
+                    for _, irow in active.iterrows():
+                        iname = unidecode(str(irow['Player']).replace('*', ''))
+                        ipos = str(irow['Pos']).strip()
+                        if ipos and ipos.lower() != 'nan':
+                            bref_pos_index[iname] = sort_pos(ipos)
+                    break
+        print(f"Loaded bref position index: {len(bref_pos_index)} active players")
+    except Exception as e:
+        print(f"Could not load bref_positions index (falling back to bio.csv only): {e}")
     
     # card_balance T2 finding (2026-09-16): this block used to reassign all_nba_players
     # and all_defensive_players to a hardcoded snapshot right here, silently discarding
@@ -361,6 +414,19 @@ def fetch_and_generate_players():
         fg_pct_10_16 REAL,
         fg_pct_16_3p REAL,
         fg_pct_3p REAL,
+        usg_pct REAL,
+        ast_pct REAL,
+        tov_pct REAL,
+        stl_pct REAL,
+        blk_pct REAL,
+        orb_pct REAL,
+        drb_pct REAL,
+        trb_pct REAL,
+        obpm REAL,
+        dws REAL,
+        ws_per_48 REAL,
+        pct_ast_fg2 REAL,
+        pct_ast_fg3 REAL,
         FOREIGN KEY(playerId) REFERENCES Player(id)
     );
     
@@ -402,17 +468,19 @@ def fetch_and_generate_players():
                 
         bio = bio_map.get(bio_name, {"pos": "", "height": "0-0", "weight": 0})
         # D1 (card_balance): basketball-reference Pos is the primary position source
-        # (real PG/SG/SF/PF/C, occasionally a combo like "SG-PG"); the NBA Stats bio
-        # position (broad G/F/C only) is a fallback for the rare row bref leaves blank,
-        # and otherwise blended in as one adjacent crossover column (see
-        # blend_bio_crossover above).
+        # (real PG/SG/SF/PF/C, occasionally a combo like "SG-PG"); the crossover source is
+        # a broad G/F/C signal blended in as adjacent depth-chart columns (see
+        # blend_bio_crossover above). D10 (card_ratings_rebalance, 2026-09-18): the bref
+        # letter-index (exact name match) is preferred over bio.csv's fuzzy-matched
+        # POSITION when both exist, falling back to bio.csv otherwise.
+        crossover_pos = bref_pos_index.get(name) or bio["pos"]
         bref_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
         if bref_pos:
             pos = sort_pos(bref_pos)
-            if bio["pos"]:
-                pos = blend_bio_crossover(pos, bio["pos"])
+            if crossover_pos:
+                pos = blend_bio_crossover(pos, crossover_pos)
         else:
-            pos = bio["pos"]
+            pos = crossover_pos
         pos = POSITION_OVERRIDES.get(name, pos)
         height = bio["height"]
         weight = bio["weight"]
@@ -430,16 +498,24 @@ def fetch_and_generate_players():
             INSERT INTO SeasonStat (
                 playerId, season, gp, gs, mpg, pts, trb, ast, stl, blk, fga, fg3a, fg2a, fg_pct, fg3_pct, fg2_pct, ft_pct, per, ts, vorp, dbpm, tov,
                 pct_fga_0_3, pct_fga_3_10, pct_fga_10_16, pct_fga_16_3p, pct_fga_3p,
-                fg_pct_0_3, fg_pct_3_10, fg_pct_10_16, fg_pct_16_3p, fg_pct_3p
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                fg_pct_0_3, fg_pct_3_10, fg_pct_10_16, fg_pct_16_3p, fg_pct_3p,
+                usg_pct, ast_pct, tov_pct, stl_pct, blk_pct, orb_pct, drb_pct, trb_pct, obpm, dws, ws_per_48,
+                pct_ast_fg2, pct_ast_fg3
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             real_id, "2025-26", int(row['G']), int(row.get('GS', 0)), float(row['MP']), round(row['PTS'], 1), round(row['TRB'], 1),
-            round(row['AST'], 1), round(row['STL'], 1), round(row['BLK'], 1), float(row.get('FGA', 0)), 
-            float(row.get('3PA', 0)), float(row.get('2PA', 0)), round(row['FG%'], 3), round(row['3P%'], 3), 
-            round(float(row.get('2P%', 0)), 3), round(float(row.get('FT%', 0)), 3), round(row['PER'], 1), 
+            round(row['AST'], 1), round(row['STL'], 1), round(row['BLK'], 1), float(row.get('FGA', 0)),
+            float(row.get('3PA', 0)), float(row.get('2PA', 0)), round(row['FG%'], 3), round(row['3P%'], 3),
+            round(float(row.get('2P%', 0)), 3), round(float(row.get('FT%', 0)), 3), round(row['PER'], 1),
             round(row['TS%'], 3), round(row['VORP'], 1), round(row['DBPM'], 1), round(row['TOV'], 1),
             float(row.get('% of FGA by Distance_0-3', 0)), float(row.get('% of FGA by Distance_3-10', 0)), float(row.get('% of FGA by Distance_10-16', 0)), float(row.get('% of FGA by Distance_16-3P', 0)), float(row.get('% of FGA by Distance_3P', 0)),
-            float(row.get('FG% by Distance_0-3', 0)), float(row.get('FG% by Distance_3-10', 0)), float(row.get('FG% by Distance_10-16', 0)), float(row.get('FG% by Distance_16-3P', 0)), float(row.get('FG% by Distance_3P', 0))
+            float(row.get('FG% by Distance_0-3', 0)), float(row.get('FG% by Distance_3-10', 0)), float(row.get('FG% by Distance_10-16', 0)), float(row.get('FG% by Distance_16-3P', 0)), float(row.get('FG% by Distance_3P', 0)),
+            round(float(row.get('USG%', 0)) / 100.0, 4), round(float(row.get('AST%', 0)) / 100.0, 4),
+            round(float(row.get('TOV%', 0)) / 100.0, 4), round(float(row.get('STL%', 0)) / 100.0, 4),
+            round(float(row.get('BLK%', 0)) / 100.0, 4), round(float(row.get('ORB%', 0)) / 100.0, 4),
+            round(float(row.get('DRB%', 0)) / 100.0, 4), round(float(row.get('TRB%', 0)) / 100.0, 4),
+            round(float(row.get('OBPM', 0)), 2), round(float(row.get('DWS', 0)), 2), round(float(row.get('WS/48', 0)), 4),
+            round(float(row.get("% of FG Ast'd_2P", 0)), 4), round(float(row.get("% of FG Ast'd_3P", 0)), 4)
         ))
         
         # Insert Awards

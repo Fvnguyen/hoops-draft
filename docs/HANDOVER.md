@@ -1,4 +1,4 @@
-# Handover — 2026-09-17
+# Handover — 2026-09-18
 
 ## Current state
 
@@ -19,7 +19,7 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-419 Vitest tests pass, type-check is clean, `npm run lint` is
+426 Vitest tests pass, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -51,39 +51,39 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
+- **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14, `CARD_SET_VERSION`. Superseded by card_ratings_rebalance below (rarity/badges/OVR all rebuilt).
 
-## card_balance — done 2026-09-17
+## card_ratings_rebalance — done 2026-09-18
 
-Plan: `docs/completed/plan_card_balance_2026-09-13.md`. T1-T4 and T6 complete and
-verified; T5 (re-tune archetype thresholds against draft_ai's D8 bands) needs bots that
-actually chase a plan, so it's split into `docs/plans/plan_card_balance_thresholds_2026-09-17.md`,
-blocked on `draft_ai`.
-What shipped: bref-primary positions with an NBA-Stats-bio crossover blend; rarity
-redistribution via a real-starter-aware mechanism (`SeasonStat.gs`) — 23/55/117/253
-Mythic/Rare/Uncommon/Common, on the D2 target; badge L1/L2/L3 hand-binned to
-70-79/80-89/90-99 per dimension; keystones (Two-Way Disruptor/Playmaking Maestro/Sniper)
-rebuilt as two-badge-level combo conditions, never a card trait; Point Forward (first
-AND-badge play role) and Positionless Revolution (gold plan). Play catalog grew 10→14:
-Switch Everything (pure Lockdown Defender) and Drop Coverage (pure Paint Protector) each
-close a previously-uncovered defensive mono plan (No-Fly Zone, Paint Wall); Post-Up
-Series (pure Finisher) closes an offensive one (Rim Pressure); Drive-and-Kick Series
-(Floor General + Sharpshooter) per D4. `tests/unit/play-catalog-coverage.test.ts` tracks
-which plans still lack a natural play (Elbow Orchestra + 3 more monos, a known gap — full
-coverage needs more mono-focused plays than this batch budgeted). `CARD_SET_VERSION`
-(`2025-26.2`) now lives in `engine/cards.ts` as the single source of truth; `storage`'s
-`CURRENT_CARD_SET_VERSION` re-exports it.
-Verified: 338/338 tests; `npm run balance -- 1000 --seed 42 --ab` PPP 1.042/sd 13.6/
-margin 15.6/85.0% in [90,130]/home win 54.8% (close to but not fully inside game_engine
-D5's bands — consistent with variance the D5 sweep itself showed, not new drift, but
-worth a fresh read once draft_ai's contested drafts change the roster mix); a live Quick
-Draft confirmed Switch Everything and Post-Up Series render with their motif face + badge
-medallions and can be staffed in the deck builder.
-Gotcha found and fixed: `tests/unit/fixtures/plays.ts` (a hand-synced copy of
-`playsDB` that `npm run balance`/`feasibility` actually read) had drifted stale twice
-already — flagged in its own header comment now; extract a shared module if it drifts a
-third time. `LINEUP_CENTRE`'s unit test sample size bumped 6→14 drafts (small-sample
-noise crossed tolerance on the corrected play data; the canonical 40-draft measurement
-held).
+Plan: `docs/completed/plan_card_ratings_rebalance_2026-09-18.md`. All T1-T8 done. Fixed a
+25-minute backup centre (Queta) being a 90 OVR Mythic while Curry (43-game season) was
+74: the pipeline discarded two thirds of the advanced/shooting stats it already scraped,
+and PER/VORP-driven OVR punished a shorter season.
+What shipped: pipeline widened to 13 previously-discarded columns (usg%/ast%/tov%/stl%/
+blk%/orb%/drb%/trb%/obpm/dws/ws-per-48/pct-ast-fg2/pct-ast-fg3); every dimension rebuilt
+on a single mean-centred `idx()` (league avg → 0.5, rotation top-7.5% → 1.0) over rotation
+players (mpg≥15) instead of the old benchmark-ratio `getIndex`; defence is now
+magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independent scores;
+shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
+rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
+rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
+a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped; OVR is now
+the flat mean of the seven ratings — no more `PROFILES`, `_baseOvr`/`_multiplier`, or the
+PER/VORP composite multiplier. Positions: `download_bref.js` now also scrapes bref's 26 letter-index pages
+(`data/bref_positions/`, committed like the other scrape snapshots) for bref-native name
+matching (132 vs 110 crossover columns vs bio.csv's fuzzy match); the single-crossover
+cap in `blend_bio_crossover` is gone.
+True 3-way positions stay data-limited — both sources cap at 2-letter G/F/C this season.
+Verified: 426/426 tests, tsc/lint clean, `npm run build:cards` (448 cards),
+`npm run balance -- 1000 --seed 42` PPP 1.046→1.031 (real pre-change worktree baseline,
+not stale data), rarity 23/59/107/259 vs target 23/55/117/253 (within ±10% except
+Uncommon -8.5%/Rare +7.3%), KPJ no longer Mythic on a steals lead, `RATING_NORM`/
+`LINEUP_CENTRE` regenerated. Two anchors missed by ~1 point (Ausar Thompson OVR 59 vs
+wanted >60, Luka perimeter defence 83 vs wanted <80) — accepted. **Not verified**: the
+screenshot exit criterion — this sandbox has no `frontend/.env.local` Supabase
+credentials, so every route 500s in the Supabase middleware before rendering; do this on
+a real machine before signing off the gold badge UI. `card_balance_thresholds`
+(roadmap #6, depends on this now) should re-tune from this pool — every badge level moved.
 
 ## game_theater — done 2026-09-17 (manual override)
 

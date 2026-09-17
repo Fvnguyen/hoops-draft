@@ -1,7 +1,7 @@
 /**
  * Card Ratings — the single source of truth for OVR, per-skill ratings,
- * rarity, and badges (OVR v2.1: positional profiles, core-gap penalty,
- * legendary/league-leader rarity bumps).
+ * rarity, and badges (card_ratings_rebalance, 2026-09-18: rate-stat dimensions
+ * through one mean-centred index, magnitude×shape defence, flat-mean OVR).
  *
  * PURE: no sqlite, no cache, no I/O. `computeCards` takes plain data in and
  * returns plain data out — `scripts/build-cards.ts` is the only caller that
@@ -13,6 +13,8 @@ import {
 } from './types';
 import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS, type RatingDim } from './balance';
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 function getBadge(val: number, name: string, dim: RatingDim): Trait | null {
   const t = BADGE_THRESHOLDS[dim];
   if (val >= t.l3) return { name, level: 3 };
@@ -21,11 +23,33 @@ function getBadge(val: number, name: string, dim: RatingDim): Trait | null {
   return null;
 }
 
+/** D2: mean and "elite" (top-benchmarkCutoff% average) over rotation players (mpg >= rotationMpg)
+ *  for one raw stat channel. Falls back to the full pool if nobody clears the rotation bar
+ *  (tiny test fixtures, an early-season pool). */
+function statBounds(rows: { v: number; mpg: number }[]): { mean: number; elite: number } {
+  const rotation = rows.filter(r => r.mpg >= RATING_CONFIG.rotationMpg).map(r => r.v);
+  const pool = rotation.length > 0 ? rotation : rows.map(r => r.v);
+  const mean = pool.length ? pool.reduce((a, b) => a + b, 0) / pool.length : 0;
+  const sorted = [...pool].sort((a, b) => b - a);
+  const topCount = Math.max(1, Math.floor(pool.length * RATING_CONFIG.benchmarkCutoff));
+  let sum = 0;
+  for (let i = 0; i < topCount; i++) sum += sorted[i];
+  const elite = topCount > 0 ? sum / topCount : mean;
+  return { mean, elite };
+}
+
+/** D2: idx(v) = clamp(0.5 + (v - mean) / (2 * (elite - mean)), 0, idxMax). League average
+ *  maps to 0.5, elite (the rotation top-7.5% mean) to 1.0. */
+function makeIdx(bounds: { mean: number; elite: number }) {
+  const denom = 2 * (bounds.elite - bounds.mean);
+  return (v: number) => {
+    if (denom <= 0) return 0.5;
+    return clamp(0.5 + (v - bounds.mean) / denom, 0, RATING_CONFIG.idxMax);
+  };
+}
+
 export function computeCards(input: RatingsInput): PlayerCard[] {
   const { players, stats: allStats, awards: allAwards } = input;
-
-  const minDbpm = Math.min(...allStats.map(s => s.dbpm || 0));
-  const minVorp = Math.min(...allStats.map(s => s.vorp || 0));
 
   // Latest season per player: mirrors `ORDER BY season DESC LIMIT 1`, i.e. keep the
   // max `season` string per playerId, preferring the first-encountered row on ties
@@ -48,12 +72,10 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     list.push(a);
   }
 
-  const cards: PlayerCard[] = [];
-
   // card_balance T1 follow-up (2026-09-16): 'G' and 'F' pools removed — bref-primary
-  // positions never produce a bare letter, so they were dead code (see balance.ts's
-  // PROFILES comment). Any position string that isn't a specific PG-C column or one of
-  // the two adjacent crossovers (G/F, F/C) falls to the neutral 'Gold' profile.
+  // positions never produce a bare letter, so they were dead code. Kept only for the
+  // All-Defensive floor's "which dimension is this player's real defensive role" check
+  // (D8 removed the positional OVR weighting this used to also feed).
   const getPool = (pos: string) => {
     if (pos === 'PG') return 'PG';
     if (pos === 'SG') return 'SG';
@@ -65,151 +87,130 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     return 'Gold';
   };
 
-  let maxPts = 0, maxAst = 0, maxTrb = 0, maxStl = 0, maxBlk = 0, max3pm = 0;
+  let maxPts = 0, maxAst = 0, maxTrb = 0, max3pm = 0;
 
-  const rawScores = players.map(p => {
+  interface RawRow {
+    player: typeof players[number];
+    stat: SeasonStat;
+    awards: AwardRow[];
+    pool: string;
+    raw: {
+      finFGM: number; finEff: number; midFGM: number; midEff: number; perFGM: number; perEff: number;
+      dbpm: number; dws48: number; stlPct: number; blkPct: number; drbPct: number; trbPct: number;
+      astPct: number; negTovPct: number; apg: number; rpg: number; selfFg3: number; selfFg2: number;
+    };
+  }
+
+  const rawScoresRaw = players.map(p => {
     const stat = latestStatByPlayer.get(p.id) as SeasonStat | undefined;
     const awardsRows = awardsByPlayer.get(p.id) || [];
     if (!stat) return null;
 
-    // Track max stats for League Leader trait
+    // Track max stats for the League Leader bump (D9: steals/blocks dropped).
     if (stat.pts > maxPts) maxPts = stat.pts;
     if (stat.ast > maxAst) maxAst = stat.ast;
     if (stat.trb > maxTrb) maxTrb = stat.trb;
-    if (stat.stl > maxStl) maxStl = stat.stl;
-    if (stat.blk > maxBlk) maxBlk = stat.blk;
     const fg3m = stat.fg3a * stat.fg3_pct;
     if (fg3m > max3pm) max3pm = fg3m;
-
-    const playmakingRaw = (stat.ast * 8.0) + (stat.ast / (Math.max(0.1, stat.tov)));
-    const reboundingRaw = (stat.trb * 8.0);
-
-    const perimDefRaw = stat.stl || 0;
-    const postDefRaw = stat.blk || 0;
-    const dbpmNorm = (stat.dbpm || 0) - minDbpm;
-    const vorpNorm = (stat.vorp || 0) - minVorp;
 
     const vol = stat.fga;
     const finFGA = vol * stat.pct_fga_0_3;
     const finFGM = finFGA * stat.fg_pct_0_3;
     const finEff = stat.fg_pct_0_3;
-    const ftEff = stat.ft_pct || 0;
 
     const midFGA = vol * (stat.pct_fga_3_10 + stat.pct_fga_10_16 + stat.pct_fga_16_3p);
     const midFGM = vol * ((stat.pct_fga_3_10 * stat.fg_pct_3_10) + (stat.pct_fga_10_16 * stat.fg_pct_10_16) + (stat.pct_fga_16_3p * stat.fg_pct_16_3p));
     const midEff = midFGA > 0 ? (midFGM / midFGA) : 0;
 
-    const perFGA = vol * stat.pct_fga_3p;
-    const perFGM = vol * (stat.pct_fga_3p * stat.fg_pct_3p);
-    const perEff = stat.fg_pct_3p || 0;
+    const perFGM = fg3m;
+    const perEff = stat.fg3_pct || 0;
 
     return {
       player: p,
       stat,
       awards: awardsRows,
       pool: getPool(p.position),
-      raw: { finFGA, finFGM, finEff, ftEff, midFGA, midFGM, midEff, perFGA, perFGM, perEff, playmakingRaw, reboundingRaw, perimDefRaw, postDefRaw, dbpmNorm, vorpNorm, per: stat.per, vorp: stat.vorp, dbpm: stat.dbpm, ts: stat.ts },
+      raw: {
+        finFGM, finEff, midFGM, midEff, perFGM, perEff,
+        dbpm: stat.dbpm || 0,
+        dws48: stat.ws_per_48 || 0,
+        stlPct: stat.stl_pct || 0,
+        blkPct: stat.blk_pct || 0,
+        drbPct: stat.drb_pct || 0,
+        trbPct: stat.trb_pct || 0,
+        astPct: stat.ast_pct || 0,
+        negTovPct: -(stat.tov_pct || 0),
+        apg: stat.ast,
+        rpg: stat.trb,
+        selfFg3: 1 - (stat.pct_ast_fg3 ?? 0),
+        selfFg2: 1 - (stat.pct_ast_fg2 ?? 0),
+      },
     };
-  }).filter(Boolean);
+  });
+  const rawScores: RawRow[] = rawScoresRaw.filter((r): r is RawRow => r !== null);
 
-  const globalStats = {
-    finFGM: [] as number[], finEff: [] as number[], ftEff: [] as number[],
-    midFGM: [] as number[], midEff: [] as number[],
-    perFGM: [] as number[], perEff: [] as number[],
-    play: [] as number[], reb: [] as number[], perim: [] as number[], post: [] as number[],
-    dbpmNorm: [] as number[], per_stat: [] as number[], vorpNorm: [] as number[],
+  const bounds = <K extends keyof RawRow['raw']>(key: K) =>
+    statBounds(rawScores.map(r => ({ v: r.raw[key], mpg: r.stat.mpg })));
+
+  const idx = {
+    finFGM: makeIdx(bounds('finFGM')), finEff: makeIdx(bounds('finEff')),
+    midFGM: makeIdx(bounds('midFGM')), midEff: makeIdx(bounds('midEff')),
+    perFGM: makeIdx(bounds('perFGM')), perEff: makeIdx(bounds('perEff')),
+    dbpm: makeIdx(bounds('dbpm')), dws48: makeIdx(bounds('dws48')),
+    stlPct: makeIdx(bounds('stlPct')), blkPct: makeIdx(bounds('blkPct')), drbPct: makeIdx(bounds('drbPct')),
+    trbPct: makeIdx(bounds('trbPct')), rpg: makeIdx(bounds('rpg')),
+    astPct: makeIdx(bounds('astPct')), apg: makeIdx(bounds('apg')), negTovPct: makeIdx(bounds('negTovPct')),
+  };
+  const selfFg3Bounds = bounds('selfFg3');
+  const selfFg2Bounds = bounds('selfFg2');
+
+  const creationBoost = (self: number, b: { mean: number; elite: number }) => {
+    const denom = b.elite - b.mean;
+    const ratio = denom > 0 ? clamp((self - b.mean) / denom, -1, 1) : 0;
+    return 1 + RATING_CONFIG.shooting.creationBoost * ratio;
   };
 
-  for (const r of rawScores) {
-    if (!r) continue;
-    globalStats.finFGM.push(r.raw.finFGM);
-    if (r.raw.finFGA >= 1.0) globalStats.finEff.push(r.raw.finEff);
-    globalStats.ftEff.push(r.raw.ftEff);
+  const cfgDef = RATING_CONFIG.defense;
+  const cfgShoot = RATING_CONFIG.shooting;
+  const cfgPlay = RATING_CONFIG.playmaking;
+  const cfgReb = RATING_CONFIG.rebounding;
 
-    globalStats.midFGM.push(r.raw.midFGM);
-    if (r.raw.midFGA >= 2.0) globalStats.midEff.push(r.raw.midEff);
-
-    globalStats.perFGM.push(r.raw.perFGM);
-    if (r.raw.perFGA >= 2.0) globalStats.perEff.push(r.raw.perEff);
-
-    globalStats.play.push(r.raw.playmakingRaw);
-    globalStats.reb.push(r.raw.reboundingRaw);
-    globalStats.perim.push(r.raw.perimDefRaw);
-    globalStats.post.push(r.raw.postDefRaw);
-    globalStats.dbpmNorm.push(r.raw.dbpmNorm);
-    globalStats.per_stat.push(r.raw.per);
-    globalStats.vorpNorm.push(r.raw.vorpNorm);
-  }
-
-  const getBenchmark = (arr: number[]) => {
-    const sorted = [...arr].sort((a, b) => b - a);
-    const topCount = Math.max(1, Math.floor(arr.length * RATING_CONFIG.benchmarkCutoff));
-    let sum = 0;
-    for (let i = 0; i < topCount; i++) sum += sorted[i];
-    return sum / topCount;
-  };
-
-  const b_finFGM = getBenchmark(globalStats.finFGM);
-  const b_finEff = getBenchmark(globalStats.finEff);
-  const b_ftEff = getBenchmark(globalStats.ftEff);
-  const b_midFGM = getBenchmark(globalStats.midFGM);
-  const b_midEff = getBenchmark(globalStats.midEff);
-  const b_perFGM = getBenchmark(globalStats.perFGM);
-  const b_perEff = getBenchmark(globalStats.perEff);
-  const b_play = getBenchmark(globalStats.play);
-  const b_reb = getBenchmark(globalStats.reb);
-  const b_perim = getBenchmark(globalStats.perim);
-  const b_post = getBenchmark(globalStats.post);
-  const b_dbpmNorm = getBenchmark(globalStats.dbpmNorm);
-  const b_per_stat = getBenchmark(globalStats.per_stat);
-  const b_vorpNorm = getBenchmark(globalStats.vorpNorm);
+  const cards: PlayerCard[] = [];
 
   for (const r of rawScores) {
-    if (!r) continue;
     const p = r.player;
     const stat = r.stat;
 
-    const getIndex = (val: number, benchmark: number) => {
-      if (benchmark <= 0) return 0;
-      return Math.min(1.0, val / benchmark);
-    };
-
-    const scaleRaw = (idx: number) => Math.round(idx * 99.0);
-
-    // card_balance T2 general fix (2026-09-16, owner-approved): getIndex benchmarks a
-    // rate stat against the pool's top-7.5% average (RATING_CONFIG.benchmarkCutoff)
-    // with no minutes normalization at all, so a sub-rotation player can hit the same
-    // benchmark ratio - and therefore the same 99 cap - as a full-time starter on a
-    // single hot stretch. A targeted input reweight (tried, reverted - it never
-    // reached this formula, see git history) doesn't fix that; a minutes floor on the
-    // output does. Under 10 MPG (roughly the bottom of real rotation minutes), no
-    // rating dimension may exceed 85. 16 MPG defensive/3-and-D specialists are
-    // untouched and can still show an elite rating - this only catches the extreme,
-    // sub-rotation small-sample case, not real (if limited) role players.
+    // T2 general fix (card_balance, 2026-09-16, unchanged by the rebalance): a
+    // sub-rotation player can hit the same index as a full-time starter on a small
+    // sample. Under 10 MPG no rating dimension may exceed 85.
     const capLowMinutes = (v: number) => (stat.mpg < 10 ? Math.min(v, 85) : v);
 
-    const finVolIdx = getIndex(r.raw.finFGM, b_finFGM);
-    const finEffIdx = r.raw.finFGA >= 1.0 ? getIndex(r.raw.finEff, b_finEff) : 0;
-    const ftEffIdx = getIndex(r.raw.ftEff, b_ftEff);
-    const finishing = capLowMinutes(scaleRaw((finVolIdx * RATING_CONFIG.offense.finVol) + (finEffIdx * RATING_CONFIG.offense.finEff) + (ftEffIdx * RATING_CONFIG.offense.finFT)));
+    // D4: shooting channels — volume/efficiency index × a self-creation boost.
+    const finishingRaw = 99 * (cfgShoot.vol * idx.finFGM(r.raw.finFGM) + cfgShoot.eff * idx.finEff(r.raw.finEff))
+      * creationBoost(r.raw.selfFg2, selfFg2Bounds);
+    const midRangeRaw = 99 * (cfgShoot.vol * idx.midFGM(r.raw.midFGM) + cfgShoot.eff * idx.midEff(r.raw.midEff))
+      * creationBoost(r.raw.selfFg2, selfFg2Bounds);
+    const perimeterRaw = 99 * (cfgShoot.vol * idx.perFGM(r.raw.perFGM) + cfgShoot.eff * idx.perEff(r.raw.perEff))
+      * creationBoost(r.raw.selfFg3, selfFg3Bounds);
 
-    const midVolIdx = getIndex(r.raw.midFGM, b_midFGM);
-    const midEffIdx = r.raw.midFGA >= 1.0 ? getIndex(r.raw.midEff, b_midEff) : 0;
-    const midRange = capLowMinutes(scaleRaw((midVolIdx * RATING_CONFIG.offense.midVol) + (midEffIdx * RATING_CONFIG.offense.midEff)));
+    // D5: playmaking — AST%^0.65 * APG^0.35 * a turnover-rate boost.
+    const playmakingRaw = 99 * (idx.astPct(r.raw.astPct) ** cfgPlay.astPctExp)
+      * (idx.apg(r.raw.apg) ** cfgPlay.apgExp)
+      * (cfgPlay.tovBase + cfgPlay.tovSwing * idx.negTovPct(r.raw.negTovPct));
 
-    const perVolIdx = getIndex(r.raw.perFGM, b_perFGM);
-    const perEffIdx = r.raw.perFGA >= 1.0 ? getIndex(r.raw.perEff, b_perEff) : 0;
-    const perimeter = capLowMinutes(scaleRaw((perVolIdx * RATING_CONFIG.offense.perVol) + (perEffIdx * RATING_CONFIG.offense.perEff)));
+    // D6: rebounding — TRB%^0.45 * RPG^0.55.
+    const reboundingRaw = 99 * (idx.trbPct(r.raw.trbPct) ** cfgReb.trbPctExp) * (idx.rpg(r.raw.rpg) ** cfgReb.rpgExp);
 
-    const playmaking = capLowMinutes(scaleRaw(getIndex(r.raw.playmakingRaw, b_play)));
-    const rebounding = capLowMinutes(scaleRaw(getIndex(r.raw.reboundingRaw, b_reb)));
-
-    const perimVolIdx = getIndex(r.raw.perimDefRaw, b_perim);
-    const postVolIdx = getIndex(r.raw.postDefRaw, b_post);
-    const dbpmIdx = getIndex(r.raw.dbpmNorm, b_dbpmNorm);
-
-    let perimeterDefense = capLowMinutes(scaleRaw((perimVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill)));
-    let postDefense = capLowMinutes(scaleRaw((postVolIdx * RATING_CONFIG.defense.vol) + (dbpmIdx * RATING_CONFIG.defense.skill)));
+    // D3: defence = magnitude (DBPM/DWS-48 blend) × shape (perimeter vs. post signal split).
+    const magnitude = cfgDef.magDbpm * idx.dbpm(r.raw.dbpm) + cfgDef.magDws48 * idx.dws48(r.raw.dws48);
+    const perimSig = cfgDef.perimSigStl * idx.stlPct(r.raw.stlPct);
+    const postSig = cfgDef.postSigBlk * idx.blkPct(r.raw.blkPct) + cfgDef.postSigDrb * idx.drbPct(r.raw.drbPct);
+    const sigSum = perimSig + postSig;
+    const perimShape = sigSum > 0 ? (2 * perimSig / sigSum) : 1;
+    const postShape = sigSum > 0 ? (2 * postSig / sigSum) : 1;
+    let perimeterDefenseRaw = 99 * magnitude * (cfgDef.shapeBase + cfgDef.shapeSwing * perimShape);
+    let postDefenseRaw = 99 * magnitude * (cfgDef.shapeBase + cfgDef.shapeSwing * postShape);
 
     const isAllDef = r.awards.some((a: AwardRow) => a.name === 'All-Defensive');
     if (isAllDef) {
@@ -220,59 +221,39 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
       // defensive role (a center's perimeter score outscoring their post score, e.g.
       // Bam Adebayo). Floor the dimension matching the player's position pool instead.
       const isBigPool = r.pool === 'C' || r.pool === 'PF' || r.pool === 'F/C';
-      if (isBigPool) postDefense = Math.max(postDefense, floor);
-      else perimeterDefense = Math.max(perimeterDefense, floor);
+      if (isBigPool) postDefenseRaw = Math.max(postDefenseRaw, floor);
+      else perimeterDefenseRaw = Math.max(perimeterDefenseRaw, floor);
     }
 
-    const pool = r.pool;
-    const cfg = RATING_CONFIG.ovr;
-    const w_profile = cfg.PROFILES[pool];
+    // D7: low-minutes cap, then clamp at 99 — a raw that still clears 99 earns a gold
+    // badge (Trait.level 4) instead of the ordinary l3.
+    const dims: { key: RatingDim; raw: number; name: string }[] = [
+      { key: 'finishing', raw: capLowMinutes(finishingRaw), name: 'Finisher' },
+      { key: 'midRange', raw: capLowMinutes(midRangeRaw), name: 'Mid-Range Maestro' },
+      { key: 'perimeter', raw: capLowMinutes(perimeterRaw), name: 'Sharpshooter' },
+      { key: 'playmaking', raw: capLowMinutes(playmakingRaw), name: 'Floor General' },
+      { key: 'rebounding', raw: capLowMinutes(reboundingRaw), name: 'Glass Cleaner' },
+      { key: 'perimeterDefense', raw: capLowMinutes(perimeterDefenseRaw), name: 'Lockdown Defender' },
+      { key: 'postDefense', raw: capLowMinutes(postDefenseRaw), name: 'Paint Protector' },
+    ];
 
-    const ratingsArr = [finishing, midRange, perimeter, playmaking, rebounding, perimeterDefense, postDefense];
-    const w_eff = w_profile.map(w => w * (1 - (cfg.TOP1 + cfg.TOP2) / 100));
-
-    const indices = [0, 1, 2, 3, 4, 5, 6];
-    indices.sort((a, b) => {
-      if (ratingsArr[b] === ratingsArr[a]) return a - b;
-      return ratingsArr[b] - ratingsArr[a];
-    });
-
-    w_eff[indices[0]] += cfg.TOP1;
-    w_eff[indices[1]] += cfg.TOP2;
-
-    let raw = 0;
-    for (let i = 0; i < 7; i++) {
-      raw += (w_eff[i] * ratingsArr[i]) / 100;
-    }
-
-    for (let i = 0; i < 7; i++) {
-      if (w_profile[i] <= cfg.OFFROLE_MAX_W) {
-        raw += cfg.FORGIVE * (w_profile[i] / 100) * Math.max(0, cfg.REF - ratingsArr[i]);
+    const stored: Record<RatingDim, number> = {} as Record<RatingDim, number>;
+    const traits: Trait[] = [];
+    for (const d of dims) {
+      stored[d.key] = Math.round(Math.min(99, d.raw));
+      if (d.raw > 99) {
+        traits.push({ name: d.name, level: 4 });
+      } else {
+        const b = getBadge(stored[d.key], d.name, d.key);
+        if (b) traits.push(b);
       }
     }
 
-    // Core-Gap Penalty
-    const w_sorted = [...w_profile].sort((a, b) => b - a);
-    const threshold = w_sorted[2]; // 3rd highest weight
-
-    let corePenalty = 0;
-    for (let i = 0; i < 7; i++) {
-      if (w_profile[i] >= threshold) {
-        corePenalty += cfg.CORE_PEN * (w_profile[i] / 100) * Math.max(0, cfg.CORE_REF - ratingsArr[i]);
-      }
-    }
-    raw -= corePenalty;
-
-    // RESTORE COMPOSITE ADVANCED SCORE MULTIPLIER
-    const perIndex = getIndex(stat.per, b_per_stat);
-    const vorpIndex = getIndex(r.raw.vorpNorm, b_vorpNorm);
-    const defBpmIndex = getIndex(r.raw.dbpmNorm, b_dbpmNorm);
-
-    const compositeAdvancedScore = (perIndex * 0.40) + (vorpIndex * 0.40) + (defBpmIndex * 0.20);
-    const multiplier = 0.80 + (compositeAdvancedScore * 0.35);
-
-    let overall = Math.round(raw * multiplier);
-    overall = Math.max(40, Math.min(99, overall));
+    // D8: OVR is the flat mean of the seven (already-capped) ratings.
+    const overall = Math.max(0, Math.min(99, Math.round(
+      (stored.finishing + stored.midRange + stored.perimeter + stored.playmaking
+        + stored.rebounding + stored.perimeterDefense + stored.postDefense) / 7,
+    )));
 
     let rarity: Rarity = 'Common';
     for (const cutoff of RARITY_CUTOFFS) {
@@ -286,14 +267,13 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     const hasAllDef = r.awards.some((a: AwardRow) => a.name === 'All-Defensive');
     const isLegendary = LEGENDARY_PLAYERS.has(p.name);
 
+    // D9: the league-leader rarity bump drops steals/blocks as qualifying categories
+    // (a leader at a low counting rate, e.g. 2.2 stl/g, shouldn't Mythic-bump on that
+    // alone) — points, assists, rebounds, 3PM remain — and the tie test is now strict
+    // `>` — matching the max exactly no longer qualifies, only the outright leader does.
     const fg3m = stat.fg3a * stat.fg3_pct;
     const isLeagueLeader = (
-      stat.pts >= maxPts ||
-      stat.ast >= maxAst ||
-      stat.trb >= maxTrb ||
-      stat.stl >= maxStl ||
-      stat.blk >= maxBlk ||
-      fg3m >= max3pm
+      stat.pts > maxPts || stat.ast > maxAst || stat.trb > maxTrb || fg3m > max3pm
     );
 
     const bumpRarity = (current: Rarity): Rarity => {
@@ -308,10 +288,7 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     else if (hasAllDef && rarity === 'Common') rarity = 'Uncommon';
 
     // card_balance T2 (2026-09-17, owner-approved): a real 2025-26 starter (games
-    // started / games played >= 0.5 - the real signal, not a minutes proxy, see
-    // SeasonStat.gs) is never Common. The NBA is top-heavy (D2's ~24 all-stars out of
-    // 400+ baseline), so this floor is deliberately the only lever that moves Uncommon
-    // toward D2's target - Rare stays scarce by design (below target is accepted).
+    // started / games played >= 0.5) is never Common.
     const isStarter = (stat.gs ?? 0) / Math.max(1, stat.gp) >= 0.5;
     if (isStarter && rarity === 'Common') rarity = 'Uncommon';
 
@@ -325,39 +302,19 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
       rarity = bumpRarity(rarity);
     }
 
-    const traits: Trait[] = [];
-    let b;
-    b = getBadge(finishing, 'Finisher', 'finishing'); if (b) traits.push(b);
-    b = getBadge(midRange, 'Mid-Range Maestro', 'midRange'); if (b) traits.push(b);
-    b = getBadge(perimeter, 'Sharpshooter', 'perimeter'); if (b) traits.push(b);
-    b = getBadge(playmaking, 'Floor General', 'playmaking'); if (b) traits.push(b);
-    b = getBadge(rebounding, 'Glass Cleaner', 'rebounding'); if (b) traits.push(b);
-    b = getBadge(perimeterDefense, 'Lockdown Defender', 'perimeterDefense'); if (b) traits.push(b);
-    b = getBadge(postDefense, 'Paint Protector', 'postDefense'); if (b) traits.push(b);
-
-    // card_balance T2 (2026-09-17, owner-approved): Uncommon -> Rare promotion by badge
-    // level, not a raw OVR band - one skill badge at level 3, or two at level 2+.
-    // Positionless is excluded (not a skill badge; would let 3 specific names promote
-    // for a reason unrelated to skill). Rare stays scarce (D2's ~24-all-star baseline);
-    // this is meant to promote a modest, real number of standout Uncommons, not hit a
-    // percentage target.
-    const skillBadgeLevels = traits.filter(t => t.name !== 'Positionless').map(t => t.level);
-    if (rarity === 'Uncommon' && (skillBadgeLevels.some(l => l >= 3) || skillBadgeLevels.filter(l => l >= 2).length >= 2)) {
-      rarity = 'Rare';
-    }
-
-    // card_balance T3 finding (2026-09-16, owner-approved): Legend/League Leader/Ironman/
-    // Efficiency Savant/Young Phenom/Veteran Presence/Microwave/Volume Scorer/Stat Sheet
-    // Stuffer were cosmetic-only traits, never read by any archetype/playbook/synergy
-    // logic (confirmed by search). Removed. isLegendary/isLeagueLeader still drive their
-    // real mechanic, the rarity bump above (bumpRarity) - only the flavor badge is gone.
     if (POSITIONLESS_PLAYERS.has(p.name)) traits.push({ name: 'Positionless', level: 3 });
 
-    // card_balance T3 (2026-09-17, owner-approved): Playmaking Maestro/Two-Way Disruptor/
-    // Sniper are gone as raw-stat-formula traits — they're combo conditions over two
-    // skill badge levels now (archetypes.ts KEYSTONE_CONDITIONS), never shown as a card
-    // icon, checked directly against the badges already computed above, so they always
-    // track BADGE_THRESHOLDS with no separate formula to keep in sync.
+    // card_balance T2 (2026-09-17)/D9 (2026-09-18): Uncommon -> Rare promotion by badge
+    // level — a gold badge (D7's above-99 overflow), or two skill badges at l3+, since
+    // D4-D6 moved every badge level wholesale and a raw OVR band would no longer track
+    // real standout skill the way the old benchmark-ratio ratings did. Positionless is
+    // excluded (not a skill badge).
+    const skillBadges = traits.filter(t => t.name !== 'Positionless');
+    const hasGold = skillBadges.some(t => t.level >= 4);
+    const l3PlusCount = skillBadges.filter(t => t.level >= 3).length;
+    if (rarity === 'Uncommon' && (hasGold || l3PlusCount >= 2)) {
+      rarity = 'Rare';
+    }
 
     const formattedAwards: string[] = [];
     for (const a of r.awards) {
@@ -374,7 +331,12 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
       player: p,
       stats: stat,
       awards: formattedAwards,
-      ratings: { overall, finishing, midRange, perimeter, playmaking, rebounding, perimeterDefense, postDefense, _baseOvr: raw, _multiplier: multiplier },
+      ratings: {
+        overall,
+        finishing: stored.finishing, midRange: stored.midRange, perimeter: stored.perimeter,
+        playmaking: stored.playmaking, rebounding: stored.rebounding,
+        perimeterDefense: stored.perimeterDefense, postDefense: stored.postDefense,
+      },
       traits,
       rarity,
     });
