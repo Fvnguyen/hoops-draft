@@ -55,12 +55,15 @@ export const MOVING_THRESHOLD = 0.02;
  * never a fixed pixel count: the first cut used 6-12px, which leaves a 168px digit's shape
  * perfectly legible and let the half-time record be read straight off the reel.
  *
- * Deliberately gentler than the second cut (which went to 19% and turned the cell into a
- * featureless wash). Illegibility comes from the strip ROLLING, not from blur alone — see
- * `rollMs`. Blur's job is only to soften the moving digits, not to erase them.
+ * Deliberately gentle. Two earlier cuts overshot in opposite directions: 6-12px flat left
+ * the record readable, then 19% of the glyph turned the cell into a featureless wash, and
+ * at 8.5% it still read as neither movement nor numbers. Illegibility comes from the strip
+ * ROLLING (see `rollMs`), not from blur — at full speed the digits pass ten a second, and
+ * blur's only job is to soften their edges so they streak instead of strobing. You should
+ * always be able to tell that digits are going past; you just cannot catch the value.
  */
 export function blurRadiusPx(font: number, b: number): number {
-  return font * (0.03 + Math.max(0, Math.min(1, b)) * 0.055);
+  return font * (0.02 + Math.max(0, Math.min(1, b)) * 0.03);
 }
 
 /** How long the strip takes to advance one cell: visibly turning at a crawl, a blur at speed. */

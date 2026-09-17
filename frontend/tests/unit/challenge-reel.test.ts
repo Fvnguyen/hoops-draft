@@ -65,9 +65,11 @@ describe('reel pacing (D7)', () => {
     // readable, and 19% of the glyph turned the cell into a featureless wash with no
     // visible motion. Guard the band, not the pixels.
     const LG_FONT = 168;
+    // Retuned twice against live viewing: at 0.19 and again at 0.085 the cell read as
+    // neither movement nor numbers. The strip's motion is what seals the record.
     const atFullSpeed = blurRadiusPx(LG_FONT, 1) / LG_FONT;
-    expect(atFullSpeed).toBeGreaterThan(0.06);
-    expect(atFullSpeed).toBeLessThan(0.12);
+    expect(atFullSpeed).toBeGreaterThan(0.03);
+    expect(atFullSpeed).toBeLessThan(0.07);
     // The ramp is monotone, so it never gets easier to read as the reel speeds up.
     for (let g = 1; g < 41; g++) expect(blurForGame(g)).toBeGreaterThanOrEqual(blurForGame(g - 1));
   });

@@ -98,15 +98,33 @@ const BADGE_DESCRIPTIONS: Record<string, string> = {
 // Only 'small'/'normal' (24px+ circles) are big enough to hold a 12px (text-xs) digit.
 const ICON_ONLY_BADGE_SIZES = new Set(['micro', 'xs', 'cqw']);
 
-function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: 'normal' | 'small' | 'xs' | 'cqw' | 'micro' }) {
+/**
+ * Container-query badge tiers: the box is a share of the CARD's width, so one tier covers
+ * every screen — a badge grows on a wide desktop card and shrinks on a phone without a
+ * breakpoint in sight. The icon is a percentage of the box rather than a fixed px size, or
+ * it would stay tiny inside a box that grew.
+ *
+ * `cqw` is the original narrow-starter tier (D24). `card` and `key` were added 2026-09-18:
+ * the draft-room badges were pinned at 32px and the play card's synergy key at 24px, which
+ * on a 256px-wide desktop card left both far smaller than the space allowed.
+ */
+const CQ_BADGE_TIERS: Record<string, { box: string; icon: string }> = {
+  cqw:  { box: 'clamp(14px, 13cqw, 22px)', icon: '58%' },
+  // Floors are the sizes these used to be pinned at (32px / 24px), so a narrow card is
+  // never WORSE than before and a wide one finally uses the room it has.
+  card: { box: 'clamp(32px, 16cqw, 50px)', icon: '58%' },
+  key:  { box: 'clamp(24px, 13cqw, 38px)', icon: '58%' },
+};
+
+type BadgeSize = 'normal' | 'small' | 'xs' | 'cqw' | 'micro' | 'card' | 'key';
+
+function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: number; size?: BadgeSize }) {
   const cfg = badgeConfig[name] ?? defaultBadgeConfig;
   const Icon = cfg.icon;
-  const iconSize = size === 'micro' ? 7 : size === 'xs' ? 10 : size === 'small' ? 12 : size === 'cqw' ? 11 : 16;
-  const containerSize = size === 'micro' ? 'w-[13px] h-[13px] border' : size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : size === 'cqw' ? 'border' : 'w-8 h-8';
-  // 'cqw' scales with the @container ancestor (the card itself) instead of a fixed px
-  // size, so it keeps shrinking as the card narrows below the 'xs'/'small' breakpoints
-  // were designed for (D24) — a narrow starter card no longer needs badges overflowing it.
-  const containerStyle = size === 'cqw' ? { width: 'clamp(14px, 13cqw, 22px)', height: 'clamp(14px, 13cqw, 22px)' } : undefined;
+  const cq = CQ_BADGE_TIERS[size];
+  const iconSize = size === 'micro' ? 7 : size === 'xs' ? 10 : size === 'small' ? 12 : 16;
+  const containerSize = size === 'micro' ? 'w-[13px] h-[13px] border' : size === 'xs' ? 'w-[18px] h-[18px] border' : size === 'small' ? 'w-6 h-6' : cq ? 'border' : 'w-8 h-8';
+  const containerStyle = cq ? { width: cq.box, height: cq.box } : undefined;
   const showLevel = level > 1 && !ICON_ONLY_BADGE_SIZES.has(size);
 
   // Tooltip is portalled to document.body (not a CSS group-hover child) — same reasoning
@@ -126,7 +144,11 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
   return (
     <div ref={wrapRef} className="relative" onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
       <div className={`${containerSize} rounded-full bg-surface-inverse border-line-inverse flex items-center justify-center relative shadow-md`} style={containerStyle}>
-        <Icon size={iconSize} style={{ color: cfg.color }} strokeWidth={2.5} />
+        <Icon
+          size={cq ? undefined : iconSize}
+          style={cq ? { color: cfg.color, width: cq.icon, height: cq.icon } : { color: cfg.color }}
+          strokeWidth={2.5}
+        />
         {showLevel && (
           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-surface-inverse-deep border-2 border-line-inverse flex items-center justify-center text-xs font-black text-ink-inverse leading-none">
             {level}
@@ -201,7 +223,9 @@ function isRequirementStatus(r: PlayRequirement | PlayRequirementStatus): r is P
  * so the have/met overlay text only renders at 'small' (24px, room for text-xs); the
  * full status is always available via the container's `title`.
  */
-export function PlayRequirementIcons({ requirements, size = 'small' }: { requirements: PlayRequirementStatus[] | PlayRequirement[]; size?: 'xs' | 'small' }) {
+export function PlayRequirementIcons({ requirements, size = 'small' }: { requirements: PlayRequirementStatus[] | PlayRequirement[]; size?: 'xs' | 'small' | 'key' }) {
+  // 'xs' is icon-only; every larger tier has room for the have/met and xN labels.
+  const withLabels = size !== 'xs';
   if (requirements.length === 0) return null;
 
   const title = requirements
@@ -220,12 +244,12 @@ export function PlayRequirementIcons({ requirements, size = 'small' }: { require
             {status?.met && (
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-positive-strong border border-surface-inverse-deep flex items-center justify-center text-ink-inverse leading-none" />
             )}
-            {size === 'small' && status && !status.met && (
+            {withLabels && status && !status.met && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-xs font-black text-ink-inverse bg-surface-inverse-deep px-0.5 rounded-sm leading-none whitespace-nowrap">
                 {status.have}/{status.levels}
               </span>
             )}
-            {size === 'small' && !status && (
+            {withLabels && !status && (
               <span className="absolute -bottom-1 -right-1.5 text-xs font-black text-ink-inverse bg-surface-inverse-deep px-0.5 rounded-sm leading-none">
                 ×{req.levels}
               </span>
@@ -478,7 +502,7 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
               regardless of how narrow the column gets. Capped to 3 + overflow here too,
               matching the compact/list variants (D18). */}
           {player.traits.slice(0, size === 'sm' ? 3 : 4).map((trait, i) => (
-            <BadgeIcon key={i} name={trait.name} level={trait.level} size={size === 'sm' ? 'cqw' : 'normal'} />
+            <BadgeIcon key={i} name={trait.name} level={trait.level} size={size === 'sm' ? 'cqw' : 'card'} />
           ))}
           {size === 'sm' && player.traits.length > 3 && (
             <BadgeOverflowIndicator count={player.traits.length - 3} names={player.traits.slice(3).map(t => t.name)} size="cqw" />
@@ -960,7 +984,7 @@ function PlayBoardGraphic({ play }: { play: Play }) {
       <PlayMotifSvg motif={motif} stroke={playCategoryMotifStroke[cat]} />
       <div className="relative z-10 flex items-center gap-1.5">
         {requirements.map((req, i) => (
-          <BadgeIcon key={i} name={req.badge} level={req.levels} size="small" />
+          <BadgeIcon key={i} name={req.badge} level={req.levels} size="key" />
         ))}
       </div>
     </>
@@ -994,7 +1018,7 @@ export function PlayCardFront({ play }: { play: Play }) {
       {requirements.length > 0 && (
         <div className="px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center">
           <span className="text-xs text-ink-subtle font-bold uppercase tracking-widest leading-none">Synergy Key</span>
-          <PlayRequirementIcons requirements={requirements} size="small" />
+          <PlayRequirementIcons requirements={requirements} size="key" />
         </div>
       )}
       <div className={`h-1 ${theme.accent}`} />
@@ -1071,7 +1095,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
   return (
     <div
-      className={`group relative w-full aspect-[5/7] cursor-pointer select-none [-webkit-touch-callout:none] transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
+      className={`group @container relative w-full aspect-[5/7] cursor-pointer select-none [-webkit-touch-callout:none] transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
