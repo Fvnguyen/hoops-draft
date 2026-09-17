@@ -13,7 +13,7 @@ import { CHALLENGE_GRADES } from '@/engine/challenge';
 import { CHALLENGE_GAMES } from '@/engine/balance';
 import { TIER_FAMILIES, familyForWins, nextFamilyAbove } from '@/components/challenge/TierLadder';
 import { blurForGame, dwellForGame } from '@/components/challenge/ChallengeReel';
-import { blurRadiusPx, MOVING_THRESHOLD } from '@/components/challenge/FlipClock';
+import { blurRadiusPx, rollMs, MOVING_THRESHOLD } from '@/components/challenge/FlipClock';
 
 describe('TierLadder families', () => {
   it('tile 0..82 contiguously with no gaps or overlaps', () => {
@@ -60,15 +60,24 @@ describe('reel pacing (D7)', () => {
     expect(blurForGame(29)).toBe(1);
   });
 
-  it('blurs by a fraction of the glyph, hard enough to actually hide the digit', () => {
-    // The first cut blurred a 168px digit by 6-12px, which keeps its shape: the owner read
-    // the half-time record straight off the sealed reel. Guard the ratio, not the pixels.
+  it('blurs by a fraction of the glyph, and never so hard the cell goes flat', () => {
+    // Two failure modes, both hit in testing: 6-12px on a 168px glyph left the record
+    // readable, and 19% of the glyph turned the cell into a featureless wash with no
+    // visible motion. Guard the band, not the pixels.
     const LG_FONT = 168;
-    expect(blurRadiusPx(LG_FONT, 1) / LG_FONT).toBeGreaterThan(0.15);
-    // Even mid-ramp the record must not be legible.
-    expect(blurRadiusPx(LG_FONT, blurForGame(15))).toBeGreaterThan(12);
-    // And the ramp is monotone, so it never gets easier to read as the reel speeds up.
+    const atFullSpeed = blurRadiusPx(LG_FONT, 1) / LG_FONT;
+    expect(atFullSpeed).toBeGreaterThan(0.06);
+    expect(atFullSpeed).toBeLessThan(0.12);
+    // The ramp is monotone, so it never gets easier to read as the reel speeds up.
     for (let g = 1; g < 41; g++) expect(blurForGame(g)).toBeGreaterThanOrEqual(blurForGame(g - 1));
+  });
+
+  it('rolls faster the blurrier it gets, and always slow enough to see at the start', () => {
+    // Illegibility comes from the strip MOVING, so the roll has to actually speed up.
+    expect(rollMs(0)).toBeGreaterThan(rollMs(0.5));
+    expect(rollMs(0.5)).toBeGreaterThan(rollMs(1));
+    expect(rollMs(0)).toBeGreaterThanOrEqual(400); // visibly turning at the start of the ramp
+    expect(rollMs(1)).toBeLessThanOrEqual(150);    // a blur at full speed
   });
 
   it('is still blurred when half 1 ends, so the break is entered sealed', () => {

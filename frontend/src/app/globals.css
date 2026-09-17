@@ -220,6 +220,22 @@ body {
 .crunch-pop {
   animation: crunch-pop 1.5s ease-out forwards;
 }
+
+/* challenge_mode D7: a turning split-flap. The strip holds four consecutive digits stacked
+   one cell apart, so translating it by exactly one cell (25% of its height) and looping
+   reads as a continuous roll. Duration comes from the reel's blur value, so the flaps
+   visibly speed up as the season accelerates. Blur alone was not enough — four static
+   blurred ghosts are a smear, not motion (owner, 2026-09-18). */
+@keyframes flap-roll {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-25%); }
+}
+.flap-roll {
+  animation: flap-roll var(--flap-roll-ms, 400ms) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flap-roll { animation: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .crunch-pop { animation: crunch-fade 1.5s linear forwards; }
 }

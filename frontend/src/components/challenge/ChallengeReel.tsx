@@ -175,7 +175,12 @@ export function ChallengeReel({
   const absIndex = halfStart + currentIndex;
   const gameNumber = absIndex + 1;
   const finalStretch = absIndex >= FINAL_START;
-  const blur = cursor >= n ? 0 : blurForGame(absIndex);
+  // HOLD the last game's blur when the half runs out rather than dropping to 0: snapping
+  // to crisp rendered the true 41-game record for a frame or two before the front office
+  // mounted — a visible flicker, and a reveal of the record D7 says stays sealed through
+  // the break. Half 2 ends inside the final stretch, where the blur is already 0, so it
+  // still finishes readable.
+  const blur = blurForGame(cursor >= n ? halfStart + n - 1 : absIndex);
 
   useEffect(() => {
     if (paused) return;

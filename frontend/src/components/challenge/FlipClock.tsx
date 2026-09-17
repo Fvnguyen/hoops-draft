@@ -53,10 +53,20 @@ export const MOVING_THRESHOLD = 0.02;
 /**
  * Motion-blur radius in px for a glyph of `font` px at blur `b`. A FRACTION of the glyph,
  * never a fixed pixel count: the first cut used 6-12px, which leaves a 168px digit's shape
- * perfectly legible, and the half-time record could be read straight off the reel.
+ * perfectly legible and let the half-time record be read straight off the reel.
+ *
+ * Deliberately gentler than the second cut (which went to 19% and turned the cell into a
+ * featureless wash). Illegibility comes from the strip ROLLING, not from blur alone — see
+ * `rollMs`. Blur's job is only to soften the moving digits, not to erase them.
  */
 export function blurRadiusPx(font: number, b: number): number {
-  return font * (0.05 + Math.max(0, Math.min(1, b)) * 0.14);
+  return font * (0.03 + Math.max(0, Math.min(1, b)) * 0.055);
+}
+
+/** How long the strip takes to advance one cell: visibly turning at a crawl, a blur at speed. */
+export function rollMs(b: number): number {
+  const t = Math.max(0, Math.min(1, b));
+  return Math.round(620 - t * 520);
 }
 
 function Flap({
@@ -86,39 +96,40 @@ function Flap({
       style={{ width: `${scale.w}px`, height: `${scale.h}px` }}
     >
       {moving && (
-        <>
-          {/* A moving flap is a STRIP of digits, not two ghosts of this one. Four layers
-              spanning the cell means no single value dominates, and the blur radius is a
-              FRACTION OF THE GLYPH rather than a fixed pixel count — a 168px digit blurred
-              by 8px keeps its shape and stays readable, which is how the half-time record
-              was guessable mid-reel (owner, 2026-09-17). */}
-          {[-1, 0, 1, 2].map((offset, i) => {
-            const shown = (digit + offset + 20) % 10;
-            const spread = (i - 1.5) / 1.5; // -1 .. 1 across the four layers
-            return (
+        // A turning flap: four consecutive digits stacked one cell apart, rolling upward
+        // by exactly one cell per cycle. You can see it move at the start of the ramp and
+        // it smears into an unreadable blur at full speed, which is the point — the record
+        // is sealed by MOTION, not by drowning the cell in blur.
+        <div className="absolute inset-0 overflow-hidden" aria-hidden>
+          <div
+            className="flap-roll absolute inset-x-0 top-0"
+            style={{
+              height: `${scale.h * 4}px`,
+              ['--flap-roll-ms' as string]: `${rollMs(b)}ms`,
+              filter: `blur(${blurRadiusPx(scale.font, b).toFixed(1)}px)`,
+              opacity: 0.55 + b * 0.25,
+            }}
+          >
+            {/* Stacked in ASCENDING order: the strip rolls up, so the cell below slides
+                into view next and the digits count up the way a real flap does. */}
+            {[0, 1, 2, 3].map((i) => (
               <span
-                key={offset}
-                aria-hidden
+                key={i}
                 className="absolute inset-x-0 text-center text-ink-strong"
-                style={{
-                  ...glyph,
-                  top: `${scale.nudge + spread * b * scale.h * 0.75}px`,
-                  filter: `blur(${blurRadiusPx(scale.font, b).toFixed(1)}px)`,
-                  opacity: (0.38 - Math.abs(spread) * 0.12) * (0.55 + b * 0.45),
-                }}
+                style={{ ...glyph, top: `${i * scale.h + scale.nudge}px` }}
               >
-                {shown}
+                {(digit + i) % 10}
               </span>
-            );
-          })}
-        </>
+            ))}
+          </div>
+        </div>
       )}
       <span
         className={cn('relative text-center', dim ? 'text-ink-inverse-muted' : 'text-ink-strong')}
         style={{
           ...glyph,
           paddingTop: `${scale.nudge}px`,
-          opacity: moving ? Math.max(0, 1 - b * 3.2) : 1,
+          opacity: moving ? Math.max(0, 1 - b * 4) : 1,
         }}
       >
         {digit}
