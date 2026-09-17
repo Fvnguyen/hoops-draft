@@ -76,17 +76,44 @@ const ovr = (p: PlayerCardData) => p.ratings?.overall ?? 0;
  * catalog, so the team picks the three plays it can actually staff and an identity to
  * match. `buildBotRoster` then trims itself to the 12-man `TARGET_ROSTER`.
  *
- * One correction on top: a real NBA roster can leave a depth-chart column empty (MEM has
- * no eligible centre in the current pool), and five-on-four is not a fair opponent. Any
- * empty column is backfilled with the best active player who isn't already a starter,
- * taken out of the deepest column — the active twelve never changes, so play roles stay
- * valid; only the starting five moves, so the identity is re-picked against it.
+ * Two corrections on top.
+ *
+ * `excludeIds` (the user's own cards) must be held out, because a card the user drafted is
+ * still on its real team's list: draft a Celtic and Boston would field him against you in
+ * the same game. That is not just cosmetically odd — `simulateGame` keys its box score by
+ * player id in ONE map for both sides (game.ts), so a shared id merges into a single row
+ * that is then emitted into BOTH box scores, and the two teams' totals stop reconciling
+ * with the final score. Measured before this fix: 13 of 41 games off, by up to 32 points.
+ * Holding the ids out removes the collision at its source. A team short of a full roster
+ * afterwards is topped up with the best cards left in the league — opponent rosters are
+ * never displayed in v1, so a borrowed twelfth man is invisible, while four-on-five is not.
+ *
+ * And a real NBA roster can leave a depth-chart column empty (MEM has no eligible centre),
+ * which is also not a fair opponent. Any empty column is backfilled with the best active
+ * player who isn't already a starter, taken out of the deepest column — the active twelve
+ * never changes, so play roles stay valid; only the starting five moves, so the identity is
+ * re-picked against it.
  */
-export function buildNbaTeamRoster(cards: PlayerCardData[], abbr: string, plays: Play[] = PLAY_CATALOG): DraftSessionSeat {
-  const pool = cards
+export function buildNbaTeamRoster(
+  cards: PlayerCardData[],
+  abbr: string,
+  plays: Play[] = PLAY_CATALOG,
+  excludeIds: ReadonlySet<string> = new Set(),
+): DraftSessionSeat {
+  const available = cards.filter((c) => !excludeIds.has(c.id));
+  const pool = available
     .filter((c) => c.player?.team === abbr)
     .sort((a, b) => ovr(b) - ovr(a))
     .slice(0, NBA_ROSTER_POOL);
+
+  if (pool.length < NBA_ROSTER_POOL) {
+    const own = new Set(pool.map((c) => c.id));
+    const fill = available
+      .filter((c) => !own.has(c.id))
+      .sort((a, b) => ovr(b) - ovr(a))
+      .slice(0, NBA_ROSTER_POOL - pool.length);
+    pool.push(...fill);
+  }
 
   const drafted: DraftCard[] = [...pool, ...plays];
   const roster = buildBotRoster(drafted);
@@ -120,11 +147,18 @@ export function buildNbaTeamRoster(cards: PlayerCardData[], abbr: string, plays:
   };
 }
 
-/** All 30 opponents as game-ready `TeamInfo`s, keyed by abbreviation. */
-export function buildNbaTeams(cards: PlayerCardData[], plays: Play[] = PLAY_CATALOG): Map<string, TeamInfo> {
+/**
+ * All 30 opponents as game-ready `TeamInfo`s, keyed by abbreviation. Pass the user's own
+ * card ids as `excludeIds` for a real run, so nobody suits up against himself.
+ */
+export function buildNbaTeams(
+  cards: PlayerCardData[],
+  plays: Play[] = PLAY_CATALOG,
+  excludeIds: ReadonlySet<string> = new Set(),
+): Map<string, TeamInfo> {
   const teams = new Map<string, TeamInfo>();
   for (const t of NBA_TEAMS) {
-    const seat = buildNbaTeamRoster(cards, t.abbr, plays);
+    const seat = buildNbaTeamRoster(cards, t.abbr, plays, excludeIds);
     const info = buildTeamInfo(seat, false);
     teams.set(t.abbr, { ...info, name: `${t.city} ${t.name}` });
   }
@@ -234,6 +268,54 @@ export interface ChallengePlayerTotals extends PlayerBoxScore {
   gamesPlayed: number;
 }
 
+/**
+ * The OPPONENTS' box rows summed across a half, as one team line — no per-player rows,
+ * because nothing shows an opposing player and storing 41 opposing benches would dwarf the
+ * run. This is what makes the DEFENSIVE four factors computable (board 4's coach talks
+ * about what opponents do against you), which the user's own `playerTotals` cannot answer.
+ */
+export interface ChallengeTeamTotals {
+  points: number;
+  possessions: number;
+  fieldGoalsMade: number;
+  fieldGoalsAttempted: number;
+  threesMade: number;
+  threesAttempted: number;
+  freeThrowsMade: number;
+  freeThrowsAttempted: number;
+  turnovers: number;
+  assists: number;
+  offensiveRebounds: number;
+  defensiveRebounds: number;
+  steals: number;
+  blocks: number;
+}
+
+const emptyTeamTotals = (): ChallengeTeamTotals => ({
+  points: 0, possessions: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
+  threesMade: 0, threesAttempted: 0, freeThrowsMade: 0, freeThrowsAttempted: 0,
+  turnovers: 0, assists: 0, offensiveRebounds: 0, defensiveRebounds: 0, steals: 0, blocks: 0,
+});
+
+function addTeamRows(totals: ChallengeTeamTotals, rows: PlayerBoxScore[]): void {
+  for (const r of rows ?? []) {
+    totals.points += r.points ?? 0;
+    totals.possessions += r.possessions ?? 0;
+    totals.fieldGoalsMade += r.fieldGoalsMade ?? 0;
+    totals.fieldGoalsAttempted += r.fieldGoalsAttempted ?? 0;
+    totals.threesMade += r.threesMade ?? 0;
+    totals.threesAttempted += r.threesAttempted ?? 0;
+    totals.freeThrowsMade += r.freeThrowsMade ?? 0;
+    totals.freeThrowsAttempted += r.freeThrowsAttempted ?? 0;
+    totals.turnovers += r.turnovers ?? 0;
+    totals.assists += r.assists ?? 0;
+    totals.offensiveRebounds += r.offensiveRebounds ?? 0;
+    totals.defensiveRebounds += r.defensiveRebounds ?? 0;
+    totals.steals += r.steals ?? 0;
+    totals.blocks += r.blocks ?? 0;
+  }
+}
+
 export interface ChallengeHalf {
   /** 1 = games 1-41, 2 = games 42-82. */
   half: 1 | 2;
@@ -243,6 +325,8 @@ export interface ChallengeHalf {
   wins: number;
   losses: number;
   playerTotals: ChallengePlayerTotals[];
+  /** Everything the 41 opponents did, as one team line (see `ChallengeTeamTotals`). */
+  opponentTotals: ChallengeTeamTotals;
 }
 
 /** Games 1-41 are half 1, 42-82 are half 2. */
@@ -267,6 +351,7 @@ export function simulateHalf(
   const { start, end } = halfRange(half);
   const games: ChallengeGameResult[] = [];
   const totals = new Map<string, ChallengePlayerTotals>();
+  const opponentTotals = emptyTeamTotals();
 
   for (let i = start; i < end; i++) {
     const entry = schedule[i];
@@ -280,7 +365,9 @@ export function simulateHalf(
     const userScore = entry.isHome ? theater.finalScore[0] : theater.finalScore[1];
     const oppScore = entry.isHome ? theater.finalScore[1] : theater.finalScore[0];
     const rows = entry.isHome ? theater.boxScore.home : theater.boxScore.away;
+    const oppRows = entry.isHome ? theater.boxScore.away : theater.boxScore.home;
     accumulate(totals, rows);
+    addTeamRows(opponentTotals, oppRows);
 
     games.push({
       index: i,
@@ -301,6 +388,7 @@ export function simulateHalf(
     wins,
     losses: games.length - wins,
     playerTotals: Array.from(totals.values()).sort((a, b) => b.points - a.points),
+    opponentTotals,
   };
 }
 

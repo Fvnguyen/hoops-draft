@@ -7,6 +7,11 @@ export const OWNER_QUOTES: QuoteTemplates = {
     'Somebody explain {issue} to me. {value}. The league gets {league}. Solve it before the deadline passes.',
     'You have a hole and everyone in the building can see it: {issue}, {value} against {league}. Go get the fix.',
   ],
+  'def-four-factor': [
+    'Every opponent walks in and helps themselves to {issue}. {value}, league {league}. Go buy me somebody who stops it.',
+    'I watch other teams hold this to {league}. We give up {value} on {issue}. That is a roster hole, not a slump.',
+    'They score on us the same way every night: {issue}, {value} against {league}. Fix it at the deadline.',
+  ],
   'bench-over-starter': [
     '{player} puts up {points} points in {minutes} minutes and we start {other} in front of him. Explain the business case.',
     'The cheapest move we have is free: play {player}. {points} points in {minutes} minutes. {other} can wait his turn.',

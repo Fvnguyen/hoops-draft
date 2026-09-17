@@ -8,6 +8,12 @@ export const COACH_QUOTES: QuoteTemplates = {
     'I can live with a lot. I cannot live with {issue} at {value} when the league gets {league}.',
     'Same story all half: {issue}. {value} for us, {league} for them. Change the five and it changes.',
   ],
+  'def-four-factor': [
+    'We get killed on {issue}. Every possession they get an extra look. {value} against {league} for the rest of the league.',
+    'They are doing whatever they want on {issue}. {value}, when the league allows {league}. Put different bodies out there.',
+    'You cannot win a half giving up {issue} like that. {value}. Everyone else holds it to {league}.',
+    'Offence is not our problem. {issue} is. {value} against them, {league} around the league.',
+  ],
   'bench-over-starter': [
     '{player} gives me {points} points in {minutes} minutes a night. {other} is not beating that. The second half starts with {player}.',
     'I have been slow on this one. {player} produces every time he is out there and {other} does not. Promote him.',

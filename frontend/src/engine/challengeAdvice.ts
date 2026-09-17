@@ -41,6 +41,7 @@ export type ChallengeAction = 'lineup' | 'plays' | 'trade' | 'hold';
 
 export type ChallengeReasonId =
   | 'four-factor'
+  | 'def-four-factor'
   | 'bench-over-starter'
   | 'worst-plus-minus'
   | 'play-unstaffed'
@@ -115,10 +116,16 @@ export interface ChallengeTeamSplits {
   games: number;
   pointsFor: number;
   pointsAgainst: number;
+  /** What YOU did. */
   efg: number;
   tovRate: number;
   orebRate: number;
   ftRate: number;
+  /** What opponents did AGAINST you — the defensive four factors (board 4's coach line). */
+  oppEfg: number;
+  oppTovRate: number;
+  oppOrebRate: number;
+  oppFtRate: number;
 }
 
 // ── Pace band (D8) ──────────────────────────────────────────────────────────
@@ -161,6 +168,11 @@ export function challengeTeamSplits(half: ChallengeHalf): ChallengeTeamSplits {
   const oreb = sum((t) => t.offensiveRebounds);
   const fta = sum((t) => t.freeThrowsAttempted);
   const misses = Math.max(1, fga - fgm);
+
+  const o = half.opponentTotals;
+  const oppMisses = Math.max(1, o.fieldGoalsAttempted - o.fieldGoalsMade);
+  const oppTovDen = o.fieldGoalsAttempted + 0.44 * o.freeThrowsAttempted + o.turnovers;
+
   return {
     games,
     pointsFor: half.games.reduce((s, g) => s + g.score[0], 0) / games,
@@ -169,6 +181,10 @@ export function challengeTeamSplits(half: ChallengeHalf): ChallengeTeamSplits {
     tovRate: fga + fta + tov > 0 ? tov / (fga + 0.44 * fta + tov) : 0,
     orebRate: oreb / misses,
     ftRate: fga > 0 ? fta / fga : 0,
+    oppEfg: o.fieldGoalsAttempted > 0 ? (o.fieldGoalsMade + 0.5 * o.threesMade) / o.fieldGoalsAttempted : 0,
+    oppTovRate: oppTovDen > 0 ? o.turnovers / oppTovDen : 0,
+    oppOrebRate: o.offensiveRebounds / oppMisses,
+    oppFtRate: o.fieldGoalsAttempted > 0 ? o.freeThrowsAttempted / o.fieldGoalsAttempted : 0,
   };
 }
 
@@ -260,6 +276,47 @@ function detectFourFactor(splits: ChallengeTeamSplits): Detected {
   const worst = candidates.sort((a, b) => b.deficit - a.deficit)[0];
   return {
     id: 'four-factor',
+    action: worst.action,
+    severity: clampSeverity(40 + worst.deficit * 300),
+    evidence: worst.evidence,
+    vars: { issue: worst.issue, value: worst.value, league: worst.league },
+  };
+}
+
+/**
+ * The same four factors from the other side: what opponents manage AGAINST you. The league
+ * means are the SAME constants — across the full NBA-vs-NBA set every team's offense is
+ * another team's defense, so the two distributions coincide (measured: opponents grab 25.8%
+ * of their misses, which is board 4's "league average is 25%"). Always fires, like its
+ * offensive twin, so three quotes are always available.
+ */
+function detectDefFourFactor(splits: ChallengeTeamSplits): Detected {
+  const L = LEAGUE_FOUR_FACTORS;
+  const candidates = [
+    {
+      issue: 'the shots you allow', deficit: (splits.oppEfg - L.efg) / L.efg,
+      value: pct(splits.oppEfg), league: pct(L.efg), action: 'lineup' as ChallengeAction,
+      evidence: `Opponents shoot ${pct(splits.oppEfg)} effective against you. League average is ${pct(L.efg)}.`,
+    },
+    {
+      issue: 'forcing mistakes', deficit: (L.tovRate - splits.oppTovRate) / L.tovRate,
+      value: pct(splits.oppTovRate), league: pct(L.tovRate), action: 'plays' as ChallengeAction,
+      evidence: `You force a turnover on ${pct(splits.oppTovRate)} of their possessions. League average is ${pct(L.tovRate)}.`,
+    },
+    {
+      issue: 'the defensive glass', deficit: (splits.oppOrebRate - L.orebRate) / L.orebRate,
+      value: pct(splits.oppOrebRate), league: pct(L.orebRate), action: 'lineup' as ChallengeAction,
+      evidence: `Opponents rebound ${pct(splits.oppOrebRate)} of their misses against you. League average is ${pct(L.orebRate)}.`,
+    },
+    {
+      issue: 'fouling', deficit: (splits.oppFtRate - L.ftRate) / L.ftRate,
+      value: `${Math.round(splits.oppFtRate * 100)}`, league: `${Math.round(L.ftRate * 100)}`, action: 'plays' as ChallengeAction,
+      evidence: `You send them to the line ${Math.round(splits.oppFtRate * 100)} times per 100 shots. League average is ${Math.round(L.ftRate * 100)}.`,
+    },
+  ];
+  const worst = candidates.sort((a, b) => b.deficit - a.deficit)[0];
+  return {
+    id: 'def-four-factor',
     action: worst.action,
     severity: clampSeverity(40 + worst.deficit * 300),
     evidence: worst.evidence,
@@ -385,8 +442,8 @@ function detectDeepBench(lines: PlayerLine[]): Detected | null {
 
 /** Catalogue order, used as the tie-break when two reasons share a severity. */
 const CATALOGUE_ORDER: ChallengeReasonId[] = [
-  'four-factor', 'bench-over-starter', 'worst-plus-minus', 'play-unstaffed', 'play-idle',
-  'identity-near', 'pace-band', 'pace-hold', 'form-hold', 'deep-bench',
+  'four-factor', 'def-four-factor', 'bench-over-starter', 'worst-plus-minus', 'play-unstaffed',
+  'play-idle', 'identity-near', 'pace-band', 'pace-hold', 'form-hold', 'deep-bench',
 ];
 
 /**
@@ -418,6 +475,7 @@ export function challengeReasons(input: ChallengeAdviceInput): ChallengeReason[]
     detected.push(detectDeepBench(lines));
   } else {
     detected.push(detectFourFactor(splits));
+    detected.push(detectDefFourFactor(splits));
     detected.push(detectBenchOverStarter(lines));
     detected.push(detectWorstPlusMinus(lines));
     detected.push(...detectPlays(input.team, lines));

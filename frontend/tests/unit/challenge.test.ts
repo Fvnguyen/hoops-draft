@@ -76,6 +76,35 @@ describe('NBA opponents (D3)', () => {
   });
 });
 
+describe("opponents never field the user's own players", () => {
+  // simulateGame keys its box score by player id in ONE map for both sides, so a card on
+  // both rosters merges into a single row emitted into BOTH box scores and the totals stop
+  // reconciling with the final score. Measured before the fix: 13 of 41 games off, one by
+  // 32 points. buildNbaTeams holds the user's ids out, which removes it at the source.
+  const team = buildTeams(runHeadlessDraft(players, PLAY_CATALOG, 20260917))[0];
+  const userIds = new Set(team.players.map((p) => p.id));
+  const opponents = buildNbaTeams(players, PLAY_CATALOG, userIds);
+
+  it('excludes every card the user owns, and still fields 12 with no empty slot', () => {
+    for (const [abbr, t] of opponents) {
+      expect(t.players.filter((p) => userIds.has(p.id)), `${abbr} shares a player`).toEqual([]);
+      const active = DEPTH_COLUMNS.reduce((s, col) => s + (t.depthChart[col] ?? []).length, 0);
+      expect(active, `${abbr} active count`).toBe(TARGET_ROSTER);
+      for (const col of DEPTH_COLUMNS) expect((t.depthChart[col] ?? []).length, `${abbr} ${col}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("both teams' box scores reconcile with the final scores across a half", () => {
+    const schedule = buildChallengeSchedule(555);
+    const h = simulateHalf(team, opponents, schedule, 1, 555);
+    const userBox = h.playerTotals.reduce((s, t) => s + t.points, 0);
+    const userFinal = h.games.reduce((s, g) => s + g.score[0], 0);
+    const oppFinal = h.games.reduce((s, g) => s + g.score[1], 0);
+    expect(userBox).toBe(userFinal);
+    expect(h.opponentTotals.points).toBe(oppFinal);
+  });
+});
+
 describe('schedule and seeds (D4)', () => {
   const schedule = buildChallengeSchedule(1234);
 
@@ -136,8 +165,10 @@ describe('grades (D6)', () => {
 });
 
 describe('simulateHalf (D7)', () => {
-  const opponents = buildNbaTeams(players, PLAY_CATALOG);
   const team = buildTeams(runHeadlessDraft(players, PLAY_CATALOG, 20260917))[0];
+  // Built the way the product builds them: the user's own cards held out (see the
+  // box-score collision above), which is also what makes the totals reconcile.
+  const opponents = buildNbaTeams(players, PLAY_CATALOG, new Set(team.players.map((p) => p.id)));
   const runSeed = 555;
   const schedule = buildChallengeSchedule(runSeed);
   const first = simulateHalf(team, opponents, schedule, 1, runSeed);
@@ -174,6 +205,17 @@ describe('simulateHalf (D7)', () => {
   it('a different run seed gives a different season', () => {
     const other = simulateHalf(team, opponents, buildChallengeSchedule(556), 1, 556);
     expect(other.results).not.toBe(first.results);
+  });
+
+  it('keeps opponent team totals that make the defensive four factors computable', () => {
+    for (const h of [first, second]) {
+      expect(h.opponentTotals.fieldGoalsAttempted).toBeGreaterThan(h.opponentTotals.fieldGoalsMade);
+      expect(h.opponentTotals.points).toBeGreaterThan(0);
+      expect(h.opponentTotals.offensiveRebounds).toBeGreaterThan(0);
+      expect(h.opponentTotals.defensiveRebounds).toBeGreaterThan(0);
+      // Opponents' points must equal what the scoreboard credited them.
+      expect(h.opponentTotals.points).toBe(h.games.reduce((s, g) => s + g.score[1], 0));
+    }
   });
 
   it('sums player totals across both halves', () => {

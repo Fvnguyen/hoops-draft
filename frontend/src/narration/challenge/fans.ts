@@ -7,6 +7,11 @@ export const FANS_QUOTES: QuoteTemplates = {
     'Fix {issue} or stop selling tickets. {value} against {league}. It is not complicated.',
     'The group chat has one topic and it is {issue}. {value}. League: {league}. We have eyes.',
   ],
+  'def-four-factor': [
+    'WE CANNOT GUARD ANYBODY. {issue}, {value}, while the league gives up {league}. Do something.',
+    'Every single night it is {issue}. They get {value} on us. {league} against everyone else. Embarrassing.',
+    'Opponents have figured us out. {issue}: {value}. League average {league}. So has the whole arena.',
+  ],
   'bench-over-starter': [
     'FREE {player}. The kid puts up {points} in {minutes} minutes and he is stuck behind {other}.',
     '{player} for {other}, today. {points} points in {minutes} minutes off the bench. What are we protecting here?',
