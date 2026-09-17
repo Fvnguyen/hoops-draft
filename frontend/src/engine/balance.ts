@@ -462,3 +462,34 @@ export const TRADE_RARITY_WEIGHTS: Record<Rarity, number> = {
 
 /** The dropped card's own rarity is this much likelier to come back. */
 export const TRADE_DROPPED_RARITY_BOOST = 4;
+
+// ── Challenge front-office advice (challenge_mode D8) ──────────────────────
+
+/** Half the width of the pace band, in wins, before snapping to grade edges (D8). */
+export const PACE_BAND_SPREAD = 7;
+/** A band whose LOW end reaches this many wins is "Historic or better" -> Hold (D6/D8). */
+export const HOLD_BAND_MIN_WINS = 72;
+
+/**
+ * League means, measured 2026-09-17 over all 870 NBA-vs-NBA matchups (1,740 team-games)
+ * with `CHALLENGE_TUNING`, so the four-factor comparison is against THIS engine's league
+ * and not the real NBA's. `orebRate` is offensive rebounds per own miss (a `ChallengeHalf`
+ * carries the user's box rows only, so a true ORB% against opponent boards is not
+ * computable here); `ftRate` is free-throw attempts per field-goal attempt.
+ */
+export const LEAGUE_FOUR_FACTORS = { efg: 0.494, tovRate: 0.1215, orebRate: 0.258, ftRate: 0.273 };
+/** League points per game in the same measurement. */
+export const LEAGUE_POINTS_PER_GAME = 109.0;
+
+/** Minutes per game a player needs before he counts as "in the rotation". */
+export const ROTATION_MIN_MPG = 12;
+/** A bench player needs this many minutes per game before his scoring rate is evidence. */
+export const BENCH_MIN_MPG = 10;
+/** Points per 36 minutes a bench player must beat a starter by to be worth promoting. */
+export const BENCH_SCORING_EDGE_PER36 = 4;
+/** Worst rotation plus-minus per game must be at or below this to fire. */
+export const WORST_PLUS_MINUS_MAX = -1.5;
+/** A staffed play whose role players average fewer minutes than this is failing. */
+export const PLAY_IDLE_MAX_MPG = 14;
+/** A locked plan at or above this progress is "one step from online". */
+export const IDENTITY_NEAR_PROGRESS = 0.6;
