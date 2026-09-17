@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { getGameStore } from '@/storage';
-import { useStorageReady } from '@/components/StorageProvider';
+import { useLocalStoreReady } from '@/components/StorageProvider';
 import { getSeasonPhase } from '@/engine/season';
 import { WHATS_NEW, type ChangelogEntry } from '@/data/whatsnew';
 
@@ -43,7 +43,10 @@ export function useNotices(): {
   markChangelogSeen: () => void;
   dismissNotice: (id: string) => void;
 } {
-  const ready = useStorageReady();
+  // Local readiness, not full: this feed is device-local (see the file header) and purely
+  // informational, so it must not wait on the cloud pull — that delay is what made the
+  // What's New splash land in the draft room instead of on the home page.
+  const ready = useLocalStoreReady();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestUnseenEntry, setLatestUnseenEntry] = useState<ChangelogEntry | null>(null);
@@ -85,8 +88,11 @@ export function useNotices(): {
 
   useEffect(() => {
     if (!ready) return;
+    // Catch explicitly: `load()` fans out over three store reads, and an unhandled
+    // rejection here used to leave the feed silently empty — no bell badge, no splash,
+    // no error anywhere.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
+    load().catch((err) => console.error('Failed to load notices:', err));
   }, [ready, load]);
 
   const markChangelogSeen = useCallback(() => {

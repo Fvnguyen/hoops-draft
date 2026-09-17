@@ -14,6 +14,8 @@
  * viewport, D5/mobile-audit `undismissable splash`).
  */
 import { Activity, BarChart3, Bell, Cloud, Trophy, type LucideIcon, Palette, LayoutDashboard, MousePointerClick, Zap, Smartphone, Hand, LayoutGrid, Sparkles } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { canShowWhatsNew } from '@/lib/routes';
 import { useCurrentProfile } from './AuthProvider';
 import { useNotices } from '@/hooks/useNotices';
 import type { ChangelogIcon } from '@/data/whatsnew';
@@ -41,10 +43,14 @@ const TITLE_ID = 'whats-new-splash-title';
 
 export function WhatsNewSplash() {
   const profile = useCurrentProfile();
+  const pathname = usePathname();
   const { latestUnseenEntry, markChangelogSeen } = useNotices();
+  // Suppressed mid-game rather than dismissed: the entry stays unread in the bell and the
+  // splash opens the next time the user is on a calm route. See `canShowWhatsNew`.
+  const allowedHere = canShowWhatsNew(pathname ?? '/');
 
   return (
-    <Overlay open={!!profile && !!latestUnseenEntry} onClose={markChangelogSeen} labelledBy={TITLE_ID} size="md">
+    <Overlay open={!!profile && !!latestUnseenEntry && allowedHere} onClose={markChangelogSeen} labelledBy={TITLE_ID} size="md">
       {latestUnseenEntry && (
         <>
           <div className="relative px-7 pt-8 pb-4 overflow-hidden">
