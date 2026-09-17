@@ -40,18 +40,12 @@ after every T1-T5 commit.
 - **2026-09-16, `PROFILES` cleanup**: removed dead `G`/`F` rating profiles; confirmed no
   card can structurally reach a 3-way position combo (neither bref nor NBA Stats bio has
   a 3-way slot). `cards.json` byte-identical.
-- **2026-09-16, pedigree paradigm applied**: fixed the awards.html scrape being
-  discarded (commit `264d71c`). Owner approved and shipped: `Positionless` trait +
-  true no-penalty depth-chart eligibility for LeBron/Giannis/Barnes, Jokić hand-rolled
-  to `PF/C`, `LEGENDARY_PLAYERS` dropped Chris Paul (retired, kept the 3 injured),
-  All-D floor now targets the player's real position (3 verified fixes: Adebayo,
-  White, Anunoby). A first DBPM-taper defense fix turned out to target dead Python
-  code (`ratings.ts` computes defense independently) — reverted; replaced with a
-  general `ratings.ts` floor (no dimension over 85 under 10 MPG), verified inert this
-  season (highest under-10-MPG dimension is 73) but a real safety net. Two questions
-  still open (more Positionless/legendary candidates) in
+- **2026-09-16, pedigree paradigm applied**: fixed the discarded awards.html scrape
+  (`264d71c`); shipped `Positionless` (LeBron/Giannis/Barnes, real no-penalty
+  eligibility), Jokić hand-rolled to `PF/C`, `LEGENDARY_PLAYERS` dropped Chris Paul,
+  All-D floor targets real position, an MPG rating floor (no dimension over 85 under
+  10 MPG, verified inert this season). Detail:
   [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
-  254/254 tests, `tsc` clean.
 
 - **2026-09-17, T3 done, keystones rebuilt as combo conditions, two new content
   pieces**: rejected an equal-percentile D3 fix as "absolute balance"; final scheme
@@ -62,8 +56,13 @@ after every T1-T5 commit.
   plan, roster-wide multipositional-level sum gate — Positionless has only 3 pool-wide
   holders, a single-player keystone would be near-unreachable). Switchblade Pressure
   kept as designed, per owner. Fixed four duplicate play catalogs found along the way.
-  333/333 tests. **Open**: T2's rarity mechanism (starter floor, badge Rare promotion)
-  was designed but never implemented — rarity still 24/20/70/334.
+  333/333 tests.
+- **2026-09-17, T2 rarity mechanism done**: real `SeasonStat.gs` wired in (180 real
+  starters vs the 30 MPG proxy's 80); a real starter is never Common; Uncommon->Rare
+  needs one L3 badge or two L2+ (Positionless excluded); light profile retune trims
+  mid-range (lever 0.28) toward finishing/playmaking/perimDef (lever ~3.1-1.8). Result:
+  24/20/70/334 -> 23/55/117/253 (5.1%/12.3%/26.1%, Mythic and Rare land right on D2's
+  target, Uncommon close). corr(OVR, win%) 0.313->0.375. 333/333 tests.
 
 ## Decisions (locked)
 
