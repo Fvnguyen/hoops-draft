@@ -79,8 +79,12 @@
         "type": "string"
       },
       "description": "Special badges or traits assigned to the player based on stats (e.g., Sharpshooter, Lockdown)."
+    },
+    "cardSetVersion": {
+      "type": "string",
+      "description": "Card set version this card was generated under (engine/cards.ts CARD_SET_VERSION), stamped by build-cards.ts on every card in the build. Storage compares a saved draft/roster's stamp against the current value to flag it as built from an older card set."
     }
   },
-  "required": ["id", "name", "position", "team", "physicals", "counting_stats", "advanced_stats", "awards", "game_ratings", "rarity", "traits"]
+  "required": ["id", "name", "position", "team", "physicals", "counting_stats", "advanced_stats", "awards", "game_ratings", "rarity", "traits", "cardSetVersion"]
 }
 ```

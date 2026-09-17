@@ -24,45 +24,34 @@ backbone of a strategy), and positions are real.
 One line each; full tables live in the linked doc. Rerun `balance`/`player-bootstrap` (D9)
 after every T1-T5 commit.
 
-- **2026-09-14**: one real-user 168-card cube export, spot-check only, Mythic 12/Rare 15/
-  Uncommon 57/Common 108, early-pick OVR 71.6.
-- **2026-09-16, pre-merge**: full-pool bootstrap, corr(OVR, WS/g) 0.617 — superseded below.
-  [analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md)
-- **2026-09-16, post-merge baseline (pre-T1)**: the D9 "before" — PPP 1.050, home win
-  57.2%, corr(OVR, WS/g) 0.691, rarity tiers separate cleanly by WS/g; pool 20/22/58/348,
-  OVR floor 204/448, only 9 real position labels.
-- **2026-09-16, T1 done**: bref-primary positions + bio adjacent-crossover blend (PG 76,
-  SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); `LINEUP_CENTRE` regenerated twice;
-  `game.test.ts` minutes floor 18→16 (HANDOVER issue 5). corr(OVR, WS/g) 0.691→0.677
-  (positions now gate roles; T2 should recover this). 254/254 tests.
-- **2026-09-16, eyeball pass (stats-only, later corrected below)**:
-  [analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md)
-- **2026-09-16, `PROFILES` cleanup**: removed dead `G`/`F` rating profiles; confirmed no
-  card can structurally reach a 3-way position combo (neither bref nor NBA Stats bio has
-  a 3-way slot). `cards.json` byte-identical.
+- **Pre-T1 baseline (2026-09-14/16)**: real-user cube spot-check Mythic 12/Rare 15/
+  Uncommon 57/Common 108; post-merge D9 "before" PPP 1.050, home win 57.2%, corr(OVR,
+  WS/g) 0.691, pool 20/22/58/348, OVR floor 204/448, only 9 real position labels. Full
+  tables: [analysis_player_win_shares_bootstrap_2026-09-16.md](analysis_player_win_shares_bootstrap_2026-09-16.md), [analysis_mythic_rare_uncommon_review_2026-09-16.md](analysis_mythic_rare_uncommon_review_2026-09-16.md).
+- **2026-09-16, T1 done + cleanup**: bref-primary positions + bio adjacent-crossover
+  blend (PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); dead `G`/`F` profiles
+  removed (no 3-way position combo is structurally reachable); `game.test.ts` minutes
+  floor 18→16 (HANDOVER issue 5); corr(OVR, WS/g) 0.691→0.677 (T2 recovers this).
+  254/254 tests.
 - **2026-09-16, pedigree paradigm applied**: fixed the discarded awards.html scrape
-  (`264d71c`); shipped `Positionless` (LeBron/Giannis/Barnes, real no-penalty
-  eligibility), Jokić hand-rolled to `PF/C`, `LEGENDARY_PLAYERS` dropped Chris Paul,
-  All-D floor targets real position, an MPG rating floor (no dimension over 85 under
-  10 MPG, verified inert this season). Detail:
+  (`264d71c`); shipped `Positionless` (real no-penalty eligibility), Jokić to `PF/C`,
+  `LEGENDARY_PLAYERS` dropped Chris Paul, an MPG rating floor. Detail:
   [proposal_pedigree_tuning_2026-09-16.md](proposal_pedigree_tuning_2026-09-16.md).
-
-- **2026-09-17, T3 done, keystones rebuilt as combo conditions, two new content
-  pieces**: rejected an equal-percentile D3 fix as "absolute balance"; final scheme
-  bins L1/L2/L3 into 70-79/80-89/90-99 (3s), each bin closest to the cross-dimension
-  average count (~62/29/11). Two-Way Disruptor/Playmaking Maestro/Sniper are combo
-  conditions over two badge levels now (`KEYSTONE_CONDITIONS`), never a card trait.
-  New: Point Forward (Rare play, first AND-badge role), Positionless Revolution (gold
-  plan, roster-wide multipositional-level sum gate — Positionless has only 3 pool-wide
-  holders, a single-player keystone would be near-unreachable). Switchblade Pressure
-  kept as designed, per owner. Fixed four duplicate play catalogs found along the way.
-  333/333 tests.
-- **2026-09-17, T2 rarity mechanism done**: real `SeasonStat.gs` wired in (180 real
-  starters vs the 30 MPG proxy's 80); a real starter is never Common; Uncommon->Rare
-  needs one L3 badge or two L2+ (Positionless excluded); light profile retune trims
-  mid-range (lever 0.28) toward finishing/playmaking/perimDef (lever ~3.1-1.8). Result:
-  24/20/70/334 -> 23/55/117/253 (5.1%/12.3%/26.1%, Mythic and Rare land right on D2's
-  target, Uncommon close). corr(OVR, win%) 0.313->0.375. 333/333 tests.
+- **2026-09-17, T3 done**: badge L1/L2/L3 hand-binned 70-79/80-89/90-99 (~62/29/11 per
+  dimension, rejected an equal-percentile "absolute balance" fix). Two-Way Disruptor/
+  Playmaking Maestro/Sniper rebuilt as two-badge-level combo conditions
+  (`KEYSTONE_CONDITIONS`), never a card trait. New: Point Forward (first AND-badge play
+  role), Positionless Revolution (gold plan, roster-wide gate — a single-player keystone
+  was unreachable with only 3 pool-wide Positionless holders). 333/333 tests.
+- **2026-09-17, T2 done**: real `SeasonStat.gs` wired in (180 real starters vs the 30 MPG
+  proxy's 80); a real starter is never Common; Uncommon->Rare needs one L3 badge or two
+  L2+. Result 24/20/70/334 -> 23/55/117/253 (5.1%/12.3%/26.1%, on D2's target).
+  corr(OVR, win%) 0.313->0.375. 333/333 tests.
+- **2026-09-17, T6 done**: `CARD_SET_VERSION = '2025-26.2'` exported from `engine/cards.ts`
+  (single source of truth), stamped onto every card in `cards.json`; `storage`'s
+  `CURRENT_CARD_SET_VERSION` re-exports it instead of its own hardcoded string, so the
+  two can't drift. `docs/card_schema.md` updated. 333/333 tests; balance unaffected
+  (metadata only, no rating change).
 
 ## Decisions (locked)
 

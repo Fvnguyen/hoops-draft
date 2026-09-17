@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { computeCards } from '../src/engine/ratings';
+import { CARD_SET_VERSION } from '../src/engine/cards';
 import type { PlayerBio, SeasonStat, AwardRow, PlayerCardData } from '../src/engine/types';
 
 function mean(arr: number[]): number {
@@ -32,8 +33,9 @@ function main(): void {
   const cards = computeCards({ players, stats, awards });
 
   // Tag every card `type: 'Player'` as the FIRST key (matches the shape
-  // PlayerCardData/DraftCard expect at runtime).
-  const tagged: PlayerCardData[] = cards.map((c) => ({ type: 'Player', ...c }));
+  // PlayerCardData/DraftCard expect at runtime), stamped with the card set version
+  // (card_balance D8) that storage compares a saved draft/roster's stamp against.
+  const tagged: PlayerCardData[] = cards.map((c) => ({ type: 'Player', cardSetVersion: CARD_SET_VERSION, ...c }));
 
   const outPath = path.join(process.cwd(), 'src', 'data', 'cards.json');
   fs.writeFileSync(outPath, JSON.stringify(tagged));

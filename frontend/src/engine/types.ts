@@ -100,6 +100,10 @@ export interface PlayerCard {
 export interface PlayerCardData extends PlayerCard {
   type: 'Player';
   imageUrl?: string;
+  /** Stamped by build-cards.ts from engine/cards.ts's CARD_SET_VERSION, same value on
+   *  every card in a given `cards.json` build (card_balance D8). Optional because
+   *  synthetic test fixtures build a `PlayerCardData` without it. */
+  cardSetVersion?: string;
 }
 
 export type Player = PlayerCardData;

@@ -15,6 +15,7 @@ import type { Season } from '@/engine/season';
 import type { DraftCard } from '@/engine/types';
 import type { PlayAssignment } from '@/engine/playbook';
 import type { ArchetypeSelection } from '@/engine/archetypes';
+import { CARD_SET_VERSION } from '@/engine/cards';
 /**
  * The D1 "completed game" shape (plan_data_storage) is declared in `engine/season.ts`
  * as `StoredGameResult`, not here: `src/engine` must stay free of any dependency on
@@ -34,7 +35,10 @@ export interface StorageMeta {
   cardSetVersion: string;
 }
 
-export const CURRENT_CARD_SET_VERSION = '2025-26.1';
+/** card_balance D8: single source of truth is engine/cards.ts's CARD_SET_VERSION,
+ *  stamped onto every card in cards.json; this re-export is what storage/UI compare a
+ *  saved draft/roster's stamp against. */
+export const CURRENT_CARD_SET_VERSION = CARD_SET_VERSION;
 
 export interface SavedRoster {
   id: string;
