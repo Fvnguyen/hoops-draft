@@ -16,12 +16,20 @@ import { cn } from '@/lib/cn';
  *   tailwind-merge does not see it conflicting with `h-auto` and both survive, leaving CSS
  *   order to win. Pick the size that fits instead.
  * - `href` renders a Next `Link` with identical styling, so nav and actions look the same.
+ *   `cursor-pointer` is explicit because Tailwind v4's preflight sets `button { cursor:
+ *   default }` — without it a <button> and an <a> styled identically still hover
+ *   differently, which is exactly how the home page's mode buttons read as dead next to
+ *   the MY ROSTERS link (owner, 2026-09-18).
  * - Colours are semantic tokens only; the theme decides what they resolve to.
  */
 export const buttonVariants = cva(
   [
-    'inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap',
-    'rounded-control font-black uppercase tracking-widest transition-colors',
+    'inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-2 whitespace-nowrap',
+    // `active:scale` gives a press its own feedback, which is the only cue that lands on a
+    // touch screen where there is no cursor at all. The transition names transform
+    // explicitly rather than switching to `transition-all`, so nothing else starts
+    // animating that did not before.
+    'rounded-control font-black uppercase tracking-widest transition-[background-color,border-color,color,transform] active:scale-[0.98]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
     'disabled:pointer-events-none disabled:opacity-50',
   ],

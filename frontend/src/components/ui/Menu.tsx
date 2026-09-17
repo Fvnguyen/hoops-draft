@@ -129,8 +129,10 @@ export function MenuLabel({ className, children }: { className?: string; childre
   );
 }
 
+// cursor-pointer: a row is a <button> or a <Link> depending on `href`, and Tailwind v4's
+// preflight gives those different cursors — see Button.tsx.
 const itemBase =
-  'flex min-h-control w-full items-center gap-2 rounded-control px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:bg-surface-sunken';
+  'flex min-h-control w-full cursor-pointer items-center gap-2 rounded-control px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:bg-surface-sunken';
 
 /** A row. `href` makes it a Link; otherwise a button. Rows are 44px tall (D2). */
 export function MenuItem({

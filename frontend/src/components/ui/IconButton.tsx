@@ -12,7 +12,10 @@ import { cn } from '@/lib/cn';
  */
 export const iconButtonVariants = cva(
   [
-    'inline-flex size-control shrink-0 select-none items-center justify-center rounded-full transition-colors',
+    // cursor-pointer + active:scale — Tailwind v4 preflight sets `button { cursor: default }`,
+    // and a press needs feedback of its own on a touch screen. See Button.tsx.
+    'inline-flex size-control shrink-0 cursor-pointer select-none items-center justify-center rounded-full',
+    'transition-[background-color,border-color,color,transform] active:scale-[0.94]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
     'disabled:pointer-events-none disabled:opacity-50',
   ],
