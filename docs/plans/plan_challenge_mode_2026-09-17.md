@@ -87,27 +87,29 @@ new pack artwork.
 
 T1 (top). DONE. `scripts/challenge-sim.ts` = `npm run challenge [drafts] [--seed N] [--sweep]`.
 T2 (top). DONE, less the ghost run (moved to T8, which consumes it): `engine/challenge.ts`,
-`balance.ts` constants, the `cardColors.ts` fix, and `engine/plays.ts` — the play catalog had
-to leave `DraftRoom.tsx` for a pure module, since opponents need it at runtime and the engine
-may not import components. 21 tests in `tests/unit/challenge.test.ts`; suite 338 -> 359.
-T3 (top). `engine/challengeAdvice.ts` (D8) + templates under `src/narration/challenge/`.
-Done-when: tests cover each reason firing from a fixture half-season, the Hold case, and that
-no output contains a rating or a W-L record.
-T4 (mid). `ChallengeRun` storage (D11) in `storage/types.ts`, `indexedDb.ts` (version bump),
-`memory.ts`, `supabase.ts`. Done-when: round-trip tests on memory + IndexedDB backends.
-T5 (mid). Start page + routing (D1, D2): `app/page.tsx`, `gameMode` on the session through
-`useDraftEngine`, deck-builder and `/rosters` CTAs, 82:0 badge, SeasonView title. Done-when:
-screenshots match boards 1a-1c; `home.spec.ts`/`smoke.spec.ts` green.
+`balance.ts` constants, the `cardColors.ts` fix, and `engine/plays.ts` — the play catalog left
+`DraftRoom.tsx` for a pure module (opponents need it at runtime; the engine may not import
+components). 21 tests.
+T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 25 tests incl. the
+no-rating/no-record scan. OPEN: four factors are offense-only — board 4's defensive
+rebound-rate line needs opponent totals kept in `simulateHalf`. Owner decision pending.
+T4 (mid). DONE. `ChallengeRun` in all four backends, Dexie 3 -> 4, `mergeChallengeRun`.
+BLOCKING BEFORE DEPLOY: apply `202609170001_challenge_runs.sql` to the live Supabase project
+— until then every page logs a 404 pulling that table.
+T5 (mid). DONE. Start page, `HomeModePicker`, `gameMode` draft -> session -> roster -> CTA,
+82:0 badge, SeasonView title; Button gained a `stacked` size (the primitive had no multi-line
+CTA height). Verified live against 1a-1c. `home.spec.ts` rewritten; smoke red on two 404s
+(pre-existing headshot, unapplied migration). "Enter a seed" disabled until T8.
 T6 (top). Reel: `components/challenge/FlipClock`, `TierLadder`, `ChallengeReel` and
 `app/challenge/[rosterId]/page.tsx` driving phase transitions. Done-when: screenshots
 matching boards 2, 3, 6; reload mid-reel replays without changing the result.
 T7 (mid). Front office + trade (boards 4, 5): quotes, pace band, lineup/plays/identity edit,
 trade flow with `PackOpener variant="trade"`. Done-when: screenshots of both pace variants and
 the trade pack; before/after roster snapshot diff from a dev run.
-T8 (mid). Results (board 7) incl. ghost line, verdict, seed copy/paste, share card.
-Done-when: screenshot for a forced-seed run; pasted seed reproduces the schedule.
-T9 (low). Docs: "82:0 Challenge" in `docs/game_mechanics.md`, `AGENTS.md` repo map/commands,
-`ARCHITECTURE.md`; PNG exports of the signed boards into the design folder.
+T8 (mid). Results (board 7) incl. ghost line, verdict, seed copy/paste, share card. Done-when:
+screenshot for a forced-seed run; pasted seed reproduces the schedule.
+T9 (low). Docs: "82:0 Challenge" in `game_mechanics.md`, `AGENTS.md`, `ARCHITECTURE.md`; PNG
+exports of the signed boards.
 
 ## T1 calibration (measured 2026-09-17)
 
@@ -120,18 +122,16 @@ T9 (low). Docs: "82:0 Challenge" in `docs/game_mechanics.md`, `AGENTS.md` repo m
 | 0.90 / 0.36 | 49.4 | 68 | 77 | 30.0% | 2.5% |
 
 Confirmation, `npm run challenge 250 --seed 7` (2,000 seat-seasons): best seat mean 60.0,
-median 60, p90 70, max 78, A+ 8.8%, S 0/250; wins fall monotonically by seat rank (#1 60.0
--> #8 32.3), so the draft decides the run. Two gaps against D5's wording — the top decile
-lands at 70, not 72, and S never appeared where the target was "one in hundreds" — but both
-are measured WITHOUT the front office, which only adds wins. Tuning until S appeared in the
-sim would make it too common in the product, so 0.50/0.20 stands; T7/T8 re-measure with the
-trade in place.
+median 60, p90 70, max 78, A+ 8.8%, S 0/250; wins fall monotonically by seat rank (#1 60.0 ->
+#8 32.3), so the draft decides the run. Two gaps against D5 — the top decile lands at 70, not
+72, and S never appeared where the target was "one in hundreds" — but both are measured
+WITHOUT the front office, which only adds wins. Tuning until S appeared in the sim would make
+it too common in the product, so 0.50/0.20 stands; T7/T8 re-measure with the trade in.
 
 ## Parallelization
 
-Wave 0 (driver, top): T1 then T2 — DONE. Wave 1 (parallel): T3, T4, T5 (disjoint, need T2's
-types only). Wave 2 (parallel): T6 and T7 (need T2+T4; T7 needs T3). Wave 3: T8. Wave 4: T9.
-Agents never run git; the driver verifies and commits.
+Wave 0 (T1, T2) and Wave 1 (T3, T4, T5) DONE. Wave 2 (parallel): T6 and T7 (need T2+T4; T7
+needs T3). Wave 3: T8. Wave 4: T9. Agents never run git; the driver verifies and commits.
 
 ## Recommended model tier
 
@@ -141,8 +141,8 @@ ranking, reveal timing); T4, T5, T7, T8 mid (Sonnet 5); T9 low (Haiku 4.5).
 ## Verification / exit criteria
 
 - `npm test` green incl. `challenge.test.ts`, advice tests, storage round-trip; tsc, lint,
-  `check:styles` clean; `npm run balance -- 500 --seed 42` before/after identical. Wave 0:
-  359/359, 0 errors, 0 violations, PPP 1.044 both sides.
+  `check:styles` clean; `npm run balance -- 500 --seed 42` before/after identical. After Wave
+  1: 396/396, 0 errors, 0 violations, PPP 1.044 both sides. `smoke.spec.ts` red — see T4/T5.
 - Screenshots per task compared against the signed boards; owner verifies live in the local
   browser (design-first workflow) before the plan closes.
 - One full dev playthrough per draft style: start page -> draft -> deck builder -> first spin
