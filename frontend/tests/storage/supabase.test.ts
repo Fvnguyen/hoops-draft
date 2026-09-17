@@ -260,24 +260,41 @@ describe('SupabaseGameStore', () => {
     expect((cloud.rows.get('rosters')!.get(alreadyCloud.id)!.data as { name: string }).name).toBe('Cloud Name');
   });
 
-  it('parks a roster conflict for SyncConflictPrompt instead of auto-merging', async () => {
-    const roster = makeSavedRoster({ activePlays: ['play-a'] });
+  it('auto-resolves a roster race to the newer edit, without prompting', async () => {
+    // Changed 2026-09-18: this used to park a conflict. Both sides always hold identical
+    // `draftedCards` (a roster's card list is fixed at draft time), so a race can only
+    // differ in arrangement — nothing worth stopping the user for.
+    const roster = makeSavedRoster({ activePlays: ['play-a'], timestamp: '2026-09-18T10:00:00.000Z' });
     await store.saveRoster(roster);
     await flush();
 
-    cloud.writeDirect('rosters', roster.id, { ...roster, activePlays: ['play-b'] });
-    await store.saveRoster({ ...roster, activePlays: ['play-c'] });
+    // Another device saved LATER than the edit we are about to make locally.
+    cloud.writeDirect('rosters', roster.id, {
+      ...roster, activePlays: ['play-b'], timestamp: '2026-09-18T12:00:00.000Z',
+    });
+    await store.saveRoster({ ...roster, activePlays: ['play-c'], timestamp: '2026-09-18T11:00:00.000Z' });
     await flush();
 
-    const conflicts = await store.listConflicts();
-    expect(conflicts).toHaveLength(1);
-    expect(conflicts[0].table).toBe('rosters');
-
-    await store.resolveConflict('rosters', roster.id, 'remote');
-    await flush();
-
-    expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-b']);
     expect(await store.listConflicts()).toEqual([]);
+    expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-b']);
+  });
+
+  it('keeps the local edit when it is the newer one', async () => {
+    const roster = makeSavedRoster({ activePlays: ['play-a'], timestamp: '2026-09-18T10:00:00.000Z' });
+    await store.saveRoster(roster);
+    await flush();
+
+    cloud.writeDirect('rosters', roster.id, {
+      ...roster, activePlays: ['play-b'], timestamp: '2026-09-18T10:30:00.000Z',
+    });
+    await store.saveRoster({ ...roster, activePlays: ['play-c'], timestamp: '2026-09-18T13:00:00.000Z' });
+    await flush();
+
+    expect(await store.listConflicts()).toEqual([]);
+    expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-c']);
+    // And the winning side is what the cloud ends up holding — no endless merge/push loop.
+    expect((cloud.rows.get('rosters')!.get(roster.id)!.data as { activePlays: string[] }).activePlays)
+      .toEqual(['play-c']);
   });
 
   it('pushes a new challenge run to the cloud on save', async () => {

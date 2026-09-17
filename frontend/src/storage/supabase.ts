@@ -4,14 +4,15 @@
  * Supabase via the `cas_upsert` RPC (compare-and-swap, migration `202609140001_cloud_saves.sql`).
  * A rejected push either means "already synced" (first-ever push, insert raced an
  * existing row) or a genuine conflict, resolved with `storage/merge.ts`; a merge that
- * can't auto-resolve (currently only rosters) is parked in `conflicts` for
+ * can't auto-resolve (only a draft session whose pick logs genuinely diverge, i.e.
+ * corruption rather than a normal race) is parked in `conflicts` for
  * `SyncConflictPrompt` to show. A network failure queues the write for retry on the next
  * successful push or a browser `online` event.
  */
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import { mergeChallengeRun, mergeDraftSession, mergeSeason } from './merge';
+import { mergeChallengeRun, mergeDraftSession, mergeRoster, mergeSeason } from './merge';
 import type { ChallengeRun, GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
 
 interface CasUpsertRow {
@@ -244,8 +245,17 @@ export class SupabaseGameStore implements GameStore {
       await this.local.saveChallengeRun(merged);
       return this.push(table, id, merged);
     }
-    // rosters: always a conflict (mergeRoster never auto-resolves).
-    return this.recordConflict(table, id, local, remote);
+    // rosters: newest edit wins, never a prompt — see `mergeRoster` for why nothing
+    // irreplaceable is at stake (both sides hold identical `draftedCards`; only the
+    // arrangement differs).
+    const { merged, conflict } = mergeRoster(local as SavedRoster, remote as SavedRoster);
+    if (conflict) return this.recordConflict(table, id, local, remote);
+    // Adopt the remote's updated_at as the new baseline BEFORE pushing, exactly as the
+    // branches above do: without it the re-push compares against a stale baseline, the CAS
+    // rejects, and we land back in here — an endless merge/push loop.
+    this.baselines.set(key, remoteUpdatedAt);
+    await this.local.saveRoster(merged);
+    return this.push(table, id, merged);
   }
 
   private recordConflict(table: SyncTable, id: string, local: unknown, remote: unknown): void {
@@ -305,8 +315,7 @@ export class SupabaseGameStore implements GameStore {
         } else if (this.baselines.get(key) !== row.updated_at) {
           // A missing baseline (e.g. a fresh page load/login) doesn't by itself mean the
           // row changed — only a real content difference does. Without this check, every
-          // login would treat every already-synced row as "changed on another device"
-          // (rosters always report a conflict from mergeRoster, which never auto-resolves).
+          // login would run a merge on every already-synced row.
           if (sameContent(existing, row.data)) {
             this.baselines.set(key, row.updated_at);
           } else {

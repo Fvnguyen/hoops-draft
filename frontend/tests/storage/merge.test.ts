@@ -75,12 +75,54 @@ describe('mergeSeason', () => {
 });
 
 describe('mergeRoster', () => {
-  it('always flags a conflict — no auto-merge for depth-chart edits', () => {
-    const local = makeSavedRoster({ activePlays: ['play-a'] });
-    const remote = makeSavedRoster({ id: local.id, activePlays: ['play-b'] });
+  const at = (iso: string) => iso;
 
-    const { conflict } = mergeRoster(local, remote);
-    expect(conflict).toBe(true);
+  it('takes the newer edit and never prompts', () => {
+    const local = makeSavedRoster({ activePlays: ['play-a'], timestamp: at('2026-09-18T10:00:00.000Z') });
+    const remote = makeSavedRoster({ id: local.id, activePlays: ['play-b'], timestamp: at('2026-09-18T10:30:00.000Z') });
+
+    const { merged, conflict } = mergeRoster(local, remote);
+    expect(conflict).toBe(false);
+    expect(merged.activePlays).toEqual(['play-b']);
+  });
+
+  it('keeps local when local is the newer edit', () => {
+    const local = makeSavedRoster({ activePlays: ['play-a'], timestamp: at('2026-09-18T11:00:00.000Z') });
+    const remote = makeSavedRoster({ id: local.id, activePlays: ['play-b'], timestamp: at('2026-09-18T10:30:00.000Z') });
+
+    expect(mergeRoster(local, remote).merged.activePlays).toEqual(['play-a']);
+  });
+
+  it('never splices the two arrangements together', () => {
+    // A lineup is atomic: the result must be exactly one side, not a union that neither
+    // device chose (which could put a player in two slots).
+    const local = makeSavedRoster({
+      activePlays: ['play-a'], depthChartOrder: { PG: ['p1'], SG: ['p2'] }, timestamp: at('2026-09-18T10:00:00.000Z'),
+    });
+    const remote = makeSavedRoster({
+      id: local.id, activePlays: ['play-b'], depthChartOrder: { PG: ['p3'], SG: ['p4'] }, timestamp: at('2026-09-18T10:30:00.000Z'),
+    });
+
+    const { merged } = mergeRoster(local, remote);
+    expect(merged.depthChartOrder).toEqual(remote.depthChartOrder);
+    expect(merged.activePlays).toEqual(remote.activePlays);
+  });
+
+  it('falls back to local rather than guessing when a timestamp is malformed', () => {
+    const local = makeSavedRoster({ activePlays: ['play-a'], timestamp: at('2026-09-18T10:00:00.000Z') });
+    const broken = makeSavedRoster({ id: local.id, activePlays: ['play-b'], timestamp: 'not a date' });
+
+    expect(mergeRoster(local, broken).merged.activePlays).toEqual(['play-a']);
+    expect(mergeRoster(local, broken).conflict).toBe(false);
+  });
+
+  it('is a no-op when both sides already agree', () => {
+    const local = makeSavedRoster({ activePlays: ['play-a'], timestamp: at('2026-09-18T10:00:00.000Z') });
+    const same = makeSavedRoster({ ...local });
+
+    const { merged, conflict } = mergeRoster(local, same);
+    expect(conflict).toBe(false);
+    expect(merged.activePlays).toEqual(['play-a']);
   });
 });
 

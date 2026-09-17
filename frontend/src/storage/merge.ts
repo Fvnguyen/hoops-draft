@@ -68,13 +68,33 @@ export function mergeSeason(local: Season, remote: Season, session: DraftSession
 }
 
 /**
- * Depth-chart/play-assignment edits are arbitrary reorderings, not append-only data —
- * there's no sensible way to auto-merge two divergent rosters. Always a conflict; the
- * caller surfaces `SyncConflictPrompt` and the human picks a side. `merged` is a
- * placeholder (local) that callers must not use directly when `conflict` is true.
+ * Newest edit wins, never a prompt (changed 2026-09-18 after the owner hit the conflict
+ * dialog repeatedly during normal single-user use).
+ *
+ * The original reasoning — "reorderings can't be auto-merged" — is still true, and this
+ * deliberately does NOT field-level union: a lineup is one atomic artefact, and splicing
+ * half of one into half of another yields an arrangement neither device chose and can be
+ * outright invalid (a player in two slots, a play assigned to someone benched). What
+ * changed is the conclusion that a human must therefore adjudicate.
+ *
+ * Nothing irreplaceable is ever at stake in a roster conflict. `draftedCards` is fixed at
+ * draft time — the only writer of a roster after that is the deck builder, and the one
+ * place that rewrites the card list (the 82:0 trade, `challenge/Trade.tsx`) writes a
+ * `rosterPost` SNAPSHOT on the run and never calls `saveRoster`. So both sides hold the
+ * identical cards and differ only in arrangement: name, depth chart, plays, identity.
+ * Losing a side costs seconds in the deck builder, and `timestamp` is rewritten on every
+ * save, so "the edit you made last" is well defined and is what a user almost always
+ * means. The dialog, by contrast, asked a question they could not answer well — two
+ * opaque sides, no preview of either.
+ *
+ * A malformed timestamp keeps `local` rather than guessing.
  */
-export function mergeRoster(local: SavedRoster, _remote: SavedRoster): MergeResult<SavedRoster> {
-  return { merged: local, conflict: true };
+export function mergeRoster(local: SavedRoster, remote: SavedRoster): MergeResult<SavedRoster> {
+  const localAt = Date.parse(local.timestamp);
+  const remoteAt = Date.parse(remote.timestamp);
+  if (!Number.isFinite(remoteAt)) return { merged: local, conflict: false };
+  if (!Number.isFinite(localAt)) return { merged: remote, conflict: false };
+  return { merged: remoteAt > localAt ? remote : local, conflict: false };
 }
 
 const CHALLENGE_PHASE_ORDER: Record<ChallengePhase, number> = { first: 0, break: 1, second: 2, done: 3 };
