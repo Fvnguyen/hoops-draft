@@ -94,12 +94,12 @@ T3 (top). DONE. `engine/challengeAdvice.ts` + `src/narration/challenge/`; 25 tes
 no-rating/no-record scan. OPEN: four factors are offense-only — board 4's defensive
 rebound-rate line needs opponent totals kept in `simulateHalf`. Owner decision pending.
 T4 (mid). DONE. `ChallengeRun` in all four backends, Dexie 3 -> 4, `mergeChallengeRun`.
-BLOCKING BEFORE DEPLOY: apply `202609170001_challenge_runs.sql` to the live Supabase project
-— until then every page logs a 404 pulling that table.
+Migration `202609170001_challenge_runs.sql` APPLIED to the live project 2026-09-17 (table +
+RLS + `cas_upsert` allowlist verified); that cleared the 404 on every route.
 T5 (mid). DONE. Start page, `HomeModePicker`, `gameMode` draft -> session -> roster -> CTA,
 82:0 badge, SeasonView title; Button gained a `stacked` size (the primitive had no multi-line
-CTA height). Verified live against 1a-1c. `home.spec.ts` rewritten; smoke red on two 404s
-(pre-existing headshot, unapplied migration). "Enter a seed" disabled until T8.
+CTA height). Verified live against 1a-1c. `home.spec.ts` rewritten. "Enter a seed" disabled
+until T8. Smoke 8/9: only `/data` is red, on a pre-existing missing headshot (card 08d0e9d2).
 T6 (top). Reel: `components/challenge/FlipClock`, `TierLadder`, `ChallengeReel` and
 `app/challenge/[rosterId]/page.tsx` driving phase transitions. Done-when: screenshots
 matching boards 2, 3, 6; reload mid-reel replays without changing the result.
