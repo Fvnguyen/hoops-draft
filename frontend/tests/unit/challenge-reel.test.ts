@@ -13,6 +13,7 @@ import { CHALLENGE_GRADES } from '@/engine/challenge';
 import { CHALLENGE_GAMES } from '@/engine/balance';
 import { TIER_FAMILIES, familyForWins, nextFamilyAbove } from '@/components/challenge/TierLadder';
 import { blurForGame, dwellForGame } from '@/components/challenge/ChallengeReel';
+import { blurRadiusPx, MOVING_THRESHOLD } from '@/components/challenge/FlipClock';
 
 describe('TierLadder families', () => {
   it('tile 0..82 contiguously with no gaps or overlaps', () => {
@@ -49,10 +50,25 @@ describe('TierLadder families', () => {
 });
 
 describe('reel pacing (D7)', () => {
-  it('is readable for the first week and unreadable by mid-season', () => {
+  it('is readable through the opening and unreadable by mid-season', () => {
+    // "Readable" is below the threshold at which a flap renders as moving at all — the
+    // ramp starts before it crosses that, so asserting an exact 0 would just pin the
+    // constant rather than the behaviour.
     expect(blurForGame(0)).toBe(0);
-    expect(blurForGame(6)).toBe(0);
+    expect(blurForGame(4)).toBeLessThanOrEqual(MOVING_THRESHOLD);
+    expect(blurForGame(6)).toBeLessThanOrEqual(MOVING_THRESHOLD);
     expect(blurForGame(29)).toBe(1);
+  });
+
+  it('blurs by a fraction of the glyph, hard enough to actually hide the digit', () => {
+    // The first cut blurred a 168px digit by 6-12px, which keeps its shape: the owner read
+    // the half-time record straight off the sealed reel. Guard the ratio, not the pixels.
+    const LG_FONT = 168;
+    expect(blurRadiusPx(LG_FONT, 1) / LG_FONT).toBeGreaterThan(0.15);
+    // Even mid-ramp the record must not be legible.
+    expect(blurRadiusPx(LG_FONT, blurForGame(15))).toBeGreaterThan(12);
+    // And the ramp is monotone, so it never gets easier to read as the reel speeds up.
+    for (let g = 1; g < 41; g++) expect(blurForGame(g)).toBeGreaterThanOrEqual(blurForGame(g - 1));
   });
 
   it('is still blurred when half 1 ends, so the break is entered sealed', () => {

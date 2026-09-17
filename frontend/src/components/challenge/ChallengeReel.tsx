@@ -32,23 +32,25 @@ export type ReelSpeed = 'slower' | 'normal' | 'instant';
 // All in ABSOLUTE game index (0..81), so half 2 picks the curve up where half 1 left it.
 
 /** Games 1-7: slow enough to read every flap. */
-const OPENING_GAMES = 7;
+const OPENING_GAMES = 5;
 /** By this game the flaps are at full speed; between the two the reel accelerates. */
-const RAMP_END = 26;
+const RAMP_END = 20;
 /** Games 78-82: readable again, and the speed control is locked (board 6). */
 const FINAL_START = CHALLENGE_GAMES - 5;
 
-const OPENING_MS = 1000;
-const CRUISE_MS = 100;
-const FINAL_MS = 1200;
+const OPENING_MS = 550;
+const CRUISE_MS = 70;
+const FINAL_MS = 800;
 /** Extra hold on a streak call-out, so it can actually be read. */
 const MILESTONE_HOLD_MS = 1300;
 
 const SPEED_FACTOR: Record<ReelSpeed, number> = { slower: 2, normal: 1, instant: 0 };
 
-// Total run time at Normal is roughly 20s for half 1 and 10s for half 2 (the locked last
-// five games are 6s of it). These five constants ARE the pacing — tune them here, nothing
-// else in the reel encodes a duration.
+// Retuned after the owner's first playthrough (2026-09-17): the opening week and the final
+// five both dragged. The opening is shorter (5 games, 550ms) and reaches cruise sooner
+// (game 20), and the locked final five are 800ms rather than 1200ms — still comfortably
+// readable, no longer a wait. At Normal a half is now ~9s and ~6.5s rather than ~20s and
+// ~10s. These five constants ARE the pacing; nothing else in the reel encodes a duration.
 
 /** Consecutive wins worth interrupting the reel for (D7). */
 const STREAK_MILESTONES = [10, 25, 41, 60, 82];

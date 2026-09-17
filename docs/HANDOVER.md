@@ -119,7 +119,10 @@ What to know before touching it:
 
 - **A half is simulated in ONE call and saved before anything animates**, and a half already
   in `run.halves` is never re-simulated. That is the whole reason a reload replays the reveal
-  instead of re-rolling the season. Don't move simulation into a component.
+  instead of re-rolling the season. Don't move simulation into a component. Reel pacing is
+  five constants at the top of `ChallengeReel.tsx` (retuned after UAT: a run is ~15.6s, not
+  ~29s); the blur radius is a FRACTION of the glyph in `FlipClock.tsx` — fixed pixels left a
+  168px digit legible and the half-time record could be read off the sealed reel.
 - **Every game's seed derives from (run seed, game index)**, never a shared stream, so reveal
   speed, a skip or a reload cannot shift a result. Same for the trade pack and the schedule.
 - **Difficulty is challenge-only**: `CHALLENGE_TUNING` (0.50/0.20 vs the engine's 0.20/0.08)
@@ -133,18 +136,16 @@ What to know before touching it:
 - **The record stays sealed until game 82.** The break shows a pace band only, and
   `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
 
-Two things the owner should verify live before this closes: a full playthrough per draft style
-(start page -> draft -> deck builder -> first spin -> front office + trade -> second spin ->
-results, reloading at each phase), and the screens against the signed boards —
-`/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render them with no
-auth, storage or simulation.
+Before this closes the owner should do a full playthrough per draft style (start page -> draft
+-> deck builder -> first spin -> front office + trade -> second spin -> results, reloading at
+each phase). `/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render
+the screens against the signed boards with no auth, storage or simulation.
 
-Seams worth knowing: the pack reveal advances on animation frames, so it stalls if the browser
-pane stops painting (that is why the trade -> deck-builder hand-off is verified by code, not
-click-through); `cas_upsert`'s table allowlist is hardcoded in SQL, so a new synced table needs
-the function re-declared (migration `202609170001`); and an untracked asset in `public/` reads
-as junk to the next agent — the 82:0 pack art was deleted on exactly that mistake and had to be
-re-supplied, so it is tracked now.
+Seams: the pack reveal advances on animation frames, so it stalls if the browser pane stops
+painting (which is why the trade -> deck-builder hand-off is code-verified, not clicked);
+`cas_upsert`'s allowlist is hardcoded in SQL, so a new synced table needs the function
+re-declared (migration `202609170001`); and an untracked asset in `public/` reads as junk to
+the next agent — the 82:0 pack art was deleted on that mistake, so it is tracked now.
 
 ## How to run everything
 
