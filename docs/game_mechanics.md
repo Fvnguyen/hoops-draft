@@ -122,6 +122,60 @@ skill-badge colour or colour-pair that's short a natural play (`tests/unit/play-
 coverage.test.ts` tracks which plans still have none). Catalog: `frontend/src/engine/
 playbook.ts`; simulation: `engine/game.ts`.
 
+## 82:0 Challenge — the second game mode
+
+Picked on the start page before the draft, not after it: a roster is drafted FOR a mode and
+can only start the one it was drafted for (`DraftSession.gameMode`, missing = tournament).
+The draft and deck builder are unchanged; what differs is what the roster then plays.
+
+**The season.** 82 games against all 30 real NBA teams, built from the same card pool the
+draft uses: each team's top 15 by OVR handed to `buildBotRoster` with the full play catalog,
+so opponents pick the three plays they can actually staff and an identity to match. NBA
+rosters are LOCKED IN — a card you drafted still suits up for his real team against you, so
+a drafted Luka faces Lakers Luka. The schedule is the 30 teams shuffled by the run seed,
+repeated three times, first 82 taken; you are home on even game indices.
+
+**Difficulty.** Challenge games pass `CHALLENGE_TUNING` (efficiency scale 0.50, max shift
+0.20, against the engine's 0.20/0.08) to `simulateGame`. The edge is steeper than the
+tournament's, so a talent gap converts into wins more reliably — which is what makes 82-0
+conceivable for a great draft and hopeless for an average one. Tournament balance is
+untouched. Measured over 2,000 seat-seasons: the best drafted seat of eight averages 60
+wins, its top decile reaches 70, and wins fall monotonically by seat rank (#1 60.0 -> #8
+32.3). The draft decides the run.
+
+**The reveal.** Nothing is simulated live. A half is 41 games resolved in one call and
+committed to storage BEFORE a single flap turns, so the animation is pure presentation and
+a reload replays it without re-rolling anything. The flip clock reads W:L slowly for the
+first week, accelerates until the flaps blur, stays sealed through the break, and becomes
+readable again for the last five games at a locked speed. The progress bar is never coloured
+by result; streak call-outs at 10/25/41/60/82 are the only mid-reel signal.
+
+**The front office**, once, at game 41. It shows a pace band on the grade ladder — projected
+wins +/- 7, snapped outward to band edges — and never the record, which stays sealed until
+game 82. Three quotes (coach, owner, fans) are generated from first-half data by a ranked
+reason catalogue: the weakest four factor on either side of the ball against the league, a
+bench player out-producing a starter, the worst rotation plus-minus, an unstaffed or idle
+play, an identity one step from online. Each carries an action chip and an evidence line
+built from season averages — never a rating, never a win-loss record. A band starting at
+Historic tells you to do nothing instead.
+
+You may adjust the lineup, plays and identity, and make ONE trade: drop a card, and five
+offers are drawn from every card you do not own, weighted per rarity class with the dropped
+card's class four times likelier. The pick lands on the bench, so confirming a trade drops
+you straight into the lineup editor — otherwise the second half would be played a man short.
+All of it writes a `rosterPost` snapshot; the roster you drafted is never mutated.
+
+**The grade.** S+ 82 Immortal, S 80-81 Perfect, A+ 72-79 Historic, A/A- 62-71 Dynasty,
+B+/B/B- 57-61 Contender, C+/C/C- 50-56 Playoff, D+/D/D- 40-49 Lottery, F 0-39 Tanking.
+The results screen adds a win-trend line with a dashed GHOST: the same 41 second-half seeds
+replayed with the roster as it stood before the deadline, so "the trade was worth +3 wins"
+is a real counterfactual — identical schedule, identical seeds, one variable — rather than
+an estimate. Change nothing at the break and there is no ghost and no verdict.
+
+Engine: `engine/challenge.ts` (opponents, schedule, seeds, grades, `simulateHalf`, the trade
+pack) and `engine/challengeAdvice.ts` (the front office). Tuning: `engine/balance.ts`.
+Calibrate with `npm run challenge`.
+
 ## How much of a win is skill vs. luck?
 
 Measured, not asserted — see the [Power Curve

@@ -2,9 +2,10 @@
 
 ## Current state
 
-Magic Ball is playable end to end: draft (cube, 8 seats, 8-card packs, pack-opening
-animation on the first pack) -> deck builder (depth chart, play assignments, identity
-selection) -> single game or round-robin season -> in-app analytics export. The engine is
+Magic Ball is playable end to end in TWO modes, chosen on the start page before the draft:
+draft (cube, 8 seats, 8-card packs) -> deck builder (depth chart, play assignments, identity)
+-> either the 7-game "In-Season Tournament" against your draft table, or the 82:0 Challenge
+(82 games vs all 30 real NBA teams, flip-clock reveal, one trade, one grade — see below). The engine is
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model
 resolved per possession from the five on the floor (standardised, designed lineup
 aggregation; turnovers, offensive rebounds and a creator steer — engine_possession_model),
@@ -18,8 +19,8 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-333 Vitest tests pass, type-check is clean, `npm run lint` is
-0 errors / warnings-only (all `<img>`/unused-var, none blocking). GitHub Actions CI
+419 Vitest tests pass, type-check is clean, `npm run lint` is
+0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
 screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
@@ -48,30 +49,8 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
 - **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
+- **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
-
-## game_canvas — done 2026-09-16
-
-Owner UAT on the S26+ set the bar: the five main screens fit a phone-landscape screen
-without scrolling, scaled down like Chrome does with a non-responsive page. Mechanism:
-`html { zoom: var(--zoom) }`, 0.7 under `(pointer: coarse) and (max-width: 999px)`
-(`globals.css`). `zoom` reflows (unlike transform) so fixed positioning, inner scroll and
-hit-testing keep working with no JS; viewport units shrink with it, so every full-height
-shell uses `h-dvh-z`/`min-h-dvh-z` (`100dvh / --zoom`) — one code path, desktop unchanged,
-tablet stays fluid. Per screen: Home fits (lg-only 600px floor, fan shown on phones);
-the pack spread and later picks are two rows of four whose grid width is derived from
-the viewport height (header + ticker hidden while inert during the intro); deck builder
-has no page scroll, only its columns; game/season scroll vertically by decision.
-Audit (`tests/mobile-audit.spec.ts`): rule 5 flags own text outside the viewport with no
-scroll container (found four real clips `scrollWidth` never saw), rule 6 forbids page
-scroll on home/draft/deck builder, rects divided by `currentCSSZoom`. Touch contract:
-tap selects, tap again deselects, no flip/double-tap pick, the dock's Confirm/Take picks;
-long-press (450ms) opens the preview (badge legend + front + back); cards cancel the
-context menu. Desktop keeps hover flip and double-click-to-pick. Also: static front
-during the reveal flip, basic plays tap-to-slot, schedule + standings side by side,
-headshots via `next/image` (~22 KB WebP) with the draft room preloading the next pack.
-Verified: audit 0 findings on `phone-narrow`/`phone-landscape`/`tablet-landscape`
-(`--workers=1`), chromium 40/40, vitest 230/230. Open: `phone_card` (roadmap #8).
 
 ## card_balance — done 2026-09-17
 
@@ -128,6 +107,45 @@ in-app fixture `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
 Gotchas: any rng-order change needs a `BALANCE_VERSION` bump; the phone-landscape header
 takes most of the 385px screen — next mobile item is compacting it.
 
+## challenge_mode — built 2026-09-17, awaiting owner sign-off
+
+Plan: `docs/plans/plan_challenge_mode_2026-09-17.md` (T1-T9 done). The 82:0 Challenge is a
+second game mode picked on the start page BEFORE the draft: 82 games against all 30 real NBA
+teams, revealed as a flip clock in two spins, with a front office and one trade at game 41 and
+a single grade at the end. `docs/game_mechanics.md` describes it in prose, `ARCHITECTURE.md`
+§6b how the pieces connect.
+
+What to know before touching it:
+
+- **A half is simulated in ONE call and saved before anything animates**, and a half already
+  in `run.halves` is never re-simulated. That is the whole reason a reload replays the reveal
+  instead of re-rolling the season. Don't move simulation into a component.
+- **Every game's seed derives from (run seed, game index)**, never a shared stream, so reveal
+  speed, a skip or a reload cannot shift a result. Same for the trade pack and the schedule.
+- **Difficulty is challenge-only**: `CHALLENGE_TUNING` (0.50/0.20 vs the engine's 0.20/0.08)
+  is passed to `simulateGame`; tournament balance is untouched and `npm run balance` is
+  unchanged at PPP 1.044. Calibrated with `npm run challenge` — 2,000 seat-seasons put the
+  best drafted seat at 60 wins mean, p90 70, and wins fall monotonically by seat rank.
+- **NBA rosters are locked in** (owner call): a drafted Luka faces Lakers Luka. That forced a
+  real engine fix — `simulateGame` kept ONE box-score map keyed by player id for both teams,
+  so a shared id merged into one row emitted on the home side only; 13 of 41 games had a box
+  score disagreeing with the scoreboard, one by 32 points. Box stats are now keyed by side.
+- **The record stays sealed until game 82.** The break shows a pace band only, and
+  `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
+
+Two things the owner should verify live before this closes: a full playthrough per draft style
+(start page -> draft -> deck builder -> first spin -> front office + trade -> second spin ->
+results, reloading at each phase), and the screens against the signed boards —
+`/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render them with no
+auth, storage or simulation.
+
+Seams worth knowing: the pack reveal advances on animation frames, so it stalls if the browser
+pane stops painting (that is why the trade -> deck-builder hand-off is verified by code, not
+click-through); `cas_upsert`'s table allowlist is hardcoded in SQL, so a new synced table needs
+the function re-declared (migration `202609170001`); and an untracked asset in `public/` reads
+as junk to the next agent — the 82:0 pack art was deleted on exactly that mistake and had to be
+re-supplied, so it is tracked now.
+
 ## How to run everything
 
 ```bash
@@ -149,8 +167,10 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md` (`draft_ai` is next up; `card_balance_thresholds`
-follows once it lands; `card_balance`, `game_theater` and `badge_effects` are done).
+What to do next is `docs/ROADMAP.md`. `challenge_mode` is built but NOT closed — it needs the
+owner's live sign-off first (see its section above), then `git mv` the plan to `docs/completed/`
+and update the roadmap tables. After that `draft_ai` is next up, with
+`card_balance_thresholds` behind it.
 Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
@@ -164,39 +184,46 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    log showed 113/264 unique cards; `game.db` now has 448 players (needs ≥264 for a
    duplicate-free cube) and every later session shows 264/264 unique. Worth a targeted
    test rather than assuming fixed.
-3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and
-   worst-drafting bot; may or may not need tuning in `scoreCardForBot` (`draftEngine.ts`).
-4. **`mobile-audit` deck-builder step flakes when several touch projects run in one
+3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
+   bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
+   pointer here was stale). `draft_ai` is the plan that owns this.
+4. **82:0 trade -> deck-builder hand-off is verified by code only.** Confirming a trade
+   should drop you into the lineup editor (otherwise the second half plays a man short). The
+   pack reveal advances on animation frames and the browser pane stopped painting during
+   verification, so the spread could never be dealt. Worth one click-through.
+5. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
+   (`components/challenge/Results.tsx`) is the missing half and already round-trips across
+   the full 32-bit range; wiring the input belongs to `mode_picker` (roadmap #10).
+6. **`mobile-audit` deck-builder step flakes when several touch projects run in one
    invocation** (the three projects share one fixture roster; the "Edit Roster" click
    sometimes fails `toHaveURL(/roster/)` on the second project). Always `--workers=1`,
    and rerun a single project if it hits; never seen on a solo run.
-5. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
+7. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
    flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
    starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
    18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-6. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
+8. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
    the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
    (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
    (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
    1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
-7. **Shipping gate — already crossed.** `main` was pushed to `origin/main` on 2026-09-17
+9. **Shipping gate — already crossed.** `main` was pushed to `origin/main` on 2026-09-17
    (commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
    for card_balance to land before any push") did not hold. Nothing to revert;
    `card_balance` closed 2026-09-17 with `card_balance_thresholds` split out, blocked on
    `draft_ai`.
-8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce
-   a depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`,
-   game 3: PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that
-   team every possession. Fix belongs in `engine/deckbuilder.ts` (bot roster must cover
-   all five slots, or the draft bot must guarantee eligibility) — `draft_ai` territory.
-
-9. **Jahmai Mashack (MEM) has no NBA id** — not in the installed `nba_api` static list, and
-   `stats.nba.com` timed out from the build container, so his card keeps a hash id and the
-   CDN placeholder headshot. Re-run `fetch_players.py` (its resolver now prefers active
-   players and strips Jr/II/III suffixes — fixed 2026-09-16 for Ron Holland, Robert
-   Williams III, A.J. Green) with a current `nba_api` and network to pick him up.
+10. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
+   depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`, game 3:
+   PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that team every
+   possession. `engine/challenge.ts` works around it for NBA opponents by backfilling the
+   empty column; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
+11. **Jahmai Mashack's headshot — RESOLVED 2026-09-17.** He is absent from the bundled
+   `nba_api` static list (so the resolver could never match him) but present in the LIVE
+   player index as 1642942; the real photo is fetched and saved under his hash id. His card
+   id stays a hash until `fetch_players.py` is re-run against the live index. Future gaps are
+   covered by `scripts/ensure-headshots.mjs`, which `build:cards` runs.
 
 ## Where to look
 

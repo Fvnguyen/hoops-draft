@@ -147,6 +147,41 @@ the other 7 seats, home/away alternating) and standings, and stores a season `se
 the schedule entry and updates standings (wins desc, then point differential). Persisted
 through the `GameStore` (`saveSeason`), keyed by `rosterId` + the originating `sessionId`.
 
+## 6b. 82:0 Challenge (`engine/challenge.ts` + `app/challenge/[rosterId]/`)
+
+The second game mode. A `DraftSession` carries `gameMode: 'tournament' | 'challenge'`
+(missing = tournament) stamped at draft time from `/draft?...&game=`, and both the deck
+builder's save CTA and the `/rosters` CTA route by it, so a roster can only enter the mode
+it was drafted for.
+
+`engine/challenge.ts` is pure and owns everything deterministic: `buildNbaTeams` (30
+opponents from the card pool via `buildBotRoster`, with an empty-depth-chart-column fix),
+`buildChallengeSchedule` (30 shuffled, repeated 3x, first 82), `challengeGameSeed` and
+`mixSeed` (every game, the schedule and the trade pack derive their OWN stream from the run
+seed, so reveal speed, a skip or a reload can never shift a result), `CHALLENGE_GRADES` /
+`gradeForWins`, `simulateHalf` (41 games in one call, returning a W/L string, per-game
+scores and top performers, player totals and opponent team totals) and `drawTradeOffers`.
+`engine/challengeAdvice.ts` sits on top: pace band, ranked reasons and three speaker quotes
+rendered from the pools in `src/narration/challenge/`.
+
+`app/challenge/[rosterId]/page.tsx` is only a PHASE MACHINE — `first -> break -> second ->
+done` — and holds the one invariant that matters: a half is simulated and committed to the
+store before any component animates it, and nothing is ever simulated for a half already in
+`run.halves`. That is what makes a reload replay the reveal instead of re-rolling the
+season. When the roster changed at the break it also replays half 2 against `rosterPre` and
+stores it as `run.ghost`, the results screen's counterfactual. Components under
+`components/challenge/` (`FlipClock`, `TierLadder`, `ChallengeReel`, `FrontOffice`, `Trade`,
+`Results`) are presentation over that committed data and hold no simulation of their own.
+
+Challenge routes are dark by `data-theme="night"` on the subtree rather than hand-picked
+inverse tokens, and are game routes (`lib/routes.ts`), so TopNav shows its gear menu and the
+challenge headers reserve `--spacing-nav-gear` to clear it. `/challenge/preview` and
+`/challenge/preview-results` render the signed boards from fixtures with no auth, storage or
+simulation — the design-sign-off routes.
+
+Storage is a `ChallengeRun` per roster (see §8), and `frontend/scripts/challenge-sim.ts`
+(`npm run challenge`) is the headless calibrator for `CHALLENGE_TUNING`.
+
 ## 7. Logging and analysis
 
 The `/debug` page calls `GameStore.exportAll()` and `POST`s the result to `/api/game-logs`
@@ -169,8 +204,8 @@ UI code never touches `localStorage` or IndexedDB directly. It calls `getGameSto
 which returns the single `GameStore` implementation for the environment:
 
 - `indexedDb.ts` — Dexie database `MagicBallDB` with tables `draftSessions`, `rosters`,
-  `seasons`, `meta`. Quota failures surface as `StorageQuotaError`, which the deck
-  builder and season view show inline.
+  `seasons`, `challengeRuns`, `meta`. Quota failures surface as `StorageQuotaError`, which
+  the deck builder and season view show inline.
 - `memory.ts` — in-memory store used during SSR and in tests.
 - `migrate.ts` — one-time import of the pre-Phase-1 `localStorage` keys
   (`hoops-draft-sessions`, `hoops-draft-seasons`, `myRosters`); the old keys are renamed
@@ -188,7 +223,9 @@ which returns the single `GameStore` implementation for the environment:
   entries are unioned by `played` and standings recomputed via
   `engine/season.ts#recomputeStandingsFromSchedule`); a roster conflict has no sensible
   auto-merge and is parked for `SyncConflictPrompt` (driven by `useSyncStatus`/
-  `GameStore.subscribeSyncStatus`) to let the user pick a side. `StorageProvider` also
+  `GameStore.subscribeSyncStatus`) to let the user pick a side. A `ChallengeRun` merges on
+  one rule — the later `phase` on `first < break < second < done` wins outright — and so
+  never raises a conflict. `StorageProvider` also
   runs a one-time `pushLocalToCloud()` per login, insert-only (never overwrites an
   existing cloud row). `/api/analytics` and `/admin/analytics` read the same
   Supabase tables (`src/lib/analyzeStats.ts`, shared with `scripts/analyze.ts`) — `scope=self`
