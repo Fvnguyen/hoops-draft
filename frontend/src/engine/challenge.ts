@@ -76,44 +76,23 @@ const ovr = (p: PlayerCardData) => p.ratings?.overall ?? 0;
  * catalog, so the team picks the three plays it can actually staff and an identity to
  * match. `buildBotRoster` then trims itself to the 12-man `TARGET_ROSTER`.
  *
- * Two corrections on top.
+ * NBA rosters are LOCKED IN: a team fields its real players, full stop. A card the user
+ * drafted is still on its real team's list, so a drafted Luka faces Lakers Luka — that is
+ * the intended behaviour (owner, 2026-09-17), not a case to design around. It does mean a
+ * player can legitimately appear on both sides of the same game, which is why
+ * `simulateGame` keys its box score by side AND player id; see the note there.
  *
- * `excludeIds` (the user's own cards) must be held out, because a card the user drafted is
- * still on its real team's list: draft a Celtic and Boston would field him against you in
- * the same game. That is not just cosmetically odd — `simulateGame` keys its box score by
- * player id in ONE map for both sides (game.ts), so a shared id merges into a single row
- * that is then emitted into BOTH box scores, and the two teams' totals stop reconciling
- * with the final score. Measured before this fix: 13 of 41 games off, by up to 32 points.
- * Holding the ids out removes the collision at its source. A team short of a full roster
- * afterwards is topped up with the best cards left in the league — opponent rosters are
- * never displayed in v1, so a borrowed twelfth man is invisible, while four-on-five is not.
- *
- * And a real NBA roster can leave a depth-chart column empty (MEM has no eligible centre),
- * which is also not a fair opponent. Any empty column is backfilled with the best active
- * player who isn't already a starter, taken out of the deepest column — the active twelve
- * never changes, so play roles stay valid; only the starting five moves, so the identity is
- * re-picked against it.
+ * One correction on top: a real NBA roster can leave a depth-chart column empty (MEM has no
+ * eligible centre in the current pool), and five-on-four is not a fair opponent. Any empty
+ * column is backfilled with the best active player who isn't already a starter, taken out of
+ * the deepest column — the active twelve never changes, so play roles stay valid; only the
+ * starting five moves, so the identity is re-picked against it.
  */
-export function buildNbaTeamRoster(
-  cards: PlayerCardData[],
-  abbr: string,
-  plays: Play[] = PLAY_CATALOG,
-  excludeIds: ReadonlySet<string> = new Set(),
-): DraftSessionSeat {
-  const available = cards.filter((c) => !excludeIds.has(c.id));
-  const pool = available
+export function buildNbaTeamRoster(cards: PlayerCardData[], abbr: string, plays: Play[] = PLAY_CATALOG): DraftSessionSeat {
+  const pool = cards
     .filter((c) => c.player?.team === abbr)
     .sort((a, b) => ovr(b) - ovr(a))
     .slice(0, NBA_ROSTER_POOL);
-
-  if (pool.length < NBA_ROSTER_POOL) {
-    const own = new Set(pool.map((c) => c.id));
-    const fill = available
-      .filter((c) => !own.has(c.id))
-      .sort((a, b) => ovr(b) - ovr(a))
-      .slice(0, NBA_ROSTER_POOL - pool.length);
-    pool.push(...fill);
-  }
 
   const drafted: DraftCard[] = [...pool, ...plays];
   const roster = buildBotRoster(drafted);
@@ -147,18 +126,11 @@ export function buildNbaTeamRoster(
   };
 }
 
-/**
- * All 30 opponents as game-ready `TeamInfo`s, keyed by abbreviation. Pass the user's own
- * card ids as `excludeIds` for a real run, so nobody suits up against himself.
- */
-export function buildNbaTeams(
-  cards: PlayerCardData[],
-  plays: Play[] = PLAY_CATALOG,
-  excludeIds: ReadonlySet<string> = new Set(),
-): Map<string, TeamInfo> {
+/** All 30 opponents as game-ready `TeamInfo`s, keyed by abbreviation. */
+export function buildNbaTeams(cards: PlayerCardData[], plays: Play[] = PLAY_CATALOG): Map<string, TeamInfo> {
   const teams = new Map<string, TeamInfo>();
   for (const t of NBA_TEAMS) {
-    const seat = buildNbaTeamRoster(cards, t.abbr, plays, excludeIds);
+    const seat = buildNbaTeamRoster(cards, t.abbr, plays);
     const info = buildTeamInfo(seat, false);
     teams.set(t.abbr, { ...info, name: `${t.city} ${t.name}` });
   }

@@ -17,7 +17,7 @@
 import { loadPlayers, runHeadlessDraft, buildTeams } from '../tests/unit/helpers';
 import { PLAY_CATALOG } from '../src/engine/plays';
 import {
-  buildNbaTeams, buildChallengeSchedule, simulateHalf, gradeForWins, CHALLENGE_GRADES, NBA_TEAMS,
+  buildNbaTeams, buildChallengeSchedule, simulateHalf, gradeForWins, CHALLENGE_GRADES,
 } from '../src/engine/challenge';
 import { CHALLENGE_TUNING } from '../src/engine/balance';
 import type { EdgeTuning, TeamInfo } from '../src/engine/game';
@@ -31,6 +31,7 @@ const seed = seedIdx >= 0 ? parseInt(args[seedIdx + 1], 10) : randomSeed();
 const sweep = args.includes('--sweep');
 
 const players = loadPlayers();
+const opponents = buildNbaTeams(players, PLAY_CATALOG);
 
 /** Mean OVR of the starting five, the simplest honest proxy for "this is the good draft". */
 function seatStrength(team: TeamInfo): number {
@@ -56,9 +57,6 @@ function runTuning(tuning: EdgeTuning): SeatRun[] {
       .sort((a, b) => b.strength - a.strength);
 
     ranked.forEach((entry, rank) => {
-      // Opponents are rebuilt per seat: a card this seat drafted must not also suit up for
-      // its real NBA team in the same game (see buildNbaTeams).
-      const opponents = buildNbaTeams(players, PLAY_CATALOG, new Set(entry.team.players.map((p) => p.id)));
       const h1 = simulateHalf(entry.team, opponents, schedule, 1, runSeed, tuning);
       const h2 = simulateHalf(entry.team, opponents, schedule, 2, runSeed, tuning);
       out.push({ rank, strength: entry.strength, wins: h1.wins + h2.wins });
@@ -104,8 +102,7 @@ const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.l
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 
 console.log(`Seed: ${seed}   drafts: ${drafts}   seats/draft: 8   games/seat: 82`);
-console.log(`Opponents: ${NBA_TEAMS.length} NBA teams from the card pool, full play catalog,`);
-console.log('rebuilt per seat so nobody plays against himself.');
+console.log(`Opponents: ${opponents.size} NBA teams from the card pool, full play catalog.`);
 
 const t0 = Date.now();
 if (sweep) {

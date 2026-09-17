@@ -922,16 +922,25 @@ function playOnePossession(params: {
 
   // Update box score. P2-2: minutes accrue per possession a player is on court for,
   // whether on offense OR defense.
+  //
+  // `boxStats` is keyed by SIDE + player id, not player id alone: the same card can be on
+  // both rosters at once (challenge mode plays real NBA teams, so a drafted Luka faces
+  // Lakers Luka). Keyed by id alone the two merged into one row that was then emitted on
+  // the home side only — the away team silently lost the player entirely and the two box
+  // scores stopped summing to the final score.
+  const offKey = (id: string) => `${team}:${id}`;
+  const defKey = (id: string) => `${isHome ? 'away' : 'home'}:${id}`;
+
   for (const id of offenseIds) {
-    const bs = boxStats.get(id);
+    const bs = boxStats.get(offKey(id));
     if (bs) { bs.possessions++; bs.minutes += minutesPerPoss; }
   }
   for (const id of defenseIds) {
-    const bs = boxStats.get(id);
+    const bs = boxStats.get(defKey(id));
     if (bs) { bs.minutes += minutesPerPoss; }
   }
   if (result.scorerId && result.points > 0) {
-    const bs = boxStats.get(result.scorerId);
+    const bs = boxStats.get(offKey(result.scorerId));
     if (bs) {
       bs.points += result.points;
       // isCleanFieldGoal guard: a made rim free-throw trip (2-for-2) is 2 points but
@@ -942,36 +951,36 @@ function playOnePossession(params: {
     }
   }
   if (turnoverPlayerId) {
-    const bs = boxStats.get(turnoverPlayerId);
+    const bs = boxStats.get(offKey(turnoverPlayerId));
     if (bs) bs.turnovers++;
   }
   for (const id of offensiveRebounders) {
-    const bs = boxStats.get(id);
+    const bs = boxStats.get(offKey(id));
     if (bs) bs.offensiveRebounds++;
   }
   if (result.assistId && result.points > 0) {
-    const bs = boxStats.get(result.assistId);
+    const bs = boxStats.get(offKey(result.assistId));
     if (bs) bs.assists++;
   }
   // D9 shooting / defensive columns.
   for (const shot of shots) {
-    const bs = boxStats.get(shot.shooterId);
+    const bs = boxStats.get(offKey(shot.shooterId));
     if (bs) {
       bs.fieldGoalsAttempted++;
       if (shot.made) bs.fieldGoalsMade++;
       if (shot.channel === 'three') { bs.threesAttempted++; if (shot.made) bs.threesMade++; }
     }
-    if (shot.blockerId) { const b = boxStats.get(shot.blockerId); if (b) b.blocks++; }
+    if (shot.blockerId) { const b = boxStats.get(defKey(shot.blockerId)); if (b) b.blocks++; }
   }
   if (ftAttempted > 0 && result.scorerId) {
-    const bs = boxStats.get(result.scorerId);
+    const bs = boxStats.get(offKey(result.scorerId));
     if (bs) { bs.freeThrowsAttempted += ftAttempted; bs.freeThrowsMade += ftMade; }
   }
-  if (stealPlayerId) { const bs = boxStats.get(stealPlayerId); if (bs) bs.steals++; }
-  if (defensiveRebounderId) { const bs = boxStats.get(defensiveRebounderId); if (bs) bs.defensiveRebounds++; }
+  if (stealPlayerId) { const bs = boxStats.get(defKey(stealPlayerId)); if (bs) bs.steals++; }
+  if (defensiveRebounderId) { const bs = boxStats.get(defKey(defensiveRebounderId)); if (bs) bs.defensiveRebounds++; }
   if (result.points > 0) {
-    for (const id of offenseIds) { const bs = boxStats.get(id); if (bs) bs.plusMinus += result.points; }
-    for (const id of defenseIds) { const bs = boxStats.get(id); if (bs) bs.plusMinus -= result.points; }
+    for (const id of offenseIds) { const bs = boxStats.get(offKey(id)); if (bs) bs.plusMinus += result.points; }
+    for (const id of defenseIds) { const bs = boxStats.get(defKey(id)); if (bs) bs.plusMinus -= result.points; }
   }
 
 
@@ -1193,10 +1202,11 @@ export function simulateGame(
   let possIndex = 0;
 
   // Box score tracking
+  // Keyed 'home:<id>' / 'away:<id>' — see the note in the possession box-score block: the
+  // same card can be on both rosters (challenge mode plays the real NBA teams).
   const boxStats = new Map<string, PlayerBoxScore>();
-  for (const p of [...homeTeam.players, ...awayTeam.players]) {
-    boxStats.set(p.id, emptyBoxScore(p.id, p.player?.name || p.id));
-  }
+  for (const p of homeTeam.players) boxStats.set(`home:${p.id}`, emptyBoxScore(p.id, p.player?.name || p.id));
+  for (const p of awayTeam.players) boxStats.set(`away:${p.id}`, emptyBoxScore(p.id, p.player?.name || p.id));
 
   // Possession-winning events to distribute
   let homeExtraPoss = split.homeAdvantageEvents;
@@ -1376,7 +1386,7 @@ export function simulateGame(
     const lastQuarter = quarterSummaries[quarterSummaries.length - 1];
     if (lastQuarter) { if (homeWins) lastQuarter.homeScore += 1; else lastQuarter.awayScore += 1; }
     const recipientId = (homeWins ? homeTeam : awayTeam).starters[0];
-    const recipientBox = recipientId ? boxStats.get(recipientId) : undefined;
+    const recipientBox = recipientId ? boxStats.get(`${homeWins ? 'home' : 'away'}:${recipientId}`) : undefined;
     if (recipientBox) recipientBox.points += 1;
   }
 
@@ -1385,14 +1395,15 @@ export function simulateGame(
     bs.minutes = Math.round(bs.minutes * 10) / 10;
   }
 
-  // Split box scores
-  const homeIds = new Set(homeTeam.players.map(p => p.id));
-  const homeBox = Array.from(boxStats.values())
-    .filter(bs => homeIds.has(bs.playerId))
+  // Split box scores by the key's side, not by roster membership: a player on BOTH teams
+  // passes a `homeIds.has(...)` test on either side, which used to drop him from the away
+  // box entirely and fold his away stats into his home row.
+  const boxFor = (side: 'home' | 'away') => Array.from(boxStats.entries())
+    .filter(([key]) => key.startsWith(`${side}:`))
+    .map(([, bs]) => bs)
     .sort((a, b) => b.points - a.points);
-  const awayBox = Array.from(boxStats.values())
-    .filter(bs => !homeIds.has(bs.playerId))
-    .sort((a, b) => b.points - a.points);
+  const homeBox = boxFor('home');
+  const awayBox = boxFor('away');
 
   return {
     homeTeam,
@@ -1436,10 +1447,12 @@ export function emptyBoxScore(playerId: string, playerName: string): PlayerBoxSc
  * `throughIndex` covers the last possession and `finalScore` exceeds its runningScore.
  */
 export function boxScoreThrough(theater: GameTheater, throughIndex: number): { home: PlayerBoxScore[]; away: PlayerBoxScore[] } {
+  // Side-keyed for the same reason simulateGame's map is (a card can be on both rosters).
+  // This function is asserted to reproduce `theater.boxScore` at the last index, so the two
+  // have to key identically or that invariant breaks the moment a duplicate appears.
   const stats = new Map<string, PlayerBoxScore>();
-  const homeIds = new Set<string>();
-  for (const p of theater.homeTeam.players) { homeIds.add(p.id); stats.set(p.id, emptyBoxScore(p.id, p.player?.name ?? p.id)); }
-  for (const p of theater.awayTeam.players) { stats.set(p.id, emptyBoxScore(p.id, p.player?.name ?? p.id)); }
+  for (const p of theater.homeTeam.players) stats.set(`home:${p.id}`, emptyBoxScore(p.id, p.player?.name ?? p.id));
+  for (const p of theater.awayTeam.players) stats.set(`away:${p.id}`, emptyBoxScore(p.id, p.player?.name ?? p.id));
 
   const events = theater.possessions;
   const regulationPoss = events.filter(e => e.quarter <= 4).length || 1;
@@ -1451,15 +1464,18 @@ export function boxScoreThrough(theater: GameTheater, throughIndex: number): { h
   for (let i = 0; i <= last; i++) {
     const e = events[i];
     const minPerPoss = e.quarter <= 4 ? 48 / regulationPoss : OT_PERIOD_MINUTES / (otPoss.get(e.quarter) ?? OT_POSS_PER_TEAM * 2);
-    for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) { b.possessions++; b.minutes += minPerPoss; } }
-    for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.minutes += minPerPoss; }
+    // The offense is whichever side `e.team` names; the defense is the other one.
+    const offKey = (id: string) => `${e.team}:${id}`;
+    const defKey = (id: string) => `${e.team === 'home' ? 'away' : 'home'}:${id}`;
+    for (const id of e.lineupOnCourt) { const b = stats.get(offKey(id)); if (b) { b.possessions++; b.minutes += minPerPoss; } }
+    for (const id of e.defenseOnCourt) { const b = stats.get(defKey(id)); if (b) b.minutes += minPerPoss; }
     const points = e.team === 'home' ? e.runningScore[0] - prev[0] : e.runningScore[1] - prev[1];
     prev = e.runningScore;
 
     const shots = e.shots ?? [];
     const lastShot = shots.length ? shots[shots.length - 1] : undefined;
     if (points > 0 && e.scoringPlayerId) {
-      const b = stats.get(e.scoringPlayerId);
+      const b = stats.get(offKey(e.scoringPlayerId));
       if (b) {
         b.points += points;
         if (e.shots && e.narrative) {
@@ -1475,29 +1491,29 @@ export function boxScoreThrough(theater: GameTheater, throughIndex: number): { h
           else if (points >= 2) { b.twoPointers++; if (e.outcome === 'and1') b.andOnes++; }
         }
       }
-      if (e.assistPlayerId) { const a = stats.get(e.assistPlayerId); if (a) a.assists++; }
+      if (e.assistPlayerId) { const a = stats.get(offKey(e.assistPlayerId)); if (a) a.assists++; }
     }
-    if (e.turnoverPlayerId) { const b = stats.get(e.turnoverPlayerId); if (b) b.turnovers++; }
-    for (const id of e.offensiveRebounders ?? []) { const b = stats.get(id); if (b) b.offensiveRebounds++; }
+    if (e.turnoverPlayerId) { const b = stats.get(offKey(e.turnoverPlayerId)); if (b) b.turnovers++; }
+    for (const id of e.offensiveRebounders ?? []) { const b = stats.get(offKey(id)); if (b) b.offensiveRebounds++; }
     for (const shot of shots) {
-      const b = stats.get(shot.shooterId);
+      const b = stats.get(offKey(shot.shooterId));
       if (b) {
         b.fieldGoalsAttempted++;
         if (shot.made) b.fieldGoalsMade++;
         if (shot.channel === 'three') { b.threesAttempted++; if (shot.made) b.threesMade++; }
       }
-      if (shot.blockerId) { const d = stats.get(shot.blockerId); if (d) d.blocks++; }
+      if (shot.blockerId) { const d = stats.get(defKey(shot.blockerId)); if (d) d.blocks++; }
     }
     const ftA = e.narrative?.ftAttempted ?? 0;
     if (ftA > 0 && e.scoringPlayerId) {
-      const b = stats.get(e.scoringPlayerId);
+      const b = stats.get(offKey(e.scoringPlayerId));
       if (b) { b.freeThrowsAttempted += ftA; b.freeThrowsMade += e.narrative?.ftMade ?? 0; }
     }
-    if (e.stealPlayerId) { const d = stats.get(e.stealPlayerId); if (d) d.steals++; }
-    if (e.defensiveRebounderId) { const d = stats.get(e.defensiveRebounderId); if (d) d.defensiveRebounds++; }
+    if (e.stealPlayerId) { const d = stats.get(defKey(e.stealPlayerId)); if (d) d.steals++; }
+    if (e.defensiveRebounderId) { const d = stats.get(defKey(e.defensiveRebounderId)); if (d) d.defensiveRebounds++; }
     if (points > 0) {
-      for (const id of e.lineupOnCourt) { const b = stats.get(id); if (b) b.plusMinus += points; }
-      for (const id of e.defenseOnCourt) { const b = stats.get(id); if (b) b.plusMinus -= points; }
+      for (const id of e.lineupOnCourt) { const b = stats.get(offKey(id)); if (b) b.plusMinus += points; }
+      for (const id of e.defenseOnCourt) { const b = stats.get(defKey(id)); if (b) b.plusMinus -= points; }
     }
   }
 
@@ -1505,16 +1521,16 @@ export function boxScoreThrough(theater: GameTheater, throughIndex: number): { h
   if (last === events.length - 1 && events.length > 0) {
     const [h, a] = events[last].runningScore;
     const [fh, fa] = theater.finalScore;
-    if (fh === h + 1 && fa === a) { const b = stats.get(theater.homeTeam.starters[0]); if (b) b.points += 1; }
-    else if (fa === a + 1 && fh === h) { const b = stats.get(theater.awayTeam.starters[0]); if (b) b.points += 1; }
+    if (fh === h + 1 && fa === a) { const b = stats.get(`home:${theater.homeTeam.starters[0]}`); if (b) b.points += 1; }
+    else if (fa === a + 1 && fh === h) { const b = stats.get(`away:${theater.awayTeam.starters[0]}`); if (b) b.points += 1; }
   }
 
-  const rows = Array.from(stats.values()).map(b => ({ ...b, minutes: Math.round(b.minutes * 10) / 10 }));
   const byPoints = (x: PlayerBoxScore, y: PlayerBoxScore) => y.points - x.points;
-  return {
-    home: rows.filter(b => homeIds.has(b.playerId)).sort(byPoints),
-    away: rows.filter(b => !homeIds.has(b.playerId)).sort(byPoints),
-  };
+  const rowsFor = (side: 'home' | 'away') => Array.from(stats.entries())
+    .filter(([key]) => key.startsWith(`${side}:`))
+    .map(([, b]) => ({ ...b, minutes: Math.round(b.minutes * 10) / 10 }))
+    .sort(byPoints);
+  return { home: rowsFor('home'), away: rowsFor('away') };
 }
 
 function distributeQuarters(

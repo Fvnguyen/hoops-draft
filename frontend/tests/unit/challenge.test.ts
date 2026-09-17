@@ -14,6 +14,8 @@ import { CHALLENGE_GAMES, TARGET_ROSTER, TRADE_OFFERS } from '@/engine/balance';
 import { DEPTH_COLUMNS } from '@/engine/positions';
 import { PLAY_CATALOG } from '@/engine/plays';
 import { createRng } from '@/engine/rng';
+import { simulateGame } from '@/engine/game';
+import { CHALLENGE_TUNING } from '@/engine/balance';
 import { loadPlayers, runHeadlessDraft, buildTeams } from './helpers';
 import type { Rarity } from '@/engine/types';
 
@@ -76,32 +78,42 @@ describe('NBA opponents (D3)', () => {
   });
 });
 
-describe("opponents never field the user's own players", () => {
-  // simulateGame keys its box score by player id in ONE map for both sides, so a card on
-  // both rosters merges into a single row emitted into BOTH box scores and the totals stop
-  // reconciling with the final score. Measured before the fix: 13 of 41 games off, one by
-  // 32 points. buildNbaTeams holds the user's ids out, which removes it at the source.
+describe('a player on both rosters (NBA rosters are locked in)', () => {
+  // Owner decision 2026-09-17: NBA teams field their REAL rosters, so a card the user
+  // drafted still suits up for his own team against him — drafted Luka faces Lakers Luka.
+  // That makes a duplicate player id across the two sides a normal, expected state, which
+  // `simulateGame` has to survive: it used to key its box score by player id alone, so the
+  // shared id merged into ONE row emitted on the home side only. The away team silently
+  // lost the player and the two box scores stopped summing to the final score — measured
+  // at 13 of 41 games, one off by 32 points. Box stats are now keyed by side + id.
   const team = buildTeams(runHeadlessDraft(players, PLAY_CATALOG, 20260917))[0];
   const userIds = new Set(team.players.map((p) => p.id));
-  const opponents = buildNbaTeams(players, PLAY_CATALOG, userIds);
+  const opponents = buildNbaTeams(players, PLAY_CATALOG);
 
-  it('excludes every card the user owns, and still fields 12 with no empty slot', () => {
-    for (const [abbr, t] of opponents) {
-      expect(t.players.filter((p) => userIds.has(p.id)), `${abbr} shares a player`).toEqual([]);
-      const active = DEPTH_COLUMNS.reduce((s, col) => s + (t.depthChart[col] ?? []).length, 0);
-      expect(active, `${abbr} active count`).toBe(TARGET_ROSTER);
-      for (const col of DEPTH_COLUMNS) expect((t.depthChart[col] ?? []).length, `${abbr} ${col}`).toBeGreaterThan(0);
-    }
+  it('happens for real — some NBA team fields a card this roster also owns', () => {
+    const shared = [...opponents.values()].flatMap((t) => t.players.filter((p) => userIds.has(p.id)));
+    expect(shared.length, 'no duplicate in this fixture — pick another draft seed').toBeGreaterThan(0);
   });
 
-  it("both teams' box scores reconcile with the final scores across a half", () => {
+  it('gives that player a separate line on each side, with his own minutes', () => {
+    const entry = [...opponents.entries()].find(([, t]) => t.players.some((p) => userIds.has(p.id)));
+    expect(entry).toBeDefined();
+    const [, opponent] = entry!;
+    const dupId = opponent.players.find((p) => userIds.has(p.id))!.id;
+    const theater = simulateGame(team, opponent, { rng: createRng(4242), tuning: CHALLENGE_TUNING });
+    const home = theater.boxScore.home.filter((r) => r.playerId === dupId);
+    const away = theater.boxScore.away.filter((r) => r.playerId === dupId);
+    expect(home, 'one row on the home side').toHaveLength(1);
+    expect(away, 'one row on the away side — this was missing entirely').toHaveLength(1);
+    expect(home[0].minutes).toBeGreaterThan(0);
+    expect(away[0].minutes).toBeGreaterThan(0);
+  });
+
+  it("both teams' box scores sum to the final score, over a full half", () => {
     const schedule = buildChallengeSchedule(555);
     const h = simulateHalf(team, opponents, schedule, 1, 555);
-    const userBox = h.playerTotals.reduce((s, t) => s + t.points, 0);
-    const userFinal = h.games.reduce((s, g) => s + g.score[0], 0);
-    const oppFinal = h.games.reduce((s, g) => s + g.score[1], 0);
-    expect(userBox).toBe(userFinal);
-    expect(h.opponentTotals.points).toBe(oppFinal);
+    expect(h.playerTotals.reduce((s, t) => s + t.points, 0)).toBe(h.games.reduce((s, g) => s + g.score[0], 0));
+    expect(h.opponentTotals.points).toBe(h.games.reduce((s, g) => s + g.score[1], 0));
   });
 });
 
@@ -166,9 +178,7 @@ describe('grades (D6)', () => {
 
 describe('simulateHalf (D7)', () => {
   const team = buildTeams(runHeadlessDraft(players, PLAY_CATALOG, 20260917))[0];
-  // Built the way the product builds them: the user's own cards held out (see the
-  // box-score collision above), which is also what makes the totals reconcile.
-  const opponents = buildNbaTeams(players, PLAY_CATALOG, new Set(team.players.map((p) => p.id)));
+  const opponents = buildNbaTeams(players, PLAY_CATALOG);
   const runSeed = 555;
   const schedule = buildChallengeSchedule(runSeed);
   const first = simulateHalf(team, opponents, schedule, 1, runSeed);
