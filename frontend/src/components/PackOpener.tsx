@@ -52,6 +52,16 @@ export interface PackOpenerProps {
   onPick?: (pick: PackPick) => void;
   /** Fired right after `onPick` (or on its own for preview/legacy callers). */
   onComplete?: () => void;
+  /** plan_challenge_mode D9: 'trade' rings the sealed pack in the amber accent (gold
+   *  trim on the SAME pack art — no new artwork) for the 82:0 trade deadline. */
+  variant?: 'default' | 'trade';
+  /** Overrides the "Pack N of 3" heading — the trade pack isn't a draft pack. */
+  titleOverride?: string;
+  /** Overrides the mode eyebrow ("Quick Draft" / "Premier Draft") above the heading. */
+  eyebrowOverride?: string;
+  /** plan_challenge_mode D9: returns the "Answers the coach" style tag for a revealed
+   *  card, or undefined for none. Only shown once the spread is pickable. */
+  badgeFor?: (card: DraftCard) => string | undefined;
 }
 
 const OPEN_MS = 650;
@@ -98,6 +108,10 @@ export function PackOpener({
   backdrop = false,
   onPick,
   onComplete,
+  variant = 'default',
+  titleOverride,
+  eyebrowOverride,
+  badgeFor,
 }: PackOpenerProps) {
   // Reveal TIMING is fixed on mount: Common -> Mythic, so the guaranteed Rare+
   // slot flips last (D6). This is separate from GRID POSITION below — `ordered`
@@ -273,10 +287,10 @@ export function PackOpener({
       <div className="relative z-20 flex w-full max-w-4xl items-start justify-between gap-4">
         <div className="flex-1 text-center">
           <p className="text-xs font-black uppercase tracking-[0.32em] text-accent-hover/70">
-            {mode === 'quick' ? 'Quick Draft' : 'Premier Draft'}
+            {eyebrowOverride ?? (mode === 'quick' ? 'Quick Draft' : 'Premier Draft')}
           </p>
           <h1 className="mt-2 text-3xl font-black uppercase tracking-[0.12em] sm:text-4xl pointer-coarse:max-lg:mt-0! pointer-coarse:max-lg:text-2xl!">
-            Pack {packNumber} of {totalPacks}
+            {titleOverride ?? `Pack ${packNumber} of ${totalPacks}`}
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
             {phase === 'picking' ? 'Click a card, then take it.' : 'Reveal the cards waiting in your draft.'}
@@ -310,8 +324,10 @@ export function PackOpener({
               variant="ghost"
               // `h-auto!`: the Button size class otherwise pins this to 40px and the 1.5:1 pack
               // image overflows it, which is why the caption below sat on top of the pack.
-              className="block h-auto! min-h-0 w-full rounded-2xl bg-transparent p-0 normal-case tracking-normal font-normal hover:bg-transparent disabled:cursor-default focus-visible:ring-offset-0"
-              aria-label={`Open pack ${packNumber} of ${totalPacks}`}
+              className={`block h-auto! min-h-0 w-full rounded-2xl bg-transparent p-0 normal-case tracking-normal font-normal hover:bg-transparent disabled:cursor-default focus-visible:ring-offset-0 ${
+                variant === 'trade' ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface-inverse-deep' : ''
+              }`}
+              aria-label={titleOverride ?? `Open pack ${packNumber} of ${totalPacks}`}
             >
               <Image
                 src="/pack_2025_2026.png"
@@ -403,6 +419,11 @@ export function PackOpener({
                         transition={{ duration: 0.45, times: [0, 0.25, 1] }}
                         className="pointer-events-none absolute -inset-1 z-20 rounded-xl border-2 border-white"
                       />
+                    )}
+                    {pickable && badgeFor?.(card) && (
+                      <div className="pointer-events-none absolute inset-x-2 bottom-2 z-10 rounded-control bg-positive-soft px-2 py-1 text-center text-xs font-black uppercase tracking-wide text-positive">
+                        {badgeFor(card)}
+                      </div>
                     )}
                     <motion.div
                       animate={{ rotateY: isFlipped ? 180 : 0 }}

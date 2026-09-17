@@ -135,6 +135,13 @@ export interface DeckBuilderProps {
   /** season_lifecycle_notifications D3: true when this roster's season is Completed —
    *  view-only, depth chart/plays can't be rearranged and Save is disabled. */
   readOnly?: boolean;
+  /** plan_challenge_mode T7: embeds this builder inside the 82:0 front office (D8).
+   *  When set, "Save" skips the roster-naming modal, `store.saveRoster` and the
+   *  session's `builtRoster` update entirely — D11 requires the front office's edits
+   *  to land only in the run's `rosterPost` SNAPSHOT, never mutate the roster record
+   *  the user actually drafted — and hands the built `SavedRoster` to this callback
+   *  instead. "Save & play season" is hidden (superseded by "Spin the second half"). */
+  embedOverride?: { onSave: (roster: SavedRoster) => void };
 }
 
 /** Mounts the toast layer the builder body needs (D15) around the real builder. */
@@ -155,7 +162,7 @@ interface BuilderSnapshot {
   rosterPlays: Play[];
 }
 
-function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, gameMode, podAverageIdentity, readOnly = false }: DeckBuilderProps) {
+function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, gameMode, podAverageIdentity, readOnly = false, embedOverride }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
 
@@ -989,6 +996,11 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         sessionId: sessionId ?? null,
       };
 
+      if (embedOverride) {
+        embedOverride.onSave(newRosterData);
+        return;
+      }
+
       const store = getGameStore();
       await store.saveRoster(newRosterData);
 
@@ -1304,12 +1316,18 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         playsTarget={3}
         actions={{
           onClear: () => setShowClearConfirm(true),
-          onSave: () => { setSaveDestination('rosters'); setShowSaveModal(true); },
+          onSave: () => {
+            // Embedded (front office, T7): no roster-naming step — commit straight
+            // through to embedOverride.onSave, which snapshots rather than persists.
+            if (embedOverride) { handleSaveRoster('rosters'); return; }
+            setSaveDestination('rosters'); setShowSaveModal(true);
+          },
           onSaveAndPlay: () => { setSaveDestination('season'); setShowSaveModal(true); },
           canSave: isComplete && !readOnly,
           canPlay: isComplete && !readOnly && !!sessionId,
           disabledReason: isComplete ? undefined : statusText,
           saveAndPlayLabel: isChallenge ? 'Save & start 82:0' : 'Save & play season',
+          hideSaveAndPlay: !!embedOverride,
         }}
         challengeBadge={isChallenge}
       />

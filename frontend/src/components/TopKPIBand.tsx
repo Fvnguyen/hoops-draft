@@ -33,6 +33,9 @@ export interface KpiBandActions {
   /** plan_challenge_mode D1: overrides the "Save & play season" label — e.g.
    *  "Save & start 82:0" for a challenge session. Defaults to "Save & play season". */
   saveAndPlayLabel?: string;
+  /** plan_challenge_mode T7: hides "Save & play season" entirely — the front office
+   *  embeds this band with its own "Spin the second half" CTA, which supersedes it. */
+  hideSaveAndPlay?: boolean;
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -316,7 +319,7 @@ export function TopKPIBand({
           >
             <SaveIcon size={20} aria-hidden="true" />
           </IconButton>
-          <Button
+          {!actions.hideSaveAndPlay && <Button
             variant="primary"
             size="md"
             className="whitespace-nowrap shrink-0"
@@ -327,7 +330,7 @@ export function TopKPIBand({
             <PlayIcon size={18} aria-hidden="true" className="@min-[1100px]:hidden" />
             <span className="hidden @min-[1100px]:inline">{actions.saveAndPlayLabel ?? 'Save & play season'}</span>
             <span className="sr-only @min-[1100px]:hidden">{actions.saveAndPlayLabel ?? 'Save & play season'}</span>
-          </Button>
+          </Button>}
         </>
       )}
 

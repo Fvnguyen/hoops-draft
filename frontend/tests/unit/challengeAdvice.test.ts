@@ -202,6 +202,14 @@ describe('reason catalogue', () => {
     expect(reasons.map((r) => r.id).sort()).toEqual([...expected].sort());
   });
 
+  it('never renders a doubled full stop after a name that ends in one', () => {
+    // "M. Porter Jr." + a template's own "." used to render "Jr..".
+    for (const q of [...challengeAdvice(struggling).quotes, ...challengeAdvice(flying).quotes]) {
+      expect(q.text, q.text).not.toMatch(/\.\.(?=$|[\s,"”'’])/);
+      expect(q.evidence, q.evidence).not.toMatch(/\.\.(?=$|[\s,"”'’])/);
+    }
+  });
+
   it('reads the defensive four factors off opponentTotals, board 4 line and all', () => {
     const def = reasons.find((r) => r.id === 'def-four-factor');
     expect(def).toBeDefined();

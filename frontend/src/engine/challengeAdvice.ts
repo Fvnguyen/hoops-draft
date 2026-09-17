@@ -517,7 +517,14 @@ function fillable(template: string, vars: ChallengeReasonVars): boolean {
 }
 
 function fill(template: string, vars: ChallengeReasonVars): string {
-  return template.replace(PLACEHOLDER_RE, (_, key: string) => vars[key] ?? '').replace(/\s{2,}/g, ' ').trim();
+  return template
+    .replace(PLACEHOLDER_RE, (_, key: string) => vars[key] ?? '')
+    .replace(/\s{2,}/g, ' ')
+    // A shortened name can already end in a period ("M. Porter Jr."), so a template that
+    // closes its own sentence renders "Jr..". Collapse the doubled stop wherever a
+    // substitution created one, including before a closing quote or comma.
+    .replace(/\.\.(?=$|[\s,"”'’])/g, '.')
+    .trim();
 }
 
 /**
