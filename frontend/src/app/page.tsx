@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlayerCard, PlayerCardData } from '../components/PlayerCard';
 import { getAllCards } from '@/engine/cards';
-import { buttonVariants } from '@/components/ui';
+import { Button, buttonVariants } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { HomeModePicker, type HomeGame } from '@/components/HomeModePicker';
 
 function shuffled<T>(items: T[]): T[] {
   const arr = [...items];
@@ -74,6 +75,10 @@ export default function Home() {
   // (there's no prop/event this could instead derive from; it's synchronizing
   // with a fresh Math.random() draw, not adjusting state from a render input).
   const [showcase, setShowcase] = useState<{ hero: PlayerCardData | undefined; pack: PlayerCardData[] } | null>(null);
+  // plan_challenge_mode D1: which mode's picker is open, if any. Clicking a mode
+  // button opens its picker and dims the other; "Back" (or picking the same mode
+  // again) closes it. No post-draft mode choice — this is the only place it's picked.
+  const [openPicker, setOpenPicker] = useState<HomeGame | null>(null);
 
   useEffect(() => {
     const hero = pickHero(allCards);
@@ -99,7 +104,7 @@ export default function Home() {
       <div className="relative z-10 flex h-full w-full max-w-7xl items-center justify-between px-8 lg:min-h-[600px]">
 
         {/* LEFT COLUMN: Menu */}
-        <div className="flex w-[320px] shrink-0 flex-col self-stretch justify-center pt-6 lg:pt-12">
+        <div className="flex w-[340px] shrink-0 flex-col self-stretch justify-center pt-6 lg:pt-12">
           <div className="mb-6 lg:mb-12">
             <h1 className="mb-1 bg-gradient-to-b from-ink-inverse to-ink-inverse-muted bg-clip-text pr-2 text-7xl italic font-black leading-none tracking-tighter text-transparent drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)]" style={{ fontFamily: 'var(--font-bebas)' }}>
               HOOPS DRAFT
@@ -111,39 +116,49 @@ export default function Home() {
 
           {/* Main Links */}
           <div className="flex flex-col gap-3">
-            <Link
-              href="/draft?mode=premier"
-              data-testid="cta-premier"
+            {/* plan_challenge_mode D1: mode is chosen before the draft. These two
+                replace the old Premier/Quick CTAs; picking one opens its own
+                Premier-vs-Quick picker (HomeModePicker) and dims the other. */}
+            <Button
+              data-testid="cta-tournament"
+              onClick={() => setOpenPicker('tournament')}
+              variant="primary"
+              size="stacked"
               className={cn(
-                buttonVariants({ variant: 'primary', size: 'lg' }),
-                'group relative h-auto min-h-control-lg w-full flex-col items-start gap-0.5 whitespace-normal rounded px-6 py-3.5 text-left normal-case tracking-normal',
-                'border border-accent/60 bg-gradient-to-r from-brand-from/90 to-brand-to/70 shadow-[0_0_25px_rgba(234,179,8,0.25)] hover:from-brand-from hover:to-brand-to',
+                'group relative w-full flex-col items-start gap-0.5 whitespace-normal rounded text-left normal-case tracking-normal transition-opacity',
+                'border border-accent/60 bg-surface shadow-[0_0_25px_rgba(234,179,8,0.25)] hover:bg-surface-raised',
+                openPicker === 'challenge' && 'opacity-40',
               )}
             >
               <div className="absolute inset-y-0 left-0 w-1 bg-accent" />
-              <span className="text-xl font-black italic tracking-wider text-white drop-shadow-md">PREMIER DRAFT</span>
-              <span className="text-xs font-bold uppercase tracking-widest text-white/90">Timed picks · round summaries</span>
-            </Link>
+              <span className="text-xl font-black italic tracking-wider text-ink-strong drop-shadow-md">IN-SEASON TOURNAMENT</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-muted">7 games vs your draft table · watch them all</span>
+            </Button>
 
-            <Link
-              href="/draft?mode=quick"
-              data-testid="cta-quick"
+            <Button
+              data-testid="cta-challenge"
+              onClick={() => setOpenPicker('challenge')}
+              variant="secondary"
+              size="stacked"
               className={cn(
-                buttonVariants({ variant: 'secondary', size: 'lg' }),
-                'group relative h-auto min-h-control w-full flex-col items-start gap-0.5 whitespace-normal rounded px-6 py-3 text-left normal-case tracking-normal',
-                'border border-info/50 bg-gradient-to-r from-info/80 to-info/20 text-ink-inverse hover:border-info hover:from-info',
+                'group relative w-full flex-col items-start gap-0.5 whitespace-normal rounded text-left normal-case tracking-normal transition-opacity',
+                'border border-accent bg-surface-inverse-deep text-ink-inverse shadow-[0_0_25px_rgba(251,191,36,0.15)] hover:bg-surface-inverse',
+                openPicker === 'tournament' && 'opacity-40',
               )}
             >
-              <div className="absolute inset-y-0 left-0 w-1 bg-info group-hover:bg-ink-inverse-muted" />
-              <span className="text-lg font-black italic tracking-wider text-ink-inverse drop-shadow-md">QUICK DRAFT</span>
-              <span className="text-xs font-bold uppercase tracking-widest text-ink-inverse-muted">No timer · quick animations</span>
-            </Link>
+              <div className="absolute inset-y-0 left-0 w-1 bg-accent" />
+              <span className="flex items-baseline gap-2.5">
+                <span className="font-display text-3xl leading-none text-accent">82:0</span>
+                <span className="text-xl font-black italic tracking-wider text-ink-inverse drop-shadow-md">CHALLENGE</span>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-inverse-muted">82 games vs the real NBA · one trade · one grade</span>
+            </Button>
 
             <Link
               href="/rosters"
               className={cn(
-                buttonVariants({ variant: 'secondary', size: 'lg' }),
-                'group relative h-auto min-h-control w-full justify-start rounded px-6 py-3 text-left normal-case tracking-normal',
+                buttonVariants({ variant: 'secondary', size: 'stacked' }),
+                'group relative w-full items-center justify-start rounded text-left normal-case tracking-normal',
                 'border border-line-inverse/50 bg-gradient-to-r from-surface-inverse/80 to-transparent text-ink-inverse-muted hover:border-line-strong hover:from-surface-sunken',
               )}
             >
@@ -209,6 +224,8 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {openPicker && <HomeModePicker game={openPicker} onClose={() => setOpenPicker(null)} />}
 
       {/* Dev Tools (build-time only, never shipped to production) */}
       {isDev && (

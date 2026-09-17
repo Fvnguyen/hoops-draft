@@ -9,7 +9,12 @@ import { cn } from '@/lib/cn';
  * plan_ui_foundation D3: THE button. Every clickable text control in product code is one
  * of these (the style gate rejects a raw `<button>` outside `components/ui/`).
  *
- * - `size` fixes the D2 control heights: md = 44px, lg = 52px (primary CTAs).
+ * - `size` fixes the D2 control heights: md = 44px, lg = 52px (primary CTAs). `stacked` is
+ *   the exception: no fixed height, only a 52px floor, for the multi-line CTAs the
+ *   challenge_mode boards introduced (eyebrow + title + sub-line). Overriding a fixed size
+ *   from `className` does NOT work — `h-control-lg` is a project-custom utility, so
+ *   tailwind-merge does not see it conflicting with `h-auto` and both survive, leaving CSS
+ *   order to win. Pick the size that fits instead.
  * - `href` renders a Next `Link` with identical styling, so nav and actions look the same.
  * - Colours are semantic tokens only; the theme decides what they resolve to.
  */
@@ -33,6 +38,7 @@ export const buttonVariants = cva(
       size: {
         md: 'h-control px-5 text-sm',
         lg: 'h-control-lg px-8 text-base',
+        stacked: 'min-h-control-lg px-6 py-3 text-base',
       },
     },
     defaultVariants: { variant: 'primary', size: 'md' },

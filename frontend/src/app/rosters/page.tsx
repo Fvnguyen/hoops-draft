@@ -32,6 +32,9 @@ export default function RostersPage() {
   const ready = useStorageReady();
   const [rosters, setRosters] = useState<SavedRoster[]>([]);
   const [seasonsByRoster, setSeasonsByRoster] = useState<Record<string, Season>>({});
+  // plan_challenge_mode D1: which game each roster's draft session was for, so the
+  // CTA offers the right mode — a roster can only start the mode it was drafted for.
+  const [gameModeByRoster, setGameModeByRoster] = useState<Record<string, 'tournament' | 'challenge'>>({});
   const [loaded, setLoaded] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<MergeSummary | null>(null);
@@ -52,6 +55,16 @@ export default function RostersPage() {
       if (season) seasonsMap[rosterId] = season;
     }
     setSeasonsByRoster(seasonsMap);
+
+    const gameModeEntries = await Promise.all(
+      sorted.map(async (r) => {
+        if (!r.sessionId) return [r.id, 'tournament'] as const;
+        const session = await store.getDraftSession(r.sessionId);
+        return [r.id, session?.gameMode ?? 'tournament'] as const;
+      })
+    );
+    setGameModeByRoster(Object.fromEntries(gameModeEntries));
+
     setLoaded(true);
   }, []);
 
@@ -197,6 +210,7 @@ export default function RostersPage() {
             const phase = getSeasonPhase(season);
             const humanStanding = season?.standings.find((s) => s.seatId === HUMAN_SEAT_ID);
             const isLocked = phase === 'completed';
+            const isChallenge = gameModeByRoster[rosterObj.id] === 'challenge';
 
             return (
               <motion.div
@@ -211,6 +225,11 @@ export default function RostersPage() {
                     <h2 className="flex items-center gap-3 truncate text-xl font-black uppercase tracking-wider">
                       <span className="text-sm font-normal text-ink-muted">#{rosters.length - i}</span>
                       {rosterObj.name || 'Drafted Roster'}
+                      {isChallenge && (
+                        <span className="font-display shrink-0 rounded-full border border-accent bg-surface-inverse-deep px-2.5 py-0.5 text-xs uppercase tracking-widest text-accent">
+                          82:0
+                        </span>
+                      )}
                     </h2>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-widest text-ink-muted">
                       {date}
@@ -245,11 +264,15 @@ export default function RostersPage() {
 
                     {rosterObj.sessionId && (
                       <Button
-                        onClick={() => router.push(`/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`)}
+                        onClick={() => router.push(
+                          isChallenge
+                            ? `/challenge/${rosterObj.id}`
+                            : `/season?rosterId=${rosterObj.id}&sessionId=${rosterObj.sessionId}`
+                        )}
                         icon={<Swords className="h-4 w-4" />}
                         className="bg-positive text-white shadow-sm hover:bg-positive-strong"
                       >
-                        {isLocked ? 'View Season' : 'Play Season'}
+                        {isChallenge ? 'Start 82:0' : isLocked ? 'View Season' : 'Play Season'}
                       </Button>
                     )}
 

@@ -109,6 +109,16 @@ function ModePill({ mode }: { mode: 'quick' | 'premier' }) {
   );
 }
 
+/** plan_challenge_mode D2: the one badge that marks a challenge session in the
+ *  (otherwise un-re-themed) draft room and deck builder. */
+function ChallengeBadge() {
+  return (
+    <span className="font-display text-xs uppercase tracking-widest bg-surface-inverse-deep text-accent px-2.5 py-1 rounded-full border border-accent shadow-sm">
+      82:0
+    </span>
+  );
+}
+
 function SfxToggle() {
   // Lazy-init from localStorage: this component only ever mounts client-side
   // (DraftRoom renders null until isClient flips true), so it's safe to read
@@ -162,13 +172,18 @@ export interface DraftRoomProps {
   /** Draft mode (plan ui_draft_deckbuild_pack, D1). Read server-side from
    *  `?mode=` by `app/draft/page.tsx` (T3); missing/unknown defaults to Premier. */
   mode?: 'quick' | 'premier';
+  /** Which game this draft is for (plan_challenge_mode D1). Read server-side
+   *  from `?game=` by `app/draft/page.tsx`; missing/unknown defaults to the
+   *  tournament. Stamped onto the saved `DraftSession` and threaded to the
+   *  deck builder so its save CTA can route correctly. */
+  gameMode?: 'tournament' | 'challenge';
   /** `?clock=fast` (D4, dev-only): scales the Premier pick clock down so it
    *  can be exercised quickly in tests/manual QA. Converted to a multiplier
    *  via `clockScaleFromQuery` and passed straight into `armIntroClock`. */
   clockFast?: boolean;
 }
 
-export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProps = {}) {
+export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast = false }: DraftRoomProps = {}) {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
@@ -204,7 +219,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
     expirePick,
     armIntroClock,
     receivingFromSeat,
-  } = useDraftEngine(allPlayers, playsDB, mode);
+  } = useDraftEngine(allPlayers, playsDB, mode, gameMode);
 
   // Preload the headshots the player is about to see: this pack (still sealed during
   // the intro) and the neighbour's pack that will be passed to us next. The URLs come
@@ -241,7 +256,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
   useEffect(() => {
     if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId && !savingSessionRef.current) {
       savingSessionRef.current = true;
-      const session = buildDraftSession(seats, pickLog, draftSeed, mode);
+      const session = buildDraftSession(seats, pickLog, draftSeed, mode, gameMode);
       getGameStore()
         .saveDraftSession(session)
         .then(() => {
@@ -257,7 +272,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
           }
         });
     }
-  }, [draftState, seats, sessionId, pickLog, draftSeed, mode]);
+  }, [draftState, seats, sessionId, pickLog, draftSeed, mode, gameMode]);
 
   useEffect(() => {
     fetch('/api/cards')
@@ -346,7 +361,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
     return (
       <>
         <SaveErrorBanner message={saveError} />
-        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} />
+        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} gameMode={gameMode} />
       </>
     );
   }
@@ -392,6 +407,7 @@ export function DraftRoom({ mode = 'premier', clockFast = false }: DraftRoomProp
         <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass} ${isPackIntro ? 'pointer-coarse:max-lg:hidden' : ''}`}>
           <div className="w-64 hidden lg:flex items-center gap-2">
             <ModePill mode={mode} />
+            {gameMode === 'challenge' && <ChallengeBadge />}
             {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
             <SfxToggle />
           </div>

@@ -294,7 +294,7 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
               Back to Rosters
             </Button>
             <h1 className="text-3xl font-black uppercase tracking-wider text-ink-strong" style={{ fontFamily: 'var(--font-bebas)' }}>
-              Season
+              In-Season Tournament
             </h1>
           </div>
           {humanStanding && (

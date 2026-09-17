@@ -125,6 +125,12 @@ export interface DeckBuilderProps {
   initialArchetypes?: ArchetypeSelection;
   /** Draft session this roster belongs to. Enables "Save & play season" (D19). */
   sessionId?: string;
+  /** plan_challenge_mode D1: which game this roster was drafted for. Passed
+   *  directly by `DraftRoom` right after a fresh draft; absent when editing an
+   *  existing roster from `/roster/[id]` — the body resolves it itself from
+   *  the saved `DraftSession` (see `resolvedGameMode`). Missing everywhere
+   *  (both the prop and the session) means a tournament roster. */
+  gameMode?: 'tournament' | 'challenge';
   podAverageIdentity?: RosterIdentity;
   /** season_lifecycle_notifications D3: true when this roster's season is Completed —
    *  view-only, depth chart/plays can't be rearranged and Save is disabled. */
@@ -149,9 +155,26 @@ interface BuilderSnapshot {
   rosterPlays: Play[];
 }
 
-function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, podAverageIdentity, readOnly = false }: DeckBuilderProps) {
+function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, gameMode, podAverageIdentity, readOnly = false }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
+
+  // plan_challenge_mode D1: `gameMode` arrives as a prop right after a fresh draft
+  // (DraftRoom knows it already); editing a saved roster from `/roster/[id]` doesn't
+  // pass it, so it's fetched here from the session it was drafted from — only when
+  // the prop is absent, so this never fights a prop that's already known. Missing
+  // either way means a tournament roster (session predates the 82:0 Challenge).
+  const [fetchedGameMode, setFetchedGameMode] = useState<'tournament' | 'challenge' | null>(null);
+  useEffect(() => {
+    if (gameMode || !sessionId) return;
+    let cancelled = false;
+    getGameStore().getDraftSession(sessionId).then(session => {
+      if (!cancelled) setFetchedGameMode(session?.gameMode ?? 'tournament');
+    });
+    return () => { cancelled = true; };
+  }, [gameMode, sessionId]);
+  const resolvedGameMode: 'tournament' | 'challenge' = gameMode ?? fetchedGameMode ?? 'tournament';
+  const isChallenge = resolvedGameMode === 'challenge';
 
   /** Position filter chips (All / G / F / C) above the Roster list. Natural fit only. */
   const matchesPosFilter = (rawPos: string, filter: PosFilter): boolean => {
@@ -987,7 +1010,11 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       }
 
       if (destination === 'season' && sessionId) {
-        router.push(`/season?rosterId=${encodeURIComponent(saveId)}&sessionId=${encodeURIComponent(sessionId)}`);
+        if (isChallenge) {
+          router.push(`/challenge/${encodeURIComponent(saveId)}`);
+        } else {
+          router.push(`/season?rosterId=${encodeURIComponent(saveId)}&sessionId=${encodeURIComponent(sessionId)}`);
+        }
       } else {
         router.push('/rosters');
       }
@@ -1282,7 +1309,9 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           canSave: isComplete && !readOnly,
           canPlay: isComplete && !readOnly && !!sessionId,
           disabledReason: isComplete ? undefined : statusText,
+          saveAndPlayLabel: isChallenge ? 'Save & start 82:0' : 'Save & play season',
         }}
+        challengeBadge={isChallenge}
       />
       {saveError && (
         <div className="bg-danger-soft border-b border-danger-line px-4 py-3">
@@ -1487,7 +1516,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
               onClick={() => handleSaveRoster(saveDestination)}
               disabled={!rosterName.trim()}
             >
-              {saveDestination === 'season' ? 'Save & play season' : 'Save to Collection'}
+              {saveDestination === 'season' ? (isChallenge ? 'Save & start 82:0' : 'Save & play season') : 'Save to Collection'}
             </Button>
           </div>
         </div>

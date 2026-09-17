@@ -37,7 +37,18 @@ const CLOCK_EXPIRY_PROFILE: BotProfile = {
  *  round-summary pause; Premier gets both. */
 export type DraftMode = 'quick' | 'premier';
 
-export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: DraftMode = 'premier') {
+/** Which game this draft is for (plan_challenge_mode D1). Doesn't change draft
+ *  mechanics (D5's steeper difficulty only applies to challenge games, not the
+ *  draft) — carried through so the caller can stamp it onto the saved
+ *  `DraftSession` without keeping a second piece of state in sync. */
+export type GameMode = 'tournament' | 'challenge';
+
+export function useDraftEngine(
+  allPlayers: Player[],
+  playsDB: Play[],
+  mode: DraftMode = 'premier',
+  gameMode: GameMode = 'tournament',
+) {
   // 'round-summary' (D3, Premier only) pauses the draft after packs 1 and 2.
   const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'round-summary' | 'deckbuilding'>('loading');
   const [seats, setSeats] = useState<DraftSeat[]>([]);
@@ -308,6 +319,7 @@ export function useDraftEngine(allPlayers: Player[], playsDB: Play[], mode: Draf
     setDraftState,
     draftSeed,
     mode,
+    gameMode,
     pickDeadline,
     passSeq,
     pickFromIntro,

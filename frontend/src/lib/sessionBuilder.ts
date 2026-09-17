@@ -14,7 +14,8 @@ export function buildDraftSession(
   seats: DraftSeat[],
   pickLog: DraftPickRecord[] = [],
   seed?: number,
-  mode?: 'quick' | 'premier'
+  mode?: 'quick' | 'premier',
+  gameMode?: 'tournament' | 'challenge'
 ): DraftSession {
   const sessionSeats: DraftSessionSeat[] = seats.map((seat) => ({
     id: seat.id,
@@ -34,5 +35,6 @@ export function buildDraftSession(
     pickLog,
     seed,
     ...(mode ? { mode } : {}),
+    ...(gameMode ? { gameMode } : {}),
   };
 }

@@ -30,6 +30,9 @@ export interface KpiBandActions {
   canPlay: boolean;
   /** e.g. "Need 5 starters" — shown as a tooltip on the disabled controls. */
   disabledReason?: string;
+  /** plan_challenge_mode D1: overrides the "Save & play season" label — e.g.
+   *  "Save & start 82:0" for a challenge session. Defaults to "Save & play season". */
+  saveAndPlayLabel?: string;
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -149,6 +152,7 @@ export function TopKPIBand({
   playsTarget = 3,
   defaultExpanded,
   actions,
+  challengeBadge = false,
 }: {
   identity: RosterIdentity;
   shotDiet: TeamShotProfile;
@@ -174,6 +178,9 @@ export function TopKPIBand({
    *  Renders in both the collapsed row and the expanded band's header row; absent = the
    *  cluster renders nothing (existing callers keep working). */
   actions?: KpiBandActions;
+  /** plan_challenge_mode D2: the one badge that marks a challenge session in the
+   *  (otherwise un-re-themed) deck builder. */
+  challengeBadge?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(() => (defaultExpanded === undefined ? true : !defaultExpanded));
   // The open report is an overlay: Escape closes it, and so does any pointer-down
@@ -249,6 +256,11 @@ export function TopKPIBand({
 
   const chipRow = (
     <div className="h-nav shrink-0 flex items-center gap-2 pl-4 pr-16 box-border">
+      {challengeBadge && (
+        <span className="font-display text-xs uppercase tracking-widest bg-surface-inverse-deep text-accent px-2.5 py-1 rounded-full border border-accent shadow-sm shrink-0">
+          82:0
+        </span>
+      )}
       <div className="flex items-center gap-1">
         <Chip dot={playersDot} label="Players" value={`${activePlayers.length}/${ROSTER_SIZE}`} onClick={toggleCollapsed} />
         {playsAssigned !== undefined && (
@@ -313,8 +325,8 @@ export function TopKPIBand({
             onClick={actions.onSaveAndPlay}
           >
             <PlayIcon size={18} aria-hidden="true" className="@min-[1100px]:hidden" />
-            <span className="hidden @min-[1100px]:inline">Save &amp; play season</span>
-            <span className="sr-only @min-[1100px]:hidden">Save &amp; play season</span>
+            <span className="hidden @min-[1100px]:inline">{actions.saveAndPlayLabel ?? 'Save & play season'}</span>
+            <span className="sr-only @min-[1100px]:hidden">{actions.saveAndPlayLabel ?? 'Save & play season'}</span>
           </Button>
         </>
       )}

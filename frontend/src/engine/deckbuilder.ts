@@ -176,6 +176,10 @@ export interface DraftSession {
   /** plan ui_draft_deckbuild_pack D1: which draft mode produced this session.
    *  Missing = 'premier' (old sessions predate the mode split). */
   mode?: 'quick' | 'premier';
+  /** plan_challenge_mode D1: which game this draft was for. Missing = 'tournament'
+   *  (every session that predates the 82:0 Challenge). A roster can only start the
+   *  mode it was drafted for. */
+  gameMode?: 'tournament' | 'challenge';
 }
 
 // ── Position Eligibility ───────────────────────────────────────────────────
