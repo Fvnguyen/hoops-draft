@@ -33,17 +33,23 @@ import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
 const TOTAL_PICKS = CUBE_PACKS * PICKS_PER_PACK;
 
-// Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common)
+// Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common).
+// `badges` must match the real requirements in engine/synergies.ts PLAY_EFFECTS —
+// engine/draft.ts's bot draft logic scores a play against a bot's drafted player
+// traits by this exact array, so a stale/empty entry here silently makes bots blind
+// to that play's actual synergy. mechanicText was rewritten alongside it (2026-09-17,
+// owner-approved) to name the real badges and drop flavor numbers that no longer
+// match PLAY_EFFECTS' current balance.
 export const playsDB: Play[] = [
-  { type: 'Play', id: 'play-sys-1', name: 'Triangle Offense', rarity: 'Mythic', playCategory: 'system', badges: ['Post Scorer', 'Mid-Range'], mechanicText: 'Requires elite post and mid-range scoring. Grants massive +25% efficiency to half-court offense.' },
+  { type: 'Play', id: 'play-sys-1', name: 'Triangle Offense', rarity: 'Mythic', playCategory: 'system', badges: ['Finisher', 'Mid-Range Maestro'], mechanicText: 'Requires 2 Finishers and 2 Mid-Range Maestros. Boosts rim and mid-range shot volume and efficiency across the half-court offense.' },
   { type: 'Play', id: 'play-sys-2', name: '7 Seconds or Less', rarity: 'Mythic', playCategory: 'system', badges: ['Floor General', 'Sharpshooter'], mechanicText: 'Requires a Floor General and 3 Sharpshooters. Grants legendary transition scoring boost.' },
-  { type: 'Play', id: 'play-sys-3', name: 'Grit and Grind', rarity: 'Rare', playCategory: 'system', badges: ['Lockdown Defender', 'Glass Cleaner'], mechanicText: 'Requires 2 Lockdown Defenders and 1 Glass Cleaner. Opponent efficiency drops by 20%.' },
-  { type: 'Play', id: 'play-sys-4', name: 'Motion Offense', rarity: 'Rare', playCategory: 'system', badges: ['Floor General'], mechanicText: 'Requires high team Playmaking. +15% assist rate and team shooting boost.' },
-  { type: 'Play', id: 'play-std-1', name: 'High Pick & Roll', rarity: 'Uncommon', playCategory: 'special', badges: ['Floor General', 'Finisher'], mechanicText: 'Boosts effectiveness of Floor Generals running the PnR.' },
-  { type: 'Play', id: 'play-std-2', name: 'Box-and-One', rarity: 'Uncommon', playCategory: 'special', badges: ['Lockdown Defender'], mechanicText: 'Reduces opponent star player impact by 30%. Requires Lockdown Defender.' },
-  { type: 'Play', id: 'play-std-3', name: 'Horns', rarity: 'Common', playCategory: 'special', badges: [], mechanicText: 'Provides small scoring boost to PFs and Cs.' },
-  { type: 'Play', id: 'play-std-4', name: 'Full Court Press', rarity: 'Common', playCategory: 'special', badges: ['Lockdown Defender'], mechanicText: 'Increases forced turnovers. Costs high stamina.' },
-  { type: 'Play', id: 'play-std-5', name: 'Four Out One In', rarity: 'Common', playCategory: 'special', badges: ['Sharpshooter', 'Glass Cleaner'], mechanicText: 'Boosts Sharpshooter effectiveness when paired with a Glass Cleaner.' },
+  { type: 'Play', id: 'play-sys-3', name: 'Grit and Grind', rarity: 'Rare', playCategory: 'system', badges: ['Lockdown Defender', 'Glass Cleaner'], mechanicText: 'Requires 2 Lockdown Defenders and 1 Glass Cleaner. Chokes off opponent rim and mid-range efficiency.' },
+  { type: 'Play', id: 'play-sys-4', name: 'Motion Offense', rarity: 'Rare', playCategory: 'system', badges: ['Floor General'], mechanicText: 'Requires 2 Floor Generals. Boosts efficiency across every shot channel and speeds up the pace.' },
+  { type: 'Play', id: 'play-std-1', name: 'High Pick & Roll', rarity: 'Uncommon', playCategory: 'special', badges: ['Floor General', 'Finisher'], mechanicText: 'Requires a Floor General and a Finisher. Boosts rim scoring off the pick-and-roll.' },
+  { type: 'Play', id: 'play-std-2', name: 'Box-and-One', rarity: 'Uncommon', playCategory: 'special', badges: ['Lockdown Defender'], mechanicText: 'Requires a Lockdown Defender. Chokes off opponent perimeter and mid-range efficiency.' },
+  { type: 'Play', id: 'play-std-3', name: 'Horns', rarity: 'Common', playCategory: 'special', badges: ['Finisher', 'Glass Cleaner'], mechanicText: 'Requires a Finisher and a Glass Cleaner. Small scoring boost to a two-big elbow set.' },
+  { type: 'Play', id: 'play-std-4', name: 'Full Court Press', rarity: 'Common', playCategory: 'special', badges: ['Lockdown Defender'], mechanicText: 'Requires a Lockdown Defender. Forces extra possessions at a small cost to opponent rim efficiency.' },
+  { type: 'Play', id: 'play-std-5', name: 'Four Out One In', rarity: 'Common', playCategory: 'special', badges: ['Sharpshooter', 'Glass Cleaner'], mechanicText: 'Requires 2 Sharpshooters and a Glass Cleaner. Boosts 3-point volume and efficiency at the cost of some rim shots.' },
   { type: 'Play', id: 'play-std-6', name: 'Point Forward', rarity: 'Rare', playCategory: 'special', badges: ['Floor General', 'Glass Cleaner', 'Sharpshooter'], mechanicText: 'Requires a playmaking big (Floor General and Glass Cleaner together) and 2 Sharpshooters. Boosts 3-point shooting off the big’s playmaking.' }
 ];
 

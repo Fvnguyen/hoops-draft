@@ -176,8 +176,40 @@ export const playCategoryHex: Record<PlayCategory, { bar: string; chipBg: string
 };
 
 // PlayBoardGraphic's per-category decorative accents (chalkboard dots, crosshair rings).
+// Still used as the fallback face for Basic plays (no badge requirements to draw a motif from).
 export const playBoardAccent: Record<PlayCategory, { ring: string; dot: string; center: string }> = {
   system: { ring: 'border-amber-300/60', dot: 'bg-amber-300/40', center: 'bg-amber-300/50' },
   special: { ring: 'border-teal-300/30', dot: 'bg-teal-300/25', center: 'bg-teal-300/50' },
   basic: { ring: 'border-white/30', dot: 'bg-white/20', center: 'bg-white/30' },
+};
+
+// Hex stroke colour for a play's board motif (PlayBoardGraphic) — same hues as
+// playCategoryHex, just a raw value since the motif is drawn as inline SVG.
+export const playCategoryMotifStroke: Record<PlayCategory, string> = {
+  system: '#fcd34d',
+  special: '#5eead4',
+  basic: '#ffffff',
+};
+
+// design_play_faces (2026-09-17, owner-approved): one background motif per play, keyed
+// by its stable effect id (getPlayEffectId) — echoes the play's real formation (a box for
+// Box-and-One, four corners + one centre for Four Out One In, ...) so each play reads as
+// its own card instead of every System/Special play sharing one generic diagram. Plays
+// with no entry here (Basic offense/defense — no badge requirement to draw from) fall
+// back to the old category-generic PlayBoardGraphic look.
+export type PlayMotif =
+  | 'triangle' | 'speed' | 'wall' | 'orbit' | 'screen'
+  | 'box' | 'horns' | 'court' | 'four' | 'pointForward';
+
+export const playMotifByEffectId: Record<string, PlayMotif> = {
+  'play-sys-1': 'triangle',
+  'play-sys-2': 'speed',
+  'play-sys-3': 'wall',
+  'play-sys-4': 'orbit',
+  'play-std-1': 'screen',
+  'play-std-2': 'box',
+  'play-std-3': 'horns',
+  'play-std-4': 'court',
+  'play-std-5': 'four',
+  'play-std-6': 'pointForward',
 };

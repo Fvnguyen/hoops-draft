@@ -53,6 +53,7 @@ import {
   badgeConfig, defaultBadgeConfig, basePosColors, getPosColors, positionConicGradient,
   type GemRarity, gemPalettes, gemPixelSizes, rarityTextColor, rarityAccentColor,
   teamColors, teamIds, catColor, playCategoryTheme, roleTagColor, playBoardAccent,
+  playCategoryMotifStroke, playMotifByEffectId, type PlayMotif,
   defaultTeamColor, defaultTeamColorDark,
 } from './cardColors';
 
@@ -755,10 +756,10 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
   );
 }
 
-// Tactical board visual per play category. Module-level (not defined inside
-// PlayCard's render) so it isn't recreated as a new component identity every
-// render.
-function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
+// Category-generic tactical board visual — the pre-design_play_faces look. Kept only as
+// the fallback face for Basic offense/defense, which have no badge requirement to draw a
+// per-play motif from (see PlayBoardGraphic below).
+function PlayBoardGraphicGeneric({ cat }: { cat: 'system' | 'special' | 'basic' }) {
   const accent = playBoardAccent[cat];
   if (cat === 'system') {
     // Clipboard / chalkboard diagram style
@@ -798,6 +799,136 @@ function PlayBoardGraphic({ cat }: { cat: 'system' | 'special' | 'basic' }) {
   );
 }
 
+// design_play_faces: the per-play background motif — a faint diagram echoing the play's
+// real formation (a box for Box-and-One, four corners + one centre for Four Out One In,
+// a kickout triangle for Point Forward, ...). Purely decorative, drawn behind the badge
+// medallions in PlayBoardGraphic; the medallions (real icon/colour/level, same as
+// everywhere else) carry the actual meaning so the face stays legible with the motif off.
+function PlayMotifSvg({ motif, stroke }: { motif: PlayMotif; stroke: string }) {
+  return (
+    <svg viewBox="0 0 200 140" className="absolute inset-0 w-full h-full opacity-30" style={{ color: stroke }}>
+      {motif === 'triangle' && (
+        <>
+          <polygon points="100,18 25,118 175,118" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="100" cy="18" r="5" fill="currentColor" />
+          <circle cx="25" cy="118" r="5" fill="currentColor" />
+          <circle cx="175" cy="118" r="5" fill="currentColor" />
+        </>
+      )}
+      {motif === 'speed' && (
+        <>
+          <line x1="20" y1="115" x2="80" y2="55" stroke="currentColor" strokeWidth="3" />
+          <line x1="45" y1="125" x2="105" y2="65" stroke="currentColor" strokeWidth="3" />
+          <line x1="70" y1="135" x2="130" y2="75" stroke="currentColor" strokeWidth="3" />
+          <circle cx="150" cy="35" r="16" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="150" y1="35" x2="150" y2="24" stroke="currentColor" strokeWidth="3" />
+          <line x1="150" y1="35" x2="159" y2="38" stroke="currentColor" strokeWidth="3" />
+        </>
+      )}
+      {motif === 'wall' && (
+        <>
+          <rect x="10" y="15" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="55" y="15" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="100" y="15" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="145" y="15" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="-12" y="35" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="33" y="35" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="78" y="35" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="123" y="35" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="168" y="35" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="10" y="55" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="55" y="55" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="100" y="55" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+          <rect x="145" y="55" width="45" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" />
+        </>
+      )}
+      {motif === 'orbit' && (
+        <>
+          <path d="M50,90 A50,50 0 1 1 150,90" fill="none" stroke="currentColor" strokeWidth="3" />
+          <polygon points="150,90 138,82 138,98" fill="currentColor" />
+        </>
+      )}
+      {motif === 'screen' && (
+        <>
+          <rect x="90" y="30" width="14" height="60" fill="currentColor" />
+          <path d="M60,110 C60,80 80,80 90,60" fill="none" stroke="currentColor" strokeWidth="3" />
+          <polygon points="90,60 80,66 92,72" fill="currentColor" />
+          <circle cx="60" cy="110" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+        </>
+      )}
+      {motif === 'box' && (
+        <>
+          <rect x="45" y="25" width="110" height="90" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="100" cy="70" r="9" fill="currentColor" />
+        </>
+      )}
+      {motif === 'horns' && (
+        <>
+          <path d="M60,100 A40,40 0 0 1 140,100" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="60" cy="45" r="6" fill="currentColor" />
+          <circle cx="140" cy="45" r="6" fill="currentColor" />
+          <circle cx="100" cy="105" r="6" fill="none" stroke="currentColor" strokeWidth="3" />
+        </>
+      )}
+      {motif === 'court' && (
+        <>
+          <rect x="15" y="20" width="170" height="100" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="100" y1="20" x2="100" y2="120" stroke="currentColor" strokeWidth="2" />
+          <polygon points="30,70 45,62 45,78" fill="currentColor" />
+          <polygon points="170,70 155,62 155,78" fill="currentColor" />
+        </>
+      )}
+      {motif === 'four' && (
+        <>
+          <circle cx="30" cy="30" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="170" cy="30" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="30" cy="110" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="170" cy="110" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="100" cy="70" r="9" fill="currentColor" />
+        </>
+      )}
+      {motif === 'pointForward' && (
+        <>
+          <circle cx="100" cy="25" r="8" fill="currentColor" />
+          <circle cx="40" cy="115" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <circle cx="160" cy="115" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+          <line x1="100" y1="25" x2="40" y2="115" stroke="currentColor" strokeWidth="2.5" />
+          <line x1="100" y1="25" x2="160" y2="115" stroke="currentColor" strokeWidth="2.5" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+// design_play_faces (2026-09-17, owner-approved): a play's face is now a background motif
+// (its literal formation) plus a medallion for each badge the synergy engine actually
+// requires (real icon/colour/level, via the same BadgeIcon everywhere else uses) — before
+// this, every System play shared one amber clipboard diagram and every Special play
+// shared one teal crosshair, so cards were indistinguishable without reading the name.
+// Basic offense/defense have no requirement to draw a face from and keep the old generic
+// look (PlayBoardGraphicGeneric).
+function PlayBoardGraphic({ play }: { play: Play }) {
+  const cat = play.playCategory || 'special';
+  const effectId = getPlayEffectId(play);
+  const requirements = getPlayRequirements(effectId);
+  const motif = playMotifByEffectId[effectId];
+
+  if (!motif || requirements.length === 0) {
+    return <PlayBoardGraphicGeneric cat={cat} />;
+  }
+
+  return (
+    <>
+      <PlayMotifSvg motif={motif} stroke={playCategoryMotifStroke[cat]} />
+      <div className="relative z-10 flex items-center gap-1.5">
+        {requirements.map((req, i) => (
+          <BadgeIcon key={i} name={req.badge} level={req.levels} size="small" />
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function PlayCardFront({ play }: { play: Play }) {
   const cat = play.playCategory || 'special';
   const theme = playCategoryTheme[cat];
@@ -819,7 +950,7 @@ export function PlayCardFront({ play }: { play: Play }) {
       <div className={`flex-1 relative overflow-hidden ${theme.board} flex items-center justify-center p-2`}>
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
         <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
-          <PlayBoardGraphic cat={cat} />
+          <PlayBoardGraphic play={play} />
         </div>
       </div>
       {requirements.length > 0 && (
@@ -1055,7 +1186,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
               <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/basketball.png')]" />
 
               <div className="w-full h-full border-2 border-white/15 rounded-sm relative flex flex-col items-center justify-center">
-                  <PlayBoardGraphic cat={cat} />
+                  <PlayBoardGraphic play={play} />
               </div>
             </div>
           )}
