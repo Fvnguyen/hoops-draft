@@ -5,7 +5,7 @@ import { SupabaseGameStore, type CloudSyncClient } from '@/storage/supabase';
 import { createSeason, playNextGame } from '@/engine/season';
 import type { DraftSession } from '@/engine/deckbuilder';
 import { loadPlayers, PLAYS, runHeadlessDraft } from '../unit/helpers';
-import { makeDraftSession, makeSavedRoster } from './fixtures';
+import { makeChallengeRun, makeDraftSession, makeSavedRoster } from './fixtures';
 
 const OWNER = 'owner-1';
 
@@ -17,6 +17,7 @@ class FakeCloud implements CloudSyncClient {
     ['draft_sessions', new Map()],
     ['rosters', new Map()],
     ['seasons', new Map()],
+    ['challenge_runs', new Map()],
   ]);
   private clock = 0;
 
@@ -44,7 +45,7 @@ class FakeCloud implements CloudSyncClient {
     return { data: [{ ok: true, current_row: row }], error: null };
   }
 
-  from(table: 'draft_sessions' | 'rosters' | 'seasons') {
+  from(table: 'draft_sessions' | 'rosters' | 'seasons' | 'challenge_runs') {
     const rows = this.rows.get(table)!;
     return {
       select: (_cols: string) => ({
@@ -69,7 +70,7 @@ class FakeCloud implements CloudSyncClient {
   }
 
   /** Simulates another device writing directly (bypassing this SupabaseGameStore). */
-  writeDirect(table: 'draft_sessions' | 'rosters' | 'seasons', id: string, data: unknown): void {
+  writeDirect(table: 'draft_sessions' | 'rosters' | 'seasons' | 'challenge_runs', id: string, data: unknown): void {
     const rows = this.rows.get(table)!;
     rows.set(id, { id, owner_id: OWNER, data, updated_at: this.nextUpdatedAt() });
   }
@@ -277,6 +278,66 @@ describe('SupabaseGameStore', () => {
 
     expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-b']);
     expect(await store.listConflicts()).toEqual([]);
+  });
+
+  it('pushes a new challenge run to the cloud on save', async () => {
+    const run = makeChallengeRun();
+    await store.saveChallengeRun(run);
+    await flush();
+
+    const row = cloud.rows.get('challenge_runs')!.get(run.id);
+    expect(row).toBeDefined();
+    expect((row!.data as typeof run).phase).toBe('first');
+  });
+
+  it('deleteChallengeRun actually removes the cloud row', async () => {
+    const run = makeChallengeRun();
+    await store.saveChallengeRun(run);
+    await flush();
+    expect(cloud.rows.get('challenge_runs')!.has(run.id)).toBe(true);
+
+    await store.deleteChallengeRun(run.id);
+
+    expect(cloud.rows.get('challenge_runs')!.has(run.id)).toBe(false);
+    expect(await store.getChallengeRun(run.id)).toBeNull();
+  });
+
+  it('auto-merges a challenge run advanced further on another device by taking the later phase (no conflict)', async () => {
+    const run = makeChallengeRun({ phase: 'first' });
+    await store.saveChallengeRun(run);
+    await flush();
+
+    // Another device moved this run into the front office (break) and then the second
+    // half (second) while this device still only knows about `first`.
+    const ahead = { ...run, phase: 'second' as const, halves: [] };
+    cloud.writeDirect('challenge_runs', run.id, ahead);
+
+    await store.saveChallengeRun(run); // still `first` locally
+    await flush();
+
+    const merged = await store.getChallengeRun(run.id);
+    expect(merged?.phase).toBe('second');
+    expect(await store.listConflicts()).toEqual([]);
+  });
+
+  it('pushLocalToCloud (D5) migrates local-only challenge runs once', async () => {
+    const localOnly = makeChallengeRun();
+    await store.saveChallengeRun(localOnly);
+    await flush();
+    expect(cloud.rows.get('challenge_runs')!.get(localOnly.id)).toBeDefined();
+
+    const alreadyCloud = makeChallengeRun({ phase: 'done' });
+    cloud.writeDirect('challenge_runs', alreadyCloud.id, alreadyCloud);
+    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    await local.saveChallengeRun({ ...alreadyCloud, phase: 'first' });
+    const fresh = new SupabaseGameStore(local, cloud);
+    await fresh.setOwnerId(OWNER);
+    await flush();
+
+    await fresh.pushLocalToCloud();
+    await flush();
+
+    expect((cloud.rows.get('challenge_runs')!.get(alreadyCloud.id)!.data as { phase: string }).phase).toBe('done');
   });
 
   it('queues a write when the RPC throws and flushes it back on retry', async () => {

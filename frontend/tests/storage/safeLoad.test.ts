@@ -49,6 +49,15 @@ describe.each(implementations)('$name safe loads', ({ make }) => {
     await expect(store.listSeasons()).resolves.toEqual([]);
   });
 
+  it('drops a challenge run missing required fields instead of throwing', async () => {
+    const corrupt = { id: 'bad-run', phase: 'first' } as unknown as import('@/storage/types').ChallengeRun;
+    await store.saveChallengeRun(corrupt);
+
+    await expect(store.getChallengeRun('bad-run')).resolves.toBeNull();
+    await expect(store.getChallengeRunByRoster('whatever')).resolves.toBeNull();
+    await expect(store.listChallengeRuns()).resolves.toEqual([]);
+  });
+
   it('does not auto-upgrade a legacy per-game season schedule on load (upgrade now runs once, at DB open — see storage-migration.test.ts)', async () => {
     // Per D3, `normalizeSeason` moved from a load-time call in safeLoad.ts to
     // a one-time Dexie `.upgrade()` step run when the store is opened. A

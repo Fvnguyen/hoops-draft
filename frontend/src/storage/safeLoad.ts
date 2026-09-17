@@ -16,7 +16,7 @@
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import type { SavedRoster } from './types';
+import type { ChallengeRun, SavedRoster } from './types';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -46,6 +46,24 @@ export function safeParseSavedRoster(raw: unknown): SavedRoster | null {
     return null;
   }
   return roster;
+}
+
+export function safeParseChallengeRun(raw: unknown): ChallengeRun | null {
+  if (!isPlainObject(raw)) return null;
+  const run = raw as unknown as ChallengeRun;
+  if (
+    typeof run.id !== 'string' ||
+    typeof run.sessionId !== 'string' ||
+    typeof run.rosterId !== 'string' ||
+    typeof run.seed !== 'number' ||
+    typeof run.phase !== 'string' ||
+    !isPlainObject(run.rosterPre) ||
+    !Array.isArray(run.halves)
+  ) {
+    console.error('[storage] Corrupt challenge run record skipped:', raw);
+    return null;
+  }
+  return run;
 }
 
 export function safeParseSeason(raw: unknown): Season | null {

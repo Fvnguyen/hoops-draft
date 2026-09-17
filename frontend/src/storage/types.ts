@@ -15,6 +15,7 @@ import type { Season } from '@/engine/season';
 import type { DraftCard } from '@/engine/types';
 import type { PlayAssignment } from '@/engine/playbook';
 import type { ArchetypeSelection } from '@/engine/archetypes';
+import type { ChallengeHalf } from '@/engine/challenge';
 import { CARD_SET_VERSION } from '@/engine/cards';
 /**
  * The D1 "completed game" shape (plan_data_storage) is declared in `engine/season.ts`
@@ -63,6 +64,53 @@ export interface SavedRoster {
   cardSetVersion?: string;
 }
 
+// ── challenge_mode D11: 82:0 Challenge run ──────────────────────────────────
+
+/** `first`/`second` = the two spins (D7); `break` = the front office between them
+ *  (D8/D9, before "Spin the second half" is pressed); `done` = results shown (D10). */
+export type ChallengePhase = 'first' | 'break' | 'second' | 'done';
+
+/** One front-office trade (D9): the dropped card goes back into the pool the offers were
+ *  drawn from, the acquired one lands on the bench. Recorded so the results screen (D10)
+ *  can show a trade verdict against the ghost line. */
+export interface ChallengeTrade {
+  droppedCardId: string;
+  offeredCardIds: string[];
+  acquiredCardId: string;
+}
+
+/**
+ * D11: one 82:0 run. `rosterPre`/`rosterPost` are full `SavedRoster` SNAPSHOTS, not a live
+ * reference to the roster record — a trade or a lineup/plays/identity edit in the front
+ * office must never mutate the roster the user actually drafted. `halves` holds only what
+ * D11 lists (W/L string, scores, top performer per game, player totals) — never a box
+ * score. `ghost` is half 2 re-simulated with `rosterPre` instead of `rosterPost` (D10's
+ * dashed ghost line + trade verdict); absent until the front office trade decision is made
+ * and half 2 has been simulated.
+ */
+export interface ChallengeRun {
+  id: string;
+  ownerId?: string;
+  /** The draft session this run's roster was built from. */
+  sessionId: string;
+  rosterId: string;
+  timestamp: string;
+  /** Run seed (D4): every game, the schedule and the trade pack derive their own sub-seed
+   *  from this one, so the whole run is reproducible from it alone. */
+  seed: number;
+  /** engine/balance.ts BALANCE_VERSION at simulation time — same convention as
+   *  `StoredGameResult.balanceVersion` in `engine/season.ts`. */
+  balanceVersion: number;
+  phase: ChallengePhase;
+  rosterPre: SavedRoster;
+  rosterPost?: SavedRoster;
+  trade?: ChallengeTrade;
+  /** One entry per half simulated so far: length 0 (not started), 1 (first half done,
+   *  in the front office), or 2 (both halves done). */
+  halves: ChallengeHalf[];
+  ghost?: ChallengeHalf;
+}
+
 export interface GameStore {
   setOwnerId(ownerId: string | null): Promise<void>;
   claimLegacyData(): Promise<void>;
@@ -81,6 +129,13 @@ export interface GameStore {
   getSeasonByRoster(rosterId: string): Promise<Season | null>;
   saveSeason(s: Season): Promise<void>; // upsert
   deleteSeason(id: string): Promise<void>;
+
+  /** challenge_mode D11: same shape as the Season methods above (one run per roster). */
+  listChallengeRuns(): Promise<ChallengeRun[]>;
+  getChallengeRun(id: string): Promise<ChallengeRun | null>;
+  getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null>;
+  saveChallengeRun(r: ChallengeRun): Promise<void>; // upsert
+  deleteChallengeRun(id: string): Promise<void>;
 
   exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }>;
   clearAll(): Promise<void>;
@@ -118,7 +173,7 @@ export class StorageQuotaError extends Error {
 
 // ── accounts_cloud_saves (D4/D7): cloud sync status + conflicts ────────────
 
-export type SyncTable = 'draft_sessions' | 'rosters' | 'seasons';
+export type SyncTable = 'draft_sessions' | 'rosters' | 'seasons' | 'challenge_runs';
 
 /** A push that `storage/merge.ts` couldn't auto-resolve (currently: only rosters ever
  *  land here — draft/season conflicts always auto-merge). Surfaced via

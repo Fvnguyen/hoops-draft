@@ -11,8 +11,8 @@
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import { mergeDraftSession, mergeSeason } from './merge';
-import type { GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
+import { mergeChallengeRun, mergeDraftSession, mergeSeason } from './merge';
+import type { ChallengeRun, GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
 
 interface CasUpsertRow {
   ok: boolean;
@@ -45,7 +45,10 @@ export interface CloudSyncClient {
   };
 }
 
-type RecordOf<T extends SyncTable> = T extends 'draft_sessions' ? DraftSession : T extends 'rosters' ? SavedRoster : Season;
+type RecordOf<T extends SyncTable> = T extends 'draft_sessions' ? DraftSession
+  : T extends 'rosters' ? SavedRoster
+  : T extends 'challenge_runs' ? ChallengeRun
+  : Season;
 
 function timestampOf(data: { timestamp?: string }): string {
   return data.timestamp ?? new Date().toISOString();
@@ -135,6 +138,7 @@ export class SupabaseGameStore implements GameStore {
   private async writeLocalOnly(table: SyncTable, data: unknown): Promise<void> {
     if (table === 'draft_sessions') await this.local.saveDraftSession(data as DraftSession);
     else if (table === 'rosters') await this.local.saveRoster(data as SavedRoster);
+    else if (table === 'challenge_runs') await this.local.saveChallengeRun(data as ChallengeRun);
     else await this.local.saveSeason(data as Season);
   }
 
@@ -233,6 +237,13 @@ export class SupabaseGameStore implements GameStore {
       await this.local.saveSeason(merged);
       return this.push(table, id, merged);
     }
+    if (table === 'challenge_runs') {
+      // D11: the later `phase` always wins — never a conflict for a human to resolve.
+      const { merged } = mergeChallengeRun(local as ChallengeRun, remote as ChallengeRun);
+      this.baselines.set(key, remoteUpdatedAt);
+      await this.local.saveChallengeRun(merged);
+      return this.push(table, id, merged);
+    }
     // rosters: always a conflict (mergeRoster never auto-resolves).
     return this.recordConflict(table, id, local, remote);
   }
@@ -272,6 +283,7 @@ export class SupabaseGameStore implements GameStore {
   private async readLocal(table: SyncTable, id: string): Promise<unknown> {
     if (table === 'draft_sessions') return this.local.getDraftSession(id);
     if (table === 'rosters') return this.local.getRoster(id);
+    if (table === 'challenge_runs') return this.local.getChallengeRun(id);
     return this.local.getSeason(id);
   }
 
@@ -280,7 +292,7 @@ export class SupabaseGameStore implements GameStore {
    *  a rejected push would use, so a second device's saves surface on this one too. */
   private async pullAll(): Promise<void> {
     if (!this.ownerId) return;
-    const tables: SyncTable[] = ['draft_sessions', 'rosters', 'seasons'];
+    const tables: SyncTable[] = ['draft_sessions', 'rosters', 'seasons', 'challenge_runs'];
     for (const table of tables) {
       const { data, error } = await this.client.from(table).select('id, data, updated_at').eq('owner_id', this.ownerId);
       if (error || !data) continue;
@@ -326,6 +338,8 @@ export class SupabaseGameStore implements GameStore {
     for (const s of sessions) await this.pushIfMissing('draft_sessions', s.id, s);
     for (const r of rosters) await this.pushIfMissing('rosters', r.id, r);
     for (const s of seasons) await this.pushIfMissing('seasons', s.id, s);
+    const runs = await this.local.listChallengeRuns();
+    for (const r of runs) await this.pushIfMissing('challenge_runs', r.id, r);
     this.emit();
   }
 
@@ -373,6 +387,22 @@ export class SupabaseGameStore implements GameStore {
   async deleteSeason(id: string): Promise<void> {
     await this.local.deleteSeason(id);
     await this.deleteRemote('seasons', id);
+  }
+
+  // ── GameStore: challenge runs (D11) ─────────────────────────────────────
+
+  listChallengeRuns(): Promise<ChallengeRun[]> { return this.local.listChallengeRuns(); }
+  getChallengeRun(id: string): Promise<ChallengeRun | null> { return this.local.getChallengeRun(id); }
+  getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> { return this.local.getChallengeRunByRoster(rosterId); }
+  async saveChallengeRun(r: ChallengeRun): Promise<void> {
+    await this.local.saveChallengeRun(r);
+    // See saveDraftSession/saveRoster: push what actually landed locally.
+    const stored = await this.local.getChallengeRun(r.id);
+    await this.push('challenge_runs', r.id, stored ?? r);
+  }
+  async deleteChallengeRun(id: string): Promise<void> {
+    await this.local.deleteChallengeRun(id);
+    await this.deleteRemote('challenge_runs', id);
   }
 
   // ── GameStore: bulk / meta ─────────────────────────────────────────────

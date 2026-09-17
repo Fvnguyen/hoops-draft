@@ -8,7 +8,7 @@
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
-import type { SavedRoster } from '@/storage/types';
+import type { ChallengeRun, SavedRoster } from '@/storage/types';
 
 let counter = 0;
 function nextId(prefix: string): string {
@@ -36,6 +36,21 @@ export function makeSavedRoster(overrides: Partial<SavedRoster> = {}): SavedRost
     depthChartOrder: { PG: [], SG: [], SF: [], PF: [], C: [] },
     activePlays: [],
     sessionId: null,
+    ...overrides,
+  };
+}
+
+export function makeChallengeRun(overrides: Partial<ChallengeRun> = {}): ChallengeRun {
+  return {
+    id: nextId('challenge'),
+    sessionId: nextId('session'),
+    rosterId: nextId('roster'),
+    timestamp: new Date().toISOString(),
+    seed: 42,
+    balanceVersion: 7,
+    phase: 'first',
+    rosterPre: makeSavedRoster(),
+    halves: [],
     ...overrides,
   };
 }

@@ -11,6 +11,7 @@ import type { Season } from '@/engine/season';
 import {
   CURRENT_CARD_SET_VERSION,
   IDLE_SYNC_STATUS,
+  type ChallengeRun,
   type GameStore,
   type SavedRoster,
   type StorageMeta,
@@ -18,13 +19,14 @@ import {
   type SyncStatus,
   type SyncTable,
 } from './types';
-import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
+import { safeParseChallengeRun, safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 export class MemoryGameStore implements GameStore {
   private ownerId: string | null = null;
   private sessions = new Map<string, DraftSession>();
   private rosters = new Map<string, SavedRoster>();
   private seasons = new Map<string, Season>();
+  private challengeRuns = new Map<string, ChallengeRun>();
   private meta = new Map<string, string>();
 
   async setOwnerId(ownerId: string | null): Promise<void> { this.ownerId = ownerId; }
@@ -34,6 +36,7 @@ export class MemoryGameStore implements GameStore {
     for (const row of this.sessions.values()) if (!row.ownerId) row.ownerId = this.ownerId;
     for (const row of this.rosters.values()) if (!row.ownerId) row.ownerId = this.ownerId;
     for (const row of this.seasons.values()) if (!row.ownerId) row.ownerId = this.ownerId;
+    for (const row of this.challengeRuns.values()) if (!row.ownerId) row.ownerId = this.ownerId;
   }
 
   private owned<T extends { ownerId?: string }>(rows: T[]): T[] { return this.ownerId ? rows.filter((row) => row.ownerId === this.ownerId) : rows; }
@@ -114,6 +117,30 @@ export class MemoryGameStore implements GameStore {
     this.seasons.delete(id);
   }
 
+  async listChallengeRuns(): Promise<ChallengeRun[]> {
+    return this.owned([...this.challengeRuns.values()]).map(safeParseChallengeRun).filter((r): r is ChallengeRun => r !== null);
+  }
+
+  async getChallengeRun(id: string): Promise<ChallengeRun | null> {
+    const row = this.challengeRuns.get(id) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    return row ? safeParseChallengeRun(row) : null;
+  }
+
+  async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
+    const row = [...this.challengeRuns.values()].find((r) => r.rosterId === rosterId) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    return row ? safeParseChallengeRun(row) : null;
+  }
+
+  async saveChallengeRun(r: ChallengeRun): Promise<void> {
+    this.challengeRuns.set(r.id, { ...r, ownerId: this.ownerId ?? r.ownerId });
+  }
+
+  async deleteChallengeRun(id: string): Promise<void> {
+    this.challengeRuns.delete(id);
+  }
+
   async exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }> {
     return {
       sessions: [...this.sessions.values()],
@@ -126,6 +153,7 @@ export class MemoryGameStore implements GameStore {
     this.sessions.clear();
     this.rosters.clear();
     this.seasons.clear();
+    this.challengeRuns.clear();
   }
 
   async usage(): Promise<{ sessions: number; seasons: number; rosters: number; bytesEstimate: number }> {

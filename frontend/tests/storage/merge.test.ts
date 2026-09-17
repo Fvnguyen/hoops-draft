@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { createSeason, playNextGame, recomputeStandingsFromSchedule } from '@/engine/season';
 import type { DraftPickRecord, DraftSession } from '@/engine/deckbuilder';
-import { mergeDraftSession, mergeSeason, mergeRoster } from '@/storage/merge';
+import { mergeChallengeRun, mergeDraftSession, mergeSeason, mergeRoster } from '@/storage/merge';
 import { loadPlayers, PLAYS, runHeadlessDraft } from '../unit/helpers';
-import { makeDraftSession, makeSavedRoster } from './fixtures';
+import { makeChallengeRun, makeDraftSession, makeSavedRoster } from './fixtures';
 
 function pick(overallPick: number, pickedCardId: string, seatId = 'human-0'): DraftPickRecord {
   return { packNumber: 1, pickNumber: overallPick, overallPick, seatId, packContents: [pickedCardId], pickedCardId };
@@ -81,5 +81,45 @@ describe('mergeRoster', () => {
 
     const { conflict } = mergeRoster(local, remote);
     expect(conflict).toBe(true);
+  });
+});
+
+describe('mergeChallengeRun', () => {
+  it('takes remote when it is further along the first -> break -> second -> done ladder', () => {
+    const local = makeChallengeRun({ phase: 'first' });
+    const remote = makeChallengeRun({ id: local.id, phase: 'break' });
+
+    const { merged, conflict } = mergeChallengeRun(local, remote);
+    expect(conflict).toBe(false);
+    expect(merged).toBe(remote);
+  });
+
+  it('takes local when it is further along than remote', () => {
+    const local = makeChallengeRun({ phase: 'done' });
+    const remote = makeChallengeRun({ id: local.id, phase: 'second' });
+
+    const { merged, conflict } = mergeChallengeRun(local, remote);
+    expect(conflict).toBe(false);
+    expect(merged).toBe(local);
+  });
+
+  it('keeps local on a tie (same phase both sides)', () => {
+    const local = makeChallengeRun({ phase: 'second' });
+    const remote = makeChallengeRun({ id: local.id, phase: 'second' });
+
+    const { merged, conflict } = mergeChallengeRun(local, remote);
+    expect(conflict).toBe(false);
+    expect(merged).toBe(local);
+  });
+
+  it('never reports a conflict, even across the full ladder', () => {
+    const phases = ['first', 'break', 'second', 'done'] as const;
+    for (const a of phases) {
+      for (const b of phases) {
+        const local = makeChallengeRun({ phase: a });
+        const remote = makeChallengeRun({ id: local.id, phase: b });
+        expect(mergeChallengeRun(local, remote).conflict).toBe(false);
+      }
+    }
   });
 });

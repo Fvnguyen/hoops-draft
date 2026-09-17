@@ -11,7 +11,7 @@
 import type { DraftSession, DraftPickRecord } from '@/engine/deckbuilder';
 import type { Season, SeasonScheduleEntry } from '@/engine/season';
 import { recomputeStandingsFromSchedule } from '@/engine/season';
-import type { SavedRoster } from './types';
+import type { ChallengePhase, ChallengeRun, SavedRoster } from './types';
 
 export interface MergeResult<T> {
   merged: T;
@@ -75,4 +75,19 @@ export function mergeSeason(local: Season, remote: Season, session: DraftSession
  */
 export function mergeRoster(local: SavedRoster, _remote: SavedRoster): MergeResult<SavedRoster> {
   return { merged: local, conflict: true };
+}
+
+const CHALLENGE_PHASE_ORDER: Record<ChallengePhase, number> = { first: 0, break: 1, second: 2, done: 3 };
+
+/**
+ * challenge_mode D11's one merge rule: whichever side is further along the
+ * first -> break -> second -> done ladder wins outright, no field-level union (a `phase`
+ * further along always carries the halves/trade data that got it there). Ties (including
+ * two sides genuinely at the same phase) keep `local`. Never a conflict — unlike
+ * `mergeRoster`, there's no arbitrary reordering here for a human to adjudicate.
+ */
+export function mergeChallengeRun(local: ChallengeRun, remote: ChallengeRun): MergeResult<ChallengeRun> {
+  const localRank = CHALLENGE_PHASE_ORDER[local.phase];
+  const remoteRank = CHALLENGE_PHASE_ORDER[remote.phase];
+  return { merged: remoteRank > localRank ? remote : local, conflict: false };
 }

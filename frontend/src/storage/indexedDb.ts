@@ -13,9 +13,9 @@ import type { DraftSession } from '@/engine/deckbuilder';
 import { normalizeBuiltRoster } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import { normalizeSeason } from '@/engine/season';
-import type { GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
+import type { ChallengeRun, GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
 import { StorageQuotaError, CURRENT_CARD_SET_VERSION, IDLE_SYNC_STATUS } from './types';
-import { safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
+import { safeParseChallengeRun, safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 interface MetaRow {
   key: string;
@@ -27,12 +27,14 @@ interface MetaRow {
  * with an `.upgrade()`) whenever the on-disk shape changes — see D3 in
  * `docs/plans/plan_data_storage_2026-09-13.md`.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export class MagicBallDB extends Dexie {
   draftSessions!: Table<DraftSession, string>;
   rosters!: Table<SavedRoster, string>;
   seasons!: Table<Season, string>;
+  /** challenge_mode D11: one row per 82:0 run. */
+  challengeRuns!: Table<ChallengeRun, string>;
   /** Free-form key/value flags (e.g. the one-time localStorage migration marker). */
   meta!: Table<MetaRow, string>;
   /** Singleton row (id 'meta') holding the typed schema/card-set version — see StorageMeta. */
@@ -116,6 +118,27 @@ export class MagicBallDB extends Dexie {
         });
       });
 
+    // challenge_mode T4/D11: a brand-new table, so nothing to migrate for existing rows —
+    // the `.upgrade()` step only needs to bump the stamped `schemaVersion` on the meta row
+    // (mirrors version(3) above; existing users just gain an empty `challengeRuns` table).
+    this.version(4)
+      .stores({
+        draftSessions: 'id, timestamp, ownerId',
+        rosters: 'id, sessionId, ownerId',
+        seasons: 'id, rosterId, sessionId, ownerId',
+        challengeRuns: 'id, sessionId, rosterId, ownerId',
+        meta: 'key',
+        storageMeta: 'id',
+      })
+      .upgrade(async (tx) => {
+        const existing = await tx.table<StorageMeta, string>('storageMeta').get('meta');
+        await tx.table<StorageMeta, string>('storageMeta').put({
+          id: 'meta',
+          schemaVersion: SCHEMA_VERSION,
+          cardSetVersion: existing?.cardSetVersion ?? CURRENT_CARD_SET_VERSION,
+        });
+      });
+
     // Brand-new databases never run the `.upgrade()` step above (there is no
     // earlier version to upgrade from), so stamp the meta row here too.
     this.on('populate', (tx) => {
@@ -177,6 +200,7 @@ export class IndexedDbGameStore implements GameStore {
       this.db.draftSessions.toCollection().modify((row: DraftSession) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
       this.db.rosters.toCollection().modify((row: SavedRoster) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
       this.db.seasons.toCollection().modify((row: Season) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
+      this.db.challengeRuns.toCollection().modify((row: ChallengeRun) => { if (!row.ownerId) row.ownerId = this.ownerId!; }),
     ]);
   }
 
@@ -255,6 +279,33 @@ export class IndexedDbGameStore implements GameStore {
     await this.db.seasons.delete(id);
   }
 
+  async listChallengeRuns(): Promise<ChallengeRun[]> {
+    const rows = this.owned(await this.db.challengeRuns.toArray());
+    return rows.map(safeParseChallengeRun).filter((r): r is ChallengeRun => r !== null);
+  }
+
+  async getChallengeRun(id: string): Promise<ChallengeRun | null> {
+    const row = (await this.db.challengeRuns.get(id)) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    return row ? safeParseChallengeRun(row) : null;
+  }
+
+  async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
+    const row = (await this.db.challengeRuns.where('rosterId').equals(rosterId).first()) ?? null;
+    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    return row ? safeParseChallengeRun(row) : null;
+  }
+
+  async saveChallengeRun(r: ChallengeRun): Promise<void> {
+    await guardQuota(async () => {
+      await this.db.challengeRuns.put({ ...r, ownerId: this.ownerId ?? r.ownerId });
+    });
+  }
+
+  async deleteChallengeRun(id: string): Promise<void> {
+    await this.db.challengeRuns.delete(id);
+  }
+
   async exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }> {
     const [sessions, seasons, rosters] = await Promise.all([
       this.listDraftSessions(),
@@ -265,7 +316,12 @@ export class IndexedDbGameStore implements GameStore {
   }
 
   async clearAll(): Promise<void> {
-    await Promise.all([this.db.draftSessions.clear(), this.db.rosters.clear(), this.db.seasons.clear()]);
+    await Promise.all([
+      this.db.draftSessions.clear(),
+      this.db.rosters.clear(),
+      this.db.seasons.clear(),
+      this.db.challengeRuns.clear(),
+    ]);
   }
 
   async usage(): Promise<{ sessions: number; seasons: number; rosters: number; bytesEstimate: number }> {

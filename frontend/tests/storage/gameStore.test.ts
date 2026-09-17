@@ -4,7 +4,7 @@ import { MemoryGameStore } from '@/storage/memory';
 import { IndexedDbGameStore, MagicBallDB } from '@/storage/indexedDb';
 import type { GameStore } from '@/storage/types';
 import { CURRENT_CARD_SET_VERSION } from '@/storage/types';
-import { makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
+import { makeChallengeRun, makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
 
 let dbCounter = 0;
 
@@ -79,6 +79,26 @@ describe.each(implementations)('$name', ({ make }) => {
 
     await store.deleteSeason(season.id);
     expect(await store.getSeason(season.id)).toBeNull();
+  });
+
+  it('round-trips challenge runs (create, update, delete) and resolves getChallengeRunByRoster', async () => {
+    const run = makeChallengeRun();
+    await store.saveChallengeRun(run);
+
+    expect(await store.getChallengeRun(run.id)).toEqual(run);
+    expect(await store.listChallengeRuns()).toEqual([run]);
+    expect(await store.getChallengeRunByRoster(run.rosterId)).toEqual(run);
+    expect(await store.getChallengeRunByRoster('missing-roster')).toBeNull();
+    expect(await store.getChallengeRun('missing')).toBeNull();
+
+    const advanced = { ...run, phase: 'break' as const };
+    await store.saveChallengeRun(advanced); // upsert, not a duplicate
+    expect(await store.getChallengeRun(run.id)).toEqual(advanced);
+    expect(await store.listChallengeRuns()).toHaveLength(1);
+
+    await store.deleteChallengeRun(run.id);
+    expect(await store.getChallengeRun(run.id)).toBeNull();
+    expect(await store.listChallengeRuns()).toEqual([]);
   });
 
   it('exportAll returns every collection', async () => {
