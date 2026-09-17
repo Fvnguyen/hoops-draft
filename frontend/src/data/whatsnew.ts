@@ -85,4 +85,19 @@ export const WHATS_NEW: ChangelogEntry[] = [
     ],
     cta: 'Back to the court',
   },
+  {
+    id: 'challenge-mode-2026-09-18',
+    date: '2026-09-18',
+    eyebrow: 'Patch notes',
+    title: '82 games. One grade.',
+    subtitle: 'A whole new way to play, and a card pool being rebuilt underneath it.',
+    highlights: [
+      { icon: 'trophy', title: 'The 82:0 Challenge', body: 'Pick your mode on the start page before you draft. One full season against all 30 real NBA teams, revealed on a split-flap clock that speeds up as the season runs away from you, ending in a single grade from F to S+.' },
+      { icon: 'bell', title: 'The All-Star break', body: 'At game 41 your coach, owner and fans each tell you what they would change and show you the evidence for it. Reset the lineup, re-cut your plays, and make one trade from a pack of five offers.' },
+      { icon: 'chart', title: 'See what the trade was worth', body: 'The results screen replays your second half with the roster you had before the deadline, so the "+3 wins" on your trade is a real comparison, not a guess.' },
+      { icon: 'grid', title: 'Coming next: players who play where they actually play', body: 'Position eligibility is being sourced properly, so someone who genuinely covers three spots will be eligible at all three instead of pinned to one. More ways to build a lineup — and real material for Positionless Revolution.' },
+      { icon: 'sparkles', title: 'Coming next: cards that reward what is hard', body: 'Card strength is being rebuilt around shot creation, passing load and real defensive impact, instead of counting stats that mostly reward minutes on court. A backup big will stop out-ranking a star shooter. And anyone genuinely off the charts in a skill earns a new gold badge, a tier above level 3.' },
+    ],
+    cta: 'Back to the court',
+  },
 ];
