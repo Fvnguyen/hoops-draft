@@ -390,9 +390,9 @@ export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: n
 
 /** Card rarity cutoffs on `overall` before award/legendary/league-leader bumps. */
 export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
-  { min: 68, rarity: 'Mythic' },
-  { min: 58, rarity: 'Rare' },
-  { min: 58, rarity: 'Uncommon' },
+  { min: 90, rarity: 'Mythic' },
+  { min: 68, rarity: 'Rare' },
+  { min: 62, rarity: 'Uncommon' },
 ];
 
 // ── draft.ts (from draftEngine.ts) ──────────────────────────────────────────

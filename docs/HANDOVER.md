@@ -51,7 +51,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
-- **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14, `CARD_SET_VERSION`. Superseded by card_ratings_rebalance below (rarity/badges/OVR all rebuilt).
+- **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 
 ## card_ratings_rebalance — done 2026-09-18
 
@@ -67,22 +67,23 @@ magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independen
 shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
 rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
 rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
-a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped; OVR is now
-the flat mean of the seven ratings — no more `PROFILES`, `_baseOvr`/`_multiplier`, or the
-PER/VORP composite multiplier. Positions: `download_bref.js` now also scrapes bref's 26 letter-index pages
-(`data/bref_positions/`, committed like the other scrape snapshots) for bref-native name
-matching (132 vs 110 crossover columns vs bio.csv's fuzzy match); the single-crossover
-cap in `blend_bio_crossover` is gone.
-True 3-way positions stay data-limited — both sources cap at 2-letter G/F/C this season.
-Verified: 426/426 tests, tsc/lint clean, `npm run build:cards` (448 cards),
-`npm run balance -- 1000 --seed 42` PPP 1.046→1.031 (real pre-change worktree baseline,
-not stale data), rarity 23/59/107/259 vs target 23/55/117/253 (within ±10% except
-Uncommon -8.5%/Rare +7.3%), KPJ no longer Mythic on a steals lead, `RATING_NORM`/
-`LINEUP_CENTRE` regenerated. Two anchors missed by ~1 point (Ausar Thompson OVR 59 vs
-wanted >60, Luka perimeter defence 83 vs wanted <80) — accepted. **Not verified**: the
-screenshot exit criterion — this sandbox has no `frontend/.env.local` Supabase
-credentials, so every route 500s in the Supabase middleware before rendering; do this on
-a real machine before signing off the gold badge UI. `card_balance_thresholds`
+a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped. Positions:
+`download_bref.js` now also scrapes bref's 26 letter-index pages (`data/bref_positions/`,
+committed like the other scrape snapshots) for bref-native name matching (132 vs 110
+crossover columns vs bio.csv's fuzzy match); the single-crossover cap in
+`blend_bio_crossover` is gone. True 3-way positions stay data-limited — both sources cap
+at 2-letter G/F/C this season.
+**Follow-up (2026-09-19, owner request): OVR is no longer a flat mean of the seven
+dimensions** (that regressed to the middle — few players are elite in all seven, which is
+why it topped out at 90 with a ~47 pool mean). `computeCards` now runs two passes: pass 1
+averages each player's seven UNCAPPED dimension raws into `rawOvrMean`; pass 2 re-indexes
+that composite through the same `idx()` every dimension uses (rotation league avg →
+~50 OVR, rotation top-7.5% → 99) before resolving rarity/awards. `RARITY_CUTOFFS` re-fit
+90/68/62 (was 68/58/58) — 22/55/124/247 vs target 23/55/117/253, within ±10%. Untouched:
+per-dimension ratings, the possession engine (OVR isn't a game input — `npm run balance`
+unchanged at PPP 1.037), 426/426 tests. **Not verified**: the plan's screenshot exit
+criterion — no Supabase credentials in this sandbox, every route 500s before rendering;
+do this on a real machine before signing off the gold badge UI. `card_balance_thresholds`
 (roadmap #6, depends on this now) should re-tune from this pool — every badge level moved.
 
 ## game_theater — done 2026-09-17 (manual override)
@@ -188,10 +189,8 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
    bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
    pointer here was stale). `draft_ai` is the plan that owns this.
-4. **82:0 trade -> deck-builder hand-off is verified by code only.** Confirming a trade
-   should drop you into the lineup editor (otherwise the second half plays a man short). The
-   pack reveal advances on animation frames and the browser pane stopped painting during
-   verification, so the spread could never be dealt. Worth one click-through.
+4. **82:0 trade -> deck-builder hand-off is verified by code only** (pack reveal
+   animation frames stalled a headless verification pass) — confirm with one click-through.
 5. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
    (`components/challenge/Results.tsx`) is the missing half and already round-trips across
    the full 32-bit range; wiring the input belongs to `mode_picker` (roadmap #10).
