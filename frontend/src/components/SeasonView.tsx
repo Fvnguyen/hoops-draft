@@ -18,6 +18,7 @@ import type { GameContext } from '../narration/types';
 import { Trophy, Swords, ChevronLeft, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
 import { FranchiseDashboard } from './FranchiseDashboard';
 import { Button } from './ui';
+import { useAndroidBackGuard } from '@/hooks/useAndroidBackGuard';
 
 interface SeasonViewProps {
   rosterId: string;
@@ -200,6 +201,12 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       closeActiveGame();
     }
   };
+
+  // plan_mobile_native_feel D3: while a game is on screen, hardware/gesture back acts as
+  // "Exit Game" — the fresh-play case reuses this view's own leave-confirm above rather
+  // than a second generic dialog. The season hub itself needs no guard: every result is
+  // saved on "Continue" before the hub can show it, so plain back is already safe there.
+  useAndroidBackGuard({ enabled: !!activeGame, onBackAttempt: handleExitGame });
 
   if (error) {
     return (
