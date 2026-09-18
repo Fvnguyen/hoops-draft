@@ -428,7 +428,10 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     clearSelection();
   };
 
-  /** The move already happened — the toast just offers 5s of regret (D15). */
+  /** The move already happened — the toast just offers 5s of regret (D15). Kept only for
+   *  the roster-clear bulk action (plan_mobile_native_feel D7): per-move place/swap/remove
+   *  toasts were dropped since those are two-way drags the user can trivially reverse by
+   *  dragging the card back, and on mobile the toast covered the roster/depth chart. */
   const toastUndo = (message: string, snap: BuilderSnapshot) => {
     toast.show(message, { actionLabel: 'Undo', durationMs: 5000, onAction: () => restoreSnapshot(snap) });
   };
@@ -452,7 +455,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
    *  with the drag path below so click and drag can never disagree). Engine
    *  refusals become error toasts. */
   const placeFromRoster = (player: PlayerCardData, column: DepthColumn, slotIndex?: number) => {
-    const snap = takeSnapshot();
     const idx = slotIndex ?? (depthChart[column]?.length ?? 0);
     const result = placePlayerInSlot(depthChartEngineState(), player.id, column, idx);
     if (!result.ok) {
@@ -463,12 +465,10 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     setRosterPlayers(prev => prev.filter(p => p.id !== player.id));
     setSelectedRosterPlayer(null);
     setOpenSlotPopover(null);
-    toastUndo(`${player.player.name} → ${column}`, snap);
   };
 
   /** Move a player already on the chart to another column / slot. */
-  const moveOnChart = (player: PlayerCardData, column: DepthColumn, slotIndex?: number, opts: { silent?: boolean } = {}) => {
-    const snap = takeSnapshot();
+  const moveOnChart = (player: PlayerCardData, column: DepthColumn, slotIndex?: number) => {
     const result = moveWithinChart(toIdChart(depthChart), player.id, effectivePosition(player.player.position, player.traits), column, slotIndex);
     if (!result.ok) {
       toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
@@ -476,7 +476,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     }
     setDepthChart(fromIdChart(result.chart));
     setOpenSlotPopover(null);
-    if (!opts.silent) toastUndo(`${player.player.name} → ${column}`, snap);
   };
 
   const handleDragStart = (e: React.DragEvent, card: DraftCard, sourceZone: string, sourceIndex?: number) => {
@@ -786,20 +785,13 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   /** Send a placed player back to the Roster. Roles they held are cleared with
-   *  them — no `confirm`, the toast's Undo puts everything back (D15). */
+   *  them — no `confirm`, dragging the player back onto the chart reverses it. */
   const sendPlacedToRoster = (player: PlayerCardData) => {
-    const snap = takeSnapshot();
     const heldRoles = rolesByPlayer.get(player.id) ?? [];
     if (heldRoles.length > 0) removePlayerRoles(player.id);
     setDepthChart(fromIdChart(removeFromChart(toIdChart(depthChart), player.id)));
     setRosterPlayers(prev => [...prev, player].sort(sortRosterPlayers));
     setOpenSlotPopover(null);
-    toastUndo(
-      heldRoles.length > 0
-        ? `${player.player.name} → Roster (${heldRoles.length} role${heldRoles.length > 1 ? 's' : ''} cleared)`
-        : `${player.player.name} → Roster`,
-      snap,
-    );
   };
 
   const handleClearRoster = () => {

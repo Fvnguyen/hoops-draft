@@ -211,6 +211,22 @@ body {
   font-family: var(--font-inter), system-ui, sans-serif;
 }
 
+/* plan_mobile_native_feel D1-D2: no OS context menu / text-selection callout on long-press,
+   and `touch-action: manipulation` removes the double-tap-to-zoom gesture so a second tap
+   on a card acts on it instead of zooming the page. Auth forms opt back into selection. */
+html,
+body {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* game_theater D10: the "Crunchtime!" pop-up — fade + settle in, hold, fade out over
    1.5s (matches CRUNCH_POPUP_MS in GameView). Reduced motion keeps the fade only. */
 @keyframes crunch-pop {
