@@ -16,6 +16,8 @@ import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLD
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+const RARITY_TIERS: Rarity[] = ['Common', 'Uncommon', 'Rare', 'Mythic'];
+
 function getBadge(val: number, name: string, dim: RatingDim): Trait | null {
   const t = BADGE_THRESHOLDS[dim];
   if (val >= t.l3) return { name, level: 3 };
@@ -88,8 +90,6 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     return 'Gold';
   };
 
-  let maxPts = 0, maxAst = 0, maxTrb = 0, max3pm = 0;
-
   interface RawRow {
     player: typeof players[number];
     stat: SeasonStat;
@@ -107,13 +107,6 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     const awardsRows = awardsByPlayer.get(p.id) || [];
     if (!stat) return null;
 
-    // Track max stats for the League Leader bump (D9: steals/blocks dropped).
-    if (stat.pts > maxPts) maxPts = stat.pts;
-    if (stat.ast > maxAst) maxAst = stat.ast;
-    if (stat.trb > maxTrb) maxTrb = stat.trb;
-    const fg3m = stat.fg3a * stat.fg3_pct;
-    if (fg3m > max3pm) max3pm = fg3m;
-
     const vol = stat.fga;
     const finFGA = vol * stat.pct_fga_0_3;
     const finFGM = finFGA * stat.fg_pct_0_3;
@@ -123,6 +116,7 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     const midFGM = vol * ((stat.pct_fga_3_10 * stat.fg_pct_3_10) + (stat.pct_fga_10_16 * stat.fg_pct_10_16) + (stat.pct_fga_16_3p * stat.fg_pct_16_3p));
     const midEff = midFGA > 0 ? (midFGM / midFGA) : 0;
 
+    const fg3m = stat.fg3a * stat.fg3_pct;
     const perFGM = fg3m;
     const perEff = stat.fg3_pct || 0;
 
@@ -283,66 +277,42 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
     const overall = Math.max(0, Math.min(99, Math.round(99 * ovrIdx(rawOvrMean))));
 
-    let rarity: Rarity = 'Common';
+    // Base rarity: the OVR band, as a tier index (Common=0 .. Mythic=3).
+    let tier = 0;
     for (const cutoff of RARITY_CUTOFFS) {
-      if (overall >= cutoff.min) { rarity = cutoff.rarity; break; }
+      if (overall >= cutoff.min) { tier = RARITY_TIERS.indexOf(cutoff.rarity); break; }
     }
 
-    const hasMvp = r.awards.some((a: AwardRow) => a.name === 'MVP');
-    const hasAllNba1 = r.awards.some((a: AwardRow) => a.name === 'All-NBA' && a.level === 1);
-    const hasAllNba = r.awards.some((a: AwardRow) => a.name === 'All-NBA');
-    const hasDpoy = r.awards.some((a: AwardRow) => a.name === 'DPOY');
-    const hasAllDef = r.awards.some((a: AwardRow) => a.name === 'All-Defensive');
+    const hasAward = r.awards.length > 0;
     const isLegendary = LEGENDARY_PLAYERS.has(p.name);
-
-    // D9: the league-leader rarity bump drops steals/blocks as qualifying categories
-    // (a leader at a low counting rate, e.g. 2.2 stl/g, shouldn't Mythic-bump on that
-    // alone) — points, assists, rebounds, 3PM remain — and the tie test is now strict
-    // `>` — matching the max exactly no longer qualifies, only the outright leader does.
-    const fg3m = stat.fg3a * stat.fg3_pct;
-    const isLeagueLeader = (
-      stat.pts > maxPts || stat.ast > maxAst || stat.trb > maxTrb || fg3m > max3pm
-    );
-
-    const bumpRarity = (current: Rarity): Rarity => {
-      if (current === 'Common') return 'Uncommon';
-      if (current === 'Uncommon') return 'Rare';
-      return 'Mythic';
-    };
-
-    // 1. BASE AWARDS BUMP
-    if ((hasMvp || hasAllNba1) && rarity !== 'Mythic') rarity = 'Mythic';
-    else if ((hasAllNba || hasDpoy) && rarity !== 'Mythic' && rarity !== 'Rare') rarity = 'Rare';
-    else if (hasAllDef && rarity === 'Common') rarity = 'Uncommon';
-
     // card_balance T2 (2026-09-17, owner-approved): a real 2025-26 starter (games
     // started / games played >= 0.5) is never Common.
     const isStarter = (stat.gs ?? 0) / Math.max(1, stat.gp) >= 0.5;
-    if (isStarter && rarity === 'Common') rarity = 'Uncommon';
+    const isPositionless = POSITIONLESS_PLAYERS.has(p.name);
+    if (isPositionless) traits.push({ name: 'Positionless', level: 3 });
 
-    // 2. LEGENDARY BUMP (Adds 1 tier, making drafting harder)
-    if (isLegendary) {
-      rarity = bumpRarity(rarity);
-    }
-
-    // 3. LEAGUE LEADER BUMP
-    if (isLeagueLeader) {
-      rarity = bumpRarity(rarity);
-    }
-
-    if (POSITIONLESS_PLAYERS.has(p.name)) traits.push({ name: 'Positionless', level: 3 });
-
-    // card_balance T2 (2026-09-17)/D9 (2026-09-18): Uncommon -> Rare promotion by badge
-    // level — a gold badge (D7's above-99 overflow), or two skill badges at l3+, since
-    // D4-D6 moved every badge level wholesale and a raw OVR band would no longer track
-    // real standout skill the way the old benchmark-ratio ratings did. Positionless is
-    // excluded (not a skill badge).
     const skillBadges = traits.filter(t => t.name !== 'Positionless');
-    const hasGold = skillBadges.some(t => t.level >= 4);
-    const l3PlusCount = skillBadges.filter(t => t.level >= 3).length;
-    if (rarity === 'Uncommon' && (hasGold || l3PlusCount >= 2)) {
-      rarity = 'Rare';
-    }
+    const hasBadges = skillBadges.length > 0;
+    const hasGoldBadge = skillBadges.some(t => t.level >= 4);
+
+    // Adjustments (bumps), applied to the OVR band.
+    if (hasGoldBadge) tier += 1;
+    if (isPositionless) tier += 1;
+    tier = Math.min(tier, RARITY_TIERS.length - 1);
+
+    // Floor: the strongest applicable floor wins.
+    let floor = 0;
+    if (isStarter) floor = Math.max(floor, RARITY_TIERS.indexOf('Uncommon'));
+    if (hasAward) floor = Math.max(floor, RARITY_TIERS.indexOf('Rare'));
+    if (isLegendary) floor = Math.max(floor, RARITY_TIERS.indexOf('Rare'));
+
+    // Ceiling: the strongest applicable cap wins (i.e. the lowest ceiling).
+    let ceiling = RARITY_TIERS.length - 1;
+    if (!hasBadges) ceiling = Math.min(ceiling, RARITY_TIERS.indexOf('Uncommon'));
+    if (!hasAward) ceiling = Math.min(ceiling, RARITY_TIERS.indexOf('Uncommon'));
+
+    const finalTier = floor > ceiling ? floor : Math.max(floor, Math.min(tier, ceiling));
+    const rarity: Rarity = RARITY_TIERS[finalTier];
 
     const formattedAwards: string[] = [];
     for (const a of r.awards) {

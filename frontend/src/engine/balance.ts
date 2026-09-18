@@ -388,11 +388,11 @@ export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: n
   postDefense:       { l1: 70, l2: 80, l3: 90 },
 };
 
-/** Card rarity cutoffs on `overall` before award/legendary/league-leader bumps. */
+/** Card rarity base bands on `overall`, before floor/ceiling/adjustment in ratings.ts. */
 export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
   { min: 90, rarity: 'Mythic' },
-  { min: 68, rarity: 'Rare' },
-  { min: 62, rarity: 'Uncommon' },
+  { min: 80, rarity: 'Rare' },
+  { min: 50, rarity: 'Uncommon' },
 ];
 
 // ── draft.ts (from draftEngine.ts) ──────────────────────────────────────────
