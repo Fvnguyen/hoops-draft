@@ -67,21 +67,24 @@ magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independen
 shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
 rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
 rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
-a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped. Positions:
-`download_bref.js` now also scrapes bref's 26 letter-index pages (`data/bref_positions/`,
-committed like the other scrape snapshots) for bref-native name matching (132 vs 110
-crossover columns vs bio.csv's fuzzy match); the single-crossover cap in
-`blend_bio_crossover` is gone. True 3-way positions stay data-limited — both sources cap
-at 2-letter G/F/C this season.
-**Follow-up (2026-09-19, owner request): OVR is no longer a flat mean of the seven
-dimensions** (that regressed to the middle — few players are elite in all seven, which is
-why it topped out at 90 with a ~47 pool mean). `computeCards` now runs two passes: pass 1
-averages each player's seven UNCAPPED dimension raws into `rawOvrMean`; pass 2 re-indexes
-that composite through the same `idx()` every dimension uses (rotation league avg →
-~50 OVR, rotation top-7.5% → 99) before resolving rarity/awards. `RARITY_CUTOFFS` re-fit
-90/68/62 (was 68/58/58) — 22/55/124/247 vs target 23/55/117/253, within ±10%. Untouched:
-per-dimension ratings, the possession engine (OVR isn't a game input — `npm run balance`
-unchanged at PPP 1.037), 426/426 tests. **Not verified**: the plan's screenshot exit
+a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped.
+**Positions, superseded twice (2026-09-19): `PositionResolver`** (`fetch_players.py`)
+replaced the letter-index/`blend_bio_crossover` approach — those capped at broad G/F/C
+same as bio.csv. Each player's own bref bio page ("Position: X, Y, and Z") gives exact
+eligibility (Shai → PG/SG, Barnes → SG/SF/PF), scraped for all 582 active players into
+`data/bref_player_positions.json` by `download_bref.js`. Primary = bref's season `Pos`;
+eligibility = the bio-text set, trusted verbatim (0 conflicts, only 3/582 non-adjacent,
+~2% three-way+, not pool-skewed → no cut needed, see `data/analyze_positions.py`).
+Missing bio text (3/582, a real bref quirk) falls back to a value **persisted from
+game.db** before overwrite, then season-Pos-only; a genuinely new Rare+ gap logs to
+`REVIEW_MISSING_POSITIONS.md` (gitignored) for a one-time manual edit that persists
+forward on its own — `POSITION_OVERRIDES` is for overruling a wrong signal (Jokić), not
+filling gaps. Giannis (no Position line at all) hand-set to SF/PF/C.
+**OVR follow-up (2026-09-19):** no longer a flat mean of the seven dimensions (regressed
+to the middle, topped out at 90/~47 mean) — `computeCards` now re-indexes the
+UNCAPPED-dimension composite through the same `idx()` every dimension uses. `RARITY_CUTOFFS`
+re-fit 90/68/62 (was 68/58/58) — within ±10% of target. Untouched: per-dimension ratings,
+the possession engine (OVR isn't a game input), 426/426 tests. **Not verified**: the plan's screenshot exit
 criterion — no Supabase credentials in this sandbox, every route 500s before rendering;
 do this on a real machine before signing off the gold badge UI. `card_balance_thresholds`
 (roadmap #6, depends on this now) should re-tune from this pool — every badge level moved.
