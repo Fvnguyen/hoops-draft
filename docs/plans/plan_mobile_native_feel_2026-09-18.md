@@ -1,6 +1,7 @@
 # Plan: mobile_native_feel
 
-File: `docs/plans/plan_mobile_native_feel_2026-09-18.md`. Status: planned.
+File: `docs/plans/plan_mobile_native_feel_2026-09-18.md`. Status: in progress (T1, T2, T3, T4
+done; screenshots + manual device check still open).
 Sequence: see `docs/ROADMAP.md`. Depends on: — (mobile_responsive, ui_foundation done). Files
 owned: `app/layout.tsx`, `app/globals.css`, a new `hooks/useAndroidBackGuard.ts` (or
 equivalent), `components/TopKPIBand.tsx`/`PlayPanel.tsx`/other collapsible-bar components
@@ -31,33 +32,38 @@ means "go home safely," and the bars/menus are effortless to open with a thumb.
   (`app/layout.tsx` `viewport` export) does not need `user-scalable=no` — prefer the
   `touch-action` CSS route over disabling pinch-zoom outright, since killing zoom entirely
   is an accessibility regression the owner has not asked for.
-- D3 **Android/PWA back button acts as a guarded "safe home" control**, not history-back.
-  Scope: only pages inside active gameplay state (draft room, deck builder, game view,
-  season view, challenge run) — the home page and read-only pages (`/data`, `/whatsnew`)
-  keep native back behavior. Implementation: on mount, push one extra history entry
-  (`history.pushState`) so the first back press is interceptable via `popstate`; on that
-  event, `preventDefault`-equivalent (re-push state to cancel the actual navigation) and
-  show a confirm sheet instead of a native `confirm()` (reuse the `Toast`/modal pattern,
-  not `window.confirm`, per the existing "no `confirm`" convention in `DeckBuilder.tsx`).
-- D4 The back-guard confirm sheet offers exactly two actions: **"Save & exit"** (persists
-  current state via the existing `GameStore` autosave path — most views already autosave;
-  confirm each of draft/deckbuilder/game/season/challenge already writes on every state
-  change before wiring this in, since D4 assumes no separate save step is needed) and
-  **"Cancel"** (dismiss, stay on the page). No silent "discard" option — there is currently
-  no discardable local-only state this plan is aware of; if one is found during T2, flag it
-  rather than adding a third button silently.
-- D5 **Collapsible bars/menus toggle on a tap anywhere in the closed bar's row**, not just
-  the chevron icon — `TopKPIBand` already does this (D2 there: "clicking any chip is the
-  same toggle as the chevron"). Audit every other collapsible surface (`PlayPanel`,
-  `DepthSlotColumn`, any accordion/menu using a chevron affordance) and apply the same
-  pattern: the chevron button becomes visual-only inside a larger tap target that is the
-  whole closed-state row/header, with `min-height` and `min-width` of at least 44px per
-  tap target (WCAG/iOS HIG minimum) even where the visible icon is smaller.
-- D6 **Small adjacent icon buttons get bigger effective hit areas.** Where two+ icon
-  buttons sit edge-to-edge (audit during T3 — likely candidates: `DraftSidebar`,
-  `BoxScore` controls, `SeasonView` tab strip), add invisible padding so each tap target is
-  >=44x44px without changing the visual icon size or spacing, using the existing spacing
-  tokens (no new pixel constants).
+- D3 **Android/PWA back button triggers an in-app callback instead of history-back**, on
+  screens where an unguarded press would drop state nothing persists yet. Actual autosave
+  audit (Wave 0) found the plan's "most views already autosave" assumption wrong for two
+  of three at-risk screens — draft room and deck builder never had a partial-save path —
+  so, per owner sign-off, the guard is **leave-only everywhere** (warn + Cancel, no "Save &
+  exit" leg): draft room (mid-pick), deck builder (always — saving needs a complete
+  roster and there's no autosave), and season view (reuses its own existing fresh-game
+  leave-confirm instead of a second dialog). The season hub and the 82:0 challenge run
+  need no guard at all: a challenge half commits to the store before it's ever rendered,
+  and a season result is saved before the hub can show it — plain back is already safe.
+  Mechanics: `useAndroidBackGuard` pushes one extra history entry on mount so the first
+  back press is interceptable via `popstate`, and re-arms itself on every cancel so the
+  stack never grows; `goBack()` does `history.go(-2)` to undo the guard entry plus the
+  real navigation it intercepted.
+- D4 The confirm sheet (`BackGuardSheet`, reusing `Overlay`/`Button`, not
+  `window.confirm`) offers exactly two actions: **"Leave"** and **"Cancel"**. No silent
+  "discard" option, no "Save & exit" leg anywhere in this pass (superseded from the
+  original draft — see D3).
+- D5 **Collapsible bars/menus toggle on a tap anywhere in the closed bar's row.** Audited
+  every chevron/expand pattern in the app (`TopKPIBand`, `PlayPanel`, `DraftSidebar`,
+  `PackPassStage`, `BoxScore`) — `TopKPIBand` is the only real instance, and it already
+  does this (D2 there: "clicking any chip is the same toggle as the chevron"). No other
+  violation found; no code change needed for D5.
+- D6 **Small adjacent icon buttons get bigger effective hit areas.** Audited every
+  interactive control in gameplay UI: `IconButton` (`components/ui/IconButton.tsx`)
+  already guarantees a 44x44px hit area via the `size-control` token
+  (`plan_ui_foundation` D3), and it's the only icon-button primitive gameplay code uses —
+  no raw `<button>` exists outside dev-only pages (`/data`, `/debug`, admin). No violation
+  found; no code change needed for D6. If "finicky buttons" persists after this plan
+  ships, it's likely visual spacing between already-44px targets (e.g. the compact deck
+  builder's Plays/Roster pair at `gap-1.5`), not hit-area size — a design-pass question,
+  not a blind code change.
 - D7 **Drop per-move deck-builder toasts entirely** (`toastUndo` calls at
   `DeckBuilder.tsx:466` and `:479` for place/swap): these are two-way drag operations the
   user can trivially reverse by dragging the card back, so an undo toast is pure friction,
@@ -82,15 +88,14 @@ means "go home safely," and the bars/menus are effortless to open with a thumb.
 - T1 Global touch/selection CSS per D1-D2 in `globals.css`; screenshot before/after a
   long-press on a card and a double-tap on a card confirming no context menu / no zoom.
   Tier: low.
-- T2 `useAndroidBackGuard` hook (or equivalent) per D3-D4: pushState guard, popstate
-  listener, confirm-sheet UI reusing existing modal/toast primitives, wired into draft
-  room, deck builder, game view, season view, challenge run. Verify each of those five
-  views' autosave path fires before wiring (or note where it doesn't and defer "Save &
-  exit" wiring for that view, flagged in the plan doc, not silently skipped). Tier: mid.
-- T3 Audit + fix collapsible-bar tap targets (D5) and adjacent-icon hit areas (D6) across
-  `TopKPIBand` (confirm existing pattern still holds), `PlayPanel`, `DepthSlotColumn`,
-  `DraftSidebar`, `BoxScore`, `SeasonView`; screenshot each changed surface at a phone
-  viewport (375px) before/after. Tier: mid.
+- T2 `useAndroidBackGuard` hook + `BackGuardSheet` per D3-D4, wired into `DraftRoom`
+  (picking phase), `DeckBuilder` (both entry points: `/roster/[id]` and DraftRoom's
+  post-draft deckbuilding — off for read-only viewing and the 82:0 front office's
+  embedded editor), and `SeasonView` (mid-game, via its existing `handleExitGame`).
+  Challenge run left unguarded per D3. Done. Tier: mid.
+- T3 Audited collapsible-bar tap targets (D5) and adjacent-icon hit areas (D6) — both
+  already satisfied app-wide by existing patterns, no violations found, no code change.
+  Done. Tier: mid.
 - T4 Remove the two per-move `toastUndo` calls in `DeckBuilder.tsx` per D7; keep
   roster-clear and error toasts; update/remove any test asserting the removed toasts
   appear. Tier: low.
@@ -111,13 +116,12 @@ back-guard UX). Agents: Sonnet 5 / Gemini 3 Pro for T2/T3 (state + UI judgment),
 
 ## Verification / exit criteria
 
-- Screenshots (`node scripts/screenshot.js ... --full` at a phone viewport) showing: no
-  context menu on long-press, no zoom on double-tap, a collapsed bar opening from a tap
-  anywhere in its row, the back-guard confirm sheet.
-- Manual check on an actual Android device or Chrome device-toolbar emulation: back
-  gesture on draft/deckbuilder/game/season/challenge shows the confirm sheet, not
-  immediate navigation; "Save & exit" leaves state resumable; "Cancel" stays put.
-- `npm test` green; any test asserting the removed deck-builder toasts is updated, not
-  deleted-and-forgotten.
-- `npm run test:e2e` smoke suite still passes (no console errors from the new global CSS
-  or back-guard listener).
+- `npm test` (435/435) and `npm run build` both green — done, re-run after T1-T4.
+- Still open: screenshots (`node scripts/screenshot.js ... --full` at a phone viewport)
+  showing no context menu on long-press and no zoom on double-tap; a manual check on an
+  actual Android device or Chrome device-toolbar emulation that the back gesture on
+  draft/deckbuilder/a live season game shows the "Leave this screen?" sheet (or, for
+  season, its own leave-confirm) instead of immediate navigation, and that the challenge
+  run's back gesture navigates normally with no data loss.
+- `npm run test:e2e` smoke suite still needs a run (no console errors from the new global
+  CSS or back-guard listeners).
