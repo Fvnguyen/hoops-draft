@@ -1,25 +1,27 @@
 # Plan: card_balance_thresholds
 
 File: `docs/completed/plan_card_balance_thresholds_2026-09-17.md`. Status: done 2026-09-19
-(owner override — closed before its own exit criteria, see note below).
-Sequence: see `docs/ROADMAP.md`. Depends on: draft_ai (bots must chase a plan before a
-plan's reachability number means anything). Files owned: `engine/archetypes.ts`
-(threshold constants only — not the catalog names/descriptions/colours, which
-`plan_card_balance_2026-09-13.md` already locked and closed), `docs/game_mechanics.md`
-(reachability note if numbers move).
+(owner override — closed before its own literal exit criteria, see note below).
+Sequence: see `docs/ROADMAP.md`. Depends on: draft_ai (done 2026-09-19). Files owned:
+`engine/archetypes.ts` (threshold constants only — not the catalog names/descriptions/
+colours, which `plan_card_balance_2026-09-13.md` already locked and closed),
+`docs/game_mechanics.md` (reachability note if numbers move).
 
-**Closing note (2026-09-19, owner override):** closed without meeting its own exit
-criteria. `draft_ai` (this plan's dependency) never landed, so bots still draft by raw
-OVR/PER, not by chasing an archetype — `npm run feasibility -- 200` bot online% is still
-single digits to high teens per colour, nowhere near the D8 target band (25-35%) this
-plan was written to hit. What DID happen in the meantime, as part of a separate
-"balance workflow" (`AGENTS.md`, stage 5): `MONO_THRESHOLDS_BY_COLOR` (this plan's T2
-target) was removed entirely rather than re-tuned — it was a stale defense-colour
-discount, not a draft_ai-era retune — and `MONO_THRESHOLDS`/`TWO_COLOR_THRESHOLDS`/
-`GOLD_THRESHOLDS` were left untouched. If `draft_ai` ever lands, the actual T1-T4 work
-below (re-tune thresholds against real bot plan-chasing) is still undone and would need
-a fresh plan, not a reopen of this one — the file layout it names (`MONO_THRESHOLDS_BY_
-COLOR`) no longer exists to retune.
+**Closing note (2026-09-19, corrected same day):** closed without meeting the literal
+exit criteria (`npm run feasibility -- 200` hitting the D8 25-35%/8-15% bands). This
+plan's own dependency, `draft_ai`, landed the same day this plan closed — but the D8
+bands this plan was written to retune against had already been discarded as a target
+entirely by the owner on 2026-09-17 (see `plan_draft_ai_2026-09-13.md`'s T4: "parked...
+revisit only if real drafting feels broken, not against the D8 numbers in the
+abstract"). Retuning thresholds against a target the owner no longer wants was never
+the right move, landed `draft_ai` or not. What DID happen instead, as part of a
+separate "balance workflow" (`AGENTS.md`, stage 5): `MONO_THRESHOLDS_BY_COLOR` (this
+plan's T2 target) was removed entirely rather than re-tuned — it was a stale defense-
+colour discount from before badges were rebalanced, not a D8-era retune — and
+`MONO_THRESHOLDS`/`TWO_COLOR_THRESHOLDS`/`GOLD_THRESHOLDS` were left untouched. If a
+real threshold problem is ever reported against live drafting, it needs a fresh plan,
+not a reopen of this one — the file layout it names (`MONO_THRESHOLDS_BY_COLOR`) no
+longer exists to retune.
 
 ## Goal
 

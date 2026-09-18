@@ -82,27 +82,33 @@ OVR, rotation top-7.5% → 99) before resolving rarity/awards. Untouched: per-di
 ratings, the possession engine (OVR isn't a game input). **Not verified**: the plan's
 screenshot exit criterion — no Supabase credentials in this sandbox, every route 500s
 before rendering; do this on a real machine before signing off the gold badge UI.
-**Balance workflow locked in, five hierarchical stages (`AGENTS.md`): pool → ratings/OVR
-→ rarity → badges → plays/archetypes**, verify before tuning the next, no automated
-checks outside a plan or an owner ask. All done 2026-09-19: **rarity** simplified to
-band → adjustment → floor/ceiling (`ratings.ts`; `RARITY_CUTOFFS` rebanded `<50/50-79/
-80-89/90+`, `hasAward` folds in every award type); **badges** re-hand-binned against the
+**Balance workflow locked in, five hierarchical stages** (`AGENTS.md`), all done
+2026-09-19: **rarity** simplified to band → adjustment → floor/ceiling (`ratings.ts`;
+`RARITY_CUTOFFS` rebanded `<50/50-79/80-89/90+`, `hasAward` folds in every award type);
+**badges** re-hand-binned against the
 post-rebalance raws (target ~62/29/11 → ~56/27/13 holders), fixing playmaking's dead L3
 and the ~3x badge-earn-rate spread (now 10.9-13.4% across all seven dims); **plays/
-archetypes**: dropped the now-stale `MONO_THRESHOLDS_BY_COLOR` defense discount (it
-existed only because defense badges used to be scarcer — stage 4 fixed that), added
-Crash and Finish (Glass Cleaner's first primary-colour plan, every colour now leads at
-least one), and switched bot archetype selection from deterministic-best (which tied
-toward mono via array order) to `pick(rng, eligible)` — every two-colour plan went from
-0% to a real live activation rate (`bestSelection`, `archetypes.ts`). PPP steady near
-1.05-1.06 throughout. Two tests sit just past tolerance from the position-pool + rarity-
+archetypes**: dropped the stale `MONO_THRESHOLDS_BY_COLOR` defense discount (existed
+only because defense badges were scarcer — stage 4 fixed that), added Crash and Finish
+(Glass Cleaner's first primary-colour plan), and switched bot archetype selection from
+deterministic-best (tied toward mono via array order) to `pick(rng, eligible)` — every
+two-colour plan went from 0% to a real activation rate (`bestSelection`, `archetypes.ts`).
+PPP steady near 1.05-1.06. Two tests sit just past tolerance from the position-pool + rarity-
 band drift, left for a dedicated recalibration pass, not patched ad hoc: `lineup.test.ts`
 (`LINEUP_CENTRE`) and `game.test.ts`'s home-court test. `card_balance_thresholds` closed
-2026-09-19 by owner override, not its own exit criteria — `draft_ai` never landed.
+2026-09-19 by owner override — its D8 target was discarded before `draft_ai` even landed.
 **Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
 colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
 one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in
 `synergies.test.ts`, including that gold REPLACES the l3 trait rather than adding a second.
+**`draft_ai` landed (2026-09-19):** T1-T3/T5/T6 recovered from an orphaned branch
+(`claude/roadmap-status-96eef9`, forked off main right after `card_balance` closed
+2026-09-17, never merged) — cherry-picked its code (not its stale docs) 47 commits
+later. Bots draw a target/secondary plan at draft start and score picks value-first-
+then-plan (ramping across the draft, bomb-pull override for a clear talent gap), and
+`buildBotRoster` never leaves a depth-chart column empty (fixes the old 4-on-5 bug).
+T4 (D8 identity-reach tuning) stays parked by owner call, not an exit criterion.
+442/443 tests, `npm run balance`/`feasibility` clean, live draft + ticker screenshotted.
 
 ## challenge_mode — done 2026-09-18
 
@@ -191,10 +197,8 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md`. `draft_ai` (#4) is next up and unblocked.
-`card_balance_thresholds` closed 2026-09-19 by owner override rather than waiting on it —
-its real D8 threshold retune is still open if `draft_ai` lands. `mode_picker` (#10) is unblocked.
-Owner actions outside the repo:
+What to do next is `docs/ROADMAP.md`; `draft_ai` and `card_balance_thresholds` both
+closed 2026-09-19. `mode_picker` (#10) is unblocked. Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
@@ -203,8 +207,9 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 1. **Stale analytics findings** (PPP 1.29, ~0.8% turnovers, uneven activation) were
    measured against the retired engine; PPP is ≈1.05 and turnovers 13.9% now. Re-run
    `npm run analyze` before treating `docs/analytics/*` as current.
-2. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
-   bot; tuning would go in `scoreCardForBot` (`engine/draft.ts`). `draft_ai` owns this.
+2. **AI draft strength gap — needs a fresh measurement.** The old 11.1 OVR spread was
+   measured against the pre-`draft_ai` PER-based valuation, now replaced by the value-
+   then-plan curve; re-run and re-measure before assuming it still applies.
 3. **82:0 trade -> deck-builder hand-off is verified by code only** — confirm with a click-through.
 4. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
    (`components/challenge/Results.tsx`) already round-trips the full 32-bit range; wiring
@@ -216,15 +221,10 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    underlying edge remains: a starter with a low share (small OVR gap, low MPG, age 35+)
    can legitimately land under 18 minutes on some seeds; if it reappears, lower the floor.
 7. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
-   the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
-   (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved). Unexplained: the
-   player-level on-floor regression gives finishing a negative marginal in the 41-55 OVR
-   band while the roster-level `--levers` A/B makes finishing the top lever; look with a
-   larger bootstrap before retuning ratings.
-8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
-   depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`, game 3:
-   PG 5, SG 5, SF 1, PF 1, C 0). `engine/challenge.ts` backfills the empty column for NBA
-   opponents; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
+   the measured state 2026-09-16: talent share 21.9%/game, 49.3%/season (`EFFICIENCY_SCALE`
+   0.12-0.15 pulls it back if seasons feel solved). Unexplained: the player-level on-floor
+   regression gives finishing a negative marginal in the 41-55 OVR band while the roster-
+   level `--levers` A/B makes finishing the top lever; look with a larger bootstrap first.
 
 ## Where to look
 

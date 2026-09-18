@@ -1,8 +1,15 @@
 # Plan: draft_ai
 
-File: `docs/plans/plan_draft_ai_2026-09-13.md`. Status: in progress (T1-T3, T5, T6 done;
+File: `docs/completed/plan_draft_ai_2026-09-13.md`. Status: done 2026-09-19 (T1-T3, T5, T6;
 T4 D8 tuning explicitly parked by owner 2026-09-17 — revisit only if real drafting feels
 broken, not against the D8 numbers in the abstract).
+
+**Landing note (2026-09-19):** implemented 2026-09-17 on a branch
+(`claude/roadmap-status-96eef9`) that forked off main right after `card_balance` closed
+and was never merged — main took the `challenge_mode` path instead and diverged 47
+commits before this landed here today via a targeted cherry-pick of the code (not that
+branch's own docs, which were stale by the time of the merge). `docs/HANDOVER.md` has
+the verification numbers.
 Sequence: 3 in `docs/ROADMAP.md`. Depends on: none (`scripts/archetype-feasibility.ts`
 already exists and covers the feasibility/AB reporting this plan used to wait on).
 Files owned: `frontend/src/engine/draft.ts`, `engine/deckbuilder.ts` (`buildBotRoster`
