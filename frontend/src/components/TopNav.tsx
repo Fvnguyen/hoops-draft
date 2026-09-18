@@ -120,6 +120,11 @@ function ProfileMenu({ profile, onSignOut, inverse = false }: { profile: Current
               {stats.seasonsPlayed} season{stats.seasonsPlayed === 1 ? '' : 's'} · {stats.wins}-{stats.losses} · {stats.avgWins} W avg
             </p>
           )}
+          {stats.challenge.completed > 0 && stats.challenge.best && (
+            <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+              82:0 Challenges: {stats.challenge.completed} completed, best {stats.challenge.best.wins}-{stats.challenge.best.losses} ({stats.challenge.best.grade})
+            </p>
+          )}
         </MenuSection>
         <MenuSection>
           <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
@@ -250,6 +255,11 @@ export function TopNav() {
                 {seasonStats.seasonsPlayed > 0 && (
                   <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
                     {seasonStats.seasonsPlayed} season{seasonStats.seasonsPlayed === 1 ? '' : 's'} · {seasonStats.wins}-{seasonStats.losses} · {seasonStats.avgWins} W avg
+                  </p>
+                )}
+                {seasonStats.challenge.completed > 0 && seasonStats.challenge.best && (
+                  <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+                    82:0 Challenges: {seasonStats.challenge.completed} completed, best {seasonStats.challenge.best.wins}-{seasonStats.challenge.best.losses} ({seasonStats.challenge.best.grade})
                   </p>
                 )}
                 <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>

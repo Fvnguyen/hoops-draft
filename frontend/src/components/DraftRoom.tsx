@@ -563,6 +563,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
                               play={card as Play}
                               isSelected={selectedCardId === card.id}
                               onClick={() => handleCardClick(card.id)}
+                              wide
                             />
                           ) : (
                             <PlayerCard

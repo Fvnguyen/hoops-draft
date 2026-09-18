@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Download, Pencil, Swords, Trash2, Upload } from 'lucide-react';
 import { getGameStore, SavedRoster, CURRENT_CARD_SET_VERSION } from '@/storage';
+import type { ChallengeRun } from '@/storage/types';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase, HUMAN_SEAT_ID, type Season, type SeasonPhase } from '@/engine/season';
+import { gradeForWins } from '@/engine/challenge';
 import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
 import { useRouter } from 'next/navigation';
 import { Button, IconButton } from '@/components/ui';
@@ -35,6 +37,9 @@ export default function RostersPage() {
   // plan_challenge_mode D1: which game each roster's draft session was for, so the
   // CTA offers the right mode — a roster can only start the mode it was drafted for.
   const [gameModeByRoster, setGameModeByRoster] = useState<Record<string, 'tournament' | 'challenge'>>({});
+  // plan_challenge_loose_ends D3/T3: challenge run per roster, so the CTA/summary can tell a
+  // finished 82:0 run from an unstarted or mid-run one.
+  const [challengeRunByRoster, setChallengeRunByRoster] = useState<Record<string, ChallengeRun>>({});
   const [loaded, setLoaded] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<MergeSummary | null>(null);
@@ -64,6 +69,15 @@ export default function RostersPage() {
       })
     );
     setGameModeByRoster(Object.fromEntries(gameModeEntries));
+
+    const challengeEntries = await Promise.all(
+      sorted.map(async (r) => [r.id, await store.getChallengeRunByRoster(r.id)] as const)
+    );
+    const challengeMap: Record<string, ChallengeRun> = {};
+    for (const [rosterId, run] of challengeEntries) {
+      if (run) challengeMap[rosterId] = run;
+    }
+    setChallengeRunByRoster(challengeMap);
 
     setLoaded(true);
   }, []);
@@ -211,6 +225,17 @@ export default function RostersPage() {
             const humanStanding = season?.standings.find((s) => s.seatId === HUMAN_SEAT_ID);
             const isLocked = phase === 'completed';
             const isChallenge = gameModeByRoster[rosterObj.id] === 'challenge';
+            const challengeRun = challengeRunByRoster[rosterObj.id] ?? null;
+            const challengeDone = challengeRun?.phase === 'done';
+            const challengeLabel = !challengeRun ? 'Start 82:0' : challengeDone ? 'View Result' : 'Continue 82:0';
+            const challengeSummary = challengeDone
+              ? (() => {
+                  const wins = (challengeRun!.halves[0]?.wins ?? 0) + (challengeRun!.halves[1]?.wins ?? 0);
+                  const losses = (challengeRun!.halves[0]?.losses ?? 0) + (challengeRun!.halves[1]?.losses ?? 0);
+                  const { grade, title } = gradeForWins(wins);
+                  return `${wins}-${losses} · ${title} (${grade})`;
+                })()
+              : null;
 
             return (
               <motion.div
@@ -243,6 +268,11 @@ export default function RostersPage() {
                           {humanStanding.wins}-{humanStanding.losses}
                         </span>
                       )}
+                      {challengeSummary && (
+                        <span className="normal-case tracking-normal font-semibold text-ink-muted">
+                          {challengeSummary}
+                        </span>
+                      )}
                       {rosterObj.cardSetVersion && rosterObj.cardSetVersion !== CURRENT_CARD_SET_VERSION && (
                         <span
                           className="rounded-full bg-warn-soft px-2 py-0.5 normal-case tracking-normal font-semibold text-warn"
@@ -272,7 +302,7 @@ export default function RostersPage() {
                         icon={<Swords className="h-4 w-4" />}
                         className="bg-positive text-white shadow-sm hover:bg-positive-strong"
                       >
-                        {isChallenge ? 'Start 82:0' : isLocked ? 'View Season' : 'Play Season'}
+                        {isChallenge ? challengeLabel : isLocked ? 'View Season' : 'Play Season'}
                       </Button>
                     )}
 

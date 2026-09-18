@@ -43,6 +43,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6.
 - **phone_card** (2026-09-19, `plan_phone_card_2026-09-19.md`): owner rejected two landscape redesign mocks against a real S26+ screenshot, signed off a modest resize instead — phone-only `wide` prop on `size="sm"` `PlayerCard`/`PackRevealCard`, aspect 5/7 → 1.15/1, badge gap 4px → 6px, image crop retargeted (`object-[center_20%]`), grid `max-w` factor `10/7` → `2.3`. `DepthSlotColumn` untouched. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9, verified via browser-pane touch emulation at 760×385.
+- **challenge_loose_ends** (2026-09-19, `plan_challenge_loose_ends_2026-09-19.md`): `PlayCard`/`PlayCardFront` get the same phone `wide` resize as player cards; 82:0 results screen's primary CTA is now "End Challenge — Results Locked In" (`/rosters`), replacing "Draft a new team"; rosters list shows `Start 82:0`/`Continue 82:0`/`View Result` per run phase plus a `W-L · Title (Grade)` summary once done; `TopNav` gains a "82:0 Challenges: N completed, best W-L (grade)" line, omitted at zero completed runs. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9.
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
@@ -188,7 +189,8 @@ from `data/`).
 ## Open issues / next steps
 
 What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
-`mobile_native_feel` and `phone_card` all closed. `mode_picker` (#10) is unblocked. Owner actions outside the repo:
+`mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
+(#10) is unblocked. Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as

@@ -509,7 +509,7 @@ export function ResultsScreen({ run }: ResultsScreenProps) {
               Season stats
             </Button>
             <div className="grow" />
-            <Button href="/" size="lg">Draft a new team</Button>
+            <Button href="/rosters" size="lg">End Challenge — Results Locked In</Button>
           </div>
         </div>
       </div>

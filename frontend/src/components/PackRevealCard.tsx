@@ -40,7 +40,7 @@ export function PackRevealCard({ card, revealed, interactive = true }: { card: D
   if (!interactive) {
     return (
       <div className="@container relative aspect-[5/7] pointer-coarse:max-lg:aspect-[1.15/1]! w-full">
-        {card.type === 'Player' ? <PlayerCardFront player={card} size="sm" wide /> : <PlayCardFront play={card} />}
+        {card.type === 'Player' ? <PlayerCardFront player={card} size="sm" wide /> : <PlayCardFront play={card} wide />}
       </div>
     );
   }
@@ -49,5 +49,5 @@ export function PackRevealCard({ card, revealed, interactive = true }: { card: D
     return <PlayerCard player={card} size="sm" wide />;
   }
 
-  return <PlayCard play={card} />;
+  return <PlayCard play={card} wide />;
 }

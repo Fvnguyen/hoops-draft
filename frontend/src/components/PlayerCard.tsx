@@ -1011,7 +1011,7 @@ function PlayBoardGraphic({ play }: { play: Play }) {
   );
 }
 
-export function PlayCardFront({ play }: { play: Play }) {
+export function PlayCardFront({ play, wide = false }: { play: Play; wide?: boolean }) {
   const cat = play.playCategory || 'special';
   const theme = playCategoryTheme[cat];
   const requirements = getPlayRequirements(getPlayEffectId(play));
@@ -1036,7 +1036,7 @@ export function PlayCardFront({ play }: { play: Play }) {
         </div>
       </div>
       {requirements.length > 0 && (
-        <div className="px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center">
+        <div className={`px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center ${wide ? 'pointer-coarse:max-lg:gap-1.5!' : ''}`}>
           <span className="text-xs text-ink-subtle font-bold uppercase tracking-widest leading-none">Synergy Key</span>
           <PlayRequirementIcons requirements={requirements} size="key" />
         </div>
@@ -1074,7 +1074,7 @@ export function RoleTag({ playName, roleName, side }: { playName: string; roleNa
   );
 }
 
-export function PlayCard({ play, onClick, isSelected = false, compact = false, evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void }) {
+export function PlayCard({ play, onClick, isSelected = false, compact = false, evaluation, status, players, selectedRoleId, onRoleClick, onRoleClear, onRoleDrop, wide = false }: { play: Play; onClick?: () => void; isSelected?: boolean; compact?: boolean; evaluation?: PlayEvaluation; status?: PlayStatus; players?: PlayerCardData[]; selectedRoleId?: string; onRoleClick?: (roleId: string) => void; onRoleClear?: (roleId: string) => void; onRoleDrop?: (roleId: string, cardId: string) => void; wide?: boolean }) {
   const [isFlipped, setIsFlipped] = useState(false);
   const longPress = useLongPressPreview();
 
@@ -1115,7 +1115,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
   return (
     <div
-      className={`group @container relative w-full aspect-[5/7] cursor-pointer select-none [-webkit-touch-callout:none] transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
+      className={`group @container relative w-full aspect-[5/7] ${wide ? 'pointer-coarse:max-lg:aspect-[1.15/1]!' : ''} cursor-pointer select-none [-webkit-touch-callout:none] transition-transform hover:-translate-y-1 ${isSelected ? `ring-2 ${theme.ringColor} ring-offset-1 ring-offset-surface-inverse rounded-lg scale-105` : `hover:scale-[1.02] ${theme.hoverShadow}`}`}
       style={{ perspective: 800 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
@@ -1275,7 +1275,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
 
           {/* Requirement icons — only when there's no status (legacy) */}
           {!status && requirements.length > 0 && (
-            <div className="px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center">
+            <div className={`px-2 py-2 bg-surface-raised flex flex-col items-center gap-1 border-t border-line min-h-[40px] justify-center ${wide ? 'pointer-coarse:max-lg:gap-1.5!' : ''}`}>
                 <span className="text-xs text-ink-subtle font-bold uppercase tracking-widest leading-none">Synergy Key</span>
                 <PlayRequirementIcons requirements={requirements} size="small" />
                 {stateLabel && (
