@@ -44,6 +44,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
+- **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 
 ## card_ratings_rebalance — done 2026-09-18
 
@@ -109,6 +110,14 @@ then-plan (ramping across the draft, bomb-pull override for a clear talent gap),
 `buildBotRoster` never leaves a depth-chart column empty (fixes the old 4-on-5 bug).
 T4 (D8 identity-reach tuning) stays parked by owner call, not an exit criterion.
 442/443 tests, `npm run balance`/`feasibility` clean, live draft + ticker screenshotted.
+**`mobile_native_feel` done (2026-09-19):** no context menu/double-tap-zoom
+(`touch-action`/`user-select`/`-webkit-touch-callout` globally in `globals.css`),
+Android/PWA back shows a "Leave this screen?" sheet (Cancel/Leave, re-arms on cancel)
+on draft room/deck builder instead of silent history-back, dropped two per-move
+deck-builder undo toasts. Verified via browser-pane mobile-landscape viewport
+(computed styles, live back-guard trigger/cancel/re-arm) — **not verified**: an actual
+Android device or Chrome touch-gesture emulation, unavailable in this sandbox; recheck
+there first if a long-press/double-tap/back-button report comes in.
 
 ## challenge_mode — done 2026-09-18
 
@@ -155,26 +164,6 @@ painting (which is why the trade -> deck-builder hand-off is code-verified, not 
 `cas_upsert`'s allowlist is hardcoded in SQL, so a new synced table needs the function
 re-declared (migration `202609170001`); and an untracked asset in `public/` reads as junk to
 the next agent — the 82:0 pack art was deleted on that mistake, so it is tracked now.
-
-## game_theater — done 2026-09-17 (manual override)
-
-Plan: `docs/completed/plan_game_theater_2026-09-13.md`. Closed by owner override before
-its own two exit criteria ran (an in-app season game with a close finish, and loading a
-season saved before this plan) — run both when convenient; if either turns up a bug, the
-fix is scoped to this feature, not a new plan. T6 (removing `narrativeText` once those
-pass) was skipped for the same reason and is still open: `engine/game.ts` still emits it,
-`narration/render.ts` still falls back to it (D7).
-What shipped (commits `be99ef0`, `8215a45`, `5f2d777`, `fed411a`, `579ae51`): every event
-carries a structured `narrative` (kind, channel, actor, assist, credited defender, called
-play/coverage, second chance, `steeredTo`) that `src/narration/` renders into
-broadcast-style play-by-play (298 template bodies, no-repeat window 5), game-flow beats,
-crunch time (Q4/OT closing fives, 1x-snap pop-up, 23% of games enter it), and a full box
-score with a completion Summary (player of the game, two data-backed hints, never OVR).
-Attribution rolls on a derived rng so the sim stream is untouched. Verified: 333/333
-tests, tsc/lint/`check:styles` clean, balance before/after unchanged; in-app fixture
-`/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
-Gotchas: any rng-order change needs a `BALANCE_VERSION` bump; the phone-landscape header
-takes most of the 385px screen — next mobile item is compacting it.
 
 ## How to run everything
 

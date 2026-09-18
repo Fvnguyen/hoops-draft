@@ -1,12 +1,32 @@
 # Plan: mobile_native_feel
 
-File: `docs/plans/plan_mobile_native_feel_2026-09-18.md`. Status: in progress (T1, T2, T3, T4
-done; screenshots + manual device check still open).
+File: `docs/completed/plan_mobile_native_feel_2026-09-18.md`. Status: done 2026-09-19.
 Sequence: see `docs/ROADMAP.md`. Depends on: — (mobile_responsive, ui_foundation done). Files
 owned: `app/layout.tsx`, `app/globals.css`, a new `hooks/useAndroidBackGuard.ts` (or
 equivalent), `components/TopKPIBand.tsx`/`PlayPanel.tsx`/other collapsible-bar components
 (toggle-target only, not their content), `components/DeckBuilder.tsx` (toast calls only),
 `components/Toast.tsx`.
+
+**Closing note (2026-09-19):** T1-T4 code landed 2026-09-17/18; closed today after
+verifying the open items via the browser pane at a mobile landscape viewport (812x375)
+against a live dev server, not a physical Android device:
+- D1/D2: computed styles on `html`/`body` confirmed `touch-action: manipulation` and
+  `user-select: none` are live (not just declared), and `-webkit-touch-callout: none`
+  is present in `globals.css` — no dedicated long-press/double-tap screenshot, since
+  the browser-pane tooling can't simulate a true OS-level touch-and-hold gesture; the
+  computed-style check is the closer-to-ground-truth verification for this environment.
+- D3/D4: triggered browser back on the draft room (mid-pick) and the deck builder
+  (`/deckbuilder-test`) — both show the "Leave this screen?" sheet with Cancel/Leave
+  only, each with its own contextual message; Cancel returns to the same screen and
+  the guard re-arms (a second back press re-shows the sheet); Leave navigates away.
+- D7: confirmed in source — only the `'Roster cleared'` `toastUndo` call remains in
+  `DeckBuilder.tsx`, the two per-move place/swap calls are gone.
+- `npm test` (442/443, one pre-existing unrelated drift), `npm run build`, and
+  `npm run test:e2e -- smoke.spec.ts` (9/9) all green.
+- **Not verified**: an actual Android device or Chrome's device-toolbar touch-gesture
+  emulation (long-press context menu, double-tap zoom, hardware back button) — this
+  sandbox has no such device/toolbar available. If a real "long-press still opens a
+  menu" or "double-tap still zooms" report comes in, re-check there first.
 
 ## Goal
 
