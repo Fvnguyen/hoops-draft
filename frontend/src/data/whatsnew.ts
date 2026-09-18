@@ -100,4 +100,19 @@ export const WHATS_NEW: ChangelogEntry[] = [
     ],
     cta: 'Back to the court',
   },
+  {
+    id: 'card-badge-balance-2026-09-19',
+    date: '2026-09-19',
+    eyebrow: 'Patch notes',
+    title: 'Every colour gets its shot',
+    subtitle: 'Rarity, badges and team identities all got tuned, and bots stopped playing it so safe.',
+    highlights: [
+      { icon: 'sparkles', title: 'Rarity, simplified', body: 'Card rarity now follows one clear rule — an OVR band, a couple of bumps, then a floor and ceiling — so award winners and legends are reliably rare without a grab-bag of special cases.' },
+      { icon: 'chart', title: 'Badges, rebalanced', body: 'Every skill badge now shows up about as often as every other one — shooters and finishers are no longer starved for badges next to stacked defenders.' },
+      { icon: 'grid', title: 'A new identity: Crash and Finish', body: 'Rebounders get a second team identity — crash the offensive glass and finish at the rim, alongside Second-Chance Engine.' },
+      { icon: 'activity', title: 'Bots play more identities', body: 'Opponent and bot rosters now pick from every identity they have earned instead of always defaulting to the safest one — expect more variety across your league and the 82:0 field.' },
+      { icon: 'zap', title: 'Fairer plans across the board', body: 'Defensive identities are no longer easier to unlock than offensive ones now that badges are balanced — every plan takes real roster building.' },
+    ],
+    cta: 'Back to the court',
+  },
 ];

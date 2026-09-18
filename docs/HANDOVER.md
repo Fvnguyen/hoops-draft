@@ -19,7 +19,7 @@ than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-431 Vitest tests pass, type-check is clean, `npm run lint` is
+434/435 Vitest tests pass (two pre-existing seeded-statistics drifts, see below), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -82,22 +82,22 @@ OVR, rotation top-7.5% → 99) before resolving rarity/awards. Untouched: per-di
 ratings, the possession engine (OVR isn't a game input). **Not verified**: the plan's
 screenshot exit criterion — no Supabase credentials in this sandbox, every route 500s
 before rendering; do this on a real machine before signing off the gold badge UI.
-**Rarity simplified (2026-09-19, owner-approved): a single band → adjustment → floor/
-ceiling function** (`ratings.ts`) replaces the old MVP/All-NBA/DPOY/AllDef/league-leader
-bump chain; `hasAward` now folds in every award type (All-Star included), not a hardcoded
-subset. `RARITY_CUTOFFS` (`balance.ts`) rebanded to `<50 Common / 50-79 Uncommon / 80-89
-Rare / 90+ Mythic` — ~66% of the Rare+Mythic pool, ~33% of Uncommon, ~36% of Common lands
-in some pack over a full draft. **Balance workflow locked in, five hierarchical stages
-(`AGENTS.md`).** Stage 4 (badges) done: re-applied `card_balance`'s hand-binning method
-(stepped floor per level closest to the cross-dimension average holder-count) against
-the post-rebalance raws — target moved ~62/29/11 → ~56/27/13. Fixed playmaking's dead L3
-(sat on the gold cutoff, 0 holders → l3:93, 11) and the ~3x badge-earn-rate spread
-(finishing/perimeter were thin — now 10.9-13.4% across all seven dims, was 4.9-15.8%);
-Post-Up Series/Four Out One In full-activation jumped 47.6%→77.2% / 51.2%→73.4%, PPP
-unchanged at 1.048. Stage 5 (plays/archetypes) next. Two tests sit just past tolerance
-from the position-pool + rarity-band drift, left for a dedicated pass, not patched ad
-hoc: `lineup.test.ts` (`LINEUP_CENTRE`) and `game.test.ts`'s home-court test (56.4% vs 56%).
-`card_balance_thresholds`
+**Balance workflow locked in, five hierarchical stages (`AGENTS.md`): pool → ratings/OVR
+→ rarity → badges → plays/archetypes**, verify before tuning the next, no automated
+checks outside a plan or an owner ask. All done 2026-09-19: **rarity** simplified to
+band → adjustment → floor/ceiling (`ratings.ts`; `RARITY_CUTOFFS` rebanded `<50/50-79/
+80-89/90+`, `hasAward` folds in every award type); **badges** re-hand-binned against the
+post-rebalance raws (target ~62/29/11 → ~56/27/13 holders), fixing playmaking's dead L3
+and the ~3x badge-earn-rate spread (now 10.9-13.4% across all seven dims); **plays/
+archetypes**: dropped the now-stale `MONO_THRESHOLDS_BY_COLOR` defense discount (it
+existed only because defense badges used to be scarcer — stage 4 fixed that), added
+Crash and Finish (Glass Cleaner's first primary-colour plan, every colour now leads at
+least one), and switched bot archetype selection from deterministic-best (which tied
+toward mono via array order) to `pick(rng, eligible)` — every two-colour plan went from
+0% to a real live activation rate (`bestSelection`, `archetypes.ts`). PPP steady near
+1.05-1.06 throughout. Two tests sit just past tolerance from the position-pool + rarity-
+band drift, left for a dedicated recalibration pass, not patched ad hoc: `lineup.test.ts`
+(`LINEUP_CENTRE`) and `game.test.ts`'s home-court test. `card_balance_thresholds`
 **Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
 colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
 one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in

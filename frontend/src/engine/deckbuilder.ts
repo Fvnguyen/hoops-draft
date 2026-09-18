@@ -13,6 +13,7 @@ import { BotProfile } from './draft';
 import { TARGET_ROSTER } from './balance';
 import { DEPTH_COLUMNS, canPlaceAt, effectivePosition, type DepthColumn } from './positions';
 import { placeFromBench, type DenseDepthChart } from './depthChart';
+import { createRng } from './rng';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -275,7 +276,6 @@ function countFillableRoles(
 
 // ── Bot Auto Deck Builder ──────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): BuiltRoster {
   const players = drafted.filter((c): c is PlayerCardData => c.type === 'Player');
   const plays = drafted.filter((c): c is Play => c.type === 'Play');
@@ -382,7 +382,7 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
 
   return {
     version: BUILT_ROSTER_VERSION,
-    archetypes: chooseBotArchetypes(activePlayers, starterIds),
+    archetypes: chooseBotArchetypes(activePlayers, starterIds, botProfile?.noiseSeed),
     depthChart: Object.fromEntries(
       Object.entries(depthChart).map(([pos, cards]) => [pos, cards.map(c => c.id)])
     ),
@@ -393,7 +393,22 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
   };
 }
 
-/** Best eligible archetype selection for a bot roster (greedy: gold if eligible, else best offense + defense). Also usable as a UI 'suggest'. */
-export function chooseBotArchetypes(activePlayers: PlayerCardData[], starterIds: Set<string>): ArchetypeSelection {
-  return bestSelection(evaluateArchetypes(activePlayers, starterIds));
+/**
+ * Simple pseudo-random hash, same pattern as draft.ts's bot-pick noise: deterministic
+ * from the roster's own sorted player ids, so a caller without a `noiseSeed` (an NBA
+ * opponent roster, a synthetic balance-script team) still gets a stable, reproducible
+ * pick instead of needing its own seed threaded through.
+ */
+function seedFromRoster(activePlayers: PlayerCardData[], noiseSeed?: number): number {
+  if (noiseSeed !== undefined) return noiseSeed >>> 0;
+  const ids = activePlayers.map(p => p.id).sort().join('|');
+  let h = 0x9e3779b9;
+  for (let i = 0; i < ids.length; i++) h = Math.imul(h ^ ids.charCodeAt(i), 2654435761);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** Random-among-eligible archetype selection for a bot roster (see `bestSelection`). Also usable as a UI 'suggest'. */
+export function chooseBotArchetypes(activePlayers: PlayerCardData[], starterIds: Set<string>, noiseSeed?: number): ArchetypeSelection {
+  const rng = createRng(seedFromRoster(activePlayers, noiseSeed));
+  return bestSelection(evaluateArchetypes(activePlayers, starterIds), rng);
 }

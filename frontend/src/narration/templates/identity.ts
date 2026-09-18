@@ -110,6 +110,12 @@ export const IDENTITY_TEMPLATES: Record<string, string[]> = {
     'One shot and out against {team}: {opprimm}-{opprima} at the rim in {q}.',
     '{team} guard the rim and the rebound, {opppts} allowed so far in {q}.',
   ],
+  'crash-and-finish': [
+    'Crash and Finish for {team}: {oreb} offensive boards turn into {rimm} of {rima} at the rim in {q}.',
+    '{team} crash the glass and finish, {oreb} second-chance boards and {paint} paint points in {q}.',
+    'Offensive boards become rim shots for {team}: {oreb} put-backs so far this quarter.',
+    '{team} won\'t let a miss end the possession, {oreb} boards and {rimm} rim makes in {q}.',
+  ],
   '3-and-d-paradigm': [
     '3-and-D Paradigm: {team} are {tpm} of {tpa} from deep and hold opponents to {opptpm}-{opptpa}.',
     '{team} shoot it and guard it: {tpm} threes made, {opptpm} allowed in {q}.',

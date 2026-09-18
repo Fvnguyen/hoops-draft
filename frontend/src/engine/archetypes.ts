@@ -17,6 +17,7 @@ import type { PlayerCardData } from './types';
 import type { GameModifiers } from './synergies';
 import { ARCHETYPE_ONLINE_SCALE, IDENTITY_CAPS } from './balance';
 import { positionParts } from './positions';
+import { type Rng, pick } from './rng';
 
 /** The seven skill badges are the game's "colours". */
 export type Color =
@@ -104,18 +105,24 @@ export interface ArchetypeThresholds {
  * unlocks at most 3-4 plans. With these values a colour-chasing drafter reaches a mono
  * identity Online in 43-71% of drafts (Dedicated 19-34%), PER-drafting bots 7-16%, and
  * rosters unlock ~1.5 plans on average; `shortlistArchetypes` caps what is offered at
- * MAX_UNLOCKED_ARCHETYPES for the rare stacked roster. The two defensive colours carry
- * ~3x fewer badges and get a looser override.
+ * MAX_UNLOCKED_ARCHETYPES for the rare stacked roster.
  */
 export const MONO_THRESHOLDS: ArchetypeThresholds = {
   online: { carriers: 4, points: 8, starters: 2 },
   dedicated: { carriers: 5, points: 10, starters: 3 },
 };
-/** Per-colour overrides for rarer badges (see note above). */
-export const MONO_THRESHOLDS_BY_COLOR: Partial<Record<Color, ArchetypeThresholds>> = {
-  'Lockdown Defender': { online: { carriers: 3, points: 6, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
-  'Paint Protector': { online: { carriers: 3, points: 6, starters: 1 }, dedicated: { carriers: 4, points: 8, starters: 2 } },
-};
+/**
+ * Per-colour overrides, for when one colour's badge distribution runs far enough off the
+ * pool average that MONO_THRESHOLDS alone misjudges it (`npm run feasibility` is the
+ * check). Empty as of balance workflow stage 5 (2026-09-19): Lockdown Defender/Paint
+ * Protector's looser override existed because those two colours carried ~3x fewer badges
+ * than the rest — stage 4's badge retune (BADGE_THRESHOLDS) equalized badge-earn rate
+ * across all seven dimensions to 10.9-13.4%, which removed the reason for the discount
+ * and left it stacking on top of an already-generous pool (defense was landing 2-3x over
+ * the online/dedicated targets above). Re-add an entry here only against a fresh
+ * `npm run feasibility` reading, never as a guess.
+ */
+export const MONO_THRESHOLDS_BY_COLOR: Partial<Record<Color, ArchetypeThresholds>> = {};
 export function monoThresholdsFor(color: Color): ArchetypeThresholds {
   return MONO_THRESHOLDS_BY_COLOR[color] ?? MONO_THRESHOLDS;
 }
@@ -333,6 +340,21 @@ export const ARCHETYPES: ArchetypeDef[] = [
     colors: { primary: 'Paint Protector', support: 'Glass Cleaner' },
     dedicated: { possessions: 2, oppShare: { rim: -0.07, mid: 0.03, three: 0.04 }, oppEff: { rim: -0.03 } },
     description: 'Opponent Rim -7%, Mid +3%, 3PT +4%; opponent Rim efficiency -3%; +2 possessions',
+  },
+  {
+    // Balance workflow stage 5 (2026-09-19, owner-requested): every other mono colour
+    // already led a two-colour plan as primary — Glass Cleaner only ever appeared as
+    // support (Spacing Machine, Junkyard Dogs, Glass Fortress). This closes that gap:
+    // offensive boards feeding rim finishes, the same live-ball-possession idea as the
+    // Glass Cleaner mono (Second-Chance Engine) paired here with Finisher instead of
+    // opponent share. 'Point Forward' (Floor General+Glass Cleaner) was the other open
+    // pair and has a matching unused KEYSTONE_CONDITIONS entry, but that name is already
+    // play-std-6's — picking Finisher instead avoids relitigating the keystone-on-a-
+    // two-colour-plan question (keystones currently gate gold plans only).
+    id: 'crash-and-finish', name: 'Crash and Finish', kind: 'two', side: 'offense',
+    colors: { primary: 'Glass Cleaner', support: 'Finisher' },
+    dedicated: { possessions: 4, ownShare: { rim: 0.09, mid: -0.05, three: -0.04 }, ownEff: { rim: 0.02 }, and1: 0.01 },
+    description: '+4 possessions; Rim +9%, Mid -5%, 3PT -4%; Rim efficiency +2%, and-one chance +1%',
   },
 
   // ── Gold archetypes ─────────────────────────────────────────────────────
@@ -669,31 +691,32 @@ export function archetypeModifiers(
 
 // ── Bot helper ────────────────────────────────────────────────────────────────
 
-const TIER_RANK: Record<ArchetypeTier, number> = { dedicated: 2, online: 1, none: 0 };
-
-function bestOfSide(statuses: ArchetypeStatus[], side: ArchetypeSide): string | undefined {
-  const candidates = statuses.filter(s => s.def.side === side && s.tier !== 'none');
-  candidates.sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier] || b.progress - a.progress);
-  return candidates[0]?.def.id;
-}
-
 /**
- * Greedy pick for bots: the highest-tier eligible Gold plan if any (ties broken by
- * progress), else the best eligible offense plan + best eligible defense plan
- * (each independently, by tier then progress).
+ * Random pick for bots (balance workflow stage 5, 2026-09-19): a bot equips ONE plan per
+ * lane, chosen uniformly at random among everything it unlocked (tier online or
+ * dedicated), independent of `shortlistArchetypes`'s cap/lane-privilege logic — that cap
+ * exists for the human-facing "what's offered" list (MAX_UNLOCKED_ARCHETYPES), not for
+ * what a bot equips. The previous version deterministically took the highest
+ * tier-then-progress plan per lane, via a list `shortlistArchetypes` already narrowed to
+ * one guaranteed pick per lane; since a two-colour plan's primary-colour requirement
+ * always equals its mono counterpart's, unlocking one always unlocked the other with an
+ * identical rank, and the stable sort's tie-break (mono listed first in ARCHETYPES)
+ * meant bots picked mono nearly every time — every two-colour plan (7 of them) showed
+ * 0% live activation in `npm run balance` even at reachable-27%-of-drafts rates. Random
+ * selection gives every unlocked plan an equal shot regardless of that tie, at roughly
+ * comparable per-plan effect magnitude (checked: two-colour `dedicated` packages run
+ * ~0.06-0.34 total share/efficiency delta, same range as mono's ~0.13-0.29).
  */
-export function bestSelection(allStatuses: ArchetypeStatus[]): ArchetypeSelection {
-  // Bots and humans choose from the same shortlist (MAX_UNLOCKED_ARCHETYPES).
-  const statuses = shortlistArchetypes(allStatuses);
-  const eligibleGold = statuses.filter(s => s.def.kind === 'gold' && s.tier !== 'none');
-  eligibleGold.sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier] || b.progress - a.progress);
+export function bestSelection(allStatuses: ArchetypeStatus[], rng: Rng): ArchetypeSelection {
+  const eligibleGold = allStatuses.filter(s => s.def.kind === 'gold' && s.tier !== 'none');
   if (eligibleGold.length > 0) {
-    return { gold: eligibleGold[0].def.id };
+    return { gold: pick(rng, eligibleGold).def.id };
   }
-  const offense = bestOfSide(statuses, 'offense');
-  const defense = bestOfSide(statuses, 'defense');
+  const eligible = (side: ArchetypeSide) => allStatuses.filter(s => s.def.kind !== 'gold' && s.def.side === side && s.tier !== 'none');
+  const offenseEligible = eligible('offense');
+  const defenseEligible = eligible('defense');
   const selection: ArchetypeSelection = {};
-  if (offense) selection.offense = offense;
-  if (defense) selection.defense = defense;
+  if (offenseEligible.length > 0) selection.offense = pick(rng, offenseEligible).def.id;
+  if (defenseEligible.length > 0) selection.defense = pick(rng, defenseEligible).def.id;
   return selection;
 }

@@ -21,6 +21,7 @@ import {
 import { IDENTITY_CAPS } from '@/engine/balance';
 import { loadPlayers, runHeadlessDraft, PLAYS } from './helpers';
 import { resolveDepthChart } from '@/engine/rosterStats';
+import { createRng } from '@/engine/rng';
 
 // ── Synthetic-player factory (full control over traits, no dependency on real data) ──
 
@@ -273,7 +274,7 @@ describe('bestSelection', () => {
       { def: offenseDef, tier: 'dedicated', tally: {}, missing: [], progress: 1 },
       { def: defenseDef, tier: 'dedicated', tally: {}, missing: [], progress: 1 },
     ];
-    expect(bestSelection(statuses)).toEqual({ gold: '3-and-d-paradigm' });
+    expect(bestSelection(statuses, createRng(1))).toEqual({ gold: '3-and-d-paradigm' });
   });
 
   it('falls back to the best offense + best defense plan when no Gold plan is eligible', () => {
@@ -285,13 +286,13 @@ describe('bestSelection', () => {
       { def: offenseDef, tier: 'dedicated', tally: {}, missing: [], progress: 1 },
       { def: defenseDef, tier: 'online', tally: {}, missing: ['x'], progress: 0.5 },
     ];
-    expect(bestSelection(statuses)).toEqual({ offense: 'rim-pressure', defense: 'paint-wall' });
+    expect(bestSelection(statuses, createRng(1))).toEqual({ offense: 'rim-pressure', defense: 'paint-wall' });
   });
 
   it('returns an empty selection when nothing is eligible', () => {
     const offenseDef = ARCHETYPES.find(a => a.id === 'rim-pressure')!;
     const statuses: ArchetypeStatus[] = [{ def: offenseDef, tier: 'none', tally: {}, missing: ['x'], progress: 0 }];
-    expect(bestSelection(statuses)).toEqual({});
+    expect(bestSelection(statuses, createRng(1))).toEqual({});
   });
 });
 
