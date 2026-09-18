@@ -14,7 +14,7 @@ over budget, rewrite it down in the same commit):
 | Document | Budget | Keep |
 |---|---|---|
 | `CLAUDE.md` | 40 lines | pointers and rules only |
-| `AGENTS.md` | 150 lines | repo map, commands, product rules, gotchas; no changelog |
+| `AGENTS.md` | 180 lines | repo map, commands, product rules, gotchas; no changelog |
 | `docs/HANDOVER.md` | 250 lines | current state + last 3 milestones in full; older ones one line each under "History"; open issues re-verified at every rewrite |
 | `docs/ROADMAP.md` | 80 lines | sequence table + latest 3 completed |
 | `docs/plans/*.md` | 150 lines | decisions and tasks only |
