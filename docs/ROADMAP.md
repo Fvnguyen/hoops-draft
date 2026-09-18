@@ -20,7 +20,6 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 4 | [draft_ai](plans/plan_draft_ai_2026-09-13.md) — bots contest identities; drafts differ by strategy | planned | — (2a done, unblocked) | `engine/draft.ts`, `hooks/useDraftEngine.ts`, `scripts/archetype-feasibility.ts`, `DraftRoom.tsx` (pack play card) | 1-2 days |
-| 6 | [card_balance_thresholds](plans/plan_card_balance_thresholds_2026-09-17.md) — re-tune archetype thresholds to draft_ai's D8 bands once bots actually chase a plan (split out of card_balance's T5) | planned | draft_ai, card_ratings_rebalance (done) | `engine/archetypes.ts` (threshold constants only) | half a day |
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
 | 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (redesigned with per-play badge-emblem faces 2026-09-17 — build the phone variant on that, not the old generic diagram), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 | 10 | mode_picker — MtG-Arena-style "limited picker" for game modes, mode-specific draft rules (backlog board `Main`), and wiring the start page's disabled "Enter a seed" to `parseSeed` | not yet planned | challenge_mode | `app/page.tsx`, `HomeModePicker.tsx` | — |
@@ -29,7 +28,8 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 **Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`
 (commit `7c89111`) before `card_balance` had fully landed — the 2026-09-16 gate ("wait
 for card_balance to land before any push") did not hold. Nothing to revert; `card_balance`
-itself closed 2026-09-17 with T1-T4/T6 done, T5 split into `card_balance_thresholds` above.
+itself closed 2026-09-17 with T1-T4/T6 done, T5 split into `card_balance_thresholds`
+(closed 2026-09-19, owner override — see Recently completed).
 
 Re-sequenced 2026-09-15: `ui_foundation` (done that evening) went ahead of
 `mobile_responsive` because its tokens and primitives resolve most of the mobile
@@ -47,9 +47,9 @@ Scope sketch for #7 is proposal G.2 in
 
 | Plan | Completed | Outcome |
 |---|---|---|
+| [card_balance_thresholds](completed/plan_card_balance_thresholds_2026-09-17.md) | 2026-09-19 | Closed by owner override before its own exit criteria (`draft_ai` never landed, bot online% still single digits to high teens vs the D8 25-35% target). What shipped instead, as balance-workflow stage 5: `MONO_THRESHOLDS_BY_COLOR` removed (stale defense discount, not a D8 retune), new Crash and Finish archetype, bot identity selection randomized among eligible plans. `MONO_THRESHOLDS`/`TWO_COLOR_THRESHOLDS`/`GOLD_THRESHOLDS` untouched — a real D8 retune is still open if `draft_ai` ever lands |
 | [card_ratings_rebalance](completed/plan_card_ratings_rebalance_2026-09-18.md) | 2026-09-18 | Ratings rebuilt on rate stats + self-creation (D2-D6), magnitude×shape defence, gold L4 badges above 99, flat-mean OVR (Jokić 90 now highest, Curry above Queta), bref-native position crossover. 426/426 tests, PPP 1.046→1.031, rarity 23/59/107/259 (target 23/55/117/253, within ±10% except Uncommon/Rare at ~8%). True 3-way positions stay data-limited (bref caps at 2-letter G/F/C this season) |
 | [challenge_mode](completed/plan_challenge_mode_2026-09-17.md) | 2026-09-18 | The 82:0 Challenge: mode picked before the draft, 82 games vs all 30 real NBA teams, two-spin flip-clock reveal, front office + one trade at game 41, S+ to F grade, ghost-line trade verdict. `CHALLENGE_TUNING` 0.50/0.20 calibrated over 2,000 seat-seasons (best seat mean 60 wins, p90 70). 431/431 tests, smoke 9/9, `npm run balance` unchanged at PPP 1.044. Found and fixed a real engine bug on the way: `simulateGame` keyed box stats by player id alone, so a card on both rosters merged into one row; commits `fa8b723`..`fde605a` |
-| [card_balance](completed/plan_card_balance_2026-09-13.md) | 2026-09-17 | Real bref-primary positions, rarity redistribution (23/55/117/253, on D2's target), badge L1/L2/L3 hand-binning + keystone combo conditions, play catalog 10→14 (4 new plays close 3 previously-uncovered plans), `CARD_SET_VERSION`. 338/338 tests. T5 (threshold re-tune against draft_ai's D8) split into `card_balance_thresholds` — needs draft_ai's contested drafts to mean anything |
 
 ## Model tiers used in plans
 

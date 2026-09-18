@@ -3,7 +3,8 @@
 File: `docs/completed/plan_card_balance_2026-09-13.md`. Status: done 2026-09-17
 (T1-T4, T6 complete and verified; T5 — threshold re-tune, which needs draft_ai's
 contested drafts to mean anything — split out to
-[plan_card_balance_thresholds_2026-09-17.md](../plans/plan_card_balance_thresholds_2026-09-17.md)).
+[plan_card_balance_thresholds_2026-09-17.md](plan_card_balance_thresholds_2026-09-17.md),
+closed 2026-09-19 by owner override before draft_ai landed).
 Sequence: was 4 in `docs/ROADMAP.md`. Depends on: game_engine and draft_ai (so measurements
 reflect the final simulation and contested drafts). Files owned: `data/fetch_players.py`,
 `frontend/game.db` (regenerated), `engine/ratings.ts`, `engine/balance.ts` (rating,

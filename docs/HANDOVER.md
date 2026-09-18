@@ -97,7 +97,8 @@ toward mono via array order) to `pick(rng, eligible)` — every two-colour plan 
 0% to a real live activation rate (`bestSelection`, `archetypes.ts`). PPP steady near
 1.05-1.06 throughout. Two tests sit just past tolerance from the position-pool + rarity-
 band drift, left for a dedicated recalibration pass, not patched ad hoc: `lineup.test.ts`
-(`LINEUP_CENTRE`) and `game.test.ts`'s home-court test. `card_balance_thresholds`
+(`LINEUP_CENTRE`) and `game.test.ts`'s home-court test. `card_balance_thresholds` closed
+2026-09-19 by owner override, not its own exit criteria — `draft_ai` never landed.
 **Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
 colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
 one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in
@@ -190,10 +191,9 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md`. `challenge_mode` and `card_ratings_rebalance` both
-closed 2026-09-18 and merged into `main`. `draft_ai` is next up; `card_balance_thresholds`
-sits behind it (it needs bots that actually chase a plan) and its other dependency,
-`card_ratings_rebalance`, is now satisfied. `mode_picker` (#10) is newly unblocked.
+What to do next is `docs/ROADMAP.md`. `draft_ai` (#4) is next up and unblocked.
+`card_balance_thresholds` closed 2026-09-19 by owner override rather than waiting on it —
+its real D8 threshold retune is still open if `draft_ai` lands. `mode_picker` (#10) is unblocked.
 Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
