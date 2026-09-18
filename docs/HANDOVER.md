@@ -32,20 +32,12 @@ Finished design docs live in `docs/completed/`; a plan being worked on stays in
 
 One line each (full write-ups live in the linked plans under `docs/completed/`):
 
-- **Repo cleanup + Phase 0 correctness** (2026-09-12): `frontend/` absorbed via subtree merge, dead scripts/deps removed, agent docs written; inverted defensive modifiers, play activation, possession double counting, edge bias, storage quota, `/api/cards` N+1 fixed; PPP 1.29 → 1.08.
-- **Phase 1 engine isolation** (2026-09-12): pure seeded engine (`engine/rng.ts`), `cards.json` build artifact, `src/storage/` GameStore.
-- **Plays & archetypes** (2026-09-13, `plan_plays_and_synergies_2026-09-13.md`): identities (`archetypes.ts`), assigned-player plays (`playbook.ts`), roster v2, `PlayPanel`.
-- **Post-milestone fixes** (2026-09-13): pack reveal sequence, live box score from possessions, Mythic card-back bleed, legacy upgrade paths.
-- **Stability pass** (2026-09-13, `plan_stability_pass_2026-09-13.md`): CI workflow, error boundary, safe loads, seeded bots, `smoke.spec.ts`, lint 0 errors.
-- **Analytics tooling & data storage** (2026-09-13): `scripts/analyze.ts`; slim `StoredGameResult`s re-simulated from seed (Dexie v2); rosters Export/Import.
-- **Vercel deploy & auth** (2026-09-13): live at hoops-draft-fvnguyen1.vercel.app; Supabase email/password + admin approval; per-user IndexedDB stamping (Dexie v3).
-- **ui_draft_deckbuild_pack** (2026-09-13): rarity-ordered pack opener with pick clock, unified Roster list, fixed 5x4 depth chart, empty-start deck builder.
+- **Repo cleanup + Phase 0/1** (2026-09-12): `frontend/` absorbed via subtree merge; PPP 1.29 → 1.08; pure seeded engine (`engine/rng.ts`), `cards.json` build artifact, `src/storage/` GameStore.
+- **Plays, archetypes & stability** (2026-09-13, `plan_plays_and_synergies_2026-09-13.md` + `plan_stability_pass_2026-09-13.md`): identities/plays/roster v2/`PlayPanel`; CI workflow, error boundary, safe loads, `smoke.spec.ts`.
+- **Analytics, deploy & pack UI** (2026-09-13): `scripts/analyze.ts`, Dexie v2/Export-Import; live at hoops-draft-fvnguyen1.vercel.app with Supabase auth; rarity-ordered pack opener, unified Roster list, empty-start deck builder.
 - **ui_polish_small_fixes & playwright_auth_fixture** (2026-09-14): hover/confirm/radar polish; E2E Supabase account + `tests/auth.setup.ts` so `test:e2e` runs authenticated.
-- **accounts_cloud_saves** (2026-09-14, `plan_accounts_cloud_saves_2026-09-14.md`): `SupabaseGameStore` over IndexedDB with `cas_upsert` optimistic CAS, type-specific merge, roster conflict UI; two post-deploy bugs fixed live.
-- **game_engine** (2026-09-14, `plan_game_engine_2026-09-13.md`): OT/home-court/spread/impact tuning measured; lineup wiring fixed; `--report` unifies draft-impact + talent-vs-luck.
-- **season_lifecycle_notifications** (2026-09-14): derived season phase, completed-roster lock, per-roster W-L, notification bell on device-local meta.
-- **game-results-visibility** (2026-09-14, `2cd44e5`): a game result commits only when watched to the end and continued; leaving early discards it.
-- **mobile_responsive** (superseded 2026-09-15, closed 2026-09-16): audit harness + projects, manifest/icons, `OrientationGate`, `/rosters` lineup row; folded into `game_canvas`.
+- **accounts_cloud_saves, game_engine & season_lifecycle** (2026-09-14): `SupabaseGameStore` optimistic CAS; OT/home-court/spread tuning; derived season phase, notification bell; a game result commits only when watched to the end (`2cd44e5`).
+- **mobile_responsive** (superseded 2026-09-15, closed 2026-09-16): audit harness, manifest/icons, `OrientationGate`; folded into `game_canvas`.
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
 - **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
@@ -67,25 +59,36 @@ magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independen
 shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
 rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
 rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
-a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped. Positions:
-`download_bref.js` now also scrapes bref's 26 letter-index pages (`data/bref_positions/`,
-committed like the other scrape snapshots) for bref-native name matching (132 vs 110
-crossover columns vs bio.csv's fuzzy match); the single-crossover cap in
-`blend_bio_crossover` is gone. True 3-way positions stay data-limited — both sources cap
-at 2-letter G/F/C this season.
-**Follow-up (2026-09-19, owner request): OVR is no longer a flat mean of the seven
-dimensions** (that regressed to the middle — few players are elite in all seven, which is
-why it topped out at 90 with a ~47 pool mean). `computeCards` now runs two passes: pass 1
+a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped.
+**Positions, superseded twice (2026-09-19): `PositionResolver`** (`fetch_players.py`)
+replaced the letter-index/`blend_bio_crossover` approach — those capped at broad G/F/C
+same as bio.csv. Each player's own bref bio page ("Position: X, Y, and Z") gives exact
+eligibility (Shai → PG/SG, Barnes → SG/SF/PF), scraped for all 582 active players into
+`data/bref_player_positions.json` by `download_bref.js`. Primary = bref's season `Pos`;
+eligibility = the bio-text set, trusted verbatim (0 conflicts, only 3/582 non-adjacent,
+~2% three-way+, not pool-skewed → no cut needed, see `data/analyze_positions.py`).
+Missing bio text (3/582, a real bref quirk) falls back to a value **persisted from
+game.db** before overwrite, then season-Pos-only; a genuinely new Rare+ gap logs to
+`REVIEW_MISSING_POSITIONS.md` (gitignored) for a one-time manual edit that persists
+forward on its own — `POSITION_OVERRIDES` is for overruling a wrong signal (Jokić), not
+filling gaps. Giannis (no Position line at all) hand-set to SF/PF/C. Gold-star treatment
+(`getPosColors`, `PlayerCard.tsx`) marks 3+ position eligibility; `multipositionalLevel`
+(`archetypes.ts`) starts credit at 3 positions.
+**OVR follow-up (2026-09-19):** no longer a flat mean of the seven dimensions (regressed
+to the middle, topped out at 90/~47 mean) — `computeCards` now runs two passes: pass 1
 averages each player's seven UNCAPPED dimension raws into `rawOvrMean`; pass 2 re-indexes
-that composite through the same `idx()` every dimension uses (rotation league avg →
-~50 OVR, rotation top-7.5% → 99) before resolving rarity/awards. `RARITY_CUTOFFS` re-fit
-90/68/62 (was 68/58/58) — 22/55/124/247 vs target 23/55/117/253, within ±10%. Untouched:
-per-dimension ratings and the possession engine. OVR does not set shot efficiency, but it
-is NOT inert: it drives minutes share (`game.ts` `ovrGap`), closer selection, bot rosters
-and the NBA opponents, so it moves the challenge distribution — measured on merge, best
-seat mean 58.5 → 59.7 wins, p90 72 → 69, A+ 12.5% → 5.0%, i.e. back toward challenge_mode's
-own 2,000-season calibration (mean 60, p90 70). PPP 1.032. `card_balance_thresholds`
-(roadmap #6, depends on this now) should re-tune from this pool — every badge level moved.
+that composite through the same `idx()` every dimension uses (rotation league avg → ~50
+OVR, rotation top-7.5% → 99) before resolving rarity/awards. Untouched: per-dimension
+ratings, the possession engine (OVR isn't a game input). **Not verified**: the plan's
+screenshot exit criterion — no Supabase credentials in this sandbox, every route 500s
+before rendering; do this on a real machine before signing off the gold badge UI.
+**Rarity simplified (2026-09-19, owner-approved): a single band → adjustment → floor/
+ceiling function** (`ratings.ts`) replaces the old MVP/All-NBA/DPOY/AllDef/league-leader
+bump chain. `RARITY_CUTOFFS` (`balance.ts`) is now `<50 Common / 50-79 Uncommon / 80-89
+Rare / 90+ Mythic` — a cube-draft odds check (`generateCubePool`) puts ~66% of the
+Rare+Mythic pool, ~33% of Uncommon and ~36% of Common into some pack over a full draft.
+`hasAward` now folds in every award type (including All-Star), not a hardcoded subset.
+`card_balance_thresholds`
 **Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
 colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
 one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in
@@ -191,10 +194,8 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 1. **Stale analytics findings** (PPP 1.29, ~0.8% turnovers, uneven activation) were
    measured against the retired engine; PPP is ≈1.05 and turnovers 13.9% now. Re-run
    `npm run analyze` before treating `docs/analytics/*` as current.
-2. **Cube draft duplicate bug — likely already resolved, unverified.** One early session
-   log showed 113/264 unique cards; `game.db` now has 448 players (needs ≥264 for a
-   duplicate-free cube) and every later session shows 264/264 unique. Worth a targeted
-   test rather than assuming fixed.
+2. **Cube draft duplicate bug — resolved.** `game.db` has 448 players (≥264 needed for a
+   duplicate-free cube); every session since shows 264/264 unique.
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
    bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
    pointer here was stale). `draft_ai` is the plan that owns this.
@@ -223,8 +224,6 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that team every
    possession. `engine/challenge.ts` works around it for NBA opponents by backfilling the
    empty column; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
-10. **Missing headshots are handled.** `scripts/ensure-headshots.mjs` (run by `build:cards`)
-   backfills `_missing.png` for any card whose id is a bref hash, so nothing 404s.
 
 ## Where to look
 

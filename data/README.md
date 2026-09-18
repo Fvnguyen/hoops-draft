@@ -14,15 +14,17 @@ The pipeline follows this sequence:
 ## Scripts
 
 ### `download_bref.js`
-**Purpose:** Scrapes player stats from basketball-reference using Playwright (headless Chrome).
+**Purpose:** Scrapes player stats from basketball-reference using Playwright (headless Chrome). Also scrapes the 26 letter-index pages (broad position + career span) and, per active player, that player's own bio page for exact multi-position eligibility (D10 follow-up, 2026-09-19) — bref's season table and the letter-index both cap at one broad G/F/C side, but a player's own page carries real text like "Point Guard and Shooting Guard".
 
 **Reads:** None (fetches from `https://basketball-reference.com`)
 
-**Writes:** `per_game.html`, `advanced.html`, `shooting.html`, `awards.html` (raw HTML snapshots)
+**Writes:** `per_game.html`, `advanced.html`, `shooting.html`, `awards.html` (raw HTML snapshots); `bref_positions/players_<a-z>.html` (raw letter-index snapshots); `bref_player_positions.json` (derived — name -> raw "Position: ..." text for every active player, NOT raw HTML per player, which would be ~1.4MB x 582 players)
 
 **Dependencies:** `playwright`, Node.js
 
 **Working directory:** `data/` (relative paths to output files)
+
+**Rate limiting:** one request every 3 seconds. The per-player bio scrape (~582 active players) takes 30-45 minutes and is resumable — re-running `download_bref.js` skips any name already in `bref_player_positions.json`.
 
 ### `fetch_bio.py`
 **Purpose:** Fetches player bio data (height, weight, exact positions) for all 30 NBA teams via the NBA Stats API.
@@ -36,18 +38,28 @@ The pipeline follows this sequence:
 **Working directory:** `data/`
 
 ### `fetch_players.py`
-**Purpose:** Main stats processor. Merges per-game, advanced, and shooting stats; combines with bio data; calculates player rating dimensions (Shooting, Inside, Playmaking, Rebounding, PerimDef, PostDef); and populates the SQLite database with Player, SeasonStat, and Award tables.
+**Purpose:** Main stats processor. Merges per-game, advanced, and shooting stats; combines with bio data; resolves each player's depth-chart position via `PositionResolver` (see below); calculates player rating dimensions; and populates the SQLite database with Player, SeasonStat, and Award tables.
+
+**`PositionResolver`** (D10 follow-up, 2026-09-19 — rules locked after analysis of all 582 active players, see `analyze_positions.py`): primary is always bref's season `Pos`; eligibility is the full position set parsed from the player's own bref bio page (`bref_player_positions.json`), trusted verbatim — no adjacency inference, no rating-based trim (the pool-wide distribution isn't skewed enough to need one). A player missing bio text falls back to a **persisted** value read from `game.db` *before* this run overwrites it, then to season-Pos-only. Persistence, not `POSITION_OVERRIDES`, is the fix for a data gap — `POSITION_OVERRIDES` stays reserved for overruling a real but wrong signal (e.g. Jokić's bio page says plain "Center"). A Rare+ card with genuinely no persisted value AND no bio text is logged to `REVIEW_MISSING_POSITIONS.md` (gitignored, regenerated per run) for a one-time manual `game.db` edit, which then persists forward on its own.
 
 **Reads:**
 - `per_game.html` (basketball-reference per-game stats table)
-- `advanced.html` (basketball-reference advanced stats: PER, TS%, BPM, DBPM, VORP)
-- `shooting.html` (basketball-reference shooting breakdown by distance)
+- `advanced.html` (basketball-reference advanced stats: PER, TS%, BPM, DBPM, VORP, USG%/AST%/TOV%/STL%/BLK%/ORB%/DRB%/TRB%/OBPM/DWS/WS-per-48)
+- `shooting.html` (basketball-reference shooting breakdown by distance + assisted-FG%)
 - `awards.html` (basketball-reference All-NBA, All-Defensive, and All-Star data)
-- `bio.csv` (player heights, weights, positions from `fetch_bio.py`)
+- `bio.csv` (player heights and weights only — its broad position field is unused)
+- `bref_player_positions.json` (exact multi-position eligibility)
+- `../frontend/game.db` (read-only, for `PositionResolver`'s persisted-position fallback, before this run's tables are dropped and recreated)
 
 **Writes:**
 - `../frontend/game.db` (SQLite database with Player, SeasonStat, Award tables)
 - `players.json` (minimal player ID list for `download_images.py`)
+- `REVIEW_MISSING_POSITIONS.md` (gitignored; only written when a Rare+ card has no bio text and no persisted position)
+
+### `analyze_positions.py`
+**Purpose:** Re-verification tool for `PositionResolver`'s locked rules — run any time `bref_player_positions.json` is refreshed (a new season) to confirm the position-count distribution, primary-containment, and adjacency findings still hold before trusting the resolver blind. Not part of the automated pipeline; prints a report, writes nothing.
+
+**Reads:** `per_game.html`, `bref_player_positions.json`, `../frontend/src/data/cards.json` (optional, for rarity cross-reference)
 
 **Dependencies:** `requests`, `pandas`, `bs4` (BeautifulSoup), `nba_api`, `unidecode`, Python 3, SQLite
 
@@ -90,6 +102,11 @@ Minimal JSON list of player objects with `id`, `name`, and `rarity` fields. Prod
 
 ### `computed_cards.json`
 Card metadata cache (produced by `frontend/src/export_cards.ts`). Not directly part of this pipeline; included here as a reference artifact.
+
+### `bref_positions/`, `bref_player_positions.json`
+Committed like the other scrape snapshots (card_ratings_rebalance D10, 2026-09-18/19).
+`bref_positions/players_<a-z>.html` are raw letter-index pages; `bref_player_positions.json`
+is a derived compact map (not raw HTML) of each active player's own bio-page position text.
 
 ## Output Database
 

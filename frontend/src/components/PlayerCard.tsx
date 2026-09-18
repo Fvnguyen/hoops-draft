@@ -45,12 +45,13 @@ import { ClipboardList, MoreHorizontal, X } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard, Trait } from '@/engine/types';
 import { evaluatePlay, getPlayEffectId, getPlayRequirements, type PlayEvaluation, type PlayRequirement, type PlayRequirementStatus } from '@/engine/synergies';
+import { positionParts } from '@/engine/positions';
 import type { PlayStatus } from '@/engine/playbook';
 import { getPlayDef, describeRoleRequirement } from '@/engine/playbook';
 import { IconButton } from './ui/IconButton';
 import { PlayTile } from './PlayTile';
 import {
-  badgeConfig, defaultBadgeConfig, basePosColors, getPosColors, positionConicGradient,
+  badgeConfig, defaultBadgeConfig, basePosColors, getPosColors, goldGradient, goldBorder, goldRing, goldInk,
   type GemRarity, gemPalettes, gemPixelSizes, rarityTextColor, rarityAccentColor,
   teamColors, teamIds, catColor, playCategoryTheme, roleTagColor, playBoardAccent,
   playCategoryMotifStroke, playMotifByEffectId, type PlayMotif,
@@ -148,22 +149,16 @@ function BadgeIcon({ name, level, size = 'normal' }: { name: string; level: numb
   return (
     <div ref={wrapRef} className="relative" onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
       <div
-        className={`${containerSize} rounded-full flex items-center justify-center relative shadow-md ${isGold ? 'border-2 border-gold bg-gradient-to-br from-gold to-gold-deep' : 'bg-surface-inverse border-line-inverse'}`}
-        style={containerStyle}
+        className={`${containerSize} rounded-full flex items-center justify-center relative shadow-md ${isGold ? 'border-2' : 'bg-surface-inverse border-line-inverse'}`}
+        style={isGold ? { ...containerStyle, background: goldGradient, borderColor: goldBorder } : containerStyle}
       >
         <Icon
           size={cq ? undefined : iconSize}
-          // Gold takes its ink from the token (`currentColor`); every other level keeps the
-          // per-badge colour, which is data, not a theme decision.
-          className={isGold ? 'text-gold-ink' : undefined}
-          style={{
-            ...(isGold ? {} : { color: cfg.color }),
-            ...(cq ? { width: cq.icon, height: cq.icon } : {}),
-          }}
+          style={cq ? { color: isGold ? goldInk : cfg.color, width: cq.icon, height: cq.icon } : { color: isGold ? goldInk : cfg.color }}
           strokeWidth={2.5}
         />
         {showLevel && (
-          <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center text-xs font-black leading-none ${isGold ? 'bg-gold border-gold-deep text-gold-ink' : 'bg-surface-inverse-deep border-line-inverse text-ink-inverse'}`}>
+          <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 flex items-center justify-center text-xs font-black leading-none ${isGold ? '' : 'bg-surface-inverse-deep border-line-inverse text-ink-inverse'}`} style={isGold ? { background: goldBorder, borderColor: goldRing, color: goldInk } : undefined}>
             {level}
           </span>
         )}
@@ -274,17 +269,27 @@ export function PlayRequirementIcons({ requirements, size = 'small' }: { require
   );
 }
 
-// Position pill. Kept the historical name/props (`position`, `className`,
+// Position circle. Kept the historical name/props (`position`, `className`,
 // `borderClass`) since DraftRoom/DeckBuilder/rosters call this directly —
 // `borderClass` is accepted for compatibility but is no longer tied to
 // rarity (rarity communication moved to RarityGem; see UI brief).
-export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1 text-xs", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
+//
+// D10 follow-up (2026-09-19, owner-approved mockup): a raw 3+-position string (e.g.
+// 'SG/SF/PF', now common once bref bio pages made real multi-way eligibility routine)
+// can't read as letters in a small badge — `getPosColors` only ever mixed the first two
+// tokens, silently dropping the rest, and the text overflowed anyway. 3+ eligible
+// positions (and the existing Positionless 'ALL'/'STAR' case, same treatment, unified)
+// now render as a solid gold circle with a white star instead of trying to cram text in.
+// This is display only — `positions.ts`'s `canPlaceAt`/`naturalPositions` and every
+// deckbuilder slot menu still read the full raw position string directly, never this
+// component, so eligibility is completely unaffected by what badge is shown.
+export function PositionIcon({ position, className = "w-[24px] h-[24px] text-xs", borderClass = "border border-white/40" }: { position: string, className?: string, borderClass?: string }) {
   const p = position.replace('-', '/');
+  const isGold = p === 'ALL' || p === 'STAR' || positionParts(p).length >= 3;
 
-  if (p === 'ALL' || p === 'STAR') {
+  if (isGold) {
     return (
-      <div className={`relative rounded-md shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
-        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ background: positionConicGradient }} />
+      <div className={`relative rounded-full shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`} style={{ background: goldGradient }}>
         <Star2 />
       </div>
     );
@@ -293,22 +298,24 @@ export function PositionIcon({ position, className = "min-w-[26px] h-[18px] px-1
   const [c1, c2] = getPosColors(p);
 
   return (
-    <div className={`relative rounded-md shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
+    <div className={`relative rounded-full shadow-sm ${borderClass} flex items-center justify-center shrink-0 ${className}`}>
       {c1 !== c2 ? (
-        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)` }} />
+        <div className="absolute inset-0 rounded-full overflow-hidden" style={{ background: `linear-gradient(135deg, ${c1} 50%, ${c2} 50%)` }} />
       ) : (
-        <div className="absolute inset-0 rounded-md overflow-hidden" style={{ backgroundColor: c1 }} />
+        <div className="absolute inset-0 rounded-full overflow-hidden" style={{ backgroundColor: c1 }} />
       )}
       <span className="relative z-10 font-black text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] leading-none whitespace-nowrap" style={{ letterSpacing: '-0.3px' }}>{p}</span>
     </div>
   );
 }
 
-// Star glyph for the ALL/STAR position pill — a tiny local component so PositionIcon
-// doesn't need to pull in the whole lucide Star import just for this one glyph.
+// Star glyph for the gold position circle (3+ eligible positions, or Positionless) — a
+// tiny local component so PositionIcon doesn't need to pull in the whole lucide Star
+// import just for this one glyph. Sized as a percentage of its own circle (same pattern
+// as BadgeIcon's `cq.icon`) so it scales with whatever diameter the caller passes.
 function Star2() {
   return (
-    <svg viewBox="0 0 24 24" width={10} height={10} className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]" fill="currentColor">
+    <svg viewBox="0 0 24 24" width="60%" height="60%" className="relative z-10 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]" fill="currentColor">
       <path d="M12 2l2.9 6.4 7.1.7-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7-5.4-4.7 7.1-.7z" />
     </svg>
   );
@@ -424,7 +431,7 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
     >
       <div className="absolute top-0 w-full h-1.5 opacity-80 rounded-t" style={{ backgroundColor: tmColor }} />
       <div className="absolute top-1.5 left-0.5 z-10">
-        <PositionIcon position={player.player.position} className="min-w-0 h-3.5 px-0.5 text-xs" />
+        <PositionIcon position={player.player.position} className="w-4 h-4 text-xs" />
       </div>
       <div className="absolute top-1.5 right-0.5 z-10">
         <RarityGem rarity={player.rarity} size="sm" />
@@ -739,7 +746,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
              <div className="font-bold text-xs uppercase truncate text-ink-strong leading-tight">
                {player.player.name}
              </div>
-             <PositionIcon position={player.player.position} className="min-w-[22px] h-4 px-1 text-xs shrink-0" />
+             <PositionIcon position={player.player.position} className="w-5 h-5 text-xs shrink-0" />
            </div>
 
            <div className="flex items-center gap-1">

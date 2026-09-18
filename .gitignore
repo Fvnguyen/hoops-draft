@@ -26,6 +26,9 @@ data/game_logs/*
 !data/game_logs/.gitkeep
 data/fetch.log
 
+# --- generated review report (PositionResolver, fetch_players.py); regenerate, don't commit ---
+data/REVIEW_MISSING_POSITIONS.md
+
 # --- screenshots / scratch images (dev artifacts, not source) ---
 screenshot*.png
 *_screenshot.png

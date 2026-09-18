@@ -1,6 +1,7 @@
 import { DraftCard, Player, Play } from './types';
 import { Rng, shuffle } from './rng';
 import { CUBE_SEATS, CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK, BOT_NOISE_PCT, HATE_DRAFT_FLOOR } from './balance';
+import { positionParts } from './positions';
 
 export interface BotProfile {
   id: string;
@@ -163,7 +164,14 @@ export function scoreCardForBot(bot: DraftSeat, card: DraftCard, overallPickNum:
   // Mid/Late Draft: Positional Needs Pivot
   if (card.type === 'Player' && overallPickNum >= 10) {
     const draftedPlayers = bot.drafted.filter(c => c.type === 'Player') as Player[];
-    const samePositionDrafted = draftedPlayers.filter(p => p.player?.position?.includes(card.player.position)).length;
+    // D10 follow-up (2026-09-19): real position overlap, not a raw substring check —
+    // `.includes()` on the position STRING missed real overlaps once multi-way combos
+    // got common (e.g. drafted 'PF' vs candidate 'SF/PF': "PF".includes("SF/PF") is
+    // false even though they share PF).
+    const cardParts = new Set(positionParts(card.player.position));
+    const samePositionDrafted = draftedPlayers.filter(p =>
+      p.player?.position && positionParts(p.player.position).some(part => cardParts.has(part)),
+    ).length;
 
     if (samePositionDrafted === 0) {
       score *= 1.4;

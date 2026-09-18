@@ -16,6 +16,7 @@
 import type { PlayerCardData } from './types';
 import type { GameModifiers } from './synergies';
 import { ARCHETYPE_ONLINE_SCALE, IDENTITY_CAPS } from './balance';
+import { positionParts } from './positions';
 
 /** The seven skill badges are the game's "colours". */
 export type Color =
@@ -215,17 +216,26 @@ export const KEYSTONE_CONDITIONS: Record<string, (p: PlayerCardData) => boolean>
 };
 
 /**
- * card_balance T3 (2026-09-17, owner-approved): per-player score for the Positionless
- * gold plan's roster gate. The Positionless trait (a genuinely versatile, hand-rolled
- * name — see balance.ts POSITIONLESS_PLAYERS) counts 3; a stats-driven two-position
- * crossover card (e.g. 'SG/SF', 'PF/C' — T1's blend_bio_crossover) counts 1; anyone
- * else counts 0. Classification, not additive — a Positionless holder never also adds
- * their (nonexistent, in practice) crossover slash on top.
+ * card_balance T3 (2026-09-17, owner-approved) / D10 follow-up (2026-09-19, concept-only
+ * — see card_balance_thresholds for the real number re-tune against this): per-player
+ * score for the Positionless gold plan's roster gate. The Positionless trait (a
+ * genuinely versatile, hand-rolled name — see balance.ts POSITIONLESS_PLAYERS) counts 3
+ * outright, a ceiling nothing stats-driven can exceed.
+ * Tightened same-day (owner call): now that bref bio pages make genuine 3-5-way combos
+ * common (D10), a bare 2-way crossover ('SG/SF', 'PF/C' — 29% of the pool, unremarkable)
+ * no longer scores at all. Credit starts at 3 eligible positions: 3-way = 1, 4-way = 2,
+ * 5-way = 3, matching the Positionless ceiling exactly at 5. Classification via the
+ * trait check, additive via position width — a Positionless holder never also stacks
+ * their own crossover width on top of the flat 3.
+ * Concept locked; onlineThreshold/dedicatedThreshold (6/9, ARCHETYPES below) are NOT
+ * retuned here — fewer cards score at all now (only ~4% of the pool clears 3-way) but
+ * the ones that do can still hit 3, and either direction needs a real balance pass
+ * (`npm run feasibility`), not a guess bundled into this commit.
  */
 export function multipositionalLevel(p: PlayerCardData): number {
   if ((p.traits ?? []).some(t => t.name === 'Positionless')) return 3;
-  if (p.player.position.includes('/')) return 1;
-  return 0;
+  const parts = positionParts(p.player.position).length;
+  return Math.min(3, Math.max(0, parts - 2));
 }
 
 /** True when any active player satisfies one of a gold plan's keystone combo conditions. */
