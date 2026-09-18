@@ -64,6 +64,55 @@ async function scrapeBRef() {
         }
     }
 
+    // D10 follow-up (2026-09-19, owner finding): the letter-index pages above still only
+    // carry a broad G/F/C side per player — real granular multi-position eligibility
+    // (e.g. Shai Gilgeous-Alexander "Point Guard and Shooting Guard", Scottie Barnes
+    // "Power Forward, Shooting Guard, and Small Forward") lives only on each player's own
+    // bio page ("Position: X[, Y][, and Z]" in the #meta block). A raw HTML snapshot per
+    // player would be ~1.4MB x 582 - too large to commit - so this extracts just the
+    // Position line into a compact JSON map (name -> text), same pattern as
+    // players.json/computed_cards.json being derived artifacts, not raw dumps.
+    console.log("Extracting active player IDs from the position index...");
+    const activeIds = {}; // name -> bref id
+    const rowRe = /<th scope="row"[^>]*><strong><a href="\/players\/\w\/(\w+)\.html">([^<]+)<\/a><\/strong><\/th><td class="right " data-stat="year_min">\d+<\/td><td class="right " data-stat="year_max">(\d+)<\/td>/g;
+    for (const letter of letters) {
+        const html = fs.readFileSync(path.join(posDir, `players_${letter}.html`), 'utf-8');
+        let m;
+        rowRe.lastIndex = 0;
+        while ((m = rowRe.exec(html))) {
+            const [, id, name, toYear] = m;
+            if (toYear === String(season)) activeIds[name] = id;
+        }
+    }
+    console.log(`Found ${Object.keys(activeIds).length} active players.`);
+
+    const posOutPath = path.join(__dirname, 'bref_player_positions.json');
+    const positions = fs.existsSync(posOutPath) ? JSON.parse(fs.readFileSync(posOutPath, 'utf-8')) : {};
+    let done = 0;
+    for (const [name, id] of Object.entries(activeIds)) {
+        done++;
+        if (positions[name]) continue; // resumable across runs
+        const letter = id[0];
+        await page.waitForTimeout(3000);
+        try {
+            const resp = await page.goto(`https://www.basketball-reference.com/players/${letter}/${id}.html`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            if (resp && resp.status() === 200) {
+                const text = await page.evaluate(() => document.querySelector('#meta')?.innerText || '');
+                const posMatch = text.match(/Position:\s*([^▪\n]+)/);
+                positions[name] = posMatch ? posMatch[1].trim() : '';
+                if (done % 25 === 0) {
+                    console.log(`[${done}/${Object.keys(activeIds).length}] ${name} -> ${positions[name]}`);
+                    fs.writeFileSync(posOutPath, JSON.stringify(positions, null, 1));
+                }
+            } else {
+                console.log(`status ${resp && resp.status()} for ${name} (${id})`);
+            }
+        } catch (e) {
+            console.log(`Failed to fetch bio position for ${name} (${id})`, e.message);
+        }
+    }
+    fs.writeFileSync(posOutPath, JSON.stringify(positions, null, 1));
+
     await browser.close();
     console.log("HTML successfully downloaded to disk.");
 }

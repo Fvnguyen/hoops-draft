@@ -76,6 +76,133 @@ def resolve_nba_id(name, index, cutoff=0.85):
     return index['inactive'].get(key)
 
 
+# Deterministic sort for a '/'-joined or '-'-joined position string, e.g. 'SG/PG' -> 'PG/SG'.
+def sort_pos(p_str):
+    order = {'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5, 'G': 1, 'F': 3}
+    parts = p_str.replace('-', '/').split('/')
+    parts.sort(key=lambda x: order.get(x, 99))
+    return "/".join(parts)
+
+
+class PositionResolver:
+    """D10 follow-up (2026-09-19, owner-designed after analysis of all 582 active
+    players — see data/analyze_positions.py). Rules locked:
+
+    - PRIMARY is always basketball-reference's season `Pos` column (2025-26-specific,
+      always a single specific position). Never the bio text, never a fallback guess.
+    - ELIGIBILITY is the full position set parsed from the player's own bref bio page
+      ("Position: X[, Y][, and Z]" in the #meta block), scraped into
+      `bref_player_positions.json` by download_bref.js. Verified over the full pool:
+        - primary was a member of this set 100% of the time (579/579 with bio text
+          present, 0 conflicts) -> no reconciliation logic needed, union is a no-op in
+          practice, kept as a safety net
+        - all but 3 of 582 (Amen Thompson, Russell Westbrook, Jalen Williams - genuinely
+          non-contiguous per bref's own text, e.g. "PG/SF" skipping SG) were a contiguous
+          PG-SG-SF-PF-C chain -> no ADJACENT-hop inference or gap-filling needed, bref's
+          text is trusted verbatim either way
+        - distribution ~68% single / ~29% two-way / ~2% three-way / <1% four-or-five-way
+          (e.g. LeBron James parses to all 5) -> NOT disproportionate at the pool level,
+          so no rating-based trim/cut. A single outlier having many eligible columns is
+          not "too many players" - only a skewed POOL-WIDE distribution would justify
+          one, and this one isn't skewed.
+    - MISSING bio text (bref's #meta block has no "Position:" line at all for that
+      player - a real bref quirk confirmed by fetching Giannis Antetokounmpo's own page
+      directly, not a scrape bug; 3/582 this run) falls back to a PERSISTED value first
+      (see below), then primary-only eligibility. A Rare+ card with NO persisted value at
+      all is flagged via `needs_hand_check` and logged to `REVIEW_MISSING_POSITIONS.md`.
+      Uncommon/Common cards with missing bio text just use whatever fallback resolves,
+      no review needed - not worth hand-checking bench depth.
+    - PERSISTENCE (future ingestions, owner call 2026-09-19): a missing-bio-text player
+      first checks `existing_positions` (read from the game.db this run is about to
+      overwrite) before falling all the way back to season-Pos-only. Once a name has ANY
+      stored value it stops being flagged for review, permanently - persistence IS the
+      resolution mechanism here, not `POSITION_OVERRIDES` (that stays reserved for cases
+      where a real signal source needs to be overruled, e.g. Jokic's bio page saying
+      plain "Center" against his real "point-center" role - not for filling data gaps).
+      A one-time direct edit to game.db's Player.position (e.g. Giannis -> 'SF/PF/C',
+      2026-09-19, his bio page carries no Position line at all) flows into every future
+      run's fallback for free, no code change needed.
+    """
+
+    _POS_WORD = {
+        'Point Guard': 'PG', 'Shooting Guard': 'SG', 'Small Forward': 'SF',
+        'Power Forward': 'PF', 'Center': 'C',
+    }
+
+    def __init__(self, bio_position_texts, rarity_by_name=None, existing_positions=None):
+        self.bio_position_texts = bio_position_texts  # name -> raw "Position: ..." text
+        self.rarity_by_name = rarity_by_name or {}     # name -> rarity, a PROXY from the
+        # previously-built cards.json - position never feeds OVR/rarity, so a stale
+        # rarity value is still a valid signal for "is this worth a human's time."
+        self.existing_positions = existing_positions or {}  # name -> last-run's resolved
+        # position string, read from game.db before this run overwrites it.
+        self.hand_check_needed = []  # [(name, rarity, used_existing: bool)]
+        self.auto_fallback_count = 0
+
+    @classmethod
+    def parse_bio_text(cls, text):
+        """'Point Guard and Shooting Guard' -> ['PG', 'SG']; empty/unrecognized -> []."""
+        if not text:
+            return []
+        import re as _re
+        codes = []
+        for part in _re.split(r',| and ', text):
+            part = part.strip()
+            if part in cls._POS_WORD and cls._POS_WORD[part] not in codes:
+                codes.append(cls._POS_WORD[part])
+        return codes
+
+    def resolve(self, name, season_pos):
+        """Returns the sort_pos'd eligibility string for the Player.position column.
+        `season_pos` (bref's season Pos, e.g. 'SG') is the primary and is asserted into
+        the set even though analysis found it's already always present."""
+        bio_codes = self.parse_bio_text(self.bio_position_texts.get(name, ''))
+        if bio_codes:
+            codes = set(bio_codes)
+            if season_pos:
+                codes.add(season_pos)
+            return sort_pos('/'.join(codes))
+
+        # Missing bio text: fall back to a previously-resolved position (persistence,
+        # future ingestions) before season-Pos-only. season_pos is still asserted into
+        # whichever set we land on.
+        prior = self.existing_positions.get(name, '')
+        used_existing = bool(prior)
+        codes = set(prior.split('/')) if prior else set()
+        if season_pos:
+            codes.add(season_pos)
+        resolved = sort_pos('/'.join(codes)) if codes else ''
+
+        rarity = self.rarity_by_name.get(name)
+        if rarity in ('Mythic', 'Rare') and not used_existing:
+            # Owner call (2026-09-19): only a genuinely NEW missing-bio Rare+ case (no
+            # persisted value at all) needs a human. Once a name has ANY stored value -
+            # whether from a careful one-time edit or a past auto-fallback - persistence
+            # is the resolution mechanism going forward, not a recurring nag. This is
+            # deliberately different from POSITION_OVERRIDES: an override is permanent
+            # code, a stored value is just data that keeps flowing through game.db.
+            self.hand_check_needed.append((name, rarity))
+        else:
+            self.auto_fallback_count += 1
+        return resolved
+
+    def write_review_note(self, path='REVIEW_MISSING_POSITIONS.md'):
+        if not self.hand_check_needed:
+            return
+        lines = [
+            '# Missing bref bio position - manual review needed\n',
+            f'Generated by fetch_players.py ({len(self.hand_check_needed)} Rare+ cards with '
+            f'no "Position:" line on their own bref page AND no persisted value from a '
+            f'previous run). {self.auto_fallback_count} cards had the same missing-text gap '
+            f'but either aren\'t Rare+ or already have a stored value - no review needed.\n',
+        ]
+        for name, rarity in sorted(self.hand_check_needed, key=lambda x: x[0]):
+            lines.append(f'- [ ] **{name}** ({rarity}) — season Pos only, never resolved before; edit `frontend/game.db`\'s Player.position directly (it persists into next run\'s fallback) or add to `POSITION_OVERRIDES`\n')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.writelines(lines)
+        print(f"Wrote {path}: {len(self.hand_check_needed)} Rare+ players need a manual position check")
+
+
 def fetch_and_generate_players():
     # Read from local files saved by playwright
     print("Reading local HTML files...")
@@ -253,89 +380,55 @@ def fetch_and_generate_players():
     # 3. Load Hard Bio Data
     df_bio = pd.read_csv("bio.csv")
 
-    # Deterministic sorting for positions (module scope: used for both the NBA Stats
-    # bio position below and basketball-reference's Pos column at insert time, D1).
-    def sort_pos(p_str):
-        order = {'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5, 'G': 1, 'F': 3}
-        parts = p_str.replace('-', '/').split('/')
-        parts.sort(key=lambda x: order.get(x, 99))
-
-        # Standardize G/F to SG/SF etc if we want, but B-Ref gives exact F-G which we sort to G/F
-        return "/".join(parts)
-
-    # card_balance T1 follow-up (2026-09-16): bref's Pos this season is always a single
-    # specific position (no combos), which on its own would leave every card eligible
-    # for exactly one depth-chart column (engine/positions.ts naturalPositions) — a real
-    # loss of the multi-position flexibility players actually have. The NBA Stats bio
-    # position (broad G/F/C, sometimes a combo like G-F) still carries that signal, so we
-    # blend it in as ONE adjacent crossover column, never a wholesale replacement of the
-    # bref primary. Mirrors engine/positions.ts's ADJACENT map — keep both in sync.
-    _SIDE = {'PG': 'G', 'SG': 'G', 'SF': 'F', 'PF': 'F', 'C': 'C'}
-    _ADJACENT = {'PG': ['SG'], 'SG': ['PG', 'SF'], 'SF': ['SG', 'PF'], 'PF': ['SF', 'C'], 'C': ['PF']}
-
-    def blend_bio_crossover(bref_pos, bio_pos_sorted):
-        """bref_pos: a single specific column (e.g. 'SG'). bio_pos_sorted: the sort_pos'd
-        NBA Stats bio string (e.g. 'G/F'). Returns bref_pos, with up to two adjacent
-        crossover columns appended for every side bref_pos alone doesn't cover (D10,
-        card_ratings_rebalance 2026-09-18: the single-crossover cap is gone — both of a
-        column's ADJACENT sides can now be added, not just the first match — so a real
-        three-way player (e.g. Scottie Barnes, bio 'G-F') gets a three-column depth-chart
-        spread instead of being capped at two)."""
-        if bref_pos not in _SIDE:
-            return bref_pos
-        own_side = _SIDE[bref_pos]
-        bio_sides = {letter for letter in bio_pos_sorted.replace('-', '/').split('/') if letter in ('G', 'F', 'C')}
-        extra_sides = bio_sides - {own_side}
-        if not extra_sides:
-            return bref_pos
-        pos = bref_pos
-        for candidate in _ADJACENT[bref_pos]:
-            if _SIDE[candidate] in extra_sides:
-                pos = sort_pos(f"{pos}/{candidate}")
-        return pos
-
-    # Pre-process Bio Data
+    # Pre-process Bio Data (height/weight only - position now comes from PositionResolver;
+    # bio.csv's own broad G/F/C position field is no longer used).
     bio_map = {}
     for _, row in df_bio.iterrows():
         name = unidecode(row['PLAYER'])
-        pos = sort_pos(str(row['POSITION']))
-
         height = str(row['HEIGHT'])
         weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
-        bio_map[name] = {"pos": pos, "height": height, "weight": weight}
+        bio_map[name] = {"height": height, "weight": weight}
 
-    # D10 (card_ratings_rebalance, 2026-09-18): basketball-reference's 26 letter-index
-    # pages (/players/a/ .. /players/z/, scraped by download_bref.js into
-    # bref_positions/players_<letter>.html) carry the same G/F/C-only position
-    # granularity as the NBA Stats bio.csv crossover source blend_bio_crossover already
-    # used — this season's data does not support a true 3-way PG/SG/SF-style combo from
-    # either source (verified: bref's own per-season Pos column never carries a combo,
-    # and every bio/index Pos value is one or two of G/F/C). What the bref index DOES
-    # improve is match accuracy: it's bref-native, so it lines up with the Player column
-    # in per_game/advanced/shooting exactly instead of the fuzzy cross-source name match
-    # bio.csv needs (a real source of mismatches - e.g. suffix/accent drift). Preferred
-    # over bio.csv's crossover when present; bio.csv remains the fallback (and the only
-    # source for height/weight, which the index pages don't carry).
-    bref_pos_index = {}
+    # D10 follow-up (2026-09-19): see PositionResolver's docstring (module scope) for the
+    # locked rules. rarity_by_name is a proxy from the PREVIOUSLY built cards.json (valid,
+    # since position never feeds OVR/rarity) used only to decide which missing-bio-text
+    # players are worth a human's time to review.
+    bio_position_texts = {}
     try:
-        import glob
-        for path in sorted(glob.glob('bref_positions/players_*.html')):
-            with open(path, 'r', encoding='utf-8') as f:
-                idx_html = f.read()
-            idx_dfs = pd.read_html(io.StringIO(idx_html))
-            for idx_df in idx_dfs:
-                if 'Player' in idx_df.columns and 'Pos' in idx_df.columns and 'To' in idx_df.columns:
-                    active = idx_df[idx_df['To'].astype(str) == '2026']
-                    for _, irow in active.iterrows():
-                        iname = unidecode(str(irow['Player']).replace('*', ''))
-                        ipos = str(irow['Pos']).strip()
-                        if ipos and ipos.lower() != 'nan':
-                            bref_pos_index[iname] = sort_pos(ipos)
-                    break
-        print(f"Loaded bref position index: {len(bref_pos_index)} active players")
+        with open('bref_player_positions.json', 'r', encoding='utf-8') as f:
+            bio_position_texts = json.load(f)
+        bio_position_texts = {unidecode(k): v for k, v in bio_position_texts.items()}
+        print(f"Loaded bref per-player bio positions: {len(bio_position_texts)} players")
     except Exception as e:
-        print(f"Could not load bref_positions index (falling back to bio.csv only): {e}")
-    
+        print(f"Could not load bref_player_positions.json (every player falls back to season Pos only): {e}")
+
+    rarity_by_name = {}
+    try:
+        with open('../frontend/src/data/cards.json', 'r', encoding='utf-8') as f:
+            for c in json.load(f):
+                rarity_by_name[c['player']['name']] = c['rarity']
+    except Exception as e:
+        print(f"No previous cards.json for rarity cross-ref (all missing-position players will need review): {e}")
+
+    # D10 follow-up (2026-09-19, owner request): for FUTURE ingestions, a missing-bio-text
+    # player should fall back to whatever position we already resolved for him last run
+    # (read from the game.db this run is about to overwrite) rather than dropping straight
+    # to a bare season-Pos-only placeholder every single season. Read-only, best-effort -
+    # a first-ever run (no game.db yet) just has an empty dict and everyone falls all the
+    # way through to season-Pos-only, same as before.
+    existing_positions = {}
+    try:
+        import sqlite3 as _sqlite3
+        _prev = _sqlite3.connect("../frontend/game.db")
+        for _name, _pos in _prev.execute("SELECT name, position FROM Player"):
+            existing_positions[unidecode(_name)] = _pos
+        _prev.close()
+        print(f"Loaded {len(existing_positions)} previously-resolved positions from game.db (fallback for missing bio text)")
+    except Exception as e:
+        print(f"No previous game.db to read positions from (first run, or table missing): {e}")
+
+    position_resolver = PositionResolver(bio_position_texts, rarity_by_name, existing_positions)
+
     # card_balance T2 finding (2026-09-16): this block used to reassign all_nba_players
     # and all_defensive_players to a hardcoded snapshot right here, silently discarding
     # whatever the awards.html scrape above just found. It happened to match this
@@ -350,11 +443,11 @@ def fetch_and_generate_players():
         'Nickeil Alexander-Walker': ['MIP']
     }
 
-    # card_balance T2, owner hand-roll (2026-09-16): bref/bio give Jokic a plain 'C' this
-    # season (no crossover - see T1's blend_bio_crossover), but his real-world reputation
-    # as a "point-center" means he should be slottable at PF without a depth-chart
-    # penalty. A manual override, not stats-driven - same pattern as major_awards/
-    # LEGENDARY_PLAYERS. Keyed by the unidecode'd ASCII name used everywhere else.
+    # card_balance T2, owner hand-roll (2026-09-16): bref's season Pos and his own bio
+    # page both give Jokic a plain 'C' (no crossover), but his real-world reputation as a
+    # "point-center" means he should be slottable at PF without a depth-chart penalty. A
+    # manual override, not stats-driven - same pattern as major_awards/LEGENDARY_PLAYERS.
+    # Keyed by the unidecode'd ASCII name used everywhere else.
     POSITION_OVERRIDES = {
         'Nikola Jokic': 'PF/C',
     }
@@ -466,21 +559,9 @@ def fetch_and_generate_players():
             if matches:
                 bio_name = matches[0]
                 
-        bio = bio_map.get(bio_name, {"pos": "", "height": "0-0", "weight": 0})
-        # D1 (card_balance): basketball-reference Pos is the primary position source
-        # (real PG/SG/SF/PF/C, occasionally a combo like "SG-PG"); the crossover source is
-        # a broad G/F/C signal blended in as adjacent depth-chart columns (see
-        # blend_bio_crossover above). D10 (card_ratings_rebalance, 2026-09-18): the bref
-        # letter-index (exact name match) is preferred over bio.csv's fuzzy-matched
-        # POSITION when both exist, falling back to bio.csv otherwise.
-        crossover_pos = bref_pos_index.get(name) or bio["pos"]
-        bref_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
-        if bref_pos:
-            pos = sort_pos(bref_pos)
-            if crossover_pos:
-                pos = blend_bio_crossover(pos, crossover_pos)
-        else:
-            pos = crossover_pos
+        bio = bio_map.get(bio_name, {"height": "0-0", "weight": 0})
+        bref_season_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
+        pos = position_resolver.resolve(name, bref_season_pos)
         pos = POSITION_OVERRIDES.get(name, pos)
         height = bio["height"]
         weight = bio["weight"]
@@ -535,11 +616,13 @@ def fetch_and_generate_players():
 
     conn.commit()
     conn.close()
-    
+
+    position_resolver.write_review_note()
+
     # Save the minimal json just for the image downloader script
     with open('players.json', 'w', encoding='utf-8') as f:
         json.dump(players_json, f, indent=2, ensure_ascii=False)
-        
+
     print("Database created at frontend/game.db")
     print(f"Successfully generated {len(players_json)} players in players.json")
 
