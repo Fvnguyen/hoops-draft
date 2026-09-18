@@ -20,7 +20,6 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
-| 8 | phone_card — a wider draft-room card variant for phones so the unused horizontal space carries name + badges (game_canvas D7). Design-first: canvas mock-up at 830x385 and owner sign-off before code | not yet planned | — | `PlayerCard.tsx` (redesigned with per-play badge-emblem faces 2026-09-17 — build the phone variant on that, not the old generic diagram), `PackOpener.tsx`, `DraftRoom.tsx` grid | 1 day |
 | 10 | mode_picker — MtG-Arena-style "limited picker" for game modes, mode-specific draft rules (backlog board `Main`), and wiring the start page's disabled "Enter a seed" to `parseSeed` | not yet planned | challenge_mode | `app/page.tsx`, `HomeModePicker.tsx` | — |
 
 **Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`

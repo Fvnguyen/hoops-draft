@@ -24,7 +24,7 @@ import { PlayerCard, PlayCard, PlayerCardFront, PlayCardFront } from './PlayerCa
 export function PackRevealCard({ card, revealed, interactive = true }: { card: DraftCard; revealed: boolean; interactive?: boolean }) {
   if (!revealed) {
     return (
-      <div className="relative aspect-[5/7] w-full overflow-hidden rounded-xl border border-line-strong bg-surface-sunken shadow-md">
+      <div className="relative aspect-[5/7] pointer-coarse:max-lg:aspect-[1.15/1]! w-full overflow-hidden rounded-xl border border-line-strong bg-surface-sunken shadow-md">
         <Image
           src="/cardback.jpg"
           alt=""
@@ -39,14 +39,14 @@ export function PackRevealCard({ card, revealed, interactive = true }: { card: D
 
   if (!interactive) {
     return (
-      <div className="@container relative aspect-[5/7] w-full">
-        {card.type === 'Player' ? <PlayerCardFront player={card} size="sm" /> : <PlayCardFront play={card} />}
+      <div className="@container relative aspect-[5/7] pointer-coarse:max-lg:aspect-[1.15/1]! w-full">
+        {card.type === 'Player' ? <PlayerCardFront player={card} size="sm" wide /> : <PlayCardFront play={card} />}
       </div>
     );
   }
 
   if (card.type === 'Player') {
-    return <PlayerCard player={card} size="sm" />;
+    return <PlayerCard player={card} size="sm" wide />;
   }
 
   return <PlayCard play={card} />;

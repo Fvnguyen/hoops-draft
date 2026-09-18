@@ -520,8 +520,10 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
               <PackPassStage passSeq={passSeq} direction={packDirection === 1 ? 'right' : 'left'}>
                 {/* game_canvas D2 (owner): on a phone the pack is two rows of four; the grid's
                     max-width is derived from the viewport height minus the header + ticker
-                    (~200px) so both rows fit without scrolling. */}
-                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 pointer-coarse:max-lg:gap-2! pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-200px)*10/7+24px)]! w-full max-w-[1500px] mx-auto">
+                    (~200px) so both rows fit without scrolling. phone_card D3 (2026-09-19):
+                    the *10/7 factor is 2x the card aspect ratio (width/height) — updated to
+                    *2.3 (= 2x1.15) alongside the card's own aspect-[1.15/1] phone variant. */}
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-5 lg:gap-6 pointer-coarse:max-lg:gap-2! pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-200px)*2.3+24px)]! w-full max-w-[1500px] mx-auto">
                   <AnimatePresence>
                     {humanSeat.currentPack.map((card, index) => (
                       <motion.div
@@ -568,6 +570,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
                               isSelected={selectedCardId === card.id}
                               onClick={() => handleCardClick(card.id)}
                               size="sm"
+                              wide
                             />
                           )}
                           {selectedCardId === card.id && (

@@ -461,7 +461,7 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
   );
 }
 
-export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { player: PlayerCardData; isSelected?: boolean; size?: 'sm' | 'md' }) {
+export function PlayerCardFront({ player, isSelected = false, size = 'md', wide = false }: { player: PlayerCardData; isSelected?: boolean; size?: 'sm' | 'md'; wide?: boolean }) {
   const [c1, c2] = getPosColors(player.player.position);
   const teamColor = teamColors[player.player.team] || defaultTeamColorDark;
   const teamId = teamIds[player.player.team];
@@ -499,7 +499,7 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
           alt={player.player.name}
           fill
           sizes={HEADSHOT_SIZES}
-          className="object-cover object-top"
+          className={`object-cover object-top ${wide ? 'pointer-coarse:max-lg:object-[center_20%]!' : ''}`}
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
@@ -516,7 +516,7 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md' }: { p
             style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 35%, rgba(255,255,255,0) 65%, rgba(255,255,255,0.22) 100%)' }}
           />
         )}
-        <div className={`absolute bottom-2 w-full flex justify-center px-2 ${size === 'sm' ? 'gap-1' : 'gap-2'}`}>
+        <div className={`absolute bottom-2 w-full flex justify-center px-2 ${size === 'sm' ? 'gap-1' : 'gap-2'} ${wide ? 'pointer-coarse:max-lg:gap-1.5!' : ''}`}>
           {/* 'cqw' badges (D24) scale with the card's own width instead of a fixed px
               size, so a narrow "sm" starter card (5-across depth chart) never overflows
               regardless of how narrow the column gets. Capped to 3 + overflow here too,
@@ -711,7 +711,7 @@ export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
   );
 }
 
-export function PlayerCard({ player, onClick, isSelected = false, compact = false, size = 'md' }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; size?: 'sm' | 'md' }) {
+export function PlayerCard({ player, onClick, isSelected = false, compact = false, size = 'md', wide = false }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; size?: 'sm' | 'md'; wide?: boolean }) {
   const longPress = useLongPressPreview();
   const [isFlipped, setIsFlipped] = useState(false);
   // Portalled hover preview needs real hover state, not CSS `group-hover` — a portal
@@ -771,8 +771,8 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
   return (
     <div
-      className={`group @container w-full select-none [-webkit-touch-callout:none] transition-transform duration-200 hover:-translate-y-1 ${onClick ? 'cursor-pointer' : ''}`}
-      style={{ perspective: 1000, aspectRatio: '5 / 7' }}
+      className={`group @container w-full select-none [-webkit-touch-callout:none] transition-transform duration-200 hover:-translate-y-1 aspect-[5/7] ${wide ? 'pointer-coarse:max-lg:aspect-[1.15/1]!' : ''} ${onClick ? 'cursor-pointer' : ''}`}
+      style={{ perspective: 1000 }}
       onClick={onClick}
       onMouseEnter={() => setIsFlipped(true)}
       onMouseLeave={() => setIsFlipped(false)}
@@ -791,7 +791,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         transition={{ duration: 0.3, type: 'spring', stiffness: 200, damping: 20 }}
       >
         {/* FRONT */}
-        <PlayerCardFront player={player} isSelected={isSelected} size={size} />
+        <PlayerCardFront player={player} isSelected={isSelected} size={size} wide={wide} />
 
         {/* ===== BACK ===== */}
         <PlayerCardBack player={player} />

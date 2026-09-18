@@ -41,7 +41,8 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **ui_foundation** (2026-09-15, `plan_ui_foundation_2026-09-15.md`): semantic tokens + `data-theme`, five `components/ui` primitives, blocking `check:styles` gate 1,358 → 0, 12px/44px floors; mobile audit phone 200 → 2, tablet 201 → 0.
 - **deckbuilder_ux** (2026-09-15, `plan_deckbuilder_ux_2026-09-15.md`): design-first (8 signed artboards, `docs/design/deckbuilder_ux/`), 56px HUD, dockable Plays/Roster sidebars, click-to-assign via pure `engine/deckbuilder.ts` helpers, `deckbuilder.spec` at 3 tiers. Seams: Add button swallowed by a wrapper; role avatars must be CSS backgrounds; `--update-snapshots=all` to force a baseline rewrite.
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
-- **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
+- **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6.
+- **phone_card** (2026-09-19, `plan_phone_card_2026-09-19.md`): owner rejected two landscape redesign mocks against a real S26+ screenshot, signed off a modest resize instead — phone-only `wide` prop on `size="sm"` `PlayerCard`/`PackRevealCard`, aspect 5/7 → 1.15/1, badge gap 4px → 6px, image crop retargeted (`object-[center_20%]`), grid `max-w` factor `10/7` → `2.3`. `DepthSlotColumn` untouched. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9, verified via browser-pane touch emulation at 760×385.
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
@@ -186,8 +187,8 @@ from `data/`).
 
 ## Open issues / next steps
 
-What to do next is `docs/ROADMAP.md`; `draft_ai` and `card_balance_thresholds` both
-closed 2026-09-19. `mode_picker` (#10) is unblocked. Owner actions outside the repo:
+What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
+`mobile_native_feel` and `phone_card` all closed. `mode_picker` (#10) is unblocked. Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as

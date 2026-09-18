@@ -346,7 +346,7 @@ export function PackOpener({
             key="cards"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-128px)*10/7+24px)]! pointer-coarse:max-lg:gap-2! pointer-coarse:lg:max-w-3xl!"
+            className="grid w-full max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 pointer-coarse:max-lg:max-w-[calc((100dvh/var(--zoom)-128px)*2.3+24px)]! pointer-coarse:max-lg:gap-2! pointer-coarse:lg:max-w-3xl!"
           >
             {displayOrder.map((card) => {
               const index = revealIndexOf.get(card.id)!;
@@ -419,7 +419,7 @@ export function PackOpener({
                     <motion.div
                       animate={{ rotateY: isFlipped ? 180 : 0 }}
                       transition={{ duration: flipDuration }}
-                      className="relative aspect-[5/7] [transform-style:preserve-3d]"
+                      className="relative aspect-[5/7] pointer-coarse:max-lg:aspect-[1.15/1]! [transform-style:preserve-3d]"
                     >
                       <div className="absolute inset-0 [backface-visibility:hidden]">
                         <PackRevealCard card={card} revealed={false} />
