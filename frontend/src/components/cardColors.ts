@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Play } from '@/engine/types';
+import { positionParts } from '@/engine/positions';
 
 // ---- Badges -------------------------------------------------------------------
 
@@ -45,6 +46,14 @@ export const basePosColors = {
 
 export function getPosColors(position: string): [string, string] {
   const p = position.replace('-', '/');
+
+  // D10 follow-up (2026-09-19, owner call): 3+ eligible positions (and the existing
+  // Positionless 'ALL'/'STAR' case) resolve to the same gold two-tone as the position
+  // circle's star badge, instead of a 2-colour blend that silently dropped every
+  // position past the first two — every getPosColors call site (card front/back accent,
+  // hover preview, drag-ghost bar) just builds `linear-gradient(135deg, c1 50%, c2 50%)`
+  // from the pair this returns, so this one change fixes all of them for free.
+  if (p === 'ALL' || p === 'STAR' || positionParts(p).length >= 3) return [goldBorder, goldRing];
 
   if (p === 'G') return [basePosColors.PG, basePosColors.SG];
   if (p === 'F') return [basePosColors.SF, basePosColors.PF];
