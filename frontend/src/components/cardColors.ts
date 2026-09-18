@@ -63,9 +63,13 @@ export function getPosColors(position: string): [string, string] {
   return ['#6B7280', '#6B7280']; // Fallback
 }
 
-// Conic-gradient stops for the ALL/STAR position pill.
-export const positionConicGradient =
-  'conic-gradient(#3B82F6 0 72deg, #8B5CF6 72deg 144deg, #10B981 144deg 216deg, #F59E0B 216deg 288deg, #EF4444 288deg 360deg)';
+// Gold tier: D7's above-99 overflow badge level (BadgeIcon), and the position circle for
+// 3+ eligible positions / Positionless (PositionIcon, card_ratings_rebalance D10
+// follow-up, 2026-09-19, owner-approved mockup) — one shared "gold" identity, not two.
+export const goldGradient = 'linear-gradient(135deg, #f5d78e, #b8860b)';
+export const goldBorder = '#f5d78e';
+export const goldRing = '#b8860b';
+export const goldInk = '#3a2a06';
 
 // ---- Rarity -----------------------------------------------------------------
 

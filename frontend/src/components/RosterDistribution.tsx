@@ -7,15 +7,21 @@
  */
 import { DraftCard, RarityGem } from './PlayerCard';
 import { countBadges } from '../engine/synergies';
+import { positionParts } from '../engine/positions';
 import type { PlayerCardData, Rarity } from './PlayerCard';
 
-// Product call: G/F counts as F and F/C counts as C (not split 0.5/0.5) — kept
-// simple on purpose, explained in the column's tooltip rather than in the math.
+// Product call: a player eligible on the G side and the F side counts as F, and one
+// spanning F and C counts as C (not split 0.5/0.5) — kept simple on purpose, explained
+// in the column's tooltip rather than in the math. D10 follow-up (2026-09-19): rewritten
+// on `positionParts` — the old exact-string match (`p === 'F/C'`) only ever matched the
+// legacy bio.csv broad-crossover format, never bref-primary's 'PF/C', and fell through
+// to 'F' for every real position string it didn't recognize (including plain 'PG'/'SG'
+// combos like 'PG/SG', silently misclassified as Forward).
 function classifyPosition(rawPos: string): 'G' | 'F' | 'C' {
-  const p = rawPos.replace('-', '/');
-  if (p === 'C' || p === 'F/C') return 'C';
-  if (p === 'PG' || p === 'SG' || p === 'G') return 'G';
-  return 'F'; // SF, PF, F, G/F
+  const parts = positionParts(rawPos);
+  if (parts.includes('C')) return 'C';
+  if (parts.some(p => p === 'SF' || p === 'PF' || p === 'F')) return 'F';
+  return 'G'; // PG, SG, G, or an unrecognized/empty string
 }
 
 function computeCounts(drafted: DraftCard[]) {

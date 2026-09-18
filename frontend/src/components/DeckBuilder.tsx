@@ -15,7 +15,7 @@ import { evaluateArchetypes, shortlistArchetypes, type ArchetypeSelection } from
 import { TopKPIBand } from './TopKPIBand';
 import { getGameStore } from '@/storage';
 import { StorageQuotaError, type SavedRoster } from '@/storage/types';
-import { DEPTH_COLUMNS, canPlaceAt, positionFit, effectivePosition, type DepthColumn } from '@/engine/positions';
+import { DEPTH_COLUMNS, canPlaceAt, positionFit, positionParts, effectivePosition, type DepthColumn } from '@/engine/positions';
 import {
   MAX_ROSTER,
   countPlayers,
@@ -71,14 +71,27 @@ const rarityValue: Record<string, number> = {
 };
 
 // Sort order used for the Roster (bench) player list: rarity desc, then position, then name.
-const posOrder: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4, G: 5, F: 6, 'G-F': 7, 'F-G': 7, ALL: 8, STAR: 8 };
+// D10 follow-up (2026-09-19): the old dict keyed the whole position STRING ('PG', 'G-F',
+// 'ALL', ...), so any multi-way combo it didn't hardcode (most of them, once bref bio
+// pages made 3-5-way combos common) fell through to `?? 9` and sorted after every
+// recognized position, not grouped with its real depth-chart neighbors. Keyed on the
+// EARLIEST column (PG..C order) the card is eligible for instead — 'SG/SF/PF' sorts with
+// the SGs, 'ALL' (Positionless) sorts first, same spot a lone 'PG' pill 5-way beat it in
+// the old dict too, since a positionless player is real point-guard eligible.
+const posOrder: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4, G: 0, F: 2 };
+
+function positionSortKey(rawPos: string): number {
+  if (rawPos === 'ALL' || rawPos === 'STAR') return 0;
+  const parts = positionParts(rawPos);
+  const known = parts.map(p => posOrder[p]).filter((v): v is number => v !== undefined);
+  return known.length ? Math.min(...known) : 9;
+}
 
 const sortRosterPlayers = (a: PlayerCardData, b: PlayerCardData) => {
   const rarityDiff = rarityValue[b.rarity] - rarityValue[a.rarity];
   if (rarityDiff !== 0) return rarityDiff;
-  const posA = posOrder[a.player.position] ?? 9;
-  const posB = posOrder[b.player.position] ?? 9;
-  if (posA !== posB) return posA - posB;
+  const posDiff = positionSortKey(a.player.position) - positionSortKey(b.player.position);
+  if (posDiff !== 0) return posDiff;
   return a.player.name.localeCompare(b.player.name);
 };
 

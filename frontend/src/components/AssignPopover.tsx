@@ -48,7 +48,7 @@ export function AssignPopover({ candidates, levelFor, emptyMessage, onPick }: As
               onError={(e2) => { (e2.target as HTMLImageElement).style.visibility = 'hidden'; }}
             />
             <span className="flex-1 min-w-0 text-xs font-bold text-ink truncate">{p.player.name}</span>
-            <PositionIcon position={p.player.position} className="min-w-[22px] h-[15px] px-1 text-xs shrink-0" />
+            <PositionIcon position={p.player.position} className="w-[20px] h-[20px] text-xs shrink-0" />
             {level !== undefined && <span className="text-xs font-bold text-ink-muted shrink-0">Lv {level}</span>}
           </Button>
         );

@@ -130,7 +130,7 @@ function RoleRow({
               onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
             />
             <span className="flex-1 min-w-0 text-xs font-bold text-ink truncate">{playerFromRoster.player.name}</span>
-            <PositionIcon position={playerFromRoster.player.position} className="min-w-[22px] h-[15px] px-1 text-xs shrink-0" />
+            <PositionIcon position={playerFromRoster.player.position} className="w-[20px] h-[20px] text-xs shrink-0" />
             <IconButton
               label="Clear role"
               variant="ghost"
