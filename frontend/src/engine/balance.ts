@@ -356,36 +356,38 @@ export const POSITIONLESS_PLAYERS = new Set([
 
 /**
  * Badge (Trait) level thresholds, per dimension (card_balance T3, 2026-09-16,
- * owner-approved, hand-rolled final pass). D3's original flat 80/90/96 cutoff applied
- * the same absolute number to all seven skill ratings despite very different underlying
- * distributions (playmaking mean 35 vs perimeter mean 57) — some badges (Finisher L3)
- * were nearly unreachable while others (Sharpshooter L1) were common. An equal-percentile
- * pass fixed that but was rejected as "absolute balance" — it erased real, deliberate
- * scarcity (playmaking is a genuinely concentrated, high-lever skill; perimeter/finishing
- * are broadly practiced). This is the locked design: every level is binned to one
- * consistent range (L1 70-79, L2 80-89, L3 90-99) so the numbers read the same way across
- * every colour, rounded to multiples of 3 within that range for a "synergized" feel, and
- * for each dimension the bin chosen is whichever lands its real holder-count closest to
- * the cross-dimension average for that level (~62 at L1, ~29 at L2, ~11 at L3) — real
- * scarcity still varies by dimension (playmaking/rebounding/defense sit at the low end of
- * their bin range, perimeter/finishing at the high end), it's just expressed in aligned,
- * legible numbers instead of raw percentile artifacts. Hand-set, not auto-regenerated —
- * do not overwrite with `build:cards`'s printed percentile block.
- */
-/**
+ * owner-approved, hand-rolled final pass; re-applied 2026-09-19 against the
+ * card_ratings_rebalance raw distributions — balance workflow stage 4, see AGENTS.md).
+ * D3's original flat 80/90/96 cutoff applied the same absolute number to all seven skill
+ * ratings despite very different underlying distributions — some badges were nearly
+ * unreachable while others were common. An equal-percentile pass fixed that but was
+ * rejected as "absolute balance" — it erased real, deliberate scarcity. This is the
+ * locked design: every level is binned to one consistent range (L1 70-79, L2 80-89, L3
+ * 90-99) so the numbers read the same way across every colour, rounded to multiples of 3
+ * within that range for a "synergized" feel, and for each dimension the bin chosen is
+ * whichever of the four stepped candidates lands its real holder-count (`raw >= floor`)
+ * closest to the cross-dimension average for that level. `card_ratings_rebalance`
+ * rewrote every raw formula (D2-D6), which shifted those per-dimension distributions —
+ * re-running the same method against the new raws moved the target from ~62/29/11 to
+ * ~56/27/13 and fixed two stage-4 findings as a side effect: playmaking's old l3=99 sat
+ * exactly on the gold cutoff (0 real L3 holders — now 93, n=11) and finishing/perimeter's
+ * badge-earn rate was ~3x thinner than defense's (now within ~10-12.5% of pool across
+ * every dimension, was 4.9%-15.8%). Hand-set, not auto-regenerated — do not overwrite
+ * with `build:cards`'s printed percentile block.
+ *
  * D7 (2026-09-18): a dimension's uncapped raw can exceed 99 (defence/shooting/
  * playmaking/rebounding are no longer benchmark-ratio-capped at the input). Above 99 it
  * earns a gold badge (Trait.level = 4) instead of the ordinary l3, computed in ratings.ts
- * from the raw value directly — these l1/l2/l3 cutoffs are unchanged from card_balance T3.
+ * from the raw value directly.
  */
 export const BADGE_THRESHOLDS: Record<RatingDim, { l1: number; l2: number; l3: number }> = {
-  finishing:         { l1: 79, l2: 86, l3: 90 },
-  midRange:          { l1: 76, l2: 86, l3: 93 },
-  perimeter:         { l1: 79, l2: 89, l3: 93 },
-  playmaking:        { l1: 70, l2: 83, l3: 99 },
+  finishing:         { l1: 70, l2: 80, l3: 90 },
+  midRange:          { l1: 70, l2: 80, l3: 90 },
+  perimeter:         { l1: 70, l2: 80, l3: 90 },
+  playmaking:        { l1: 70, l2: 83, l3: 93 },
   rebounding:        { l1: 70, l2: 83, l3: 96 },
-  perimeterDefense:  { l1: 70, l2: 80, l3: 90 },
-  postDefense:       { l1: 70, l2: 80, l3: 90 },
+  perimeterDefense:  { l1: 73, l2: 80, l3: 93 },
+  postDefense:       { l1: 73, l2: 83, l3: 96 },
 };
 
 /** Card rarity base bands on `overall`, before floor/ceiling/adjustment in ratings.ts. */

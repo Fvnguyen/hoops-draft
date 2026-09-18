@@ -43,18 +43,12 @@ frontend/        The Next.js app (see frontend/README.md)
 Root (from repo root):
 - `npm run dev` / `npm run build` — frontend dev server (`npm --prefix frontend run dev`) / production build
 - `npm test` — Vitest unit tests in `frontend/tests/unit/` importing the REAL engine modules
-  (ratings, draft, plays, game sim, season, challenge). Repo root or `frontend/`;
-  `npm run test:watch` inside `frontend/` for watch mode.
-- `npm run balance [-- 1000]` — N headless games (draft → bot rosters → sim), printing PPP,
-  score distribution, synergy and play activation rates. Use after ANY engine change.
+  (ratings, draft, plays, game sim, season, challenge). Repo root or `frontend/`.
+- `npm run balance [-- 1000]` / `npm run challenge [-- 40 --seed 42 --sweep]` / `npm run
+  analyze` — headless balance tools; see "Balance workflow" below for when to run them.
 - `npm run test:e2e` — Playwright in `frontend/tests/` (needs `npm run dev` in another
   terminal, baseURL `http://localhost:3000`); `smoke.spec.ts` loads every real route and fails
   on any console/page error — run before committing.
-- `npm run challenge [-- 40 --seed 42 --sweep]` — N seeded drafts x 8 seats x an 82-game
-  challenge season vs the 30 NBA opponents; wins by seat rank + grade shares. `--sweep` walks
-  an `EdgeTuning` grid. Run after any change to `CHALLENGE_TUNING` or the opponents.
-- `npm run analyze` — runs `frontend/scripts/analyze.ts` (tsx) against the latest
-  `data/game_logs/full_dump_*.json` and prints a balance report
 - `npm run screenshot` — `node scripts/screenshot.js [route] [outfile] [--full]` (needs dev)
 - CI (`.github/workflows/ci.yml`): `tsc --noEmit`, lint, `npm test`, `npm run build` on every
   push/PR (ubuntu, Node 22). Playwright is NOT in CI (win32 snapshots, needs a server) —
@@ -128,18 +122,24 @@ Lives in `data/`, run from `data/`. Script order, inputs/outputs and table schem
 `npm run build:cards` turns `game.db` into `src/data/cards.json` and backfills any missing
 headshot with a placeholder (`ensure-headshots.mjs`; a bref-hash id means no NBA match).
 
-## Verifying game balance
+## Balance workflow (owner-locked, 2026-09-19)
 
-- Fastest loop: `npm run balance` (headless, seconds, no browser); `npm run challenge` for
-  82:0. Convention to know: `TeamBonuses.defenseMods` are deltas ADDED to the opponent's
-  offense, so a defensive effect is stored as a NEGATIVE number. Per-channel edges are
-  centred on `LINEUP_CENTRE` (`engine/balance.ts`) — regenerate from the balance script's
-  header when the card pool or the rating formulas change.
-- Deeper loop: play a few drafts/seasons, hit export on `/debug` (which POSTs to
-  `/api/game-logs`), then `npm run analyze` for cube integrity, rarity spread, identity
-  tiers, play calls, score/margin bands and win rate by tier.
-- Next work: `docs/ROADMAP.md` then `docs/plans/plan_<topic>_<date>.md`; open issues in
-  `docs/HANDOVER.md`; `docs/analytics/*` predates the current engine.
+No automated balance checks fire on their own — only inside a plan, or when the owner asks.
+When balance work does happen it is strictly hierarchical: verify a stage before tuning the
+next one, and never retune an earlier stage to paper over a later one's problem. Progress
+and open drift are tracked in `docs/HANDOVER.md`, not here.
+
+1. **Player pool** — data/stats/position correctness (does everyone have the right data).
+2. **Ratings/OVR** (`ratings.ts`) — distribution, scale, sense checks.
+3. **Rarity** (`RARITY_CUTOFFS` + band/floor/ceiling in `ratings.ts`) — distribution, sense checks.
+4. **Badges** (`BADGE_THRESHOLDS`) — distribution, sense checks.
+5. **Plays/Archetypes** (`archetypes.ts`, `playbook.ts`) — verification.
+
+Tools: `npm run balance` (headless PPP/score/synergy, no browser), `npm run challenge`
+(82:0), `npm run analyze` (cube integrity, rarity/identity spread, win rate by tier — from
+a `/debug` export). `TeamBonuses.defenseMods` are deltas ADDED to the opponent's offense (a
+defensive effect is a NEGATIVE number). `LINEUP_CENTRE` (`engine/balance.ts`) is downstream
+of stages 1-2 and needs its own pass, not an ad-hoc fix, when an earlier stage's data changes.
 
 ## Gotchas discovered in the code
 - `scripts/build-cards.ts` resolves `game.db` relative to `frontend/` — run it via the npm

@@ -84,10 +84,19 @@ screenshot exit criterion — no Supabase credentials in this sandbox, every rou
 before rendering; do this on a real machine before signing off the gold badge UI.
 **Rarity simplified (2026-09-19, owner-approved): a single band → adjustment → floor/
 ceiling function** (`ratings.ts`) replaces the old MVP/All-NBA/DPOY/AllDef/league-leader
-bump chain. `RARITY_CUTOFFS` (`balance.ts`) is now `<50 Common / 50-79 Uncommon / 80-89
-Rare / 90+ Mythic` — a cube-draft odds check (`generateCubePool`) puts ~66% of the
-Rare+Mythic pool, ~33% of Uncommon and ~36% of Common into some pack over a full draft.
-`hasAward` now folds in every award type (including All-Star), not a hardcoded subset.
+bump chain; `hasAward` now folds in every award type (All-Star included), not a hardcoded
+subset. `RARITY_CUTOFFS` (`balance.ts`) rebanded to `<50 Common / 50-79 Uncommon / 80-89
+Rare / 90+ Mythic` — ~66% of the Rare+Mythic pool, ~33% of Uncommon, ~36% of Common lands
+in some pack over a full draft. **Balance workflow locked in, five hierarchical stages
+(`AGENTS.md`).** Stage 4 (badges) done: re-applied `card_balance`'s hand-binning method
+(stepped floor per level closest to the cross-dimension average holder-count) against
+the post-rebalance raws — target moved ~62/29/11 → ~56/27/13. Fixed playmaking's dead L3
+(sat on the gold cutoff, 0 holders → l3:93, 11) and the ~3x badge-earn-rate spread
+(finishing/perimeter were thin — now 10.9-13.4% across all seven dims, was 4.9-15.8%);
+Post-Up Series/Four Out One In full-activation jumped 47.6%→77.2% / 51.2%→73.4%, PPP
+unchanged at 1.048. Stage 5 (plays/archetypes) next. Two tests sit just past tolerance
+from the position-pool + rarity-band drift, left for a dedicated pass, not patched ad
+hoc: `lineup.test.ts` (`LINEUP_CENTRE`) and `game.test.ts`'s home-court test (56.4% vs 56%).
 `card_balance_thresholds`
 **Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
 colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
@@ -194,36 +203,28 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 1. **Stale analytics findings** (PPP 1.29, ~0.8% turnovers, uneven activation) were
    measured against the retired engine; PPP is ≈1.05 and turnovers 13.9% now. Re-run
    `npm run analyze` before treating `docs/analytics/*` as current.
-2. **Cube draft duplicate bug — resolved.** `game.db` has 448 players (≥264 needed for a
-   duplicate-free cube); every session since shows 264/264 unique.
-3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
-   bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
-   pointer here was stale). `draft_ai` is the plan that owns this.
-4. **82:0 trade -> deck-builder hand-off is verified by code only** (pack reveal
-   animation frames stalled a headless verification pass) — confirm with one click-through.
-5. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
-   (`components/challenge/Results.tsx`) is the missing half and already round-trips across
-   the full 32-bit range; wiring the input belongs to `mode_picker` (roadmap #10).
-6. **`mobile-audit` deck-builder step flakes when several touch projects run in one
-   invocation** (the three projects share one fixture roster; the "Edit Roster" click
-   sometimes fails `toHaveURL(/roster/)` on the second project). Always `--workers=1`,
-   and rerun a single project if it hits; never seen on a solo run.
-7. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
-   flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
-   starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
-   18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-8. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
+2. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
+   bot; tuning would go in `scoreCardForBot` (`engine/draft.ts`). `draft_ai` owns this.
+3. **82:0 trade -> deck-builder hand-off is verified by code only** — confirm with a click-through.
+4. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
+   (`components/challenge/Results.tsx`) already round-trips the full 32-bit range; wiring
+   the input belongs to `mode_picker` (roadmap #10).
+5. **`mobile-audit` deck-builder step flakes when several touch projects share one fixture
+   roster** — "Edit Roster" sometimes fails `toHaveURL(/roster/)` on the second project.
+   Always `--workers=1`; never seen on a solo run.
+6. **`game.test.ts` minutes floor** — seeded 2026-09-16, so CI is deterministic. The
+   underlying edge remains: a starter with a low share (small OVR gap, low MPG, age 35+)
+   can legitimately land under 18 minutes on some seeds; if it reappears, lower the floor.
+7. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
    the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
-   (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
-   (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
-   1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
-   negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
-   finishing the top lever; look with a larger bootstrap before retuning ratings.
-9. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
+   (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved). Unexplained: the
+   player-level on-floor regression gives finishing a negative marginal in the 41-55 OVR
+   band while the roster-level `--levers` A/B makes finishing the top lever; look with a
+   larger bootstrap before retuning ratings.
+8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
    depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`, game 3:
-   PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that team every
-   possession. `engine/challenge.ts` works around it for NBA opponents by backfilling the
-   empty column; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
+   PG 5, SG 5, SF 1, PF 1, C 0). `engine/challenge.ts` backfills the empty column for NBA
+   opponents; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
 
 ## Where to look
 
