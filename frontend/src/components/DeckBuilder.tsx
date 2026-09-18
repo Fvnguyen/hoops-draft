@@ -34,6 +34,8 @@ import {
 import { DepthSlotColumn } from './DepthSlotColumn';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
 import { ToastProvider, useToast } from './Toast';
+import { useAndroidBackGuard } from '@/hooks/useAndroidBackGuard';
+import { BackGuardSheet } from './BackGuardSheet';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
 import { Overlay } from './ui/Overlay';
@@ -165,6 +167,17 @@ interface BuilderSnapshot {
 function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, gameMode, podAverageIdentity, readOnly = false, embedOverride }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
+
+  // plan_mobile_native_feel D3: nothing here saves until "Save" is pressed (and that
+  // requires a complete roster — see `isComplete` below), so a back press can only warn.
+  // Covers both entry points that mount this component: the standalone `/roster/[id]`
+  // page and DraftRoom's post-draft deckbuilding phase. Off for read-only viewing and
+  // the 82:0 front office's embedded editor (its own panel owns dismissal there).
+  const [showBackGuard, setShowBackGuard] = useState(false);
+  const { goBack } = useAndroidBackGuard({
+    enabled: !readOnly && !embedOverride,
+    onBackAttempt: () => setShowBackGuard(true),
+  });
 
   // plan_challenge_mode D1: `gameMode` arrives as a prop right after a fresh draft
   // (DraftRoom knows it already); editing a saved roster from `/roster/[id]` doesn't
@@ -1283,6 +1296,12 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
 
   return (
     <div ref={shellRef} className="@container h-dvh-z text-ink flex flex-col overflow-hidden relative bg-surface" onClick={clearSelection}>
+      <BackGuardSheet
+        open={showBackGuard}
+        message="Changes to this roster aren't saved automatically — leaving now loses them."
+        onCancel={() => setShowBackGuard(false)}
+        onLeave={goBack}
+      />
       {/* Hidden bench-sized HTML5 drag image (D24) — see handleDragStart. */}
       <div
         ref={dragGhostRef}

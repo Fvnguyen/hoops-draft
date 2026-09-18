@@ -28,6 +28,8 @@ import type { DraftPickRecord } from '../engine/deckbuilder';
 import { isSfxEnabled, setSfxEnabled } from '../audio/sfx';
 import { clockScaleFromQuery } from '../lib/draftTimer';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { useAndroidBackGuard } from '../hooks/useAndroidBackGuard';
+import { BackGuardSheet } from './BackGuardSheet';
 
 // Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
@@ -196,6 +198,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
+  const [showBackGuard, setShowBackGuard] = useState(false);
 
   // D4: `?clock=fast` (dev-only — clockScaleFromQuery ignores it in production)
   // scales the pick clock down; passed straight into `armIntroClock(scale)`.
@@ -220,6 +223,16 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     armIntroClock,
     receivingFromSeat,
   } = useDraftEngine(allPlayers, playsDB, mode, gameMode);
+
+  // plan_mobile_native_feel D3: only while still picking — no partial draft is ever
+  // persisted (the pod is only saved once, on the transition to 'deckbuilding' above),
+  // so back here can only warn, not save. Once deckbuilding starts, `DeckBuilder` below
+  // mounts its own guard and takes over; disabling this one avoids a double prompt.
+  const backGuardEnabled = isClient && draftState !== 'loading' && draftState !== 'deckbuilding';
+  const { goBack } = useAndroidBackGuard({
+    enabled: backGuardEnabled,
+    onBackAttempt: () => setShowBackGuard(true),
+  });
 
   // Preload the headshots the player is about to see: this pack (still sealed during
   // the intro) and the neighbour's pack that will be passed to us next. The URLs come
@@ -387,6 +400,12 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   return (
     <div className="flex flex-col md:flex-row h-dvh-z bg-surface text-ink font-sans relative overflow-hidden">
       <SaveErrorBanner message={saveError} />
+      <BackGuardSheet
+        open={showBackGuard}
+        message="Your picks so far will be lost — the draft can't be resumed once you leave."
+        onCancel={() => setShowBackGuard(false)}
+        onLeave={goBack}
+      />
 
       {isRoundSummary && (
         <RoundSummary
