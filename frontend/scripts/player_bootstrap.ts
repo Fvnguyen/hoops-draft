@@ -42,7 +42,7 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 import { loadPlayers, PLAYS } from '../tests/unit/helpers';
-import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '../src/engine/draft';
+import { generateCubePool, getBotPick, createBotProfiles, type DraftSeat } from '../src/engine/draft';
 import { simulateGame, type TeamInfo, type GameTheater } from '../src/engine/game';
 import { createRng, randomSeed, shuffle, type Rng } from '../src/engine/rng';
 import { CUBE_PLAYER_CARDS_PER_PACK, TARGET_ROSTER } from '../src/engine/balance';
@@ -166,29 +166,18 @@ function buildRandomTeam(seatId: string, drafted: DraftCard[], rng: Rng): TeamIn
 // ── Headless draft (mirrors tests/unit/helpers.ts runHeadlessDraft, but only the draft
 //    half — roster-building is buildRandomTeam above, not buildBotRoster) ───────────────
 
-const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner', 'CourtSense'];
-const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
-
-function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
-  return {
-    id: `bot-${seatIndex}`,
-    name: BOT_NAMES[seatIndex % BOT_NAMES.length],
-    noiseSeed: Math.floor(rng.next() * 1_000_000),
-    favoredTrait: TRAITS_POOL[seatIndex % TRAITS_POOL.length],
-  };
-}
-
 /** Runs one 8-seat/3-pack cube draft (real generateCubePool + real getBotPick, every seat
  *  bot-controlled — a bootstrap harness has no human), then builds each seat's team with
  *  buildRandomTeam instead of the deterministic buildBotRoster. */
 function runOneDraft(players: PlayerCardData[], seed: number): TeamInfo[] {
   const rng = createRng(seed);
   const allPacks = generateCubePool(players, PLAYS, rng);
+  const profiles = createBotProfiles(rng, 8);
 
   const seats: DraftSeat[] = Array.from({ length: 8 }, (_, i) => ({
     id: `bot-${i}`,
     isBot: true,
-    botProfile: makeBotProfile(i, rng),
+    botProfile: profiles[i],
     drafted: [],
     currentPack: allPacks[i] || [],
   }));

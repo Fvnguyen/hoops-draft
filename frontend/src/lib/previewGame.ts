@@ -5,33 +5,24 @@
  */
 import { playsDB } from '@/components/DraftRoom';
 import { getAllCards } from '@/engine/cards';
-import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
+import { generateCubePool, getBotPick, createBotProfiles, type DraftSeat } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
 import { buildTeamInfo, simulateGame, type GameTheater } from '@/engine/game';
 import { CUBE_PLAYER_CARDS_PER_PACK } from '@/engine/balance';
-import { createRng, type Rng } from '@/engine/rng';
+import { createRng } from '@/engine/rng';
 import type { DraftCard } from '@/engine/types';
 import type { GameContext } from '@/narration/types';
 
-const BOT_NAMES = ['You', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner', 'CourtSense'];
-const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
-
-function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
-  return {
-    id: seatIndex === 0 ? 'human-0' : `bot-${seatIndex}`,
-    name: BOT_NAMES[seatIndex % BOT_NAMES.length],
-    noiseSeed: Math.floor(rng.next() * 1_000_000),
-    favoredTrait: TRAITS_POOL[seatIndex % TRAITS_POOL.length],
-  };
-}
-
-/** Headless cube draft (mirrors tests/unit/helpers.ts runHeadlessDraft). */
+/** Headless cube draft (mirrors tests/unit/helpers.ts runHeadlessDraft). Seat 0 is
+ *  bot-controlled like the rest but renamed "You" for the theater preview's UI. */
 function headlessDraft(seed: number): DraftSessionSeat[] {
   const rng = createRng(seed);
   const allPacks = generateCubePool(getAllCards(), playsDB, rng);
+  const profiles = createBotProfiles(rng, 8);
+  profiles[0] = { ...profiles[0], id: 'human-0', name: 'You' };
   const seats: DraftSeat[] = [];
   for (let i = 0; i < 8; i++) {
-    seats.push({ id: i === 0 ? 'human-0' : `bot-${i}`, isBot: true, botProfile: makeBotProfile(i, rng), drafted: [], currentPack: allPacks[i] || [] });
+    seats.push({ id: i === 0 ? 'human-0' : `bot-${i}`, isBot: true, botProfile: profiles[i], drafted: [], currentPack: allPacks[i] || [] });
   }
   let overallPick = 1;
   for (let packNumber = 1; packNumber <= 3; packNumber++) {

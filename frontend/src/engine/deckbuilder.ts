@@ -296,6 +296,30 @@ export function buildBotRoster(drafted: DraftCard[], botProfile?: BotProfile): B
     }
   }
 
+  // Phase 1b: guarantee coverage. A column can still be empty here if the bot drafted
+  // zero players naturally eligible for it — Phase 2/3 below only redistribute by
+  // count, so an empty column stays empty once the roster reaches 12 elsewhere (a real
+  // bug: seed 424242 produced PG 5 / SG 5 / SF 1 / PF 1 / C 0, a 4-on-5 team). Every
+  // column must end up with at least one player, natural fit or not; fall back to the
+  // best remaining player who fits adjacently (one column over) — same rule a human
+  // gets in the deck builder (`canPlaceAt(..., allowAdjacent: true)`), so this off-
+  // position slot draws the same in-game penalty (`buildTeamInfo`'s OOP derate), not a
+  // silent free pass.
+  for (const pos of POSITIONS) {
+    if (depthChart[pos].length > 0) continue;
+    const rawPos = (p: PlayerCardData) => effectivePosition(p.player.position, p.traits);
+    // Adjacent (one column over) first; PG/SG-only roster can't adjacently reach PF or C
+    // (the PG-SG-SF-PF-C chain is only one hop wide), so fall further back to the best
+    // remaining player of any position — still off-position, still penalised, just no
+    // longer capped at "one column over" once that's provably not enough to cover 5.
+    const fallback = sortedPlayers.find(p => !assigned.has(p.id) && canPlaceAt(rawPos(p), pos, true))
+      ?? sortedPlayers.find(p => !assigned.has(p.id));
+    if (fallback) {
+      depthChart[pos].push(fallback);
+      assigned.add(fallback.id);
+    }
+  }
+
   // Phase 2: Fill to 12 active players (2-3 per position)
   // Distribute remaining players to their best-fit positions, keeping roster balanced
   const remaining = sortedPlayers.filter(p => !assigned.has(p.id));

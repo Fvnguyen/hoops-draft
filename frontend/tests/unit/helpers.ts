@@ -11,12 +11,12 @@
 
 import { getAllCards } from '@/engine/cards';
 import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
-import { generateCubePool, getBotPick, type DraftSeat, type BotProfile } from '@/engine/draft';
+import { generateCubePool, getBotPick, createBotProfiles, type DraftSeat } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
 import { type EdgeTuning, calcPossessionShares, buildTeamInfo, simulateGame, type TeamInfo, type GameTheater } from '@/engine/game';
 import { CUBE_PLAYER_CARDS_PER_PACK, RATING_DIMS, type RatingDim } from '@/engine/balance';
 import { lineupValue } from '@/engine/lineup';
-import { createRng, randomSeed, type Rng } from '@/engine/rng';
+import { createRng, randomSeed } from '@/engine/rng';
 import { PLAYS } from './fixtures/plays';
 
 export { PLAYS };
@@ -34,18 +34,6 @@ export function loadPlayers(): PlayerCardData[] {
 
 // ── Headless draft (mirrors useDraftEngine.ts without React) ───────────────
 
-const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner', 'CourtSense'];
-const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
-
-function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
-  return {
-    id: seatIndex === 0 ? 'human-0' : `bot-${seatIndex}`,
-    name: BOT_NAMES[seatIndex % BOT_NAMES.length],
-    noiseSeed: Math.floor(rng.next() * 1_000_000),
-    favoredTrait: TRAITS_POOL[seatIndex % TRAITS_POOL.length],
-  };
-}
-
 /**
  * Run a full 8-seat / 3-pack / 12-pick cube draft headlessly (no React), then
  * auto-build a roster for every seat (all bots — seat 0 gets a botProfile too
@@ -58,13 +46,14 @@ function makeBotProfile(seatIndex: number, rng: Rng): BotProfile {
 export function runHeadlessDraft(players: PlayerCardData[], plays: Play[] = PLAYS, seed?: number): DraftSessionSeat[] {
   const rng = createRng(seed ?? randomSeed());
   const allPacks = generateCubePool(players, plays, rng); // 24 packs (8 seats x 3 rounds), pack size from engine/balance
+  const profiles = createBotProfiles(rng, 8);
 
   const seats: DraftSeat[] = [];
   for (let i = 0; i < 8; i++) {
     seats.push({
       id: i === 0 ? 'human-0' : `bot-${i}`,
       isBot: true,
-      botProfile: makeBotProfile(i, rng),
+      botProfile: profiles[i],
       drafted: [],
       currentPack: allPacks[i] || [],
     });

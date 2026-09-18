@@ -1,36 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DraftCard, Player, Play } from '../components/PlayerCard';
-import { DraftSeat, generateCubePool, getBotPick, type BotProfile } from '../engine/draft';
+import { DraftSeat, generateCubePool, getBotPick, createBotProfiles, type BotProfile } from '../engine/draft';
 import { DraftPickRecord } from '../engine/deckbuilder';
-import { createRng, pick, randomSeed, type Rng } from '../engine/rng';
-import { CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { createRng, randomSeed } from '../engine/rng';
+import { CUBE_PLAYER_CARDS_PER_PACK, BOT_SYNERGY_AWARENESS_RANGE } from '../engine/balance';
 import { HUMAN_SEAT_ID } from '../engine/season';
 import { deadlineFor } from '../lib/draftTimer';
 
-const BOT_NAMES = ['Astro', 'HoopsBot', 'DataDunk', 'SwishAI', 'DraftGPT', 'NetMaster', 'RimRunner'];
-const TRAITS_POOL = ['Sharpshooter', 'Lockdown Defender', 'Playmaker', 'Finisher', 'Rebounder'];
-
-/**
- * Draws the 7 bot profiles from `rng` (in seat order), so the same draft
- * seed reproduces the same bot noise/trait leanings across replays.
- */
-export function createBotProfiles(rng: Rng): BotProfile[] {
-  return BOT_NAMES.map((name, idx) => ({
-    id: `bot-${idx + 1}`,
-    name,
-    noiseSeed: Math.floor(rng.next() * 1000000),
-    favoredTrait: pick(rng, TRAITS_POOL),
-  }));
-}
-
 /** D5: the profile handed to `getBotPick` when the clock expires on the human
- *  seat. `favoredTrait: ''` never matches a real badge, so it scores every
- *  card on its base value with no trait bias — "neutral", not "optimal". */
+ *  seat. No `targetArchetypeId` — `planPull` treats a missing/unmatched target as zero
+ *  pull, so it scores every card on its base value with no plan bias — "neutral", not
+ *  "optimal". `synergyAwareness` is the midpoint of the real range; it multiplies a
+ *  zero pull either way. */
 const CLOCK_EXPIRY_PROFILE: BotProfile = {
   id: 'clock-expiry',
   name: 'The Clock',
   noiseSeed: 424242,
-  favoredTrait: '',
+  targetArchetypeId: '',
+  synergyAwareness: (BOT_SYNERGY_AWARENESS_RANGE[0] + BOT_SYNERGY_AWARENESS_RANGE[1]) / 2,
 };
 
 /** Draft mode (plan ui_draft_deckbuild_pack, D1). Quick skips the timer and the

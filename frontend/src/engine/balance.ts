@@ -7,6 +7,7 @@
  */
 
 import type { Rarity } from './types';
+import type { DepthColumn } from './positions';
 
 /**
  * Bumped whenever a change to this file or game.ts/playbook.ts/archetypes.ts would
@@ -406,8 +407,51 @@ export const CUBE_PLAYER_CARDS_PER_PACK = 7; // 7 players + 1 play per pack (8 c
 /** Bot pick noise: score *= 0.85 .. 1.15 (±15%). */
 export const BOT_NOISE_PCT = 0.15;
 
-/** Hate-drafting floor: a high-PER player scored below this gets bumped up to it. */
-export const HATE_DRAFT_FLOOR = 250;
+// ── draft_ai (plan_draft_ai_2026-09-13): value-first, plan-pull-later bot valuation ──
+
+/** Rarity multiplier on a player's `ratings.overall` for bot draft valuation (D2). */
+export const CARD_RARITY_VALUE_MULT: Record<string, number> = {
+  Common: 1.0, Uncommon: 1.05, Rare: 1.12, Mythic: 1.2,
+};
+/** Rarity base value for a play card's bot draft valuation (D5). */
+export const PLAY_RARITY_VALUE: Record<string, number> = {
+  Common: 120, Uncommon: 150, Rare: 200, Mythic: 250,
+};
+/** D2 bomb pull: min lead (on the overall scale) the pack's best `baseValue` needs over
+ *  the second-best before a bomb bonus kicks in — roughly a clean starter vs. a fringe
+ *  rotation guy. Uncapped by `planWeight`: a big enough gap wins the pick at any point
+ *  in the draft, countering the plan/synergy pull below. */
+export const BOMB_GAP_THRESHOLD = 25;
+/** D2 bomb pull bonus multiplier applied to (gap - BOMB_GAP_THRESHOLD). */
+export const BOMB_PULL_MULT = 1.5;
+/** D2b: how many picks (of the whole draft, `CUBE_PACKS * (CUBE_PLAYER_CARDS_PER_PACK + 1)`)
+ *  `planWeight` takes to ramp from 0 to 1.0 — the full draft, not just the first pack. */
+export const PLAN_PULL = 12;
+/** D3b: each bot draws a fixed `synergyAwareness` once at draft start, uniform in this
+ *  range — a standing blind spot for how well it reads badge/play synergies, distinct
+ *  from BOT_NOISE_PCT's per-pick scatter. */
+export const BOT_SYNERGY_AWARENESS_RANGE: [number, number] = [0.5, 1.0];
+/** D4: positional-need multiplier spread at full `planWeight` (pick 1 applies none of it). */
+export const DRAFT_POSITIONAL_SHORT_MULT = 0.15;
+export const DRAFT_POSITIONAL_FULL_MULT = 0.2;
+/** D4: target count per depth-chart column across a 12-man roster (2 each of the 5
+ *  columns = 10; the remaining 2 picks are flex, filled by whichever column still has
+ *  the best value on the board). Per-column, not per G/F/C group — collapsing PG/SG (or
+ *  SF/PF) into one bucket let a bot stack SGs while drafting zero true PGs. */
+export const DRAFT_POSITIONAL_TARGETS: Record<DepthColumn, number> = {
+  PG: 2, SG: 2, SF: 2, PF: 2, C: 2,
+};
+/** D3: how many bots (of 7) may share the same target archetype, and how many must land
+ *  on a defensive-side or gold plan. */
+export const MAX_BOTS_PER_ARCHETYPE = 2;
+export const MIN_DEFENSIVE_OR_GOLD_BOTS = 2;
+
+/** Rating multiplier for a player placed off their natural depth-chart column (adjacent
+ *  fit, e.g. an SF slotted at PF) — a Positionless badge holder is exempt (`buildTeamInfo`
+ *  checks `effectivePosition`, not the raw position, before applying this). Bots only hit
+ *  this as `buildBotRoster`'s last-resort coverage fallback (a column with zero natural
+ *  fits among their drafted players); humans can choose it any time in the deck builder. */
+export const OFF_POSITION_PENALTY = 0.9;
 
 // ── deckbuilder.ts (from botDeckBuilder.ts) ─────────────────────────────────
 

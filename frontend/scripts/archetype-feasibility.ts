@@ -7,7 +7,7 @@
  * Targets agreed 2026-09-13: focused drafter Online ~85-95% / Dedicated ~40-60% on the
  * offensive colours; bots Online ~25-35% / Dedicated ~5%.
  */
-import { generateCubePool, getBotPick, type DraftSeat } from '../src/engine/draft';
+import { generateCubePool, getBotPick, createBotProfiles, type DraftSeat } from '../src/engine/draft';
 import { createRng } from '../src/engine/rng';
 import { getAllCards } from '../src/engine/cards';
 import { buildBotRoster } from '../src/engine/deckbuilder';
@@ -39,9 +39,10 @@ function focusedPick(seat: DraftSeat, color: Color): string {
 function runDraft(seed: number, color: Color | null) {
   const rng = createRng(seed);
   const packs = generateCubePool(players, PLAYS, rng);
+  const profiles = createBotProfiles(rng, 7); // bots 1-7; seat 0 is the focused/PER drafter, no botProfile needed
   const seats: DraftSeat[] = [];
   for (let i = 0; i < 8; i++) {
-    seats.push({ id: i === 0 ? 'human-0' : `bot-${i}`, isBot: true, botProfile: { id: `bot-${i}`, name: `B${i}`, noiseSeed: Math.floor(rng.next() * 1e6), favoredTrait: 'Sharpshooter' }, drafted: [], currentPack: packs[i] });
+    seats.push({ id: i === 0 ? 'human-0' : `bot-${i}`, isBot: true, botProfile: i === 0 ? undefined : profiles[i - 1], drafted: [], currentPack: packs[i] });
   }
   let overall = 1;
   for (let pack = 1; pack <= 3; pack++) {

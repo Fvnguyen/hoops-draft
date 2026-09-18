@@ -31,8 +31,10 @@ import {
   LINEUP_CENTRE, EDGE_WEIGHT, TURNOVER_BASE, TURNOVER_SCALE, TURNOVER_DEF_WEIGHT, TURNOVER_MIN, TURNOVER_MAX, OREB_BASE, OREB_SCALE, OREB_MIN, OREB_MAX, OREB_MAX_CHAIN, STEER_SCALE, STEER_CAP,
   PLAY_SCORER_BOOST, IDENTITY_CAPS, MAX_OT_PERIODS, SEGMENTS_PER_GAME, RIM_FT_PCT,
   STEER_NARRATE_MIN, BLOCK_SHARE_OF_MISSES, STEAL_SHARE_OF_TURNOVERS, CLUTCH_WINDOW_POSS, CLUTCH_MARGIN,
+  OFF_POSITION_PENALTY,
 } from './balance';
 import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
+import { naturalPositions, effectivePosition, type DepthColumn } from './positions';
 
 /** Edge-size knobs resolvePossession reads (balance script sweeps them; defaults in balance.ts). */
 export interface EdgeTuning { efficiencyScale?: number; maxEffShift?: number }
@@ -1063,40 +1065,27 @@ export function buildTeamInfo(
     else if (card.type === 'Play') playMap.set(card.id, card as Play);
   }
 
-  // Position natural eligibility check. Data uses '/' (e.g. 'G/F'); the '-' checks
-  // below are stale from an older format but harmless — normalise to '/' first so
-  // both spellings hit the same branches.
-  const isNaturalPosition = (rawPosIn: string, col: string): boolean => {
-    const rawPos = rawPosIn.replace('-', '/');
-    if (rawPos === 'ALL') return true;
-    if (rawPos === 'G' && (col === 'PG' || col === 'SG')) return true;
-    if (rawPos === 'F' && (col === 'SF' || col === 'PF')) return true;
-    if ((rawPos === 'G/F' || rawPos === 'F/G') && ['PG','SG','SF','PF'].includes(col)) return true;
-    if (rawPos.includes(col)) return true;
-    const parts = rawPos.split(/[-/]/);
-    if (parts.includes(col)) return true;
-    if (parts.includes('G') && (col === 'PG' || col === 'SG')) return true;
-    if (parts.includes('F') && (col === 'SF' || col === 'PF')) return true;
-    return false;
-  };
+  // Positionless (`effectivePosition` -> 'ALL') fits every column with no penalty; every
+  // other player only fits their real natural columns (`positions.ts`, single source of
+  // truth — same check the deck builder's drag/drop uses for `allowAdjacent: false`).
+  const isNaturalPosition = (player: PlayerCardData, col: string): boolean =>
+    naturalPositions(effectivePosition(player.player.position, player.traits)).includes(col as DepthColumn);
 
-  // Apply -10% penalty for out-of-position players
-  const applyOOPPenalty = (player: PlayerCardData): PlayerCardData => {
-    const penalty = 0.9; // -10%
-    return {
-      ...player,
-      ratings: {
-        overall: Math.round(player.ratings.overall * penalty),
-        finishing: Math.round(player.ratings.finishing * penalty),
-        midRange: Math.round(player.ratings.midRange * penalty),
-        perimeter: Math.round(player.ratings.perimeter * penalty),
-        playmaking: Math.round(player.ratings.playmaking * penalty),
-        rebounding: Math.round(player.ratings.rebounding * penalty),
-        perimeterDefense: Math.round(player.ratings.perimeterDefense * penalty),
-        postDefense: Math.round(player.ratings.postDefense * penalty),
-      },
-    };
-  };
+  // Off-position penalty (adjacent placement, human choice or `buildBotRoster`'s last-
+  // resort coverage fallback) — flat derate on every rating dimension.
+  const applyOOPPenalty = (player: PlayerCardData): PlayerCardData => ({
+    ...player,
+    ratings: {
+      overall: Math.round(player.ratings.overall * OFF_POSITION_PENALTY),
+      finishing: Math.round(player.ratings.finishing * OFF_POSITION_PENALTY),
+      midRange: Math.round(player.ratings.midRange * OFF_POSITION_PENALTY),
+      perimeter: Math.round(player.ratings.perimeter * OFF_POSITION_PENALTY),
+      playmaking: Math.round(player.ratings.playmaking * OFF_POSITION_PENALTY),
+      rebounding: Math.round(player.ratings.rebounding * OFF_POSITION_PENALTY),
+      perimeterDefense: Math.round(player.ratings.perimeterDefense * OFF_POSITION_PENALTY),
+      postDefense: Math.round(player.ratings.postDefense * OFF_POSITION_PENALTY),
+    },
+  });
 
   // Collect active roster players, applying OOP penalty where needed
   const activePlayers: PlayerCardData[] = [];
@@ -1106,7 +1095,7 @@ export function buildTeamInfo(
     for (const id of ids) {
       const player = playerMap.get(id);
       if (player && !activePlayers.find(p => p.id === id)) {
-        if (!isNaturalPosition(player.player.position, pos)) {
+        if (!isNaturalPosition(player, pos)) {
           activePlayers.push(applyOOPPenalty(player));
         } else {
           activePlayers.push(player);
