@@ -51,7 +51,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **badge_effects** (2026-09-17, `plan_badge_effects_2026-09-17.md`): closed without a full plan — badge-levels-as-content scope shipped inside `card_balance` T2/T3 instead; the "special effects on top of the lineup model" mechanic it originally named was never built.
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6. Open: `phone_card` (roadmap #8).
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
-- **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14, `CARD_SET_VERSION`. Superseded by card_ratings_rebalance below (rarity/badges/OVR all rebuilt).
+- **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 
 ## card_ratings_rebalance — done 2026-09-18
 
@@ -67,23 +67,29 @@ magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independen
 shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
 rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
 rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
-a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped; OVR is now
-the flat mean of the seven ratings — no more `PROFILES`, `_baseOvr`/`_multiplier`, or the
-PER/VORP composite multiplier. Positions: `download_bref.js` now also scrapes bref's 26 letter-index pages
-(`data/bref_positions/`, committed like the other scrape snapshots) for bref-native name
-matching (132 vs 110 crossover columns vs bio.csv's fuzzy match); the single-crossover
-cap in `blend_bio_crossover` is gone.
-True 3-way positions stay data-limited — both sources cap at 2-letter G/F/C this season.
-Verified: 426/426 tests, tsc/lint clean, `npm run build:cards` (448 cards),
-`npm run balance -- 1000 --seed 42` PPP 1.046→1.031 (real pre-change worktree baseline,
-not stale data), rarity 23/59/107/259 vs target 23/55/117/253 (within ±10% except
-Uncommon -8.5%/Rare +7.3%), KPJ no longer Mythic on a steals lead, `RATING_NORM`/
-`LINEUP_CENTRE` regenerated. Two anchors missed by ~1 point (Ausar Thompson OVR 59 vs
-wanted >60, Luka perimeter defence 83 vs wanted <80) — accepted. **Not verified**: the
-screenshot exit criterion — this sandbox has no `frontend/.env.local` Supabase
-credentials, so every route 500s in the Supabase middleware before rendering; do this on
-a real machine before signing off the gold badge UI. `card_balance_thresholds`
+a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped. Positions:
+`download_bref.js` now also scrapes bref's 26 letter-index pages (`data/bref_positions/`,
+committed like the other scrape snapshots) for bref-native name matching (132 vs 110
+crossover columns vs bio.csv's fuzzy match); the single-crossover cap in
+`blend_bio_crossover` is gone. True 3-way positions stay data-limited — both sources cap
+at 2-letter G/F/C this season.
+**Follow-up (2026-09-19, owner request): OVR is no longer a flat mean of the seven
+dimensions** (that regressed to the middle — few players are elite in all seven, which is
+why it topped out at 90 with a ~47 pool mean). `computeCards` now runs two passes: pass 1
+averages each player's seven UNCAPPED dimension raws into `rawOvrMean`; pass 2 re-indexes
+that composite through the same `idx()` every dimension uses (rotation league avg →
+~50 OVR, rotation top-7.5% → 99) before resolving rarity/awards. `RARITY_CUTOFFS` re-fit
+90/68/62 (was 68/58/58) — 22/55/124/247 vs target 23/55/117/253, within ±10%. Untouched:
+per-dimension ratings and the possession engine. OVR does not set shot efficiency, but it
+is NOT inert: it drives minutes share (`game.ts` `ovrGap`), closer selection, bot rosters
+and the NBA opponents, so it moves the challenge distribution — measured on merge, best
+seat mean 58.5 → 59.7 wins, p90 72 → 69, A+ 12.5% → 5.0%, i.e. back toward challenge_mode's
+own 2,000-season calibration (mean 60, p90 70). PPP 1.032. `card_balance_thresholds`
 (roadmap #6, depends on this now) should re-tune from this pool — every badge level moved.
+**Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
+colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
+one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in
+`synergies.test.ts`, including that gold REPLACES the l3 trait rather than adding a second.
 
 ## challenge_mode — done 2026-09-18
 
@@ -142,14 +148,12 @@ pass) was skipped for the same reason and is still open: `engine/game.ts` still 
 What shipped (commits `be99ef0`, `8215a45`, `5f2d777`, `fed411a`, `579ae51`): every event
 carries a structured `narrative` (kind, channel, actor, assist, credited defender, called
 play/coverage, second chance, `steeredTo`) that `src/narration/` renders into
-broadcast-style play-by-play (298 template bodies, no-repeat window 5), game-flow beats
-(runs, lead changes, quarter cards, identity lines), crunch time (Q4/OT closing fives,
-1x-snap + "Crunchtime!" pop-up, 23% of games enter it), and a full box score (REB off/
-def, STL, BLK, FG/3P/FT, +/-, season totals) with a completion Summary (player of the
-game, two data-backed hints, never OVR). Attribution rolls on a derived rng so the sim
-stream is untouched. Verified: 333/333 tests, tsc/lint/`check:styles` clean, `npm run
-balance -- 500 --seed 42` before/after unchanged; screenshots via `theater-shot.ts`,
-in-app fixture `/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
+broadcast-style play-by-play (298 template bodies, no-repeat window 5), game-flow beats,
+crunch time (Q4/OT closing fives, 1x-snap pop-up, 23% of games enter it), and a full box
+score with a completion Summary (player of the game, two data-backed hints, never OVR).
+Attribution rolls on a derived rng so the sim stream is untouched. Verified: 333/333
+tests, tsc/lint/`check:styles` clean, balance before/after unchanged; in-app fixture
+`/theater-preview?seed=13&poss=203&tab=playByPlay&pop=1`.
 Gotchas: any rng-order change needs a `BALANCE_VERSION` bump; the phone-landscape header
 takes most of the 385px screen — next mobile item is compacting it.
 
@@ -194,34 +198,33 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
 3. **AI draft strength gap.** Up to 11.1 OVR difference between the best- and worst-drafting
    bot; tuning would go in `scoreCardForBot` (`engine/draft.ts` — the old `draftEngine.ts`
    pointer here was stale). `draft_ai` is the plan that owns this.
-4. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
+4. **82:0 trade -> deck-builder hand-off is verified by code only** (pack reveal
+   animation frames stalled a headless verification pass) — confirm with one click-through.
+5. **"Enter a seed" is still disabled** on the start page's challenge picker. `parseSeed`
    (`components/challenge/Results.tsx`) is the missing half and already round-trips across
    the full 32-bit range; wiring the input belongs to `mode_picker` (roadmap #10).
-5. **`mobile-audit` deck-builder step flakes when several touch projects run in one
+6. **`mobile-audit` deck-builder step flakes when several touch projects run in one
    invocation** (the three projects share one fixture roster; the "Edit Roster" click
    sometimes fails `toHaveURL(/roster/)` on the second project). Always `--workers=1`,
    and rerun a single project if it hits; never seen on a solo run.
-6. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
+7. **`game.test.ts` minutes floor** — the 200-game fixture was unseeded (the 2026-09-15
    flake); seeded 2026-09-16, so CI is deterministic. The underlying edge remains: a
    starter with a low share (small OVR gap, low MPG, age 35+) can legitimately land under
    18 minutes on some seeds; if it reappears, lower the floor rather than reseed.
-7. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
+8. **engine_possession_model follow-ups, still open post-card_balance** — owner accepted
    the measured state on 2026-09-16: talent share 21.9% per game / 49.3% per season
    (`EFFICIENCY_SCALE` 0.12-0.15 pulls it back if seasons feel solved) and the lever order
    (perimeter shooting 1.98 just under perimeter defence 2.12; `EDGE_WEIGHT.three.off`
    1.15 flips it). Unexplained: the player-level on-floor regression gives finishing a
    negative marginal in the 41-55 OVR band while the roster-level `--levers` A/B makes
    finishing the top lever; look with a larger bootstrap before retuning ratings.
-8. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
+9. **Bot roster with an empty position plays four on five.** `buildBotRoster` can produce a
    depth chart with no eligible player for a slot (seed 424242 in `boxscore.test.ts`, game 3:
    PG 5, SG 5, SF 1, PF 1, C 0) and the engine then draws four players for that team every
    possession. `engine/challenge.ts` works around it for NBA opponents by backfilling the
    empty column; the general fix belongs in `engine/deckbuilder.ts` — `draft_ai` territory.
-9. **Jahmai Mashack's headshot — RESOLVED 2026-09-17.** He is absent from the bundled
-   `nba_api` static list (so the resolver could never match him) but present in the LIVE
-   player index as 1642942; the real photo is fetched and saved under his hash id. His card
-   id stays a hash until `fetch_players.py` is re-run against the live index. Future gaps are
-   covered by `scripts/ensure-headshots.mjs`, which `build:cards` runs.
+10. **Missing headshots are handled.** `scripts/ensure-headshots.mjs` (run by `build:cards`)
+   backfills `_missing.png` for any card whose id is a bref hash, so nothing 404s.
 
 ## Where to look
 

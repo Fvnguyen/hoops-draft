@@ -139,8 +139,18 @@ data, so `naturalPositions` never sees more than 2 columns. The index-page switc
 shipped (132 vs 110 crossover columns — bref-native name matching beats bio.csv's fuzzy
 cross-source match) and `blend_bio_crossover`'s single-crossover cap is gone, ready for
 a season where either source actually carries 3 sides.
-Screenshot verification (`node scripts/screenshot.js`) could not run: this sandbox has no
-`frontend/.env.local` Supabase credentials, so every route 500s in the Supabase
-server-client middleware (`proxy.ts`) before rendering — a pre-existing environment gap,
-not caused by this change. Verified the gold badge visually is out of scope for this
-environment; `PlayerCard.tsx`'s `BadgeIcon` gold styling was code-reviewed instead.
+Screenshot verification could not run: this sandbox has no `frontend/.env.local`
+Supabase credentials, so every route 500s in the Supabase middleware (`proxy.ts`) before
+rendering — a pre-existing gap, not caused by this change; the gold badge was
+code-reviewed instead of screenshotted.
+
+## Follow-up (2026-09-19, owner request): index OVR itself
+
+The flat mean at D8 regressed OVR to the middle — few players are elite in all seven
+dimensions, so it topped out at 90 with a ~47 pool mean. `computeCards` now runs two
+passes: pass 1 averages each player's seven UNCAPPED (pre-D7-clamp) dimension raws into
+`rawOvrMean`; pass 2 re-indexes that composite through the same `idx()` every dimension
+uses (rotation league avg → ~50 OVR, rotation top-7.5% → 99). `RARITY_CUTOFFS` re-fit
+90/68/62 (was 68/58/58): 22/55/124/247 vs target 23/55/117/253, within ±10%.
+Per-dimension ratings, badges and the possession engine are untouched (OVR is never a
+game input) — `npm run balance` PPP unchanged at 1.037.

@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { PlayerCardData } from '@/components/PlayerCard';
-import { calcTeamBonuses, evaluatePlay, getPlayRequirements, SYNERGIES } from '@/engine/synergies';
+import { calcTeamBonuses, countBadges, evaluatePlay, getPlayRequirements, SYNERGIES } from '@/engine/synergies';
 import { MONO_THRESHOLDS } from '@/engine/archetypes';
 import { loadPlayers, PLAYS } from './helpers';
 
@@ -163,5 +163,65 @@ describe('evaluatePlay (unchanged — badge-requirement UI helper, independent o
       const play = PLAYS.find((p) => p.id === id)!;
       expect(evaluatePlay(play, {}).defensive, id).toBe(true);
     }
+  });
+});
+
+/**
+ * card_ratings_rebalance D7 + owner ruling 2026-09-19: a gold badge is simply a FOURTH
+ * badge level, not a decoration on top of level 3. Everything that reads `Trait.level`
+ * — archetype colour points, play requirements, `countBadges` — already sums or compares
+ * it numerically, so gold counts as 4 for free. These tests exist so a later change that
+ * caps a level at 3, or that stores gold as "level 3 + a flag", fails loudly here rather
+ * than silently making elite rosters harder to qualify.
+ */
+describe('gold badges count as a fourth level (owner ruling 2026-09-19)', () => {
+  const players = loadPlayers();
+  const goldCarriers = players.filter((p) => (p.traits || []).some((t) => t.level >= 4));
+
+  it('the shipped card pool actually contains gold badges', () => {
+    expect(goldCarriers.length).toBeGreaterThan(0);
+  });
+
+  it('a gold badge is stored as level 4, never as a duplicated level-3 trait', () => {
+    for (const p of goldCarriers) {
+      const golds = p.traits.filter((t) => t.level >= 4);
+      for (const g of golds) {
+        expect(g.level).toBe(4);
+        // exactly one trait per badge name: gold REPLACES the l3 entry, so a gold
+        // carrier must not also carry the same badge at a lower level (that would
+        // double-count it toward every requirement below).
+        expect(p.traits.filter((t) => t.name === g.name)).toHaveLength(1);
+      }
+    }
+  });
+
+  it('countBadges gives a gold carrier 4 levels, one more than a level-3 carrier', () => {
+    const gold = goldCarriers[0];
+    const badge = gold.traits.find((t) => t.level >= 4)!.name;
+    const l3 = players.find(
+      (p) => (p.traits || []).some((t) => t.name === badge && t.level === 3),
+    );
+    expect(l3, `no level-3 carrier of ${badge} to compare against`).toBeDefined();
+
+    expect(countBadges([gold])[badge]).toBe(4);
+    expect(countBadges([l3!])[badge]).toBe(3);
+    // and they add, so one gold + one l3 clears a 7-level requirement
+    expect(countBadges([gold, l3!])[badge]).toBe(7);
+  });
+
+  it('one gold Finisher alone activates Post-Up Series; a level-2 Finisher does not', () => {
+    // Post-Up Series needs 3 Finisher levels. A single gold Finisher carries 4, so he
+    // clears it on his own — that is the whole point of counting gold as a fourth level.
+    const play = { id: 'p1', playId: 'play-std-9', name: 'Post-Up Series' };
+    const goldFinisher = players.find(
+      (p) => (p.traits || []).some((t) => t.name === 'Finisher' && t.level >= 4),
+    );
+    expect(goldFinisher, 'no gold Finisher in the pool').toBeDefined();
+    const l2Finisher = players.find(
+      (p) => (p.traits || []).some((t) => t.name === 'Finisher' && t.level === 2),
+    )!;
+
+    expect(evaluatePlay(play, countBadges([goldFinisher!])).activation).toBe('full');
+    expect(evaluatePlay(play, countBadges([l2Finisher])).activation).not.toBe('full');
   });
 });

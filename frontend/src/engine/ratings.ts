@@ -1,7 +1,8 @@
 /**
  * Card Ratings — the single source of truth for OVR, per-skill ratings,
  * rarity, and badges (card_ratings_rebalance, 2026-09-18: rate-stat dimensions
- * through one mean-centred index, magnitude×shape defence, flat-mean OVR).
+ * through one mean-centred index, magnitude×shape defence; rescaled 2026-09-19 so OVR
+ * itself is indexed the same way, not just averaged).
  *
  * PURE: no sqlite, no cache, no I/O. `computeCards` takes plain data in and
  * returns plain data out — `scripts/build-cards.ts` is the only caller that
@@ -177,8 +178,25 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
 
   const cards: PlayerCard[] = [];
 
+  // D8 (2026-09-19 rescale): OVR is no longer a raw flat mean of the seven capped
+  // ratings — that regresses to the middle (few players are simultaneously elite in
+  // all seven), which is why the old flat-mean OVR topped out at 90 with a ~47 mean.
+  // Pass 1 computes each player's dims/traits/badges and an UNCAPPED rawOvrMean (the
+  // mean of the seven raw dimension values before D7's min(99, ...) clamp, so a
+  // multi-category gold performance still lifts the composite instead of being
+  // truncated per-category first). Pass 2 re-indexes that composite through the same
+  // idx() used everywhere else — league-average composite maps to 0.5 (→ ~50 OVR),
+  // the rotation top-7.5% composite maps to 1.0 (→ 99 OVR) — so OVR now reads on the
+  // same "how does this compare to the league's best" scale as every other rating.
+  interface PassOne {
+    r: NonNullable<(typeof rawScores)[number]>;
+    stored: Record<RatingDim, number>;
+    traits: Trait[];
+    rawOvrMean: number;
+  }
+  const passOne: PassOne[] = [];
+
   for (const r of rawScores) {
-    const p = r.player;
     const stat = r.stat;
 
     // T2 general fix (card_balance, 2026-09-16, unchanged by the rebalance): a
@@ -249,11 +267,21 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
       }
     }
 
-    // D8: OVR is the flat mean of the seven (already-capped) ratings.
-    const overall = Math.max(0, Math.min(99, Math.round(
-      (stored.finishing + stored.midRange + stored.perimeter + stored.playmaking
-        + stored.rebounding + stored.perimeterDefense + stored.postDefense) / 7,
-    )));
+    // Uncapped composite (pre-D7-clamp raw mean) — re-indexed in pass 2.
+    const rawOvrMean = dims.reduce((sum, d) => sum + d.raw, 0) / dims.length;
+    passOne.push({ r, stored, traits, rawOvrMean });
+  }
+
+  // Pass 2: index the composite the same way every dimension is indexed (D2), then
+  // resolve rarity/awards, which depend on the final `overall`.
+  const ovrBounds = statBounds(passOne.map(x => ({ v: x.rawOvrMean, mpg: x.r.stat.mpg })));
+  const ovrIdx = makeIdx(ovrBounds);
+
+  for (const { r, stored, traits, rawOvrMean } of passOne) {
+    const p = r.player;
+    const stat = r.stat;
+
+    const overall = Math.max(0, Math.min(99, Math.round(99 * ovrIdx(rawOvrMean))));
 
     let rarity: Rarity = 'Common';
     for (const cutoff of RARITY_CUTOFFS) {

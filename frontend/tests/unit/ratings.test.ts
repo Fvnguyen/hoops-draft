@@ -8,9 +8,11 @@ describe('ratings (engine.ts getAllCards)', () => {
     expect(players.length).toBe(448);
   });
 
-  // card_ratings_rebalance D8 (2026-09-18): OVR is now the flat mean of the seven
-  // dimension ratings, with no floor multiplier — a deep-bench player weak across every
-  // dimension can legitimately land in the teens (AJ Johnson at 16, 9.5 mpg).
+  // card_ratings_rebalance D8 (2026-09-18, rescaled 2026-09-19): OVR is a composite of
+  // the seven dimension raws re-indexed through the same idx() as every dimension
+  // (league-average composite -> ~50, rotation top-7.5% -> 99), with no floor
+  // multiplier — a deep-bench player weak across every dimension can legitimately land
+  // near 0.
   it('every overall rating is within [0, 99]', () => {
     for (const p of players) {
       expect(p.ratings.overall).toBeGreaterThanOrEqual(0);
@@ -32,9 +34,12 @@ describe('ratings (engine.ts getAllCards)', () => {
     }
   });
 
-  it('sanity check: mean overall is between 45 and 60', () => {
+  // card_ratings_rebalance rescale (2026-09-19): idx() is normalised over ROTATION
+  // players only (mpg >= 15), so the full 448-card pool's mean sits a bit under the
+  // rotation-only 50 centre — sub-rotation bench players pull it down.
+  it('sanity check: mean overall is between 40 and 55', () => {
     const mean = players.reduce((s, p) => s + p.ratings.overall, 0) / players.length;
-    expect(mean).toBeGreaterThan(45);
-    expect(mean).toBeLessThan(60);
+    expect(mean).toBeGreaterThan(40);
+    expect(mean).toBeLessThan(55);
   });
 });
