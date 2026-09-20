@@ -187,6 +187,13 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // page and DraftRoom's post-draft deckbuilding phase. Off for read-only viewing and
   // the 82:0 front office's embedded editor (its own panel owns dismissal there).
   const [showBackGuard, setShowBackGuard] = useState(false);
+
+  // Stable id for a freshly-drafted roster (no `rosterId` prop yet): computed once per
+  // mount so repeated/concurrent saves in this DeckBuilder session upsert the same
+  // IndexedDB row instead of minting a new "roster_<timestamp>" each time (which showed
+  // up as duplicate entries in /rosters, only one of which ever got a ChallengeRun).
+  const [generatedRosterId] = useState(() => rosterId || `roster_${Date.now()}`);
+  const [isSavingRoster, setIsSavingRoster] = useState(false);
   const { goBack } = useAndroidBackGuard({
     enabled: !readOnly && !embedOverride,
     onBackAttempt: () => setShowBackGuard(true),
@@ -993,11 +1000,12 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   /** D19: "Save" lands on `/rosters`; "Save & play season" jumps straight into the
    *  season for this draft session (only offered when there IS a session). */
   const handleSaveRoster = async (destination: 'rosters' | 'season' = 'rosters') => {
-    if (readOnly) return;
+    if (readOnly || isSavingRoster) return;
     try {
+      setIsSavingRoster(true);
       setSaveError(null);
 
-      const saveId = rosterId || `roster_${Date.now()}`;
+      const saveId = rosterId || generatedRosterId;
       const depthChartOrder = Object.fromEntries(Object.entries(depthChart).map(([k, v]) => [k, v.map(p => p.id)]));
       const activePlayIds = activePlays.map(p => p ? p.id : null).filter((id): id is string => id !== null);
 
@@ -1054,6 +1062,8 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
       } else {
         setSaveError('Failed to save roster. Please try again.');
       }
+    } finally {
+      setIsSavingRoster(false);
     }
   };
 
@@ -1556,7 +1566,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
               variant="primary"
               size="md"
               onClick={() => handleSaveRoster(saveDestination)}
-              disabled={!rosterName.trim()}
+              disabled={!rosterName.trim() || isSavingRoster}
             >
               {saveDestination === 'season' ? (isChallenge ? 'Save & start 82:0' : 'Save & play season') : 'Save to Collection'}
             </Button>
