@@ -1,0 +1,155 @@
+Seed: 42
+
+=== League Rating Means (448 cards) ===
+  finishing          46.74
+  midRange           45.90
+  perimeter          46.57
+  playmaking         45.42
+  rebounding         46.33
+  perimeterDefense   48.44
+  postDefense        49.30
+
+=== Lineup centres (40 seeded drafts x 8 teams x 150 minutes-weighted lineups) ===
+  dimension              k  measured  balance.ts
+  finishing           0.75      62.2        60.0
+  midRange               1      62.8        60.5
+  perimeter            0.5      55.4        55.0
+  playmaking           1.5      66.5        63.0
+  rebounding           0.5      61.8        59.4
+  perimeterDefense       0      59.2        57.2
+  postDefense            0      59.7        58.0
+
+Edge size: EFFICIENCY_SCALE 0.2, MAX_EFF_SHIFT 0.08
+
+Running 500 headless games...
+
+=== Balance Report (500 games, <ms>) ===
+Overall PPP:        1.059
+Home-side PPP:      1.060
+Away-side PPP:      1.057
+Team score mean:    108.2
+Team score median:  108.0
+Team score sd:      14.1
+% scores in [90,130]: 86.0%
+Home win %:         57.0%
+OT %:               2.0%
+Mean total poss/game: 204.3
+Margin mean:        16.9
+Margin median:      14.0
+
+=== Synergy Activation Rates (sorted desc) ===
+  Paint Wall               7.2%
+  Switchblade Pressure     5.8%
+  No-Fly Zone              5.6%
+  Midrange Clinic          5.2%
+  The Beautiful Game       5.0%
+  Second-Chance Engine     4.1%
+  Glass Fortress           4.1%
+  Crash and Finish         3.3%
+  Elbow Orchestra          2.7%
+  Rim Pressure             2.2%
+  Pick-and-Roll Republic   2.2%
+  3-and-D Paradigm         2.1%
+  Junkyard Dogs            2.0%
+  Shooting Gallery         1.9%
+  Five-Out Fortress        1.6%
+  Inside-Out               0.5%
+  Positionless Revolution  0.2%
+  Spacing Machine          0.2%
+
+=== Play Activation Rates ===
+  Horns                    full 93.4%  partial 0.0%  none 6.6%
+  Switch Everything        full 82.7%  partial 0.0%  none 17.3%
+  Drive-and-Kick Series    full 58.5%  partial 0.0%  none 41.5%
+  Four Out One In          full 68.7%  partial 0.0%  none 31.3%
+  Drop Coverage            full 80.7%  partial 0.0%  none 19.3%
+  Box-and-One              full 88.6%  partial 0.0%  none 11.4%
+  High Pick & Roll         full 92.3%  partial 0.0%  none 7.7%
+  Full Court Press         full 93.9%  partial 0.0%  none 6.1%
+  Point Forward            full 40.3%  partial 0.0%  none 59.7%
+  Triangle Offense         full 44.3%  partial 0.0%  none 55.7%
+  7 Seconds or Less        full 46.3%  partial 0.0%  none 53.7%
+  Post-Up Series           full 68.5%  partial 0.0%  none 31.5%
+  Motion Offense           full 71.0%  partial 0.0%  none 29.0%
+  Grit and Grind           full 63.8%  partial 0.0%  none 36.3%
+
+Most common synergies:
+  Paint Wall: 7.2%
+  Switchblade Pressure: 5.8%
+  No-Fly Zone: 5.6%
+Least common synergies:
+  Spacing Machine: 0.2%
+  Positionless Revolution: 0.2%
+  Inside-Out: 0.5%
+
+=== Play Impact (fixed roster, best eligible players vs inactive) ===
+
+Horns (play-std-3, offense, 10% allocation) — 500 games each, full-activation rate 93.4%
+  win%       with 54.4%  without 52.0%
+  PPP (own)  with 1.167  without 1.161
+  PPP (opp)  with 1.167  without 1.163
+
+Full Court Press (play-std-4, defense, 10% allocation) — 500 games each, full-activation rate 93.9%
+  win%       with 56.4%  without 52.0%
+  PPP (own)  with 1.162  without 1.161
+  PPP (opp)  with 1.160  without 1.163
+
+High Pick & Roll (play-std-1, offense, 13% allocation) — 500 games each, full-activation rate 92.3%
+  win%       with 55.2%  without 52.0%
+  PPP (own)  with 1.171  without 1.161
+  PPP (opp)  with 1.165  without 1.163
+
+Box-and-One (play-std-2, defense, 13% allocation) — 500 games each, full-activation rate 88.6%
+  win%       with 53.8%  without 52.0%
+  PPP (own)  with 1.159  without 1.161
+  PPP (opp)  with 1.160  without 1.163
+
+Motion Offense (play-sys-4, offense, 15% allocation) — 500 games each, full-activation rate 71.0%
+  win%       with 55.8%  without 52.0%
+  PPP (own)  with 1.164  without 1.161
+  PPP (opp)  with 1.164  without 1.163
+
+Grit and Grind (play-sys-3, defense, 15% allocation) — 500 games each, full-activation rate 63.8%
+  win%       with 57.0%  without 52.0%
+  PPP (own)  with 1.161  without 1.161
+  PPP (opp)  with 1.158  without 1.163
+
+Four Out One In (play-std-5, offense, 15% allocation) — 500 games each, full-activation rate 68.7%
+  win%       with 52.6%  without 52.0%
+  PPP (own)  with 1.169  without 1.161
+  PPP (opp)  with 1.167  without 1.163
+
+Triangle Offense (play-sys-1, offense, 18% allocation) — 500 games each, full-activation rate 44.3%
+  win%       with 53.0%  without 52.0%
+  PPP (own)  with 1.167  without 1.161
+  PPP (opp)  with 1.166  without 1.163
+
+7 Seconds or Less (play-sys-2, offense, 18% allocation) — 500 games each, full-activation rate 46.3%
+  win%       with 57.4%  without 52.0%
+  PPP (own)  with 1.172  without 1.161
+  PPP (opp)  with 1.167  without 1.163
+
+Point Forward (play-std-6, offense, 15% allocation) — 500 games each, full-activation rate 40.3%
+  win%       with 56.4%  without 52.0%
+  PPP (own)  with 1.167  without 1.161
+  PPP (opp)  with 1.167  without 1.163
+
+Switch Everything (play-std-7, defense, 10% allocation) — 500 games each, full-activation rate 82.7%
+  win%       with 53.8%  without 52.0%
+  PPP (own)  with 1.160  without 1.161
+  PPP (opp)  with 1.163  without 1.163
+
+Drop Coverage (play-std-8, defense, 12% allocation) — 500 games each, full-activation rate 80.7%
+  win%       with 54.2%  without 52.0%
+  PPP (own)  with 1.163  without 1.161
+  PPP (opp)  with 1.161  without 1.163
+
+Post-Up Series (play-std-9, offense, 10% allocation) — 500 games each, full-activation rate 68.5%
+  win%       with 54.2%  without 52.0%
+  PPP (own)  with 1.167  without 1.161
+  PPP (opp)  with 1.167  without 1.163
+
+Drive-and-Kick Series (play-std-10, offense, 8% allocation) — 500 games each, full-activation rate 58.5%
+  win%       with 52.0%  without 52.0%
+  PPP (own)  with 1.167  without 1.161
+  PPP (opp)  with 1.170  without 1.163

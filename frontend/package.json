@@ -12,6 +12,7 @@
     "test:e2e": "playwright test",
     "check:styles": "node scripts/check-styles.mjs",
     "balance": "tsx scripts/balance.ts",
+    "bench": "tsx scripts/bench-engine.ts",
     "analyze": "tsx scripts/analyze.ts",
     "build:cards": "tsx scripts/build-cards.ts && node scripts/ensure-headshots.mjs",
     "feasibility": "tsx scripts/archetype-feasibility.ts",

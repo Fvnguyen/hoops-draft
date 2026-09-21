@@ -215,6 +215,72 @@ export function initBuilderState(
   };
 }
 
+// ── Builder reducer contract (plan render_and_engine_perf D8, wave 0) ──────
+// Types only. T9 implements `applyBuilderAction` here and `hooks/useRosterBuilder.ts` on top
+// of it; nothing consumes these yet. The point of a reducer: the builder keeps five state
+// slices that must change TOGETHER, and today they are changed by separate setters — two of
+// them from inside another setter's updater, which under StrictMode duplicates a displaced
+// play into the bench. One pure transition per user action makes that impossible.
+
+/** The five slices, exactly what `initBuilderState` returns. */
+export type BuilderState = BuilderInitialState;
+
+/** Every way the human changes the lineup. Ids, not card objects: the reducer looks cards up
+ *  in the state, so a stale object captured by a closure cannot leak in. */
+export type BuilderAction =
+  /** Roster list -> depth chart. `slotIndex` defaults to the column's next open slot. */
+  | { type: 'place'; playerId: string; column: DepthColumn; slotIndex?: number }
+  /** Depth chart -> another column or slot. */
+  | { type: 'move'; playerId: string; column: DepthColumn; slotIndex?: number }
+  /** Depth chart -> roster list. Also clears every play role that player held. */
+  | { type: 'sendToRoster'; playerId: string }
+  /** A roster play, or a freshly minted basic play, into the first open slot of its side. */
+  | { type: 'activatePlay'; play: Play }
+  /** Replace the play in an occupied slot with a roster play; the displaced one returns. */
+  | { type: 'swapPlay'; slotIndex: number; playId: string }
+  /** Empty a slot. A drafted play returns to the roster list; a basic play just vanishes. */
+  | { type: 'removePlay'; slotIndex: number }
+  | { type: 'assignRole'; cardId: string; roleId: string; playerId: string }
+  | { type: 'clearRole'; cardId: string; roleId: string }
+  /** Everything back to the roster list (the "Clear" button). */
+  | { type: 'clear' }
+  /** Put back a snapshot taken before an action (the toast's Undo). */
+  | { type: 'undo'; snapshot: BuilderState };
+
+export type BuilderActionError =
+  | PlacePlayerFailureReason
+  | AssignPlayFailureReason
+  /** The player does not meet the role's badge requirement. */
+  | 'role-ineligible'
+  /** The player already holds a different role in the same play. */
+  | 'role-conflict'
+  /** The id is not where the action expects it (not on the roster, slot empty, ...). */
+  | 'not-found';
+
+/** `error` set means the action was refused and `state` is the SAME reference that came in,
+ *  so callers can toast on `error` and React skips the re-render. */
+export interface BuilderActionResult {
+  state: BuilderState;
+  error?: BuilderActionError;
+}
+
+/**
+ * Invariants every transition must keep (T9's tests assert them after each action):
+ *  1. Conservation: every drafted card is in exactly one place — a depth-chart column, the
+ *     roster players, an active-play slot or the roster plays. Basic plays are the one
+ *     exception: they are minted by `activatePlay` and destroyed by `removePlay`/`swapPlay`/`clear`.
+ *  2. `playAssignments` has exactly one entry per active play, keyed by its card id; a play
+ *     that leaves its slot loses its entry, a play that enters gets one with empty roles.
+ *  3. No role points at a player who is not on the depth chart.
+ *  4. `rosterPlayers` stays sorted by the comparator passed in (a display concern the engine
+ *     does not own, hence a parameter).
+ */
+export type ApplyBuilderAction = (
+  state: BuilderState,
+  action: BuilderAction,
+  options: { sortRosterPlayers: (a: PlayerCardData, b: PlayerCardData) => number },
+) => BuilderActionResult;
+
 /** A single pick record for draft replay / analytics */
 export interface DraftPickRecord {
   packNumber: number;           // 1-3

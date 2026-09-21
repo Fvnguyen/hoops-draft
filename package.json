@@ -8,6 +8,7 @@
     "test:unit": "npm --prefix frontend run test",
     "test:e2e": "npm --prefix frontend run test:e2e",
     "balance": "npm --prefix frontend run balance --",
+    "bench": "npm --prefix frontend run bench --",
     "build:cards": "npm --prefix frontend run build:cards",
     "analyze": "npm --prefix frontend run analyze --",
     "screenshot": "node scripts/screenshot.js",
