@@ -196,7 +196,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // up as duplicate entries in /rosters, only one of which ever got a ChallengeRun).
   const [generatedRosterId] = useState(() => rosterId || `roster_${Date.now()}`);
   const [isSavingRoster, setIsSavingRoster] = useState(false);
-  const { goBack } = useAndroidBackGuard({
+  const { goBack, exitTo } = useAndroidBackGuard({
     enabled: !readOnly && !embedOverride,
     onBackAttempt: () => setShowBackGuard(true),
   });
@@ -983,15 +983,15 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
         }
       }
 
-      if (destination === 'season' && sessionId) {
-        if (isChallenge) {
-          router.push(`/challenge/${encodeURIComponent(saveId)}`);
-        } else {
-          router.push(`/season?rosterId=${encodeURIComponent(saveId)}&sessionId=${encodeURIComponent(sessionId)}`);
-        }
-      } else {
-        router.push('/rosters');
-      }
+      // plan mobile_load D10: `exitTo` + `replace`, not `push`. The builder's history entry
+      // (and its back-guard entry) must not survive under the destination: back from the
+      // rosters list used to walk into /draft again and silently start a new draft.
+      const next = destination === 'season' && sessionId
+        ? (isChallenge
+          ? `/challenge/${encodeURIComponent(saveId)}`
+          : `/season?rosterId=${encodeURIComponent(saveId)}&sessionId=${encodeURIComponent(sessionId)}`)
+        : '/rosters';
+      exitTo(() => router.replace(next));
     } catch (error) {
       if (error instanceof StorageQuotaError) {
         setSaveError(error.message);

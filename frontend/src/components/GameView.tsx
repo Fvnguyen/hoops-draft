@@ -568,7 +568,7 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
                       variant="ghost"
                       onClick={() => setSpeedIdx(i)}
                       aria-pressed={speedIdx === i}
-                      className={cn('rounded-none px-3', speedIdx === i && 'bg-surface-inverse text-ink-inverse hover:bg-surface-inverse hover:text-ink-inverse')}
+                      className={cn('min-w-control rounded-none px-3', speedIdx === i && 'bg-surface-inverse text-ink-inverse hover:bg-surface-inverse hover:text-ink-inverse')}
                     >
                       {s.label}
                     </Button>
