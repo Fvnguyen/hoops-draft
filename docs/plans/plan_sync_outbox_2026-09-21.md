@@ -66,7 +66,7 @@ decisions push through, not the merge logic.
   `CARD_SET_VERSION`/`cards.json` versioning that needs its own plan.
 - **D8 RLS and payload cap.** Each table's `owner full access` policy splits into `for select` (unchanged) and
   `for insert, update, delete` (adds `and exists (select 1 from public.profiles p where p.id = auth.uid() and
-  p.status = 'APPROVED')`). `cas_upsert`/`cas_delete` raise if `pg_column_size(p_data) > 1048576` (1 MiB). The
+  p.status = 'APPROVED')`). `cas_upsert` raises if `pg_column_size(p_data) > 16777216` (16 MiB; measured: 4 legacy seasons are 1.1-4.6 MB). The
   `app/api/auth/login/route.ts` open redirect is a separate bug fix, not part of this plan.
 - **D9 Deterministic ids.** `challenge_<rosterId>`/`season_<rosterId>` replace `challenge_${Date.now()}`
   (`app/challenge/[rosterId]/page.tsx:95`) and `season_${Date.now()}` (`engine/season.ts:180`) for new

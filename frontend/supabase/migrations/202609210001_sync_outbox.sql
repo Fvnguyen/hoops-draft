@@ -1,5 +1,5 @@
 -- sync_outbox plan (D5/D6/D7/D8): delete tombstones, per-owner primary keys, a slimmer
--- cas_upsert, approved-only writes and a payload cap.
+-- cas_upsert, approved-only writes and a 16 MiB payload cap.
 --
 -- SAFE TO APPLY WHILE THE PREVIOUS CLIENT IS STILL DEPLOYED. That client calls cas_upsert
 -- with the same arguments, reads `current_row.updated_at` on success, hard-deletes with
@@ -113,8 +113,10 @@ begin
   if not public.sync_table_allowed(table_name) then
     raise exception 'cas_upsert: invalid table_name %', table_name;
   end if;
-  -- D8: 1 MiB. The largest real payload is a draft session at roughly 230 KB.
-  if pg_column_size(p_data) > 1048576 then
+  -- D8: 16 MiB, a backstop against a runaway payload (approved-only writes are the real
+  -- guard). Measured 2026-09-21: 4 legacy seasons that still carry full play-by-play are
+  -- 1.1-4.6 MB in memory, so the 1 MiB first planned would have locked them out of sync.
+  if pg_column_size(p_data) > 16777216 then
     raise exception 'cas_upsert: payload too large (% bytes)', pg_column_size(p_data);
   end if;
 
