@@ -63,6 +63,7 @@ export function simulateGame(
   const rng = opts?.rng ?? createRng(randomSeed());
   const centre = opts?.centre ?? CHANNEL_CENTRE;
   const tuning = opts?.tuning;
+  const recordEvent = opts?.events ?? true;
 
   // 1. Calculate possession shares
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
@@ -189,12 +190,14 @@ export function simulateGame(
         offenseLineupMap: closers ? starterLineupMap(offenseTeam.depthChart) : drawPreparedLineup(offenseDraw, rng),
         defenseLineupMap: closers ? starterLineupMap(defenseTeam.depthChart) : drawPreparedLineup(defenseDraw, rng),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats, lineupPool,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats, lineupPool, recordEvent,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
-      event.runningScore = [homeScore, awayScore];
-      allPossessions.push(event);
+      if (event) {
+        event.runningScore = [homeScore, awayScore];
+        allPossessions.push(event);
+      }
 
       possIndex++;
       if (isHome) { homeIdx++; homePossCount++; } else { awayIdx++; awayPossCount++; }
@@ -264,12 +267,14 @@ export function simulateGame(
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats, lineupPool,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats, lineupPool, recordEvent,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
-      event.runningScore = [homeScore, awayScore];
-      allPossessions.push(event);
+      if (event) {
+        event.runningScore = [homeScore, awayScore];
+        allPossessions.push(event);
+      }
       possIndex++;
 
       if (isHome) homeOTIdx++; else awayOTIdx++;

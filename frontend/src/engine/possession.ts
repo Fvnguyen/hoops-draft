@@ -140,11 +140,15 @@ export function playOnePossession(params: {
   /** One interned player array per distinct lineup, for the whole game (D1). Optional so
    *  a direct caller without a pool gets fresh, unmemoized arrays, exactly as before. */
   lineupPool?: LineupPool;
-}): { event: PossessionEvent; points: number } {
+  /** D2: `false` skips building the PossessionEvent (narrative, tags, called plays). Every
+   *  rng draw and every box-score update happens BEFORE that point, so the score and the
+   *  box score are the same either way; only `event` comes back null. Default true. */
+  recordEvent?: boolean;
+}): { event: PossessionEvent | null; points: number } {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
     offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp,
-    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats, lineupPool,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats, lineupPool, recordEvent = true,
   } = params;
   const isHome = team === 'home';
 
@@ -266,11 +270,6 @@ export function playOnePossession(params: {
   const ftAttempted = result.narrativeHint === 'rim_ft' ? 2 : result.isAnd1 ? 1 : 0;
   const ftMade = result.narrativeHint === 'rim_ft' ? result.points : result.isAnd1 ? 1 : 0;
 
-  // Playbook recording (§7): tag this possession with whichever calls applied.
-  const calledPlays: PossessionEvent['calledPlays'] = [];
-  if (calledOffense) calledPlays.push({ playId: calledOffense.def.playId, name: calledOffense.def.name, side: 'offense', teamSide: team });
-  if (calledCoverage) calledPlays.push({ playId: calledCoverage.def.playId, name: calledCoverage.def.name, side: 'defense', teamSide: isHome ? 'away' : 'home' });
-
   // Update box score. P2-2: minutes accrue per possession a player is on court for,
   // whether on offense OR defense.
   //
@@ -334,6 +333,15 @@ export function playOnePossession(params: {
     for (const id of defenseIds) { const bs = boxStats.get(defKey(id)); if (bs) bs.plusMinus -= result.points; }
   }
 
+  // D2: everything below only DESCRIBES the possession. The 82:0 challenge simulates 82
+  // games (and 41 more for the ghost) for their scores and box scores alone, and used to
+  // build and throw away ~110 KB of events per game.
+  if (!recordEvent) return { event: null, points: result.points };
+
+  // Playbook recording (§7): tag this possession with whichever calls applied.
+  const calledPlays: PossessionEvent['calledPlays'] = [];
+  if (calledOffense) calledPlays.push({ playId: calledOffense.def.playId, name: calledOffense.def.name, side: 'offense', teamSide: team });
+  if (calledCoverage) calledPlays.push({ playId: calledCoverage.def.playId, name: calledCoverage.def.name, side: 'defense', teamSide: isHome ? 'away' : 'home' });
 
   const outcomeForEvent = result.outcome === 'miss' ? 'miss' as const
     : result.channel === 'three' ? '3pt' as const

@@ -169,8 +169,7 @@ export interface SimulateGameOptions {
   centre?: typeof CHANNEL_CENTRE;
   tuning?: EdgeTuning;
   /**
-   * plan render_and_engine_perf D2 — CONTRACT ONLY until T4 lands; today it is ignored.
-   * `false` = do not build the play-by-play (`possessions`, narrative events, shots): the
+   * plan render_and_engine_perf D2. `false` = do not build the play-by-play (`possessions`, narrative events, shots): the
    * 82:0 challenge simulates 82 games (41 more for the ghost) only for their scores and box
    * scores, and throws ~110 KB of events per game away. It must consume the RNG exactly as
    * `true` does, so the same seed gives the same final score and box score either way.
