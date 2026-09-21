@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryGameStore } from '@/storage/memory';
 import { IndexedDbGameStore, MagicBallDB } from '@/storage/indexedDb';
 import type { GameStore, OutboxRecord, OutboxStore } from '@/storage/types';
-import { CURRENT_CARD_SET_VERSION, outboxKey } from '@/storage/types';
+import { CURRENT_CARD_SET_VERSION, outboxKey, seasonIdForRoster, challengeRunIdForRoster } from '@/storage/types';
 import { makeChallengeRun, makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
 
 let dbCounter = 0;
@@ -164,6 +164,88 @@ describe.each(implementations)('$name', ({ make }) => {
 
     await store.setOwnerId('owner-a');
     expect((await store.listRosters()).map((r) => r.id)).toEqual(['a-roster']);
+  });
+
+  // sync_outbox D9: atomic get-or-create — closes the "two tabs/a double-mount mint two
+  // different ids" race that used to make a season/challenge run look like it re-rolled on
+  // reload.
+  describe('getOrCreateSeason / getOrCreateChallengeRun', () => {
+    beforeEach(async () => {
+      await store.setOwnerId('owner-a');
+    });
+
+    it('getOrCreateChallengeRun: two racing callers converge on one row, factory runs once total', async () => {
+      const rosterId = 'roster-race-challenge';
+      let factoryCalls = 0;
+      const factory = () => {
+        factoryCalls += 1;
+        return makeChallengeRun({ rosterId });
+      };
+
+      const [a, b] = await Promise.all([
+        store.getOrCreateChallengeRun(rosterId, factory),
+        store.getOrCreateChallengeRun(rosterId, factory),
+      ]);
+
+      expect(a.id).toBe(challengeRunIdForRoster(rosterId));
+      expect(b.id).toBe(a.id);
+      expect(factoryCalls).toBe(1);
+      expect((await store.listChallengeRuns()).filter((r) => r.rosterId === rosterId)).toHaveLength(1);
+    });
+
+    it('getOrCreateSeason: two racing callers converge on one row, factory runs once total', async () => {
+      const rosterId = 'roster-race-season';
+      let factoryCalls = 0;
+      const factory = () => {
+        factoryCalls += 1;
+        return makeSeason({ rosterId });
+      };
+
+      const [a, b] = await Promise.all([
+        store.getOrCreateSeason(rosterId, factory),
+        store.getOrCreateSeason(rosterId, factory),
+      ]);
+
+      expect(a.id).toBe(seasonIdForRoster(rosterId));
+      expect(b.id).toBe(a.id);
+      expect(factoryCalls).toBe(1);
+      expect((await store.listSeasons()).filter((s) => s.rosterId === rosterId)).toHaveLength(1);
+    });
+
+    it('returns an existing legacy-id row and never calls factory', async () => {
+      const rosterId = 'roster-legacy-challenge';
+      const legacy = makeChallengeRun({ id: 'challenge_1789000000000', rosterId });
+      await store.saveChallengeRun(legacy);
+      // saveChallengeRun stamps ownerId on the way in (same as every other save*).
+      const stamped = { ...legacy, ownerId: 'owner-a' };
+
+      let factoryCalls = 0;
+      const result = await store.getOrCreateChallengeRun(rosterId, () => {
+        factoryCalls += 1;
+        return makeChallengeRun({ rosterId });
+      });
+
+      expect(result).toEqual(stamped);
+      expect(factoryCalls).toBe(0);
+      expect(await store.listChallengeRuns()).toEqual([stamped]);
+    });
+
+    it('does not return or overwrite another owner\'s row at the deterministic id', async () => {
+      const rosterId = 'roster-shared-id';
+      await store.setOwnerId('owner-b');
+      const othersRun = makeChallengeRun({ id: challengeRunIdForRoster(rosterId), rosterId });
+      await store.saveChallengeRun(othersRun);
+      const stamped = { ...othersRun, ownerId: 'owner-b' };
+
+      await store.setOwnerId('owner-a');
+      await expect(
+        store.getOrCreateChallengeRun(rosterId, () => makeChallengeRun({ rosterId }))
+      ).rejects.toThrow();
+
+      // owner-b's row must survive untouched, never adopted by owner-a.
+      await store.setOwnerId('owner-b');
+      expect(await store.getChallengeRun(othersRun.id)).toEqual(stamped);
+    });
   });
 
   // sync_outbox D4: the persisted cloud-write queue.

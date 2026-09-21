@@ -14,7 +14,7 @@ import { normalizeBuiltRoster } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import { normalizeSeason } from '@/engine/season';
 import type { ChallengeRun, GameStore, OutboxRecord, OutboxStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
-import { StorageQuotaError, CURRENT_CARD_SET_VERSION, IDLE_SYNC_STATUS } from './types';
+import { StorageQuotaError, CURRENT_CARD_SET_VERSION, IDLE_SYNC_STATUS, seasonIdForRoster, challengeRunIdForRoster } from './types';
 import { safeParseChallengeRun, safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
 interface MetaRow {
@@ -205,6 +205,14 @@ async function guardQuota<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+/** sync_outbox D9: what `table.add()` throws when the primary key is already taken — the
+ *  race signal `getOrCreateSeason`/`getOrCreateChallengeRun` catch to discover that another
+ *  caller (another tab, sharing this same IndexedDB) already won the insert. */
+function isConstraintError(error: unknown): boolean {
+  const name = error instanceof Error ? error.name : (error as { name?: unknown } | null | undefined)?.name;
+  return name === 'ConstraintError';
+}
+
 export class IndexedDbGameStore implements GameStore, OutboxStore {
   private db: MagicBallDB;
   private ownerId: string | null = null;
@@ -294,7 +302,7 @@ export class IndexedDbGameStore implements GameStore, OutboxStore {
   }
 
   async getSeasonByRoster(rosterId: string): Promise<Season | null> {
-    const row = (await this.db.seasons.where('rosterId').equals(rosterId).first()) ?? null;
+    const row = (await this.db.seasons.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
     if (!this.isOwned(row)) return null;
     return row ? safeParseSeason(row) : null;
   }
@@ -309,6 +317,46 @@ export class IndexedDbGameStore implements GameStore, OutboxStore {
     await this.db.seasons.delete(id);
   }
 
+  /**
+   * sync_outbox D9. The whole check-then-insert runs in ONE `rw` transaction on `seasons`,
+   * and IndexedDB serializes readwrite transactions against the same object store — even
+   * across tabs sharing one database connection — so a second caller's transaction cannot
+   * start until the first one (which inserted the row) has committed; it then simply finds
+   * that row. `table.add()` (never `put`) is the second line of defense: it rejects outright
+   * if the deterministic id is somehow already taken, instead of silently overwriting.
+   */
+  async getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
+    const owner = this.ownerId;
+    return guardQuota(() =>
+      this.db.transaction('rw', this.db.seasons, async (): Promise<Season> => {
+        const existing = (await this.db.seasons.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
+        if (this.isOwned(existing)) {
+          const parsed = safeParseSeason(existing);
+          if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
+          return parsed;
+        }
+
+        const created = factory();
+        const stamped: Season = { ...created, id: seasonIdForRoster(rosterId), ownerId: owner ?? created.ownerId };
+        try {
+          await this.db.seasons.add(stamped);
+          return stamped;
+        } catch (err) {
+          if (!isConstraintError(err)) throw err;
+          // Lost the race (or the id is occupied by a row this owner can't see at all):
+          // read what is actually there now rather than clobber it.
+          const row = (await this.db.seasons.get(stamped.id)) ?? null;
+          if (!this.isOwned(row)) {
+            throw new Error(`getOrCreateSeason: season ${stamped.id} already exists under a different owner`);
+          }
+          const parsed = safeParseSeason(row);
+          if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
+          return parsed;
+        }
+      })
+    );
+  }
+
   async listChallengeRuns(): Promise<ChallengeRun[]> {
     const rows = this.owned(await this.db.challengeRuns.toArray());
     return rows.map(safeParseChallengeRun).filter((r): r is ChallengeRun => r !== null);
@@ -321,7 +369,7 @@ export class IndexedDbGameStore implements GameStore, OutboxStore {
   }
 
   async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
-    const row = (await this.db.challengeRuns.where('rosterId').equals(rosterId).first()) ?? null;
+    const row = (await this.db.challengeRuns.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
     if (!this.isOwned(row)) return null;
     return row ? safeParseChallengeRun(row) : null;
   }
@@ -334,6 +382,38 @@ export class IndexedDbGameStore implements GameStore, OutboxStore {
 
   async deleteChallengeRun(id: string): Promise<void> {
     await this.db.challengeRuns.delete(id);
+  }
+
+  /** sync_outbox D9: same contract and same transaction/`add()` race handling as
+   *  `getOrCreateSeason`, on `challengeRuns` with `challengeRunIdForRoster`. */
+  async getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun> {
+    const owner = this.ownerId;
+    return guardQuota(() =>
+      this.db.transaction('rw', this.db.challengeRuns, async (): Promise<ChallengeRun> => {
+        const existing = (await this.db.challengeRuns.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
+        if (this.isOwned(existing)) {
+          const parsed = safeParseChallengeRun(existing);
+          if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
+          return parsed;
+        }
+
+        const created = factory();
+        const stamped: ChallengeRun = { ...created, id: challengeRunIdForRoster(rosterId), ownerId: owner ?? created.ownerId };
+        try {
+          await this.db.challengeRuns.add(stamped);
+          return stamped;
+        } catch (err) {
+          if (!isConstraintError(err)) throw err;
+          const row = (await this.db.challengeRuns.get(stamped.id)) ?? null;
+          if (!this.isOwned(row)) {
+            throw new Error(`getOrCreateChallengeRun: run ${stamped.id} already exists under a different owner`);
+          }
+          const parsed = safeParseChallengeRun(row);
+          if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
+          return parsed;
+        }
+      })
+    );
   }
 
   async exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }> {

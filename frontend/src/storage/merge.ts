@@ -102,12 +102,31 @@ const CHALLENGE_PHASE_ORDER: Record<ChallengePhase, number> = { first: 0, break:
 /**
  * challenge_mode D11's one merge rule: whichever side is further along the
  * first -> break -> second -> done ladder wins outright, no field-level union (a `phase`
- * further along always carries the halves/trade data that got it there). Ties (including
- * two sides genuinely at the same phase) keep `local`. Never a conflict — unlike
- * `mergeRoster`, there's no arbitrary reordering here for a human to adjudicate.
+ * further along always carries the halves/trade data that got it there). Never a
+ * conflict — unlike `mergeRoster`, there's no arbitrary reordering here for a human to
+ * adjudicate.
+ *
+ * sync_outbox D9: with deterministic ids (`challenge_<rosterId>`) two devices can each
+ * create a run for the same roster before either has seen the other's — a genuine tie at
+ * the SAME phase, not a re-fetch of the same row. "Ties keep local" used to be safe because
+ * a tie only ever meant "both sides already agree" (the row was byte-identical); now it
+ * would make each device push its own copy over the other's forever, since "keep local"
+ * disagrees with what the OTHER device's "keep local" just decided. The break has to be
+ * something both devices compute identically from data they both already hold: prefer the
+ * EARLIER `timestamp` (the run that was created first) — a malformed/equal timestamp falls
+ * back to the smaller `seed`, and if that's equal too (same run, both sides identical) keep
+ * `local`, since there's nothing left to choose between.
  */
 export function mergeChallengeRun(local: ChallengeRun, remote: ChallengeRun): MergeResult<ChallengeRun> {
   const localRank = CHALLENGE_PHASE_ORDER[local.phase];
   const remoteRank = CHALLENGE_PHASE_ORDER[remote.phase];
-  return { merged: remoteRank > localRank ? remote : local, conflict: false };
+  if (localRank !== remoteRank) return { merged: remoteRank > localRank ? remote : local, conflict: false };
+
+  const localAt = Date.parse(local.timestamp);
+  const remoteAt = Date.parse(remote.timestamp);
+  if (Number.isFinite(localAt) && Number.isFinite(remoteAt) && localAt !== remoteAt) {
+    return { merged: remoteAt < localAt ? remote : local, conflict: false };
+  }
+  if (local.seed !== remote.seed) return { merged: remote.seed < local.seed ? remote : local, conflict: false };
+  return { merged: local, conflict: false };
 }

@@ -111,6 +111,20 @@ export interface ChallengeRun {
   ghost?: ChallengeHalf;
 }
 
+// sync_outbox D9: the deterministic ids `getOrCreateSeason`/`getOrCreateChallengeRun` force
+// onto a freshly-created row, so two racing callers for the same roster always agree on
+// the id they're inserting under (the previous `season_${Date.now()}` /
+// `challenge_${Date.now()}` scheme let each racer mint a different one). Existing
+// `_<timestamp>` rows from before this change keep working — they are found by rosterId,
+// same as `getSeasonByRoster`/`getChallengeRunByRoster` — and are never renamed.
+export function seasonIdForRoster(rosterId: string): string {
+  return `season_${rosterId}`;
+}
+
+export function challengeRunIdForRoster(rosterId: string): string {
+  return `challenge_${rosterId}`;
+}
+
 export interface GameStore {
   setOwnerId(ownerId: string | null): Promise<void>;
   claimLegacyData(): Promise<void>;
@@ -129,6 +143,19 @@ export interface GameStore {
   getSeasonByRoster(rosterId: string): Promise<Season | null>;
   saveSeason(s: Season): Promise<void>; // upsert
   deleteSeason(id: string): Promise<void>;
+  /**
+   * sync_outbox D9: atomic get-or-create. Two tabs, a React double-mount, or a second
+   * device whose cloud pull hadn't landed used to each run `getSeasonByRoster`, see
+   * nothing, and mint their own `season_${Date.now()}` (and a different seed) — leaving
+   * two rows for one roster. If a row for this roster already exists for the CURRENT
+   * owner (found the same way `getSeasonByRoster` finds it — any id, including a legacy
+   * `season_<timestamp>` one), it is returned as-is and `factory` is never called.
+   * Otherwise `factory()` runs at most once, its `id` is forced to
+   * `seasonIdForRoster(rosterId)`, `ownerId` is stamped exactly like `saveSeason`, and the
+   * row is inserted and returned. Implementations must make concurrent callers converge
+   * on one stored row (see `IndexedDbGameStore`/`MemoryGameStore`).
+   */
+  getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season>;
 
   /** challenge_mode D11: same shape as the Season methods above (one run per roster). */
   listChallengeRuns(): Promise<ChallengeRun[]>;
@@ -136,6 +163,9 @@ export interface GameStore {
   getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null>;
   saveChallengeRun(r: ChallengeRun): Promise<void>; // upsert
   deleteChallengeRun(id: string): Promise<void>;
+  /** sync_outbox D9: same contract as `getOrCreateSeason`, deterministic id
+   *  `challengeRunIdForRoster(rosterId)`. */
+  getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun>;
 
   exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }>;
   clearAll(): Promise<void>;

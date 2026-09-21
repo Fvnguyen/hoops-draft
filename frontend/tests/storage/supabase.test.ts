@@ -40,6 +40,25 @@ describe('SupabaseGameStore', () => {
     expect((row!.data as typeof roster).name).toBe(roster.name);
   });
 
+  // sync_outbox D9: getOrCreateChallengeRun only enqueues a push when its own call is the
+  // one that actually minted the row — an existing row is already synced (or already
+  // queued), so pushing it again on every page load would be pure waste.
+  it('getOrCreateChallengeRun pushes the run to the cloud only the call that creates it', async () => {
+    const rosterId = 'roster-outbox-getorcreate';
+    const first = await store.getOrCreateChallengeRun(rosterId, () => makeChallengeRun({ rosterId }));
+    await flush(store);
+
+    expect(cloud.live('challenge_runs', first.id)).toBeDefined();
+    expect((cloud.live('challenge_runs', first.id)!.data as typeof first).id).toBe(first.id);
+
+    cloud.resetCalls();
+    const second = await store.getOrCreateChallengeRun(rosterId, () => makeChallengeRun({ rosterId }));
+    await flush(store);
+
+    expect(second.id).toBe(first.id);
+    expect(cloud.upserts).toEqual([]);
+  });
+
   it('deleteRoster/deleteSeason/deleteDraftSession tombstone the cloud row (D5)', async () => {
     const roster = makeSavedRoster();
     const session = makeDraftSession();

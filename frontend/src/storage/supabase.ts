@@ -958,6 +958,24 @@ export class SupabaseGameStore implements GameStore {
     await this.local.deleteSeason(id);
     await this.enqueue('seasons', id, 'delete');
   }
+  /**
+   * sync_outbox D9: delegates the atomic get-or-create to the wrapped local store — that is
+   * where the race actually gets closed (one Dexie transaction / one synchronous Map check).
+   * This only needs to know whether `factory` fired, which means the local store had never
+   * seen this roster and just made a new row that the cloud needs too; an existing row
+   * (including a pre-outbox legacy id) is already synced or already queued, so pushing it
+   * again would be redundant. Never awaits the network — `enqueue` only awaits the local
+   * outbox write, exactly like `saveSeason`.
+   */
+  async getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
+    let created = false;
+    const season = await this.local.getOrCreateSeason(rosterId, () => {
+      created = true;
+      return factory();
+    });
+    if (created) await this.enqueue('seasons', season.id, 'upsert');
+    return season;
+  }
 
   // ── GameStore: challenge runs ─────────────────────────────────────────
 
@@ -971,6 +989,17 @@ export class SupabaseGameStore implements GameStore {
   async deleteChallengeRun(id: string): Promise<void> {
     await this.local.deleteChallengeRun(id);
     await this.enqueue('challenge_runs', id, 'delete');
+  }
+  /** sync_outbox D9: same reasoning as `getOrCreateSeason` — enqueue only when the local
+   *  store actually minted a new row. */
+  async getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun> {
+    let created = false;
+    const run = await this.local.getOrCreateChallengeRun(rosterId, () => {
+      created = true;
+      return factory();
+    });
+    if (created) await this.enqueue('challenge_runs', run.id, 'upsert');
+    return run;
   }
 
   // ── GameStore: bulk / meta ─────────────────────────────────────────────

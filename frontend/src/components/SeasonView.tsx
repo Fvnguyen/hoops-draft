@@ -71,34 +71,48 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       }
       setSession(loadedSession);
 
-      // Check for existing season for this roster
-      const existingSeason = await store.getSeasonByRoster(rosterId);
-      if (cancelled) return;
-
-      if (existingSeason) {
-        // Seasons saved before round-robin game days are upgraded on load and re-saved.
-        const { season: upgraded, changed } = normalizeSeason(existingSeason);
-        if (changed) {
-          try { await store.saveSeason(upgraded); } catch { /* best effort; the view still works */ }
-        }
-        if (cancelled) return;
-        setSeason(upgraded);
-      } else {
-        const newSeason = createSeason(loadedSession, rosterId, undefined, profile?.display_name);
-        try {
-          await store.saveSeason(newSeason);
-        } catch (err) {
-          if (!cancelled) {
-            if (err instanceof StorageQuotaError) {
-              setSaveError(err.message);
-            } else {
-              setSaveError('Failed to save season. Please try again.');
-            }
+      // sync_outbox D9: atomic get-or-create (deterministic id `season_${rosterId}`). Two
+      // tabs, a React double-mount, or a second device whose cloud pull hadn't landed used
+      // to each run `getSeasonByRoster`, see nothing, and mint their own
+      // `season_${Date.now()}` with its own random seed — leaving two rows for one roster
+      // and a reload "re-rolling" whichever one Dexie happened to find first. The store now
+      // guarantees one row no matter how many callers race here; `createSeason` only
+      // actually runs (and only once) when none exists yet. `created` captures the factory's
+      // output so a local write failure (StorageQuotaError) can still fall back to showing
+      // the freshly-built season in memory, same as the old saveSeason-then-setSeason path.
+      let created: Season | null = null;
+      let loadedSeason: Season;
+      try {
+        loadedSeason = await store.getOrCreateSeason(rosterId, () => {
+          created = createSeason(loadedSession, rosterId, undefined, profile?.display_name);
+          return created;
+        });
+      } catch (err) {
+        if (!cancelled) {
+          if (err instanceof StorageQuotaError) {
+            setSaveError(err.message);
+          } else {
+            setSaveError('Failed to save season. Please try again.');
           }
         }
         if (cancelled) return;
-        setSeason(newSeason);
+        if (!created) {
+          // The failure happened before a new season was even built (e.g. reconciling an
+          // existing row) — nothing to fall back to.
+          setDataLoading(false);
+          return;
+        }
+        loadedSeason = created;
       }
+      if (cancelled) return;
+
+      // Seasons saved before round-robin game days are upgraded on load and re-saved.
+      const { season: upgraded, changed } = normalizeSeason(loadedSeason);
+      if (changed) {
+        try { await store.saveSeason(upgraded); } catch { /* best effort; the view still works */ }
+      }
+      if (cancelled) return;
+      setSeason(upgraded);
       setDataLoading(false);
     })();
 

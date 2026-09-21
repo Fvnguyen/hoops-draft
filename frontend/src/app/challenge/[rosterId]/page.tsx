@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getGameStore } from '@/storage';
+import { challengeRunIdForRoster } from '@/storage/types';
 import type { ChallengeRun, SavedRoster } from '@/storage/types';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getAllCards } from '@/engine/cards';
@@ -82,17 +83,17 @@ export default function ChallengePage() {
         return;
       }
 
-      const existing = await store.getChallengeRunByRoster(rosterId);
-      if (cancelled) return;
       setRoster(saved);
 
-      if (existing) {
-        setRun(existing);
-        return;
-      }
-
-      const created: ChallengeRun = {
-        id: `challenge_${Date.now()}`,
+      // sync_outbox D9: atomic get-or-create (deterministic id `challenge_${rosterId}`).
+      // Two tabs, a React double-mount, or a second device whose cloud pull hadn't landed
+      // used to each run `getChallengeRunByRoster`, see nothing, and mint their own
+      // `challenge_${Date.now()}` with its own random seed — leaving two runs for one
+      // roster and a reload "re-rolling" whichever one Dexie happened to find first. The
+      // store now guarantees one row no matter how many callers race here; the literal `id`
+      // below is only for clarity — the store overrides it with the same helper regardless.
+      const run = await store.getOrCreateChallengeRun(rosterId, () => ({
+        id: challengeRunIdForRoster(rosterId),
         sessionId: saved.sessionId ?? '',
         rosterId,
         timestamp: new Date().toISOString(),
@@ -101,10 +102,9 @@ export default function ChallengePage() {
         phase: 'first',
         rosterPre: saved,
         halves: [],
-      };
-      await store.saveChallengeRun(created);
+      }));
       if (cancelled) return;
-      setRun(created);
+      setRun(run);
     })().catch((err) => {
       console.error('Failed to open the challenge run:', err);
       if (!cancelled) setError('Could not open this 82:0 run.');
@@ -114,7 +114,13 @@ export default function ChallengePage() {
   }, [ready, rosterId]);
 
   const commit = useCallback(async (next: ChallengeRun) => {
-    setRun(next);
+    // sync_outbox D3/D9: a save now resolves on the local IndexedDB write only — the cloud
+    // push happens in the background — so awaiting it before `setRun` no longer risks
+    // stalling the reveal on the network. Awaiting first also closes the window where a
+    // reload between `setRun` and the write landing could replay a half that was never
+    // actually persisted, which would violate the invariant a reload can never re-roll a
+    // result (see the file header: "nothing is ever simulated for a half that is already
+    // in `run.halves`" only holds if a committed half reaches storage before it's shown).
     try {
       await getGameStore().saveChallengeRun(next);
     } catch (err) {
@@ -122,6 +128,7 @@ export default function ChallengePage() {
       // the next transition re-saves the whole record.
       console.error('Failed to save the challenge run:', err);
     }
+    setRun(next);
   }, []);
 
   // ── simulate whichever half the current phase needs, then commit it ───────

@@ -145,13 +145,50 @@ describe('mergeChallengeRun', () => {
     expect(merged).toBe(local);
   });
 
-  it('keeps local on a tie (same phase both sides)', () => {
-    const local = makeChallengeRun({ phase: 'second' });
-    const remote = makeChallengeRun({ id: local.id, phase: 'second' });
+  // sync_outbox D9: deterministic ids mean a same-phase tie is now a genuine race (two
+  // devices each created a run for the same roster before seeing the other's), not just
+  // "both sides already agree" — so the break must land on the same run regardless of which
+  // side is labeled local/remote, or each device would push its own copy over the other's
+  // forever.
+  it('on a same-phase tie, prefers the run created earlier (by timestamp), regardless of which side is local', () => {
+    const earlier = makeChallengeRun({ phase: 'second', timestamp: '2026-09-21T10:00:00.000Z', seed: 7 });
+    const later = makeChallengeRun({ id: earlier.id, phase: 'second', timestamp: '2026-09-21T10:05:00.000Z', seed: 3 });
+
+    expect(mergeChallengeRun(earlier, later).merged).toBe(earlier);
+    expect(mergeChallengeRun(later, earlier).merged).toBe(earlier);
+  });
+
+  it('on a same-phase tie with equal timestamps, prefers the smaller seed, regardless of which side is local', () => {
+    const smallerSeed = makeChallengeRun({ phase: 'first', timestamp: '2026-09-21T10:00:00.000Z', seed: 3 });
+    const largerSeed = makeChallengeRun({ id: smallerSeed.id, phase: 'first', timestamp: '2026-09-21T10:00:00.000Z', seed: 9 });
+
+    expect(mergeChallengeRun(smallerSeed, largerSeed).merged).toBe(smallerSeed);
+    expect(mergeChallengeRun(largerSeed, smallerSeed).merged).toBe(smallerSeed);
+  });
+
+  it('keeps local when a same-phase tie has equal timestamps and equal seeds (nothing left to choose)', () => {
+    const local = makeChallengeRun({ phase: 'break', timestamp: '2026-09-21T10:00:00.000Z', seed: 5 });
+    const remote = makeChallengeRun({ id: local.id, phase: 'break', timestamp: '2026-09-21T10:00:00.000Z', seed: 5 });
 
     const { merged, conflict } = mergeChallengeRun(local, remote);
     expect(conflict).toBe(false);
     expect(merged).toBe(local);
+  });
+
+  it('falls back to seed when a same-phase tie has an unparseable timestamp on either side', () => {
+    const good = makeChallengeRun({ phase: 'second', timestamp: '2026-09-21T10:00:00.000Z', seed: 2 });
+    const bad = makeChallengeRun({ id: good.id, phase: 'second', timestamp: 'not a date', seed: 9 });
+
+    expect(mergeChallengeRun(good, bad).merged).toBe(good);
+    expect(mergeChallengeRun(bad, good).merged).toBe(good);
+  });
+
+  it('a later phase still wins outright regardless of timestamp ordering', () => {
+    const earlierButBehind = makeChallengeRun({ phase: 'first', timestamp: '2026-09-21T10:00:00.000Z' });
+    const laterButAhead = makeChallengeRun({ id: earlierButBehind.id, phase: 'done', timestamp: '2026-09-21T09:00:00.000Z' });
+
+    expect(mergeChallengeRun(earlierButBehind, laterButAhead).merged).toBe(laterButAhead);
+    expect(mergeChallengeRun(laterButAhead, earlierButBehind).merged).toBe(laterButAhead);
   });
 
   it('never reports a conflict, even across the full ladder', () => {
