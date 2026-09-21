@@ -35,6 +35,7 @@ import {
 import { DepthSlotColumn } from './DepthSlotColumn';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
 import { ToastProvider, useToast } from './Toast';
+import { headshotThumb } from '@/lib/headshotThumb';
 import { useAndroidBackGuard } from '@/hooks/useAndroidBackGuard';
 import { BackGuardSheet } from './BackGuardSheet';
 import { Button } from './ui/Button';
@@ -457,7 +458,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     if (card.type === 'Player' && dragGhostRef.current && dragGhostBarRef.current && dragGhostImgRef.current && dragGhostNameRef.current) {
       const [c1, c2] = getPosColors(card.player.position);
       dragGhostBarRef.current.style.background = `linear-gradient(to bottom, ${c1}, ${c2})`;
-      dragGhostImgRef.current.src = `/headshots/${card.player.id}.png`;
+      dragGhostImgRef.current.src = headshotThumb(card.player.id, 96);
       dragGhostNameRef.current.textContent = card.player.name;
       e.dataTransfer.setDragImage(dragGhostRef.current, 12, 18);
     }

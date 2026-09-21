@@ -6,6 +6,7 @@ import { getPlayDef } from '../engine/playbook';
 import type { PlayEvaluation } from '../engine/synergies';
 import { playCategoryHex } from './cardColors';
 import { Button } from './ui/Button';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 /**
  * plan_deckbuilder_ux D5: the play tile that replaces the flip-on-hover 5:7 PlayCard
@@ -84,7 +85,7 @@ function RoleAvatar({ playerFromRoster }: { playerFromRoster?: PlayerCardData })
         aria-label={playerFromRoster.player?.name ?? 'Assigned player'}
         title={playerFromRoster.player?.name}
         className="w-7 h-7 rounded-full border-2 border-positive bg-surface-sunken bg-cover bg-top shrink-0 inline-block"
-        style={{ backgroundImage: `url(/headshots/${playerFromRoster.id}.png)` }}
+        style={{ backgroundImage: `url("${headshotThumb(playerFromRoster.player.id, 96)}")` }}
       />
     );
   }

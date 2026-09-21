@@ -9,6 +9,7 @@ import type { Play, PlayerCardData } from './PlayerCard';
 import { PositionIcon } from './PlayerCard';
 import { Button } from './ui/Button';
 import { Panel } from './ui/Panel';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 export interface AssignPopoverProps {
   candidates: PlayerCardData[];
@@ -42,7 +43,7 @@ export function AssignPopover({ candidates, levelFor, emptyMessage, onPick }: As
             className="w-full justify-start gap-1.5 rounded-none border-b border-line px-2 text-left font-normal normal-case tracking-normal last:border-b-0"
           >
             <img
-              src={`/headshots/${p.id}.png`}
+              src={headshotThumb(p.player.id, 96)}
               alt=""
               className="w-6 h-6 rounded-full object-cover object-top border border-line bg-surface-sunken shrink-0"
               onError={(e2) => { (e2.target as HTMLImageElement).style.visibility = 'hidden'; }}

@@ -10,6 +10,7 @@ import { AssignPopover } from './AssignPopover';
 import { badgeConfig, defaultBadgeConfig } from './cardColors';
 import { IconButton } from './ui/IconButton';
 import { PlayTile } from './PlayTile';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 function initialsFor(name: string): string {
   const words = name.split(/[\s-]+/).filter(Boolean);
@@ -124,7 +125,7 @@ function RoleRow({
           // visible instead of being squeezed off (D18).
           <div className="flex items-center gap-1 shrink-0 min-w-0 max-w-[160px]">
             <img
-              src={`/headshots/${playerFromRoster.id}.png`}
+              src={headshotThumb(playerFromRoster.player.id, 96)}
               alt=""
               className="w-[26px] h-[26px] rounded-full object-cover object-top border border-line-strong bg-surface-sunken shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { useHoverPreview } from './useHoverPreview';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 /** game_canvas (owner): touch devices have no hover, so a long-press (held still for
  *  `LONG_PRESS_MS`) shows the screen-centred preview while the finger stays down; a
@@ -1167,7 +1168,7 @@ export function PlayCard({ play, onClick, isSelected = false, compact = false, e
                   const playerFromRoster = players?.find(p => p.id === roleStatus.playerId);
                   const isRoleSelected = selectedRoleId === roleStatus.role.id;
                   const isFilled = roleStatus.filled;
-                  const headshotUrl = playerFromRoster ? `/headshots/${playerFromRoster.id}.png` : undefined;
+                  const headshotUrl = playerFromRoster ? headshotThumb(playerFromRoster.player.id, 96) : undefined;
 
                   return (
                     <div

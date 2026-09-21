@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { PlayerCardData } from '@/components/PlayerCard';
 import { ChevronDown, ChevronUp, Search, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 const rarityValue: Record<string, number> = {
   'Mythic': 4,
@@ -236,7 +237,7 @@ export default function DatabasePage() {
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full overflow-hidden bg-stone-800 shrink-0 border border-stone-700">
-                          <img src={`/headshots/${c.player.id}.png`} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                          <img src={headshotThumb(c.player.id, 96)} alt="" className="w-full h-full object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         </div>
                         <div className="font-bold">{c.player.name}</div>
                       </div>
