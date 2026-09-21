@@ -135,7 +135,7 @@ function half(wins: number): ChallengeHalf {
     // against a 25.8% league mean — board 4's coach line. The other three defensive
     // factors sit at roughly league average so this is unambiguously the worst one.
     opponentTotals: {
-      points: 4300, possessions: 4100,
+      points: 4300,
       fieldGoalsAttempted: 3400, fieldGoalsMade: 1560,
       threesAttempted: 1200, threesMade: 430,
       freeThrowsAttempted: 930, freeThrowsMade: 730,

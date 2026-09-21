@@ -29,7 +29,7 @@ import { ResultsScreen } from '@/components/challenge/Results';
 const PREVIEW_SEED = 4242;
 
 const EMPTY_TEAM_TOTALS = {
-  points: 0, possessions: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
+  points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
   threesMade: 0, threesAttempted: 0, freeThrowsMade: 0, freeThrowsAttempted: 0,
   turnovers: 0, assists: 0, offensiveRebounds: 0, defensiveRebounds: 0, steals: 0, blocks: 0,
 };

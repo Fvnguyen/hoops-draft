@@ -21,6 +21,13 @@ import { accumulateBoxRow } from './boxscore';
 import { PLAY_CATALOG } from './plays';
 import { DEPTH_COLUMNS } from './positions';
 import { NBA_ROSTER_POOL, CHALLENGE_GAMES, CHALLENGE_TUNING, TRADE_OFFERS, TRADE_RARITY_WEIGHTS, TRADE_DROPPED_RARITY_BOOST } from './balance';
+// Type-only: `rosterChanged` (D3) needs the `SavedRoster` shape to compare pre/post
+// break rosters. A type-only import is erased at build time, so this does not make the
+// engine depend on `src/storage` at runtime (`tests/unit/engine-purity.test.ts` only
+// forbids react/next/fs/sqlite/`@/components`/`@/app`, not `@/storage`) and does not
+// create a real circular dependency even though `storage/types.ts` itself imports
+// `ChallengeHalf` from this file — both sides of the cycle are erased before bundling.
+import type { SavedRoster } from '@/storage/types';
 
 // ── The 30 opponents ────────────────────────────────────────────────────────
 
@@ -127,14 +134,40 @@ export function buildNbaTeamRoster(cards: PlayerCardData[], abbr: string, plays:
   };
 }
 
+/**
+ * Memoized by the REFERENCE of `cards` (and, nested, of `plays`) — building all 30
+ * opponents is ~5ms (`NBA_ROSTER_POOL` filtering + `buildBotRoster` x30), and D3
+ * measured it happening again on EVERY half (`page.tsx` rebuilds `cards` fresh off
+ * `getAllCards()` each time, even though the static card pool never actually changes
+ * mid-run). Two different arrays with equal contents still miss: that is intentional —
+ * a cache keyed on structural equality would have to hash all ~450 cards to save 5ms,
+ * and nothing in the challenge flow ever passes two distinct-but-equal card arrays. The
+ * returned Map and its `TeamInfo`s must be treated as READ-ONLY by every caller —
+ * `simulateHalf`/`simulateGame`/`buildTeamInfo` only ever read `TeamInfo` fields (no
+ * assignment into `team.*`/`.players`/`.depthChart` anywhere in `game.ts`,
+ * `possession.ts`, `rotation.ts`, `shot.ts` or `teamInfo.ts` — verified by grep), so a
+ * cache hit is safe; a caller that starts mutating a returned `TeamInfo` would silently
+ * corrupt every later half that shares this cache entry.
+ */
+const nbaTeamsCache = new WeakMap<PlayerCardData[], WeakMap<Play[], Map<string, TeamInfo>>>();
+
 /** All 30 opponents as game-ready `TeamInfo`s, keyed by abbreviation. */
 export function buildNbaTeams(cards: PlayerCardData[], plays: Play[] = PLAY_CATALOG): Map<string, TeamInfo> {
+  let byPlays = nbaTeamsCache.get(cards);
+  if (!byPlays) {
+    byPlays = new WeakMap<Play[], Map<string, TeamInfo>>();
+    nbaTeamsCache.set(cards, byPlays);
+  }
+  const cached = byPlays.get(plays);
+  if (cached) return cached;
+
   const teams = new Map<string, TeamInfo>();
   for (const t of NBA_TEAMS) {
     const seat = buildNbaTeamRoster(cards, t.abbr, plays);
     const info = buildTeamInfo(seat, false);
     teams.set(t.abbr, { ...info, name: `${t.city} ${t.name}` });
   }
+  byPlays.set(plays, teams);
   return teams;
 }
 
@@ -245,7 +278,6 @@ export interface ChallengePlayerTotals extends PlayerBoxScore {
  */
 export interface ChallengeTeamTotals {
   points: number;
-  possessions: number;
   fieldGoalsMade: number;
   fieldGoalsAttempted: number;
   threesMade: number;
@@ -261,15 +293,23 @@ export interface ChallengeTeamTotals {
 }
 
 const emptyTeamTotals = (): ChallengeTeamTotals => ({
-  points: 0, possessions: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
+  points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0,
   threesMade: 0, threesAttempted: 0, freeThrowsMade: 0, freeThrowsAttempted: 0,
   turnovers: 0, assists: 0, offensiveRebounds: 0, defensiveRebounds: 0, steals: 0, blocks: 0,
 });
 
+/**
+ * `possessions` is deliberately NOT summed here (D3/T6, was `ChallengeTeamTotals.
+ * possessions` until this change): it summed each opponent PLAYER's on-court possession
+ * count, which is ~5x the team's real possession count (5 players on court every team
+ * possession) and nothing ever read it — grepped across `src/`, `tests/`, `scripts/`.
+ * A saved run from before this change still carries the old key in IndexedDB; nothing
+ * validates against an exact key set (`storage/safeLoad.ts`), so it still loads fine,
+ * just with one extra ignored field.
+ */
 function addTeamRows(totals: ChallengeTeamTotals, rows: PlayerBoxScore[]): void {
   for (const r of rows ?? []) {
     totals.points += r.points ?? 0;
-    totals.possessions += r.possessions ?? 0;
     totals.fieldGoalsMade += r.fieldGoalsMade ?? 0;
     totals.fieldGoalsAttempted += r.fieldGoalsAttempted ?? 0;
     totals.threesMade += r.threesMade ?? 0;
@@ -330,7 +370,10 @@ export function simulateHalf(
     const seed = challengeGameSeed(runSeed, i);
     const home = entry.isHome ? userTeam : opponent;
     const away = entry.isHome ? opponent : userTeam;
-    const theater = simulateGame(home, away, { rng: createRng(seed), tuning });
+    // D2: a half needs 41 scores and box scores, not 41 play-by-plays. Nothing replays an
+    // 82:0 game today; if that is ever built, re-simulate it from `challengeGameSeed` with
+    // events on — it is the same game (tests/unit/game-events-option.test.ts).
+    const theater = simulateGame(home, away, { rng: createRng(seed), tuning, events: false });
 
     const userScore = entry.isHome ? theater.finalScore[0] : theater.finalScore[1];
     const oppScore = entry.isHome ? theater.finalScore[1] : theater.finalScore[0];
@@ -404,6 +447,72 @@ export function mergePlayerTotals(halves: ChallengeHalf[]): ChallengePlayerTotal
     accumulate(totals, h.playerTotals, (row) => (row as ChallengePlayerTotals).gamesPlayed);
   }
   return Array.from(totals.values()).sort((a, b) => b.points - a.points);
+}
+
+// ── Roster-change detection (D3) ─────────────────────────────────────────────
+
+/**
+ * PURE structural comparison of the parts of a `SavedRoster` that can actually change a
+ * simulated game (`buildTeamInfo` -> `TeamInfo` -> `simulateGame`), so `page.tsx` can
+ * decide whether the D10 ghost half is worth simulating. Deliberately narrower than a
+ * deep-equal on the whole roster, and deliberately not a `===` reference check: the
+ * front-office lineup editor (`FrontOffice.tsx`'s `handleEditorSave`) writes a brand-new
+ * `SavedRoster` object on every save even when nothing in it changed, and after a
+ * store round-trip `rosterPre`/`rosterPost` are separate IndexedDB clones that can never
+ * be `===` again — the previous reference-equality guard ghosted on every break, wasting
+ * a 41-game simulation and drawing a dashed line exactly on top of the solid one.
+ *
+ * What's compared, and why:
+ *  - `depthChartOrder`, per `DEPTH_COLUMNS` column, IN ORDER: index 0 is the starter
+ *    (`buildTeamInfo`'s `starters`), and the whole column feeds `activePlayers` — a
+ *    reorder within a column (a bench swap to starter) changes who's on the floor even
+ *    when no player actually moved column.
+ *  - `activePlays`, IN SLOT ORDER: falls straight into `TeamInfo.plays`, and a
+ *    pre-v2 roster's `playAssignments` are re-derived from this exact order
+ *    (`normalizeBuiltRoster`).
+ *  - `playAssignments`, AS AN ORDERED LIST of `(cardId, playId, roles)`: the array order
+ *    is not incidental. `scaledPlayAllocations` preserves it and `rollCalledPlay`
+ *    (`possession.ts`) walks it as a cumulative-probability roll on every possession —
+ *    reordering two equally-allocated active plays can change which one is called on a
+ *    given possession even though no card or role changed. Each assignment's `roles` map
+ *    IS compared order-independently (`Record<string, string>`, plain lookups, no
+ *    iteration order anywhere downstream) — sorted by role id below before stringifying.
+ *  - `archetypes.offense` / `.defense` / `.gold`: the only three fields; order is moot.
+ *
+ * `draftedCards` (the full pool, bench included) is deliberately NOT compared as a
+ * whole. Anything drafted but sitting outside every depth-chart column and every play's
+ * roles is a bench card `buildTeamInfo` never looks at, so swapping one bench card for
+ * another (or reordering the drafted list) cannot change a game and must not trigger a
+ * ghost; a trade that touches the ACTIVE roster is already caught above, because the
+ * swapped card's id shows up in `depthChartOrder` or a role. `name`, `timestamp`, `id`,
+ * `ownerId`, `cardSetVersion`, `version` and `sessionId` never reach `TeamInfo` at all, so
+ * none of them are compared; a field that's `undefined` on one side and simply missing on
+ * the other is treated as identical (`?? []`/`?? {}`/`?? null` below), matching how
+ * `buildTeamInfo`/`seatFromRoster` already read these fields.
+ */
+export function rosterChanged(pre: SavedRoster, post: SavedRoster): boolean {
+  return rosterFingerprint(pre) !== rosterFingerprint(post);
+}
+
+/** Small canonical projection + stable stringify — not a whole-object `JSON.stringify`,
+ *  which would lie in both directions: irrelevant fields (name, timestamp, …) would
+ *  make an unchanged roster look changed, and source-object key order (`depthChartOrder`
+ *  column order, a `playAssignments[].roles` insertion order) would make an unchanged
+ *  roster look changed one run and unchanged the next. */
+function rosterFingerprint(roster: SavedRoster): string {
+  const depthChart = DEPTH_COLUMNS.map((col) => roster.depthChartOrder?.[col] ?? []);
+  const activePlays = roster.activePlays ?? [];
+  const playAssignments = (roster.playAssignments ?? []).map((a) => ({
+    cardId: a.cardId,
+    playId: a.playId,
+    roles: Object.entries(a.roles ?? {}).sort(([x], [y]) => x.localeCompare(y)),
+  }));
+  const archetypes = {
+    offense: roster.archetypes?.offense ?? null,
+    defense: roster.archetypes?.defense ?? null,
+    gold: roster.archetypes?.gold ?? null,
+  };
+  return JSON.stringify({ depthChart, activePlays, playAssignments, archetypes });
 }
 
 // ── Trade pack (D9) ─────────────────────────────────────────────────────────

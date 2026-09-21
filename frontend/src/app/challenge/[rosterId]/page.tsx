@@ -35,7 +35,7 @@ import { buildTeamInfo } from '@/engine/game';
 import { randomSeed } from '@/engine/rng';
 import { BALANCE_VERSION } from '@/engine/balance';
 import {
-  buildChallengeSchedule, buildNbaTeams, simulateHalf,
+  buildChallengeSchedule, buildNbaTeams, simulateHalf, rosterChanged,
   type ChallengeHalf,
 } from '@/engine/challenge';
 import { FrontOffice } from '@/components/challenge/FrontOffice';
@@ -163,10 +163,13 @@ export default function ChallengePage() {
 
         // D10's ghost: the SAME 41 seeds replayed with the roster as it stood at the
         // deadline, so the results screen can say what the trade and the lineup edits were
-        // actually worth. Only meaningful when the roster changed — with no edit the ghost
-        // would be the real run, and a dashed line lying exactly on top of the solid one
-        // reads as a bug rather than as "you changed nothing".
-        const changed = needsHalf === 2 && run.rosterPost && run.rosterPost !== run.rosterPre;
+        // actually worth. Only meaningful when the roster STRUCTURALLY changed (T6/D3:
+        // `rosterChanged`, not `!==`) — the front-office editor saves a new roster OBJECT
+        // on every save even with no real edit, so a reference check ghosted on every
+        // break; with no actual edit the ghost would be the real run over again, and a
+        // dashed line lying exactly on top of the solid one reads as a bug rather than as
+        // "you changed nothing".
+        const changed = needsHalf === 2 && !!run.rosterPost && rosterChanged(run.rosterPre, run.rosterPost);
         const ghost = changed
           ? simulateHalf(
               buildTeamInfo(seatFromRoster(run.rosterPre), true, run.rosterPre.name || 'Your team'),
