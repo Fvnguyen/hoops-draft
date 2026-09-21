@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { safeNextPath } from '@/lib/safeNextPath';
 
 const GENERIC_ERROR = 'Username/email or password is incorrect.';
 
@@ -8,7 +9,7 @@ export async function POST(request: Request) {
   const body = await request.json() as { identifier?: string; password?: string; next?: string | null };
   const identifier = body.identifier?.trim();
   const password = body.password ?? '';
-  const next = typeof body.next === 'string' && body.next.startsWith('/') ? body.next : '/';
+  const next = safeNextPath(body.next) ?? '/';
 
   if (!identifier || !password) return NextResponse.json({ error: 'Enter your username or email and password.' }, { status: 400 });
 

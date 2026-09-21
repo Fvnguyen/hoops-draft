@@ -143,6 +143,78 @@ export function placePlayerInSlot(
   };
 }
 
+// ── Builder initial state ──────────────────────────────────────────────────
+
+/** Everything the human deck builder holds, seeded in ONE step from the drafted cards
+ *  and (when editing) the saved roster. */
+export interface BuilderInitialState {
+  depthChart: Record<DepthColumn, PlayerCardData[]>;
+  /** Bench pool ("Roster" in the UI), in drafted order — the caller sorts for display. */
+  rosterPlayers: PlayerCardData[];
+  activePlays: (Play | null)[];
+  rosterPlays: Play[];
+  /** cardId -> assignment, exactly one entry per active play. */
+  playAssignments: Record<string, PlayAssignment>;
+}
+
+/**
+ * Seed the deck builder. A fresh draft (no saved orders) starts with an empty depth chart
+ * and no active plays — no auto-fill, the human builds the lineup. A saved roster restores
+ * its depth order, active plays and their role assignments; ids the draft no longer has
+ * are dropped, a saved assignment for a play that is not active is dropped, and an active
+ * play without one gets empty roles.
+ *
+ * One pure call on purpose: the builder used to seed these slices from an effect while a
+ * second effect synced assignments to `activePlays`, and on mount that second effect still
+ * saw the empty slots and wiped every saved role.
+ */
+export function initBuilderState(
+  draftedCards: DraftCard[],
+  saved: { depthOrder?: Record<string, string[]>; playsOrder?: string[]; playAssignments?: PlayAssignment[] } = {},
+): BuilderInitialState {
+  const players = draftedCards.filter((c): c is PlayerCardData => c.type === 'Player');
+  const plays = draftedCards.filter((c): c is Play => c.type === 'Play');
+
+  const depthChart: Record<DepthColumn, PlayerCardData[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
+  const placedIds = new Set<string>();
+  if (saved.depthOrder) {
+    for (const column of DEPTH_COLUMNS) {
+      for (const id of saved.depthOrder[column] ?? []) {
+        const found = players.find(p => p.id === id);
+        if (found && !placedIds.has(id)) {
+          depthChart[column].push(found);
+          placedIds.add(id);
+        }
+      }
+    }
+  }
+
+  const activePlays: (Play | null)[] = [null, null, null];
+  const activeIds = new Set<string>();
+  (saved.playsOrder ?? []).slice(0, 3).forEach((id, idx) => {
+    const found = plays.find(p => p.id === id);
+    if (found && !activeIds.has(id)) {
+      activePlays[idx] = found;
+      activeIds.add(id);
+    }
+  });
+
+  const savedAssignments = new Map((saved.playAssignments ?? []).map(a => [a.cardId, a]));
+  const playAssignments: Record<string, PlayAssignment> = {};
+  for (const play of activePlays) {
+    if (!play) continue;
+    playAssignments[play.id] = savedAssignments.get(play.id) ?? { cardId: play.id, playId: getPlaybookId(play), roles: {} };
+  }
+
+  return {
+    depthChart,
+    rosterPlayers: players.filter(p => !placedIds.has(p.id)),
+    activePlays,
+    rosterPlays: plays.filter(p => !activeIds.has(p.id)),
+    playAssignments,
+  };
+}
+
 /** A single pick record for draft replay / analytics */
 export interface DraftPickRecord {
   packNumber: number;           // 1-3

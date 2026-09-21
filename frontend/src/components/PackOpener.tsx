@@ -226,6 +226,9 @@ export function PackOpener({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      // A focused card's own onKeyDown (select-on-Enter/Space) calls preventDefault
+      // before this bubbles here — skip it so one keypress selects, not selects-and-confirms.
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         skipToSpread();

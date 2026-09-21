@@ -9,10 +9,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   assignPlayToFirstOpenSlot,
+  initBuilderState,
   placePlayerInSlot,
   type PlaySlotsState,
   type DepthChartState,
 } from '@/engine/deckbuilder';
+import type { DraftCard } from '@/engine/types';
 
 describe('assignPlayToFirstOpenSlot', () => {
   const baseState = (): PlaySlotsState => ({
@@ -120,5 +122,44 @@ describe('placePlayerInSlot', () => {
   it('refuses a player not on the bench', () => {
     const result = placePlayerInSlot(baseState(), 'ghost', 'SG', 0);
     expect(result).toEqual({ ok: false, reason: 'unknown' });
+  });
+});
+
+describe('initBuilderState', () => {
+  const player = (id: string) => ({ type: 'Player', id, rarity: 'Common', player: { name: id, position: 'PG' } }) as unknown as DraftCard;
+  const play = (id: string) => ({ type: 'Play', id, name: id, rarity: 'Common', playCategory: 'special' }) as unknown as DraftCard;
+  const drafted = [player('a'), player('b'), player('c'), play('p1'), play('p2')];
+
+  it('starts a fresh draft empty: no auto-fill, everything in the Roster list', () => {
+    const state = initBuilderState(drafted);
+    expect(Object.values(state.depthChart).flat()).toEqual([]);
+    expect(state.rosterPlayers.map(p => p.id)).toEqual(['a', 'b', 'c']);
+    expect(state.activePlays).toEqual([null, null, null]);
+    expect(state.rosterPlays.map(p => p.id)).toEqual(['p1', 'p2']);
+    expect(state.playAssignments).toEqual({});
+  });
+
+  it('restores a saved roster WITH its role assignments (regression: they were wiped on open)', () => {
+    const saved = { cardId: 'p2', playId: 'pick_and_roll', roles: { handler: 'a', screener: 'b' } };
+    const state = initBuilderState(drafted, {
+      depthOrder: { PG: ['b', 'a'], C: ['gone'] },
+      playsOrder: ['p2'],
+      playAssignments: [saved],
+    });
+    expect(state.depthChart.PG.map(p => p.id)).toEqual(['b', 'a']);
+    expect(state.depthChart.C).toEqual([]);
+    expect(state.rosterPlayers.map(p => p.id)).toEqual(['c']);
+    expect(state.activePlays.map(p => p?.id ?? null)).toEqual(['p2', null, null]);
+    expect(state.rosterPlays.map(p => p.id)).toEqual(['p1']);
+    expect(state.playAssignments).toEqual({ p2: saved });
+  });
+
+  it('gives an active play without a saved assignment empty roles, and drops one for a benched play', () => {
+    const state = initBuilderState(drafted, {
+      playsOrder: ['p1'],
+      playAssignments: [{ cardId: 'p2', playId: 'x', roles: { r: 'a' } }],
+    });
+    expect(Object.keys(state.playAssignments)).toEqual(['p1']);
+    expect(state.playAssignments.p1.roles).toEqual({});
   });
 });

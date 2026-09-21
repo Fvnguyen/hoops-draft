@@ -25,6 +25,7 @@ import {
 } from '@/engine/depthChart';
 import {
   assignPlayToFirstOpenSlot,
+  initBuilderState,
   placePlayerInSlot,
   type AssignPlayFailureReason,
   type PlaySlotsState,
@@ -224,12 +225,19 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     return canPlaceAt(rawPos, 'C', false);
   };
 
-  const [depthChart, setDepthChart] = useState<Record<string, PlayerCardData[]>>({
-    PG: [], SG: [], SF: [], PF: [], C: []
-  });
-  const [activePlays, setActivePlays] = useState<(Play | null)[]>([null, null, null]);
-  const [rosterPlayers, setRosterPlayers] = useState<PlayerCardData[]>([]);
-  const [rosterPlays, setRosterPlays] = useState<Play[]>([]);
+  // Seeded ONCE, at mount, from the props (every caller mounts the builder only after its
+  // roster has loaded; remount with a `key` to load a different one). Seeding from an
+  // effect raced the activePlays -> playAssignments sync effect below, which still saw
+  // three empty slots on mount and wiped every saved role assignment.
+  const [initial] = useState(() => initBuilderState(draftedCards, {
+    depthOrder: initialDepthOrder,
+    playsOrder: initialPlaysOrder,
+    playAssignments: initialPlayAssignments,
+  }));
+  const [depthChart, setDepthChart] = useState<Record<string, PlayerCardData[]>>(initial.depthChart);
+  const [activePlays, setActivePlays] = useState<(Play | null)[]>(initial.activePlays);
+  const [rosterPlayers, setRosterPlayers] = useState<PlayerCardData[]>(() => [...initial.rosterPlayers].sort(sortRosterPlayers));
+  const [rosterPlays, setRosterPlays] = useState<Play[]>(initial.rosterPlays);
   const [draggedItem, setDraggedItem] = useState<{ card: DraftCard, sourceZone: string, sourceIndex?: number } | null>(null);
   // Hidden bench-sized drag image (D24): imperatively updated (not React state) so it's
   // already correct by the time handleDragStart calls setDragImage synchronously.
@@ -251,11 +259,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // sync with activePlays by the effect below. `assigning` is the role currently
   // being filled (selected via a role row click); mutually exclusive with the
   // player placement selection above.
-  const [playAssignments, setPlayAssignments] = useState<Record<string, PlayAssignment>>(() => {
-    const map: Record<string, PlayAssignment> = {};
-    (initialPlayAssignments ?? []).forEach(a => { map[a.cardId] = a; });
-    return map;
-  });
+  const [playAssignments, setPlayAssignments] = useState<Record<string, PlayAssignment>>(initial.playAssignments);
   // Chosen roster identity (offense/defense or gold). Selections that fall below Online
   // when the roster changes are dropped automatically (locked plans are never shown).
   const [archetypes, setArchetypes] = useState<ArchetypeSelection>(initialArchetypes ?? {});
@@ -318,75 +322,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const [saveDestination, setSaveDestination] = useState<'rosters' | 'season'>('rosters');
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const initDepth: Record<string, PlayerCardData[]> = { PG: [], SG: [], SF: [], PF: [], C: [] };
-    const initRosterPlayers: PlayerCardData[] = [];
-    const initRosterPlays: Play[] = [];
-
-    const players = draftedCards.filter((c): c is PlayerCardData => c.type === 'Player');
-    const plays = draftedCards.filter((c): c is Play => c.type === 'Play');
-
-    if (initialDepthOrder) {
-      // Saved-roster edit: seed the depth chart from the saved order, everyone
-      // else (never placed, or placed at an id the draft no longer has) goes to
-      // the Roster sidebar list.
-      const assignedIds = new Set<string>();
-      for (const pos in initDepth) {
-        if (initialDepthOrder[pos]) {
-           const orderedCol: PlayerCardData[] = [];
-           initialDepthOrder[pos].forEach(id => {
-              const found = draftedCards.find(p => p.id === id) as PlayerCardData;
-              if (found) {
-                orderedCol.push(found);
-                assignedIds.add(id);
-              }
-           });
-           initDepth[pos] = orderedCol;
-        }
-      }
-      players.forEach(p => {
-        if (!assignedIds.has(p.id)) initRosterPlayers.push(p);
-      });
-    } else {
-      // Fresh draft (no saved depth order): every drafted card starts in the
-      // Roster sidebar list, the depth chart starts empty — no auto-fill, the
-      // human builds the lineup (D27, supersedes D20/D21's autoDistributeRoster).
-      initRosterPlayers.push(...players);
-    }
-
-    const newActivePlays: (Play | null)[] = [null, null, null];
-    if (initialPlaysOrder) {
-      const assignedPlayIds = new Set<string>();
-      initialPlaysOrder.forEach((id, idx) => {
-         if (idx < 3) {
-            const found = plays.find(p => p.id === id);
-            if (found) {
-              newActivePlays[idx] = found;
-              assignedPlayIds.add(id);
-            }
-         }
-      });
-      plays.forEach(p => {
-        if (!assignedPlayIds.has(p.id)) initRosterPlays.push(p);
-      });
-    } else {
-      // Fresh draft: every play card starts in the Roster sidebar list too —
-      // no active plays pre-selected.
-      initRosterPlays.push(...plays);
-    }
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setActivePlays(newActivePlays);
-    initRosterPlayers.sort(sortRosterPlayers);
-    setDepthChart(initDepth);
-    setRosterPlayers(initRosterPlayers);
-    setRosterPlays(initRosterPlays);
-
-    const initAssignments: Record<string, PlayAssignment> = {};
-    (initialPlayAssignments ?? []).forEach(a => { initAssignments[a.cardId] = a; });
-    setPlayAssignments(initAssignments);
-  }, [draftedCards, initialDepthOrder, initialPlaysOrder, initialPlayAssignments]);
 
   // Keep playAssignments in sync with activePlays: a play entering a slot gets a
   // fresh (or its previous) assignment; a play leaving a slot drops its assignment
