@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PlayerCard, PlayerCardData } from '../components/PlayerCard';
-import { getAllCards } from '@/engine/cards';
+import showcaseCards from '@/data/showcase.json';
 import { Button, buttonVariants } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { HomeModePicker, type HomeGame } from '@/components/HomeModePicker';
@@ -64,7 +64,12 @@ function pickPackPreview(allCards: PlayerCardData[], heroId: string | undefined)
   return picks;
 }
 
-const allCards = getAllCards();
+// plan_mobile_load D2: the home page only ever draws Mythic/Rare cards (owner decision,
+// keeps re-rolling on every visit), so it imports the pre-filtered `showcase.json`
+// (~41 KB for 35 cards) instead of the full 482 KB card set via `getAllCards()`. Same
+// shape as `PlayerCardData` (same build-time tagging in `scripts/build-cards.ts`) — go
+// through `unknown` for the same "trust the build artifact's shape" cast `cards.ts` uses.
+const allCards = showcaseCards as unknown as PlayerCardData[];
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -94,7 +99,7 @@ export default function Home() {
       {/* Background Layer */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"
-        style={{ backgroundImage: 'url(/arena_16_9.jpg)' }}
+        style={{ backgroundImage: 'url(/art/arena-1600.webp)' }}
       />
       <div className="absolute inset-0 z-0 bg-gradient-to-t from-surface-inverse-deep via-surface-inverse/60 to-surface-inverse-deep/40" />
       <div className="absolute inset-0 z-0 bg-gradient-to-r from-surface-inverse-deep via-transparent to-surface-inverse-deep/80" />

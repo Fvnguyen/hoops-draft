@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { dismissSplash } from './helpers/splash';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Regression: opening a saved roster wiped every play-role assignment. The builder seeded
@@ -11,15 +13,22 @@ import { dismissSplash } from './helpers/splash';
  */
 const ROSTER_ID = 'e2e-roster-reopen';
 
+// plan_mobile_load D2/T2: `/api/cards` is gone (the card set is delivered as a bundled
+// module, dynamically imported at the point of use — there's no HTTP endpoint to fetch
+// a fixture from anymore). Read the one card this spec needs straight from the build
+// artifact on the Node side and hand it into the page as an argument instead.
+const allCards = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '..', 'src', 'data', 'cards.json'), 'utf-8'),
+) as { id: string; player: { name: string; position: string } }[];
+const guardFixture = allCards.find(c => c.player.position.split(/[/-]/).includes('PG'))!;
+
 test('a saved roster reopens with its play-role assignments intact', async ({ page }) => {
   // Any authenticated route first: StorageProvider opens (and migrates) MagicBallDB.
   await page.goto('/rosters');
   await expect(page.getByText('Loading Rosters…')).toHaveCount(0, { timeout: 20_000 });
 
-  const playerName = await page.evaluate(async (rosterId) => {
+  const playerName = await page.evaluate(async ({ rosterId, guard }) => {
     const me = await fetch('/api/auth/me').then(r => r.json()) as { id: string };
-    const cards = await fetch('/api/cards').then(r => r.json()) as { id: string; player: { name: string; position: string } }[];
-    const guard = cards.find(c => c.player.position.split(/[/-]/).includes('PG'))!;
     const play = { type: 'Play', id: 'basic-offense-e2e', name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: '', badges: [], imageUrl: '' };
     const roster = {
       id: rosterId,
@@ -47,7 +56,7 @@ test('a saved roster reopens with its play-role assignments intact', async ({ pa
     });
     db.close();
     return guard.player.name;
-  }, ROSTER_ID);
+  }, { rosterId: ROSTER_ID, guard: guardFixture });
 
   await page.goto(`/roster/${ROSTER_ID}`);
   await expect(page.getByText('Loading Roster...')).toHaveCount(0, { timeout: 20_000 });

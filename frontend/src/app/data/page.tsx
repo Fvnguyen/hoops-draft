@@ -40,12 +40,10 @@ export default function DatabasePage() {
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
 
   useEffect(() => {
-    fetch('/api/cards')
-      .then(res => res.json())
-      .then(data => {
-        setCards(data);
-        setLoading(false);
-      });
+    import('@/engine/cards').then(({ getAllCards }) => {
+      setCards(getAllCards());
+      setLoading(false);
+    });
   }, []);
 
   const handleSort = (field: string) => {

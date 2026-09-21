@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
-import { PlayerCard, PlayCard, Player, Play, HEADSHOT_SIZES } from './PlayerCard';
-import { getImageProps } from 'next/image';
+import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
@@ -30,6 +29,7 @@ import { clockScaleFromQuery } from '../lib/draftTimer';
 import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
 import { useAndroidBackGuard } from '../hooks/useAndroidBackGuard';
 import { BackGuardSheet } from './BackGuardSheet';
+import { headshotThumb } from '@/lib/headshotThumb';
 
 // Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
@@ -97,7 +97,11 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
 function SaveErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-danger-soft border-b border-danger-line px-4 py-3">
+    // mobile_load T9/D9: `fixed` elements sit against the physical viewport edge, not
+    // `body`'s padding box, so the phone-landscape display-cutout padding in globals.css
+    // (which only insets `body`) never reaches this banner — pad it directly with the
+    // same `--safe-left`/`--safe-right` vars, added on top of the existing `px-4`.
+    <div className="fixed top-0 left-0 right-0 z-50 bg-danger-soft border-b border-danger-line pl-[calc(1rem+var(--safe-left))] pr-[calc(1rem+var(--safe-right))] py-3">
       <p className="text-sm text-danger font-semibold text-center">{message}</p>
     </div>
   );
@@ -235,9 +239,10 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   });
 
   // Preload the headshots the player is about to see: this pack (still sealed during
-  // the intro) and the neighbour's pack that will be passed to us next. The URLs come
-  // from next/image's own `getImageProps` with the same `sizes` the card uses, so the
-  // browser picks — and caches — exactly the candidate the card will request.
+  // the intro) and the neighbour's pack that will be passed to us next. Card fronts are
+  // pre-generated 480px WebP files (plan mobile_load D3/D4) served `unoptimized`, so a
+  // plain Image preload of the exact URL the card will request is all that's needed —
+  // no next/image `getImageProps`/srcset negotiation.
   const humanPack = humanSeat?.currentPack;
   const incomingPack = receivingFromSeat?.currentPack;
   useEffect(() => {
@@ -245,11 +250,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     const cards = [...(humanPack ?? []), ...(incomingPack ?? [])];
     for (const card of cards) {
       if (card.type !== 'Player') continue;
-      const { props } = getImageProps({ src: `/headshots/${card.player.id}.png`, alt: '', fill: true, sizes: HEADSHOT_SIZES });
-      const img = new window.Image();
-      if (props.sizes) img.sizes = props.sizes;
-      if (props.srcSet) img.srcset = props.srcSet;
-      img.src = props.src;
+      new window.Image().src = headshotThumb(card.player.id, 480);
     }
   }, [humanPack, incomingPack]);
 
@@ -288,9 +289,9 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   }, [draftState, seats, sessionId, pickLog, draftSeed, mode, gameMode]);
 
   useEffect(() => {
-    fetch('/api/cards')
-      .then(r => r.json())
-      .then((data: Array<Omit<Player, 'type'>>) => {
+    import('@/engine/cards')
+      .then(({ getAllCards }) => {
+        const data = getAllCards() as Array<Omit<Player, 'type'>>;
         // Tag with type for DeckBuilder
         const cards = data.map(c => ({ ...c, type: 'Player' as const }));
         setAllPlayers(cards);

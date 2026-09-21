@@ -42,6 +42,16 @@ function main(): void {
 
   console.log(`Wrote ${tagged.length} cards to ${path.relative(process.cwd(), outPath)}`);
 
+  // plan_mobile_load D2: the home page keeps re-rolling its hero + 4 pack cards on every
+  // visit, but only ever draws Mythic/Rare — so it only needs that slice of the set
+  // (~41 KB vs 482 KB), not the full `getAllCards()` bundle. Same objects, same
+  // type/cardSetVersion tagging as cards.json; `pickHero`/`pickPackPreview` are unchanged.
+  const showcase = tagged.filter((c) => c.rarity === 'Mythic' || c.rarity === 'Rare');
+  const showcasePath = path.join(process.cwd(), 'src', 'data', 'showcase.json');
+  fs.writeFileSync(showcasePath, JSON.stringify(showcase));
+
+  console.log(`Wrote ${showcase.length} showcase cards (Mythic + Rare) to ${path.relative(process.cwd(), showcasePath)}`);
+
   const ratingKeys = [
     'overall', 'finishing', 'midRange', 'perimeter', 'playmaking',
     'rebounding', 'perimeterDefense', 'postDefense',

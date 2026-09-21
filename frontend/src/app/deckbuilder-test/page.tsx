@@ -59,9 +59,9 @@ function DeckbuilderTestInner() {
     }
 
     function loadRandomCards() {
-      fetch('/api/cards')
-      .then(r => r.json())
-      .then((data: DraftCard[]) => {
+      import('@/engine/cards')
+      .then(({ getAllCards }) => {
+        const data = getAllCards() as unknown as DraftCard[];
         const randomPlayers = [...data].sort(() => Math.random() - 0.5).slice(0, 30);
         const draftCards = randomPlayers.map(p => ({ ...p, type: 'Player' } as DraftCard));
         
