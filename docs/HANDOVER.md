@@ -129,10 +129,10 @@ painting (which is why the trade -> deck-builder hand-off is code-verified, not 
 re-declared (migration `202609170001`); and an untracked asset in `public/` reads as junk to
 the next agent — the 82:0 pack art was deleted on that mistake, so it is tracked now.
 
-## sync_outbox — code complete 2026-09-21, owner checks open
+## sync_outbox — done 2026-09-21
 
-Plan: `docs/plans/plan_sync_outbox_2026-09-21.md` (T1-T8; T3 dropped). Branch
-`claude/sync-outbox`, NOT merged or deployed. The model is in `ARCHITECTURE.md` section 8:
+Plan: `docs/completed/plan_sync_outbox_2026-09-21.md` (T1-T8; T3 dropped), merged to
+`main` and deployed 2026-09-21. The model is in `ARCHITECTURE.md` section 8:
 local-first, a persisted outbox, tombstones, persisted baselines, a two-phase pull.
 What it fixes: sync never started after a login until a hard reload (login/logout are soft
 navigations); the next user of a device saw the previous account's rows; every save hung
@@ -151,12 +151,10 @@ or devices created two seasons/82:0 runs for one roster.
   has a timeout; the app pulls again when resumed after 5+ minutes.
 - 97 storage tests, 506/507 overall, Playwright `smoke`/`season`/`topnav`/`auto-login`/
   `roster-reopen`/`deckbuilder` green.
-**Do not deploy a partial branch:** with owner-filtered reads but no owner refresh, a
-fresh login shows empty lists. **Open before `/roadmap done`:** the owner's manual checks
-(switch accounts in one tab without a reload; delete a roster offline, reconnect, confirm
-it stays gone); nothing in the UI shows `SyncStatus.blocked` yet; creating an 82:0 run was
-not exercised in a browser (no challenge spec). Same-phase edits of one 82:0 run on two
-devices still re-push each other's copy once per pull (bounded, pre-existing).
+Owner confirmed the two manual checks (account switch in one tab; an offline roster delete
+stays gone). **Still open:** nothing in the UI shows `SyncStatus.blocked` yet; creating an
+82:0 run was not exercised in a browser (no challenge spec); same-phase edits of one 82:0
+run on two devices re-push each other's copy once per pull (bounded, pre-existing).
 
 ## How to run everything
 
@@ -183,7 +181,7 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). `sync_outbox` is code complete (section above); the back-guard history leak lives
+(#13). `sync_outbox` is done (section above); the back-guard history leak lives
 in `mobile_load`. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space

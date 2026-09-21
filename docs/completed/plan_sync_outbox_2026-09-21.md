@@ -1,6 +1,6 @@
 # Plan: sync_outbox
 
-File: `docs/plans/plan_sync_outbox_2026-09-21.md`. Status: in progress (code complete 2026-09-21, owner checks open)
+File: `docs/plans/plan_sync_outbox_2026-09-21.md`. Status: done 2026-09-21
 Sequence: 12 in `docs/ROADMAP.md`. Depends on: nothing. Must land BEFORE `mobile_load`'s task that dynamically
 imports the Supabase store from `frontend/src/storage/index.ts`; that task assumes the write/ready model this
 plan changes.
