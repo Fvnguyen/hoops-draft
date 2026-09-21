@@ -36,17 +36,21 @@ decisions push through, not the merge logic.
   `SupabaseGameStore` never awaits `push()`/`deleteRemote()` inside them. The one remaining `/api/auth/me` fetch
   (`AuthProvider.tsx`, after D1) gets `AbortSignal.timeout(4000)`; a timeout sets `status = 'signed-out'`, not
   `'loading'`.
-- **D4 Outbox.** New Dexie table `outbox` (schema version 5), row `{ key: string /* `${table}:${id}` */, table:
-  SyncTable, id: string, op: 'upsert' | 'delete', queuedAt: string, attempts: number, lastError?: string }`,
-  primary key `key`, coalesced per key. `save*`/`delete*` write local then call `enqueue()` (fire-and-forget),
+- **D4 Outbox.** New Dexie table `outbox` (schema version 5), row `OutboxRecord` (`storage/types.ts`): `{ key
+  /* `${ownerId}:${table}:${id}` */, ownerId, table, id, op: 'upsert' | 'delete', queuedAt, attempts, lastError?,
+  blocked? }`, coalesced per key, drained only for the signed-in `ownerId`. Reached through `OutboxStore`
+  (`listOutbox`/`putOutbox`/`deleteOutbox`), implemented by the two local stores; `SupabaseGameStore` wraps
+  `GameStore & OutboxStore`. `save*`/`delete*` write local then call `enqueue()` (fire-and-forget),
   which upserts the row and kicks `drain()`. `drain()` runs one key at a time, re-reading the CURRENT local row
   before each push (also fixes finding 6's late-rejection race, since a second write can't race the first's
   merge). A network error backs off `min(60000, 2000 * 2 ** attempts)` ms and retries; a permanent error (RLS
   403, payload-too-large/invalid-table-name) parks the key and reports it via a new `blocked: number` field on
   `SyncStatus` (additive). `drain()` also runs on `online` and on `visibilitychange` to visible.
 - **D5 Delete tombstones.** `deleted_at timestamptz` (default null) on all four tables. New RPC
-  `cas_delete(table_name, p_id, p_owner_id)` sets it under `cas_upsert`'s allowlist guard; `pullAll`'s select
-  adds `.is('deleted_at', null)`. Local rows hard-delete immediately; the outbox carries the delete remotely.
+  `cas_delete(table_name, p_id, p_owner_id)` sets it (allowlist now one `sync_table_allowed()`); `pullAll` reads
+  `deleted_at` too and hard-deletes the local copy of a tombstoned row (that is how device B learns of A's
+  delete); an insert-only `cas_upsert` revives a tombstone in place. `api/analytics` adds `deleted_at is null`.
+  Local rows hard-delete immediately; the outbox carries the delete remotely.
   `handleDelete` (`app/rosters/page.tsx:156-163`) also calls `store.deleteChallengeRun(run.id)` when one exists,
   closing the ChallengeRun-orphan half of finding 4. The DraftSession orphan stays, since a session can
   legitimately outlive one of its rosters.
@@ -54,8 +58,8 @@ decisions push through, not the merge logic.
   `primary key (owner_id, id)` on all four tables. `cas_upsert`/`cas_delete` already scope by `owner_id`, so
   behavior is unchanged per owner; two owners can now hold the same `id`, fixing `exportImport.ts`'s
   import-keeps-ids backup loop.
-- **D7 Sync perf.** `cas_upsert` returns `(ok, updated_at, current_row)`; `current_row` populated only when
-  `ok = false`, a success returns only `updated_at`. `pullAll` first selects `id, updated_at` per table
+- **D7 Sync perf.** `cas_upsert` returns `(ok, updated_at, current_row)`; on success `current_row` is only
+  `{id, updated_at}` (keeps the deployed client working while the migration is live), the full row on `ok = false`. `pullAll` first selects `id, updated_at` per table
   (`deleted_at is null`); only ids whose `updated_at` differs or is missing get a second batched
   `select id, data, updated_at where id = any($ids)`. `pushLocalToCloud` skips `pushIfMissing` for any key
   already in `this.baselines`. Card-id-only `DraftSession` storage is OUT OF SCOPE, a schema change tangled with
@@ -99,7 +103,7 @@ decisions push through, not the merge logic.
   `tests/storage/gameStore.test.ts`: a session exists with the latest pick after a simulated kill before
   deckbuilding. Tier: low.
 - **T4** `StorageProvider.tsx` rewrite: derive `ownerId` from `useCurrentProfile()?.id`, `legacy_claimed` gate
-  (D1). Done-when: screenshot per AGENTS.md, plus a manual two-login check (sign in, switch account same tab, no
+  (D1); `useNotices` reloads on owner change (it reads seasons before the owner is set). Done-when: screenshot per AGENTS.md, plus a manual two-login check (sign in, switch account same tab, no
   reload) shows only the new account's rosters. Tier: top.
 - **T5** Outbox engine in `supabase.ts`: non-blocking writes, `drain()`/backoff/error classification (D3/D4),
   tombstone deletes plus roster-to-run cascade (D5), two-phase pull plus skip-if-baselined push plus slim CAS

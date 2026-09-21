@@ -95,10 +95,11 @@ export class SupabaseGameStore implements GameStore {
   // ── Status / conflicts ────────────────────────────────────────────────
 
   getSyncStatus(): SyncStatus {
-    if (!this.online) return { state: 'offline', pending: this.retryQueue.size, conflicts: this.conflicts };
+    if (!this.online) return { state: 'offline', pending: this.retryQueue.size, blocked: 0, conflicts: this.conflicts };
     return {
       state: this.retryQueue.size > 0 ? 'syncing' : 'idle',
       pending: this.retryQueue.size,
+      blocked: 0,
       conflicts: this.conflicts,
     };
   }

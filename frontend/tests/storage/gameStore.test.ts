@@ -2,13 +2,13 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryGameStore } from '@/storage/memory';
 import { IndexedDbGameStore, MagicBallDB } from '@/storage/indexedDb';
-import type { GameStore } from '@/storage/types';
-import { CURRENT_CARD_SET_VERSION } from '@/storage/types';
+import type { GameStore, OutboxRecord, OutboxStore } from '@/storage/types';
+import { CURRENT_CARD_SET_VERSION, outboxKey } from '@/storage/types';
 import { makeChallengeRun, makeDraftSession, makeSavedRoster, makeSeason } from './fixtures';
 
 let dbCounter = 0;
 
-const implementations: Array<{ name: string; make: () => GameStore }> = [
+const implementations: Array<{ name: string; make: () => GameStore & OutboxStore }> = [
   { name: 'MemoryGameStore', make: () => new MemoryGameStore() },
   {
     name: 'IndexedDbGameStore',
@@ -17,7 +17,7 @@ const implementations: Array<{ name: string; make: () => GameStore }> = [
 ];
 
 describe.each(implementations)('$name', ({ make }) => {
-  let store: GameStore;
+  let store: GameStore & OutboxStore;
 
   beforeEach(() => {
     store = make();
@@ -143,5 +143,56 @@ describe.each(implementations)('$name', ({ make }) => {
     expect(usage.rosters).toBe(1);
     expect(usage.seasons).toBe(1);
     expect(usage.bytesEstimate).toBeGreaterThan(0);
+  });
+
+  // sync_outbox D2: no owner used to mean "every row", so the previous account's data was
+  // visible to whoever opened the app next (signed out, or before setOwnerId ran).
+  it('shows only never-claimed rows while no owner is set', async () => {
+    await store.saveRoster(makeSavedRoster({ id: 'unclaimed' }));
+    await store.setOwnerId('owner-a');
+    await store.saveRoster(makeSavedRoster({ id: 'a-roster' }));
+    await store.saveSeason(makeSeason({ id: 'a-season', rosterId: 'a-roster' }));
+
+    await store.setOwnerId(null);
+    expect((await store.listRosters()).map((r) => r.id)).toEqual(['unclaimed']);
+    expect(await store.getRoster('a-roster')).toBeNull();
+    expect(await store.getSeasonByRoster('a-roster')).toBeNull();
+
+    await store.setOwnerId('owner-b');
+    expect(await store.listRosters()).toEqual([]);
+    expect(await store.getRoster('unclaimed')).toBeNull();
+
+    await store.setOwnerId('owner-a');
+    expect((await store.listRosters()).map((r) => r.id)).toEqual(['a-roster']);
+  });
+
+  // sync_outbox D4: the persisted cloud-write queue.
+  describe('outbox', () => {
+    const record = (id: string, queuedAt: string, extra: Partial<OutboxRecord> = {}): OutboxRecord => ({
+      key: outboxKey('owner-a', 'rosters', id), ownerId: 'owner-a', table: 'rosters', id, op: 'upsert', queuedAt, attempts: 0, ...extra,
+    });
+
+    it('lists oldest first, coalesces by key and deletes', async () => {
+      expect(await store.listOutbox()).toEqual([]);
+      await store.putOutbox(record('r2', '2026-09-21T10:00:02.000Z'));
+      await store.putOutbox(record('r1', '2026-09-21T10:00:01.000Z'));
+      expect((await store.listOutbox()).map((r) => r.id)).toEqual(['r1', 'r2']);
+
+      // A later delete of the same row REPLACES the pending upsert — one record per key.
+      await store.putOutbox(record('r1', '2026-09-21T10:00:03.000Z', { op: 'delete', attempts: 2, lastError: 'offline' }));
+      const rows = await store.listOutbox();
+      expect(rows.map((r) => `${r.id}:${r.op}`)).toEqual(['r2:upsert', 'r1:delete']);
+      expect(rows[1]).toMatchObject({ attempts: 2, lastError: 'offline' });
+
+      await store.deleteOutbox(outboxKey('owner-a', 'rosters', 'r2'));
+      expect((await store.listOutbox()).map((r) => r.id)).toEqual(['r1']);
+    });
+
+    it('is device-local: not owner-filtered, and the same row under two owners is two records', async () => {
+      await store.putOutbox(record('r1', '2026-09-21T10:00:01.000Z'));
+      await store.putOutbox({ ...record('r1', '2026-09-21T10:00:02.000Z'), key: outboxKey('owner-b', 'rosters', 'r1'), ownerId: 'owner-b' });
+      await store.setOwnerId('owner-b');
+      expect((await store.listOutbox()).map((r) => r.ownerId)).toEqual(['owner-a', 'owner-b']);
+    });
   });
 });

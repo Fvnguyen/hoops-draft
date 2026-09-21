@@ -13,6 +13,8 @@ import {
   IDLE_SYNC_STATUS,
   type ChallengeRun,
   type GameStore,
+  type OutboxRecord,
+  type OutboxStore,
   type SavedRoster,
   type StorageMeta,
   type SyncConflict,
@@ -21,7 +23,7 @@ import {
 } from './types';
 import { safeParseChallengeRun, safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
-export class MemoryGameStore implements GameStore {
+export class MemoryGameStore implements GameStore, OutboxStore {
   private ownerId: string | null = null;
   private sessions = new Map<string, DraftSession>();
   private rosters = new Map<string, SavedRoster>();
@@ -39,7 +41,9 @@ export class MemoryGameStore implements GameStore {
     for (const row of this.challengeRuns.values()) if (!row.ownerId) row.ownerId = this.ownerId;
   }
 
-  private owned<T extends { ownerId?: string }>(rows: T[]): T[] { return this.ownerId ? rows.filter((row) => row.ownerId === this.ownerId) : rows; }
+  /** sync_outbox D2: always filter, same rule as `IndexedDbGameStore`. */
+  private isOwned(row: { ownerId?: string } | null | undefined): boolean { return !!row && (row.ownerId ?? null) === this.ownerId; }
+  private owned<T extends { ownerId?: string }>(rows: T[]): T[] { return rows.filter((row) => this.isOwned(row)); }
 
   async getMeta(key: string): Promise<string | null> {
     return this.meta.get(key) ?? null;
@@ -47,6 +51,22 @@ export class MemoryGameStore implements GameStore {
 
   async setMeta(key: string, value: string): Promise<void> {
     this.meta.set(key, value);
+  }
+
+  // ── OutboxStore (sync_outbox D4) ──────────────────────────────────────
+
+  private outbox = new Map<string, OutboxRecord>();
+
+  async listOutbox(): Promise<OutboxRecord[]> {
+    return Array.from(this.outbox.values()).sort((a, b) => a.queuedAt.localeCompare(b.queuedAt));
+  }
+
+  async putOutbox(record: OutboxRecord): Promise<void> {
+    this.outbox.set(record.key, { ...record });
+  }
+
+  async deleteOutbox(key: string): Promise<void> {
+    this.outbox.delete(key);
   }
 
   /** No Dexie-style migrations in memory storage (SSR/tests) — nothing has ever
@@ -61,7 +81,7 @@ export class MemoryGameStore implements GameStore {
 
   async getDraftSession(id: string): Promise<DraftSession | null> {
     const row = this.sessions.get(id) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseDraftSession(row) : null;
   }
 
@@ -80,7 +100,7 @@ export class MemoryGameStore implements GameStore {
 
   async getRoster(id: string): Promise<SavedRoster | null> {
     const row = this.rosters.get(id) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSavedRoster(row) : null;
   }
 
@@ -99,13 +119,13 @@ export class MemoryGameStore implements GameStore {
 
   async getSeason(id: string): Promise<Season | null> {
     const row = this.seasons.get(id) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSeason(row) : null;
   }
 
   async getSeasonByRoster(rosterId: string): Promise<Season | null> {
     const row = [...this.seasons.values()].find((s) => s.rosterId === rosterId) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSeason(row) : null;
   }
 
@@ -123,13 +143,13 @@ export class MemoryGameStore implements GameStore {
 
   async getChallengeRun(id: string): Promise<ChallengeRun | null> {
     const row = this.challengeRuns.get(id) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseChallengeRun(row) : null;
   }
 
   async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
     const row = [...this.challengeRuns.values()].find((r) => r.rosterId === rosterId) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseChallengeRun(row) : null;
   }
 

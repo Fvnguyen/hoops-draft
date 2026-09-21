@@ -13,7 +13,7 @@ import type { DraftSession } from '@/engine/deckbuilder';
 import { normalizeBuiltRoster } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import { normalizeSeason } from '@/engine/season';
-import type { ChallengeRun, GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
+import type { ChallengeRun, GameStore, OutboxRecord, OutboxStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
 import { StorageQuotaError, CURRENT_CARD_SET_VERSION, IDLE_SYNC_STATUS } from './types';
 import { safeParseChallengeRun, safeParseDraftSession, safeParseSavedRoster, safeParseSeason } from './safeLoad';
 
@@ -27,7 +27,7 @@ interface MetaRow {
  * with an `.upgrade()`) whenever the on-disk shape changes — see D3 in
  * `docs/plans/plan_data_storage_2026-09-13.md`.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export class MagicBallDB extends Dexie {
   draftSessions!: Table<DraftSession, string>;
@@ -35,6 +35,8 @@ export class MagicBallDB extends Dexie {
   seasons!: Table<Season, string>;
   /** challenge_mode D11: one row per 82:0 run. */
   challengeRuns!: Table<ChallengeRun, string>;
+  /** sync_outbox D4: pending cloud writes, one row per `${ownerId}:${table}:${id}`. */
+  outbox!: Table<OutboxRecord, string>;
   /** Free-form key/value flags (e.g. the one-time localStorage migration marker). */
   meta!: Table<MetaRow, string>;
   /** Singleton row (id 'meta') holding the typed schema/card-set version — see StorageMeta. */
@@ -139,6 +141,27 @@ export class MagicBallDB extends Dexie {
         });
       });
 
+    // sync_outbox T1/D4: a brand-new table again, nothing to migrate — existing users gain
+    // an empty `outbox`. Indexed on `queuedAt` so the drain reads oldest-first.
+    this.version(5)
+      .stores({
+        draftSessions: 'id, timestamp, ownerId',
+        rosters: 'id, sessionId, ownerId',
+        seasons: 'id, rosterId, sessionId, ownerId',
+        challengeRuns: 'id, sessionId, rosterId, ownerId',
+        outbox: 'key, queuedAt',
+        meta: 'key',
+        storageMeta: 'id',
+      })
+      .upgrade(async (tx) => {
+        const existing = await tx.table<StorageMeta, string>('storageMeta').get('meta');
+        await tx.table<StorageMeta, string>('storageMeta').put({
+          id: 'meta',
+          schemaVersion: SCHEMA_VERSION,
+          cardSetVersion: existing?.cardSetVersion ?? CURRENT_CARD_SET_VERSION,
+        });
+      });
+
     // Brand-new databases never run the `.upgrade()` step above (there is no
     // earlier version to upgrade from), so stamp the meta row here too.
     this.on('populate', (tx) => {
@@ -182,7 +205,7 @@ async function guardQuota<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export class IndexedDbGameStore implements GameStore {
+export class IndexedDbGameStore implements GameStore, OutboxStore {
   private db: MagicBallDB;
   private ownerId: string | null = null;
 
@@ -204,8 +227,15 @@ export class IndexedDbGameStore implements GameStore {
     ]);
   }
 
+  /** sync_outbox D2: ALWAYS filter. With no owner (signed out, or before `setOwnerId`
+   *  has run) only never-claimed rows are visible — the old "no owner means everything"
+   *  showed the previous account's rows to whoever used the device next. */
+  private isOwned(row: { ownerId?: string } | null | undefined): boolean {
+    return !!row && (row.ownerId ?? null) === this.ownerId;
+  }
+
   private owned<T extends { ownerId?: string }>(rows: T[]): T[] {
-    return this.ownerId ? rows.filter((row) => row.ownerId === this.ownerId) : rows;
+    return rows.filter((row) => this.isOwned(row));
   }
 
   async listDraftSessions(): Promise<DraftSession[]> {
@@ -215,7 +245,7 @@ export class IndexedDbGameStore implements GameStore {
 
   async getDraftSession(id: string): Promise<DraftSession | null> {
     const row = (await this.db.draftSessions.get(id)) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseDraftSession(row) : null;
   }
 
@@ -237,7 +267,7 @@ export class IndexedDbGameStore implements GameStore {
 
   async getRoster(id: string): Promise<SavedRoster | null> {
     const row = (await this.db.rosters.get(id)) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSavedRoster(row) : null;
   }
 
@@ -259,13 +289,13 @@ export class IndexedDbGameStore implements GameStore {
 
   async getSeason(id: string): Promise<Season | null> {
     const row = (await this.db.seasons.get(id)) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSeason(row) : null;
   }
 
   async getSeasonByRoster(rosterId: string): Promise<Season | null> {
     const row = (await this.db.seasons.where('rosterId').equals(rosterId).first()) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseSeason(row) : null;
   }
 
@@ -286,13 +316,13 @@ export class IndexedDbGameStore implements GameStore {
 
   async getChallengeRun(id: string): Promise<ChallengeRun | null> {
     const row = (await this.db.challengeRuns.get(id)) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseChallengeRun(row) : null;
   }
 
   async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
     const row = (await this.db.challengeRuns.where('rosterId').equals(rosterId).first()) ?? null;
-    if (this.ownerId && row?.ownerId !== this.ownerId) return null;
+    if (!this.isOwned(row)) return null;
     return row ? safeParseChallengeRun(row) : null;
   }
 
@@ -351,6 +381,20 @@ export class IndexedDbGameStore implements GameStore {
 
   async setMeta(key: string, value: string): Promise<void> {
     await this.db.meta.put({ key, value });
+  }
+
+  // ── OutboxStore (sync_outbox D4) ──────────────────────────────────────
+
+  async listOutbox(): Promise<OutboxRecord[]> {
+    return this.db.outbox.orderBy('queuedAt').toArray();
+  }
+
+  async putOutbox(record: OutboxRecord): Promise<void> {
+    await guardQuota(async () => { await this.db.outbox.put(record); });
+  }
+
+  async deleteOutbox(key: string): Promise<void> {
+    await this.db.outbox.delete(key);
   }
 
   async getMeta(key: string): Promise<string | null> {

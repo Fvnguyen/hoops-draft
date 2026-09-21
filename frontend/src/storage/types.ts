@@ -188,7 +188,55 @@ export interface SyncConflict {
 export interface SyncStatus {
   state: 'idle' | 'syncing' | 'offline';
   pending: number;
+  /** sync_outbox D4: outbox records parked on a PERMANENT error (RLS, payload cap, unknown
+   *  table). They are not retried; the user's data is safe locally but not in the cloud. */
+  blocked: number;
   conflicts: SyncConflict[];
 }
 
-export const IDLE_SYNC_STATUS: SyncStatus = { state: 'idle', pending: 0, conflicts: [] };
+export const IDLE_SYNC_STATUS: SyncStatus = { state: 'idle', pending: 0, blocked: 0, conflicts: [] };
+
+// ── sync_outbox (D4): the persisted cloud-write queue ───────────────────────
+
+/**
+ * One pending cloud write. A save or delete resolves as soon as the LOCAL write lands and
+ * leaves one of these behind; the drain loop pushes it later and removes it on success.
+ * Coalesced per `key`, so ten saves of one roster while offline are one record. It carries
+ * no payload on purpose: the drain re-reads the CURRENT local row when it sends, so a
+ * late push can never upload (or merge with) a stale copy.
+ */
+export interface OutboxRecord {
+  /** `${ownerId}:${table}:${id}` — primary key, and what coalescing collapses on. */
+  key: string;
+  /** Whose write this is. A record is only ever drained while this owner is signed in,
+   *  so an account switch on one device cannot push user A's row under user B. */
+  ownerId: string;
+  table: SyncTable;
+  id: string;
+  op: 'upsert' | 'delete';
+  /** ISO time of the most recent enqueue for this key. */
+  queuedAt: string;
+  /** Failed network attempts so far; drives the backoff `min(60000, 2000 * 2 ** attempts)` ms. */
+  attempts: number;
+  lastError?: string;
+  /** Set on a permanent error: parked, skipped by the drain, counted in `SyncStatus.blocked`. */
+  blocked?: boolean;
+}
+
+export function outboxKey(ownerId: string, table: SyncTable, id: string): string {
+  return `${ownerId}:${table}:${id}`;
+}
+
+/**
+ * Where the outbox lives. Implemented by the LOCAL stores only (IndexedDb, Memory) —
+ * `SupabaseGameStore` requires `GameStore & OutboxStore` from the store it wraps. Device-
+ * local like `getMeta`: never owner-filtered by the store (the drain filters by
+ * `OutboxRecord.ownerId`), never exported, never synced.
+ */
+export interface OutboxStore {
+  /** Every record, oldest `queuedAt` first. */
+  listOutbox(): Promise<OutboxRecord[]>;
+  /** Upsert by `key`. */
+  putOutbox(record: OutboxRecord): Promise<void>;
+  deleteOutbox(key: string): Promise<void>;
+}
