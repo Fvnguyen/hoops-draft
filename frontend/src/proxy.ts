@@ -1,16 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-
-const PUBLIC_PATHS = new Set(['/login', '/signup', '/pending']);
-const PROTECTED_PREFIXES = ['/draft', '/rosters', '/season', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview', '/theater-preview'];
-
-function isProtected(pathname: string) {
-  // The home page is gated too — an unauthenticated visitor should always
-  // land on /login, never see the app shell first and only get bounced once
-  // they click something.
-  if (pathname === '/') return true;
-  return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
+import { PUBLIC_PATHS, isProtected } from '@/lib/routeGate';
 
 // The project has multiple live production aliases (hoops-draft.vercel.app,
 // hoops-draft-fvnguyen1.vercel.app, hoops-draft-git-main-fvnguyen1.vercel.app,
@@ -53,7 +43,7 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // getUser() silently refreshes an expired access token via the refresh-token
+  // The session check below silently refreshes an expired access token via the refresh-token
   // cookie and hands the new pair to `setAll` above, landing on `response` —
   // but a redirect built as `NextResponse.redirect(...)` is a brand-new object
   // that doesn't carry those refreshed cookies. Without copying them over here,
@@ -68,23 +58,34 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   };
 
-  const { data: { user } } = await supabase.auth.getUser();
+  // plan mobile_load D6: `getClaims()`, not `getUser()`. This project signs its JWTs with an
+  // asymmetric key (ES256, published at /auth/v1/.well-known/jwks.json), so the signature is
+  // verified HERE against the cached JWKS instead of with a round trip to the auth server
+  // on every request — and these functions run in iad1 while Supabase is in eu-central-1,
+  // so that round trip crossed the Atlantic. It still goes through `getSession()`, so an
+  // expired token is refreshed exactly as before. If the project ever falls back to a
+  // symmetric (HS256) key, `getClaims()` calls `getUser()` itself: slower, never less safe.
+  // Trade-off: a session revoked elsewhere stays valid here until its access token expires
+  // (one hour) — acceptable for a page gate, and the same trust the database already
+  // places in the token for RLS.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = typeof claimsData?.claims?.sub === 'string' ? claimsData.claims.sub : null;
   const pathname = request.nextUrl.pathname;
 
   if (PUBLIC_PATHS.has(pathname) || pathname.startsWith('/api/auth')) {
-    if (user && (pathname === '/login' || pathname === '/signup')) {
+    if (userId && (pathname === '/login' || pathname === '/signup')) {
       return redirect(new URL('/', request.url));
     }
     return response;
   }
 
   if (!isProtected(pathname)) return response;
-  if (!user) return redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url));
+  if (!userId) return redirect(new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url));
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('status')
-    .eq('id', user.id)
+    .eq('id', userId)
     .maybeSingle();
 
   if (profile?.status !== 'APPROVED') {
@@ -96,5 +97,22 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    {
+      // Skipped entirely: build output, optimized images, the PWA manifest and service
+      // worker, and static files by extension. None of them is an app route, and each one
+      // used to cost a session check (the manifest and every `.json` on every page load).
+      source: '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|json|txt|woff2)$).*)',
+      // `<Link>` prefetches are skipped too: the home page alone prefetches several gated
+      // routes, and each one paid the `profiles` lookup above for a payload the user may
+      // never open. Nothing is exposed by this — every page here is a client component
+      // whose data lives in the browser's IndexedDB, so the prefetched payload is the same
+      // static shell already public under /_next/static; server data sits behind /api
+      // routes that check the session themselves. The real navigation still runs the gate.
+      missing: [
+        { type: 'header', key: 'next-router-prefetch' },
+        { type: 'header', key: 'purpose', value: 'prefetch' },
+      ],
+    },
+  ],
 };
