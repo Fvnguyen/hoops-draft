@@ -146,8 +146,9 @@ Plan: `docs/completed/plan_mobile_load_2026-09-21.md` (T1-T11). Measure with
   `mb-assets-v1` survives. **Kill switch:** deploy with `NEXT_PUBLIC_DISABLE_SW=1`.
 - `next.config.ts` cannot resolve `@/` in files it imports transitively: `lib/cacheHeaders.ts`
   and `lib/headshotThumb.ts` use relative imports on purpose.
-**Open:** owner phone UAT (install icon, landscape cutout padding, back/Leave in the deck
-builder); confirm the deployment reports `fra1`.
+Deployed 2026-09-21 (`30c4878`): deployment reports `fra1`, cache headers, the gate and
+`/sw.js` (cache `mb-static-<sha>`) verified on hoops-draft.vercel.app. **Open:** owner phone
+UAT (install icon, landscape cutout padding, back/Leave in the deck builder).
 
 ## How to run everything
 
@@ -209,7 +210,9 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    deployment (estimate; `frontend/public` is 104 MB: 481 headshot PNGs 87 MB + ~20 MB card-back/
    arena/pack art), nothing pruned: 82 hoops-draft deployments (57 production, 25 preview).
    `frontend/vercel.json`: `ignoreCommand` skips builds with no `frontend/` change since
-   `VERCEL_GIT_PREVIOUS_SHA`, and `claude/*` branches don't build (drop that block if previews are
+   `VERCEL_GIT_PREVIOUS_SHA` (it must exit ONLY 0 = skip or 1 = build: Vercel clones shallowly, a
+   push deeper than the clone made `git diff` exit 128 and the deploy ERRORED, fixed in `30c4878`),
+   and `claude/*` branches don't build (drop that block if previews are
    wanted for phone UAT). Root Directory = `frontend` is VERIFIED (build log runs `frontend@0.1.0
    build`). Owner actions: run `scripts/prune-vercel-deployments.ps1` (dry run by default, `-Execute`
    deletes permanently; keeps live + 4 newest READY production + last 48h; token via
