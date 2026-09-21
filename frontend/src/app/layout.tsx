@@ -6,6 +6,7 @@ import { WhatsNewSplash } from '@/components/WhatsNewSplash';
 import { StorageProvider } from '@/components/StorageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 import { OrientationGate } from '@/components/OrientationGate';
+import { THEME_COLOR } from './manifest';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -26,8 +27,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Hoops Draft",
   description: "The Ultimate Basketball TCG Experience",
+  // mobile_load T9/D9: iOS Safari ignores an SVG apple-touch-icon, so this points at the
+  // 180x180 PNG `scripts/gen-icons.mjs` renders (flattened onto the manifest's dark
+  // background). No `icon` entry here: `app/favicon.ico` (Next's file-convention icon)
+  // already covers the browser-tab favicon; the PNGs in `manifest.ts` are what Android's
+  // install prompt/splash screen read, not `metadata.icons`.
   icons: {
-    apple: '/icons/icon.svg',
+    apple: '/icons/apple-touch-icon.png',
   },
   appleWebApp: {
     title: 'Hoops Draft',
@@ -41,9 +47,12 @@ export const metadata: Metadata = {
 };
 
 // Next 16 already emits `width=device-width, initial-scale=1` by default; only add
-// what that default is missing (safe-area insets for notches/gesture bars on install).
+// what that default is missing (safe-area insets for notches/gesture bars on install,
+// and a theme-color meta tag so the OS status bar / task switcher chrome matches the
+// dark shell rather than defaulting to white).
 export const viewport: Viewport = {
   viewportFit: 'cover',
+  themeColor: THEME_COLOR,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

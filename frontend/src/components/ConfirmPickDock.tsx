@@ -28,7 +28,10 @@ export const ConfirmPickDock = forwardRef<HTMLButtonElement, ConfirmPickDockProp
         transition={{ duration: 0.18 }}
         // `absolute`, not `fixed`: it docks inside the draft's main column (a `relative`
         // flex child beside the sidebar column), so it can never sit over the sidebar.
-        className="absolute z-40 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))]"
+        // mobile_load T9/D9: `--safe-bottom` (globals.css) is the true inset in the
+        // zoomed coordinate space — a raw `env()` here would land too close to the
+        // gesture bar once the phone `zoom` shrinks it visually.
+        className="absolute z-40 right-4 bottom-[max(1rem,var(--safe-bottom))]"
       >
         {/* Constant label (owner call after live review): the player's name made the
          *  control wide and loud; the selected card is already highlighted in the spread. */}

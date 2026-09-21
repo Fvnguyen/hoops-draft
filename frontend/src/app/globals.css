@@ -205,6 +205,50 @@ html {
   min-height: calc(100dvh / var(--zoom));
 }
 
+/* mobile_load T9/D9: `env(safe-area-inset-*)` is a physical length. Under `zoom` it
+ * renders shrunk to `--zoom` of itself (a 44px notch reads as ~31px at --zoom: 0.7), so
+ * anything positioned with a raw `env()` value sits too close to the real cutout.
+ * Dividing by `--zoom` restores the true, physical inset in the zoomed coordinate space;
+ * outside the phone breakpoint `--zoom` is 1 so these just equal `env()`. Defined once at
+ * top level (not inside the media query below) so they always track whatever `--zoom`
+ * is currently in effect. */
+:root {
+  --safe-top: calc(env(safe-area-inset-top, 0px) / var(--zoom));
+  --safe-right: calc(env(safe-area-inset-right, 0px) / var(--zoom));
+  --safe-bottom: calc(env(safe-area-inset-bottom, 0px) / var(--zoom));
+  --safe-left: calc(env(safe-area-inset-left, 0px) / var(--zoom));
+}
+
+@media (pointer: coarse) and (max-width: 999px) {
+  /* Landscape is the only orientation this app supports on phone (OrientationGate blocks
+   * portrait), and in landscape the display-cutout sits on the LEFT or RIGHT edge, not
+   * the top. Nothing padded for it before this.
+   *
+   * `body` gets the padding rather than each route's own shell (`DraftRoom`'s and
+   * `DeckBuilder`'s root `h-dvh-z` divs): both are plain normal-flow children of `body`,
+   * so shrinking body's content box insets them for free, in one rule, without touching
+   * their own height math (`h-dvh-z`/`min-h-dvh-z` above are purely vertical and
+   * untouched by horizontal padding on an ancestor).
+   *
+   * `position: fixed` elements are positioned against the viewport, not against `body`'s
+   * padding box, so body padding does not reach them — the top nav bar (`TopNav`,
+   * `fixed left-0 top-0 w-full`) is the one fixed element that both spans the full width
+   * and sits flush against a physical edge in every route/state, so it gets its own rule
+   * on top of its existing `px-4`, addressed by its stable test id rather than editing
+   * the component. (Other `fixed inset-0` layers — modals, drawers, scrims — are full-
+   * bleed backgrounds whose actual content already sits inset from the edges via its own
+   * padding, so a bleeding scrim under the cutout loses nothing.) */
+  body {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  [data-testid="top-nav-bar"] {
+    padding-left: calc(1rem + var(--safe-left));
+    padding-right: calc(1rem + var(--safe-right));
+  }
+}
+
 body {
   background: var(--surface);
   color: var(--ink);
