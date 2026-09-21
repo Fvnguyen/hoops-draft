@@ -101,10 +101,36 @@ function NotificationBell({ notices, unreadCount, markChangelogSeen, dismissNoti
   );
 }
 
+/** render_and_engine_perf D11: the name/email/season-record blurb shown both in the
+ *  desktop `ProfileMenu` dropdown and in the game route's combined menu (`TopNav`'s
+ *  `isGame` branch below) — identical markup in both places, previously duplicated by
+ *  hand. Takes `stats` as a prop rather than calling `useUserSeasonStats()` itself: the
+ *  two call sites are mutually exclusive branches of the same `TopNav` render (only one
+ *  of `ProfileMenu`/the game menu ever mounts at once), so one hook call at the top of
+ *  `TopNav` — already unconditional there — covers both instead of each one re-fetching
+ *  the same storage read independently. */
+function ProfileSummary({ profile, stats }: { profile: CurrentProfile; stats: ReturnType<typeof useUserSeasonStats> }) {
+  return (
+    <>
+      <p className="px-3 py-2 font-bold text-ink">{profile.display_name}</p>
+      <p className="truncate px-3 text-xs text-ink-subtle">{profile.email}</p>
+      {stats.seasonsPlayed > 0 && (
+        <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+          {stats.seasonsPlayed} season{stats.seasonsPlayed === 1 ? '' : 's'} · {stats.wins}-{stats.losses} · {stats.avgWins} W avg
+        </p>
+      )}
+      {stats.challenge.completed > 0 && stats.challenge.best && (
+        <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+          82:0 Challenges: {stats.challenge.completed} completed, best {stats.challenge.best.wins}-{stats.challenge.best.losses} ({stats.challenge.best.grade})
+        </p>
+      )}
+    </>
+  );
+}
+
 /** The dropdown itself — name/email, season record, admin tools when applicable, sign
  *  out. `inverse` swaps to light text for use over the home page's dark hero. */
-function ProfileMenu({ profile, onSignOut, inverse = false }: { profile: CurrentProfile; onSignOut: () => void; inverse?: boolean }) {
-  const stats = useUserSeasonStats();
+function ProfileMenu({ profile, stats, onSignOut, inverse = false }: { profile: CurrentProfile; stats: ReturnType<typeof useUserSeasonStats>; onSignOut: () => void; inverse?: boolean }) {
   return (
     <Menu>
       <MenuTrigger label="Profile menu" inverse={inverse}>
@@ -113,18 +139,7 @@ function ProfileMenu({ profile, onSignOut, inverse = false }: { profile: Current
       </MenuTrigger>
       <MenuPanel>
         <MenuSection>
-          <p className="px-3 py-2 font-bold text-ink">{profile.display_name}</p>
-          <p className="truncate px-3 text-xs text-ink-subtle">{profile.email}</p>
-          {stats.seasonsPlayed > 0 && (
-            <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
-              {stats.seasonsPlayed} season{stats.seasonsPlayed === 1 ? '' : 's'} · {stats.wins}-{stats.losses} · {stats.avgWins} W avg
-            </p>
-          )}
-          {stats.challenge.completed > 0 && stats.challenge.best && (
-            <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
-              82:0 Challenges: {stats.challenge.completed} completed, best {stats.challenge.best.wins}-{stats.challenge.best.losses} ({stats.challenge.best.grade})
-            </p>
-          )}
+          <ProfileSummary profile={profile} stats={stats} />
         </MenuSection>
         <MenuSection>
           <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
@@ -171,10 +186,11 @@ function ClusterPlaceholders({ inverse = false }: { inverse?: boolean }) {
 /** The auth cluster region (D6): always the same shape regardless of auth status, so the
  *  bar never reflows once the `/api/auth/me` fetch settles. `loading` reserves the same
  *  space `signed-in` will use; `signed-out` renders nothing. */
-function AuthCluster({ profile, status, notices, onSignOut, inverse = false }: {
+function AuthCluster({ profile, status, notices, stats, onSignOut, inverse = false }: {
   profile: CurrentProfile | null;
   status: ReturnType<typeof useAuthStatus>;
   notices: ReturnType<typeof useNotices>;
+  stats: ReturnType<typeof useUserSeasonStats>;
   onSignOut: () => void;
   inverse?: boolean;
 }) {
@@ -192,7 +208,7 @@ function AuthCluster({ profile, status, notices, onSignOut, inverse = false }: {
           inverse={inverse}
         />
       </ClusterSlot>
-      <ClusterSlot width="w-11 sm:w-36"><ProfileMenu profile={profile} onSignOut={onSignOut} inverse={inverse} /></ClusterSlot>
+      <ClusterSlot width="w-11 sm:w-36"><ProfileMenu profile={profile} stats={stats} onSignOut={onSignOut} inverse={inverse} /></ClusterSlot>
     </div>
   );
 }
@@ -254,18 +270,7 @@ export function TopNav() {
             </MenuSection>
             {status === 'signed-in' && profile && (
               <MenuSection>
-                <p className="px-3 py-2 font-bold text-ink">{profile.display_name}</p>
-                <p className="truncate px-3 text-xs text-ink-subtle">{profile.email}</p>
-                {seasonStats.seasonsPlayed > 0 && (
-                  <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
-                    {seasonStats.seasonsPlayed} season{seasonStats.seasonsPlayed === 1 ? '' : 's'} · {seasonStats.wins}-{seasonStats.losses} · {seasonStats.avgWins} W avg
-                  </p>
-                )}
-                {seasonStats.challenge.completed > 0 && seasonStats.challenge.best && (
-                  <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
-                    82:0 Challenges: {seasonStats.challenge.completed} completed, best {seasonStats.challenge.best.wins}-{seasonStats.challenge.best.losses} ({seasonStats.challenge.best.grade})
-                  </p>
-                )}
+                <ProfileSummary profile={profile} stats={seasonStats} />
                 <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
                 {profile.role === 'ADMIN' && (
                   <>
@@ -291,7 +296,7 @@ export function TopNav() {
     return (
       <>
         <div className="fixed right-4 top-4 z-50">
-          <AuthCluster profile={profile} status={status} notices={notices} onSignOut={signOut} inverse />
+          <AuthCluster profile={profile} status={status} notices={notices} stats={seasonStats} onSignOut={signOut} inverse />
         </div>
         {status === 'signed-in' && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
       </>
@@ -307,7 +312,7 @@ export function TopNav() {
         <div className="ml-4 flex-1">
           <h1 className="font-display text-xl uppercase tracking-tight text-ink">{getPageTitle()}</h1>
         </div>
-        <AuthCluster profile={profile} status={status} notices={notices} onSignOut={signOut} />
+        <AuthCluster profile={profile} status={status} notices={notices} stats={seasonStats} onSignOut={signOut} />
       </div>
       {status === 'signed-in' && <SyncConflictPrompt conflicts={syncStatus.conflicts} />}
     </>

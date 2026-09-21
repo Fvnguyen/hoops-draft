@@ -7,7 +7,8 @@ import type { ChallengeRun } from '@/storage/types';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase, HUMAN_SEAT_ID, type Season, type SeasonPhase } from '@/engine/season';
 import { gradeForWins } from '@/engine/challenge';
-import { DraftCard, PlayerCard, PlayCard, PlayerCardData } from '@/components/PlayerCard';
+import { DraftCard, PlayerCardFront, PlayerHoverPreview, PlayCard, PlayerCardData } from '@/components/PlayerCard';
+import { useLongPressPreview } from '@/hooks/useLongPressPreview';
 import { useRouter } from 'next/navigation';
 import { Button, IconButton } from '@/components/ui';
 import {
@@ -28,6 +29,31 @@ const PHASE_CLASS: Record<SeasonPhase, string> = {
   live: 'bg-positive-soft text-positive',
   completed: 'bg-info-soft text-info',
 };
+
+// D11 (render_and_engine_perf): the 5-across starter summary never needs to flip — no
+// `onClick` was ever wired to the old `PlayerCard` here, hover just flipped it to show the
+// back, and nothing on this page reads that state — so it renders the static front face
+// directly instead of paying for the flip wrapper's extra state/DOM/motion on every roster
+// row. Outer box mirrors `PlayerCard`'s own default (non-compact, no `onClick`) wrapper —
+// `@container w-full ... aspect-[5/7]` plus the `relative` sizing div `PlayerCardFront`'s
+// `absolute inset-0` needs — so the rest position is unchanged. Module-level (not defined
+// inside `RostersPage`) so its identity is stable across renders.
+// What it KEEPS from `PlayerCard`: the long-press preview (a phone's only way to read the
+// badges here) and the owner's no-context-menu-on-a-card rule that rides on the same hook.
+function RosterStarterCard({ player }: { player: PlayerCardData }) {
+  const longPress = useLongPressPreview();
+  return (
+    <div
+      className="group @container w-full select-none [-webkit-touch-callout:none] aspect-[5/7] transition-transform duration-200 hover:-translate-y-1"
+      {...longPress.handlers}
+    >
+      {longPress.open && <PlayerHoverPreview player={player} />}
+      <div className="w-full h-full relative">
+        <PlayerCardFront player={player} />
+      </div>
+    </div>
+  );
+}
 
 export default function RostersPage() {
   const router = useRouter();
@@ -247,8 +273,8 @@ export default function RostersPage() {
                 key={rosterObj.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="rounded-xl border border-line bg-surface-raised shadow-sm"
+                transition={{ delay: Math.min(i * 0.1, 1.0) }}
+                className="rounded-xl border border-line bg-surface-raised shadow-sm [content-visibility:auto] [contain-intrinsic-size:auto_520px]"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-line bg-surface-sunken px-6 py-4">
                   <div className="min-w-0">
@@ -352,7 +378,7 @@ export default function RostersPage() {
                             <div key={pos} className="relative flex flex-1 min-w-[148px] flex-col gap-2">
                               <div className="text-center text-sm font-black text-ink">{pos}</div>
                               {starter ? (
-                                <PlayerCard player={starter} />
+                                <RosterStarterCard player={starter} />
                               ) : (
                                 <div className="flex aspect-[2.5/3.5] items-center justify-center rounded-lg border border-dashed border-line-strong bg-surface-sunken text-xs font-bold uppercase text-ink-muted">
                                   Empty
