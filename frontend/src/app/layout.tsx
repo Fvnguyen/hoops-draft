@@ -6,6 +6,7 @@ import { WhatsNewSplash } from '@/components/WhatsNewSplash';
 import { StorageProvider } from '@/components/StorageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 import { OrientationGate } from '@/components/OrientationGate';
+import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 import { THEME_COLOR } from './manifest';
 
 const inter = Inter({
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <TopNav />
             <WhatsNewSplash />
             <OrientationGate />
+            <ServiceWorkerRegistrar />
             {children}
           </StorageProvider>
         </AuthProvider>
