@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
@@ -254,17 +254,22 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     }
   }, [humanPack, incomingPack]);
 
-  const podAverageIdentity = averageRosterIdentities(
-    seats
-      .filter(seat => seat.isBot)
-      .map(seat => {
-        const players = seat.drafted.filter(
-          (card): card is PlayerCardData => card.type === 'Player'
-        );
-        const botRoster = buildBotRoster(seat.drafted, seat.botProfile);
-        return calcRosterIdentity(resolveDepthChart(players, botRoster.depthChart));
-      })
-  );
+  // Only DeckBuilder (mounted once deckbuilding starts) reads this; `buildBotRoster` for
+  // all 7 bot seats is too heavy to redo on every card tap / timer tick during the draft.
+  const podAverageIdentity = useMemo(() => {
+    if (draftState !== 'deckbuilding') return undefined;
+    return averageRosterIdentities(
+      seats
+        .filter(seat => seat.isBot)
+        .map(seat => {
+          const players = seat.drafted.filter(
+            (card): card is PlayerCardData => card.type === 'Player'
+          );
+          const botRoster = buildBotRoster(seat.drafted, seat.botProfile);
+          return calcRosterIdentity(resolveDepthChart(players, botRoster.depthChart));
+        })
+    );
+  }, [seats, draftState]);
 
   // Persist the full draft pod + pick history when transitioning to deckbuilding
   useEffect(() => {

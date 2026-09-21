@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { GameTheater, TeamInfo, PossessionEvent, boxScoreThrough } from '../engine/game';
 import type { StoredGameResult } from '../engine/season';
 import { Play as PlayIcon, Pause, SkipForward, ArrowDown } from 'lucide-react';
@@ -19,9 +19,26 @@ import { BoxScoreTable, GameSummaryPanel, SIDE_CHIP, SIDE_TEXT } from './BoxScor
 /** The season's human seat id (engine/season.ts HUMAN_SEAT_ID) — the default "you". */
 const DEFAULT_USER_SEAT = 'human-0';
 
+// ── Dev-only render instrumentation (T11) ──────────────────────────────────────
+//
+// Proves the memoization below instead of asserting it: `tests/game-view-render.spec.ts`
+// reads this off `window` while a game plays out and checks that `TeamBlock`'s render
+// count rises far slower than the possession counter. Compiled away in production builds
+// (`process.env.NODE_ENV` is statically replaced, so the dead branch is eliminated).
+declare global {
+  interface Window {
+    __gameViewRenderCounts?: Record<string, number>;
+  }
+}
+
+function bumpRenderCount(name: string): void {
+  if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return;
+  window.__gameViewRenderCounts = window.__gameViewRenderCounts ?? {};
+  window.__gameViewRenderCounts[name] = (window.__gameViewRenderCounts[name] ?? 0) + 1;
+}
+
 interface GameViewProps {
   game: GameTheater;
-  onComplete?: () => void;
   /** Fires synchronously (no delay) whenever `isComplete` changes, so a caller can gate
    *  UI — e.g. an exit control — on whether the game has actually finished playing out. */
   onCompletionChange?: (isComplete: boolean) => void;
@@ -46,6 +63,10 @@ const SPEEDS = [
   { label: '4×', ms: 125 },
 ] as const;
 const CRUNCH_POPUP_MS = 1500;
+
+/** Stable fallback for `liveBox` on ticks where it isn't needed (D9) — a fixed reference
+ *  so the `useMemo` it lives in doesn't itself churn the render when gated off. */
+const EMPTY_BOX: ReturnType<typeof boxScoreThrough> = { home: [], away: [] };
 
 function playerName(players: PlayerCardData[], id?: string): string {
   if (!id) return 'Unassigned';
@@ -136,7 +157,7 @@ function TeamMechanics({ team, playbook }: { team: TeamInfo; playbook: PlaybookS
   );
 }
 
-export function TaleOfTheTape({ game }: { game: GameTheater }) {
+export const TaleOfTheTape = memo(function TaleOfTheTape({ game }: { game: GameTheater }) {
   const homeDepth = resolveDepthChart(game.homeTeam.players, game.homeTeam.depthChart);
   const homeId = calcRosterIdentity(homeDepth);
   const awayDepth = resolveDepthChart(game.awayTeam.players, game.awayTeam.depthChart);
@@ -187,7 +208,7 @@ export function TaleOfTheTape({ game }: { game: GameTheater }) {
       </div>
     </div>
   );
-}
+});
 
 /**
  * D1: a completed game whose `balanceVersion` no longer matches the current engine
@@ -250,7 +271,10 @@ function deriveClocks(events: PossessionEvent[]): string[] {
   });
 }
 
-function BeatRow({ beat, text, game }: { beat: Beat; text: string; game: GameTheater }) {
+/** Memoized (D9): `beat` and `game` are stable references across ticks (beats are
+ *  computed once for the whole theater); only rows the sliding window drops or adds
+ *  should re-render, not the ~60 already on screen. */
+const BeatRow = memo(function BeatRow({ beat, text, game }: { beat: Beat; text: string; game: GameTheater }) {
   const scoreLine = (score: [number, number]) => `${game.awayTeam.name} ${score[1]} · ${game.homeTeam.name} ${score[0]}`;
   switch (beat.type) {
     case 'run':
@@ -302,12 +326,59 @@ function BeatRow({ beat, text, game }: { beat: Beat; text: string; game: GameThe
     default:
       return <div className="px-3 py-0.5 text-xs italic text-ink-muted">{text}</div>;
   }
-}
+});
 
-function TeamBlock({ game, side, score, isUser, seasonLine }: { game: GameTheater; side: Side; score: number; isUser: boolean; seasonLine: string }) {
+/** Memoized (D9): `event`/`text`/`clock` are all read from arrays sourced once per game
+ *  (`game.possessions`, `texts`, `clocks`), so their identities are stable across ticks —
+ *  passed as individual props (not the sliding-window `row` wrapper, which is rebuilt
+ *  every tick) so a row already on screen actually skips re-render. */
+const PossessionRow = memo(function PossessionRow({ event, text, clock, game, userSide }: {
+  event: PossessionEvent;
+  text: string;
+  clock: string;
+  game: GameTheater;
+  userSide: Side | null;
+}) {
+  const isScoring = event.outcome === '2pt' || event.outcome === '3pt' || event.outcome === 'and1';
+  const side: Side = event.team;
+  const isUserRow = userSide === side;
+  return (
+    <div
+      className={cn(
+        'flex items-start gap-2 py-1 px-2 rounded text-xs border-l-2',
+        isUserRow ? (side === 'home' ? 'border-l-accent' : 'border-l-info') : 'border-l-transparent',
+        isScoring ? (side === 'home' ? 'bg-accent-soft/40 font-bold text-ink-strong' : 'bg-info-soft font-bold text-ink-strong') : 'text-ink-muted',
+        event.isClutch && 'ring-1 ring-warn/40',
+      )}
+    >
+      <span className="shrink-0 font-mono text-ink-subtle w-14 whitespace-nowrap">{event.quarter <= 4 ? `Q${event.quarter}` : `OT${event.quarter - 4}`} {clock}</span>
+      <span className={cn('shrink-0 text-xs font-black uppercase px-1 rounded w-10 text-center', SIDE_CHIP[side])}>{abbrev(side === 'home' ? game.homeTeam.name : game.awayTeam.name)}</span>
+      <span className="flex-1 flex items-center flex-wrap gap-1.5">
+        {event.calledPlays?.map((call, idx) => (
+          <span
+            key={idx}
+            className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
+          >
+            {call.side === 'offense' ? '▶' : '🛡'} {call.name}
+          </span>
+        ))}
+        <span>{text}</span>
+      </span>
+      {isScoring && (
+        <span className="shrink-0 font-mono text-xs text-ink-subtle">
+          {event.runningScore[1]}-{event.runningScore[0]}
+        </span>
+      )}
+    </div>
+  );
+});
+
+/** `archetypes` is computed once per team by the parent (`useMemo` keyed on the team
+ *  object, not on `score`) so a scoring play doesn't re-run archetype evaluation. */
+const TeamBlock = memo(function TeamBlock({ game, side, score, isUser, seasonLine, archetypes }: { game: GameTheater; side: Side; score: number; isUser: boolean; seasonLine: string; archetypes: ArchetypeStatus[] }) {
   const team = side === 'home' ? game.homeTeam : game.awayTeam;
   const isHome = side === 'home';
-  const archetypes = teamArchetypeStatuses(team);
+  useEffect(() => { bumpRenderCount('TeamBlock'); });
   return (
     <div className={cn('flex-1 flex flex-col justify-center min-w-0', isHome ? 'items-end text-right' : 'items-start text-left')}>
       <div className={cn('flex items-center gap-2 mb-1', isHome && 'flex-row-reverse')}>
@@ -330,11 +401,11 @@ function TeamBlock({ game, side, score, isUser, seasonLine }: { game: GameTheate
       <div className="mt-3 hidden sm:block"><TeamStarters team={team} isHome={isHome} /></div>
     </div>
   );
-}
+});
 
 // ── GameView ──────────────────────────────────────────────────────────────────
 
-export function GameView({ game, onComplete, onCompletionChange, context, initialState }: GameViewProps) {
+export function GameView({ game, onCompletionChange, context, initialState }: GameViewProps) {
   const [currentPoss, setCurrentPoss] = useState(initialState?.possession ?? -1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(0);
@@ -345,6 +416,14 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const shownCrunchRef = useRef<Set<number>>(new Set());
 
+  // T11 test hook: exposes the possession counter alongside the render counts above so
+  // the spec can correlate "ticks elapsed" with "TeamBlock renders" from one object.
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return;
+    window.__gameViewRenderCounts = window.__gameViewRenderCounts ?? {};
+    window.__gameViewRenderCounts.__currentPoss = currentPoss;
+  }, [currentPoss]);
+
   const totalPoss = game.possessions.length;
   const isComplete = currentPoss >= totalPoss - 1;
   const currentEvent = currentPoss >= 0 ? game.possessions[currentPoss] : null;
@@ -353,6 +432,12 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
 
   const userSeatId = context?.userSeatId ?? DEFAULT_USER_SEAT;
   const userSide: Side | null = game.homeTeam.seatId === userSeatId ? 'home' : game.awayTeam.seatId === userSeatId ? 'away' : null;
+
+  // D9: computed once per team, not once per tick — `TeamBlock` re-renders on every
+  // scoring play (its score prop), but a team's archetype selection never changes
+  // mid-game, so it must not be recomputed along with the score.
+  const homeArchetypes = useMemo(() => teamArchetypeStatuses(game.homeTeam), [game.homeTeam]);
+  const awayArchetypes = useMemo(() => teamArchetypeStatuses(game.awayTeam), [game.awayTeam]);
 
   // Narration (D2), beats (D4) and clocks are pure functions of the theater: computed once.
   const texts = useMemo(() => renderTheater(game), [game]);
@@ -365,7 +450,14 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
   }, [beats]);
   /** Indices of the first clutch possession per period (D10): speed snaps to 1x here. */
   const crunchStarts = useMemo(() => new Set(beats.filter(b => b.type === 'clutch_start').map(b => b.atIndex + 1)), [beats]);
-  const liveBox = useMemo(() => boxScoreThrough(game, currentPoss), [game, currentPoss]);
+  // D9: replaying the box score from possession 0 is only needed while the box-score tab
+  // is actually visible (and the game isn't over — the final tab reads `game.boxScore`
+  // directly instead, see below) — every other tick, on every other tab, skip it.
+  const showLiveBox = activeTab === 'boxScore' && !isComplete;
+  const liveBox = useMemo(
+    () => (showLiveBox ? boxScoreThrough(game, currentPoss) : EMPTY_BOX),
+    [game, currentPoss, showLiveBox]
+  );
   const summary = useMemo(() => {
     if (!isComplete || game.boxScore.home.length === 0 || game.boxScore.away.length === 0) return null;
     return summarizeGame(game, userSeatId);
@@ -419,14 +511,6 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
     setAutoScroll(atBottom);
   };
 
-  // Notify parent on complete
-  useEffect(() => {
-    if (isComplete && onComplete) {
-      const t = setTimeout(onComplete, 500);
-      return () => clearTimeout(t);
-    }
-  }, [isComplete, onComplete]);
-
   useEffect(() => {
     onCompletionChange?.(isComplete);
   }, [isComplete, onCompletionChange]);
@@ -477,7 +561,7 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
       {/* Scoreboard */}
       <div className="bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden">
         <div className="flex items-stretch justify-between p-4 border-b border-line bg-surface-sunken gap-2">
-          <TeamBlock game={game} side="away" score={score[1]} isUser={userSide === 'away'} seasonLine={seasonLine('away')} />
+          <TeamBlock game={game} side="away" score={score[1]} isUser={userSide === 'away'} seasonLine={seasonLine('away')} archetypes={awayArchetypes} />
 
           {/* Center: status, clock, ticker */}
           <div className="flex flex-col items-center justify-center px-2 sm:px-6 min-w-[110px] sm:min-w-[160px] text-center">
@@ -504,7 +588,7 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
             )}
           </div>
 
-          <TeamBlock game={game} side="home" score={score[0]} isUser={userSide === 'home'} seasonLine={seasonLine('home')} />
+          <TeamBlock game={game} side="home" score={score[0]} isUser={userSide === 'home'} seasonLine={seasonLine('home')} archetypes={homeArchetypes} />
         </div>
 
         {/* Quarter scores bar */}
@@ -601,43 +685,10 @@ export function GameView({ game, onComplete, onCompletionChange, context, initia
           <>
             <div ref={feedRef} onScroll={handleFeedScroll} className="flex-1 overflow-y-auto p-3">
               <div className="flex flex-col gap-0.5">
-                {rows.map(row => {
-                  if (row.kind === 'beat') return <BeatRow key={row.key} beat={row.beat} text={row.text} game={game} />;
-                  const poss = row.event;
-                  const isScoring = poss.outcome === '2pt' || poss.outcome === '3pt' || poss.outcome === 'and1';
-                  const side: Side = poss.team;
-                  const isUserRow = userSide === side;
-                  return (
-                    <div
-                      key={row.key}
-                      className={cn(
-                        'flex items-start gap-2 py-1 px-2 rounded text-xs border-l-2',
-                        isUserRow ? (side === 'home' ? 'border-l-accent' : 'border-l-info') : 'border-l-transparent',
-                        isScoring ? (side === 'home' ? 'bg-accent-soft/40 font-bold text-ink-strong' : 'bg-info-soft font-bold text-ink-strong') : 'text-ink-muted',
-                        poss.isClutch && 'ring-1 ring-warn/40',
-                      )}
-                    >
-                      <span className="shrink-0 font-mono text-ink-subtle w-14 whitespace-nowrap">{poss.quarter <= 4 ? `Q${poss.quarter}` : `OT${poss.quarter - 4}`} {row.clock}</span>
-                      <span className={cn('shrink-0 text-xs font-black uppercase px-1 rounded w-10 text-center', SIDE_CHIP[side])}>{abbrev(side === 'home' ? game.homeTeam.name : game.awayTeam.name)}</span>
-                      <span className="flex-1 flex items-center flex-wrap gap-1.5">
-                        {poss.calledPlays?.map((call, idx) => (
-                          <span
-                            key={idx}
-                            className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
-                          >
-                            {call.side === 'offense' ? '▶' : '🛡'} {call.name}
-                          </span>
-                        ))}
-                        <span>{row.text}</span>
-                      </span>
-                      {isScoring && (
-                        <span className="shrink-0 font-mono text-xs text-ink-subtle">
-                          {poss.runningScore[1]}-{poss.runningScore[0]}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                {rows.map(row => row.kind === 'beat'
+                  ? <BeatRow key={row.key} beat={row.beat} text={row.text} game={game} />
+                  : <PossessionRow key={row.key} event={row.event} text={row.text} clock={row.clock} game={game} userSide={userSide} />
+                )}
               </div>
             </div>
             {!autoScroll && !isComplete && (
