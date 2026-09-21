@@ -7,6 +7,7 @@
 
 import { DraftSession } from './deckbuilder';
 import { simulateGame, buildTeamInfo, GameTheater, TeamInfo, PlayerBoxScore, emptyBoxScore } from './game';
+import { accumulateBoxRow } from './boxscore';
 import { Rng, createRng, randomSeed } from './rng';
 import { BALANCE_VERSION } from './balance';
 
@@ -551,25 +552,7 @@ export function seasonPlayerTotals(season: Season): SeasonPlayerTotals[] {
       if (!t) { t = { ...emptyBoxScore(row.playerId, row.playerName), gamesPlayed: 0 }; totals.set(row.playerId, t); }
       const minutes = row.minutes ?? 0;
       if (minutes > 0) t.gamesPlayed++;
-      t.minutes = Math.round((t.minutes + minutes) * 10) / 10;
-      t.possessions += row.possessions ?? 0;
-      t.points += row.points ?? 0;
-      t.twoPointers += row.twoPointers ?? 0;
-      t.threePointers += row.threePointers ?? 0;
-      t.andOnes += row.andOnes ?? 0;
-      t.turnovers += row.turnovers ?? 0;
-      t.assists += row.assists ?? 0;
-      t.offensiveRebounds += row.offensiveRebounds ?? 0;
-      t.defensiveRebounds += row.defensiveRebounds ?? 0;
-      t.steals += row.steals ?? 0;
-      t.blocks += row.blocks ?? 0;
-      t.fieldGoalsMade += row.fieldGoalsMade ?? 0;
-      t.fieldGoalsAttempted += row.fieldGoalsAttempted ?? 0;
-      t.threesMade += row.threesMade ?? 0;
-      t.threesAttempted += row.threesAttempted ?? 0;
-      t.freeThrowsMade += row.freeThrowsMade ?? 0;
-      t.freeThrowsAttempted += row.freeThrowsAttempted ?? 0;
-      t.plusMinus += row.plusMinus ?? 0;
+      accumulateBoxRow(t, row);
     }
   }
   return Array.from(totals.values()).sort((a, b) => b.points - a.points);
