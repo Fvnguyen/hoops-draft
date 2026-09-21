@@ -16,6 +16,7 @@
 import { AssignPopover } from './AssignPopover';
 import { PlayerCard, PlayerCardFront, PlayerHoverPreview, RoleTag, getPosColors, type PlayerCardData } from './PlayerCard';
 import { useHoverPreview } from './useHoverPreview';
+import { useLongPressPreview } from '@/hooks/useLongPressPreview';
 import { SLOTS_PER_COLUMN } from '@/engine/depthChart';
 import type { DepthColumn } from '@/engine/positions';
 import type { PlaySide } from '@/engine/playbook';
@@ -29,13 +30,31 @@ function StarterFront({ player }: { player: PlayerCardData }) {
   // `refs` rule conservatively taints every property read off an object that also
   // carries a ref, so `hover.isHovered` gets misflagged as a ref access otherwise.
   const { ref: hoverRef, isHovered, onMouseEnter, onMouseLeave } = useHoverPreview<HTMLDivElement>();
+  // render_and_engine_perf D10/T14: same long-press preview as every other card, wired
+  // on this `inset-0` div rather than the parent slot wrapper — it fully covers the
+  // clickable/draggable area above it, so `onClickCapture` intercepts the click here,
+  // in the capture phase, before it can ever bubble up to that wrapper's `onClick`
+  // (the tap-to-remove/assign handler in `DepthSlotColumn`'s occupied-slot branch).
+  const longPress = useLongPressPreview();
   return (
-    <div ref={hoverRef} className="absolute inset-0" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div
+      ref={hoverRef}
+      data-testid="starter-front"
+      className="absolute inset-0 select-none [-webkit-touch-callout:none]"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onTouchStart={longPress.handlers.onTouchStart}
+      onTouchMove={longPress.handlers.onTouchMove}
+      onTouchCancel={longPress.handlers.onTouchCancel}
+      onTouchEnd={longPress.handlers.onTouchEnd}
+      onClickCapture={longPress.handlers.onClickCapture}
+      onContextMenu={longPress.handlers.onContextMenu}
+    >
       {/* size="sm" pins the stat footer to 4 columns (PPG/RPG/APG/FG%) — a 5-across
           depth chart never gives the starter card enough width for the
           container-query 6-stat variant to stay legible. */}
       <PlayerCardFront player={player} size="sm" />
-      {isHovered && <PlayerHoverPreview player={player} />}
+      {(isHovered || longPress.open) && <PlayerHoverPreview player={player} />}
     </div>
   );
 }
@@ -207,6 +226,7 @@ export function DepthSlotColumn({
         return (
           <div
             key={player.id}
+            data-testid={`depth-slot-filled-${column}-${slotIndex}`}
             className="relative shrink-0 w-full"
             draggable
             onDragStart={(e) => onDragStart(e, player, column, slotIndex)}

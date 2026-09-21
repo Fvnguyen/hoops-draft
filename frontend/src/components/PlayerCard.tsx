@@ -606,10 +606,17 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
     return (
       <div
         ref={hoverRef}
-        className={`relative w-full h-11 bg-surface-raised border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center ${isSelected ? 'border-accent' : 'border-line hover:border-line-strong'}`}
+        data-testid="player-card-compact"
+        className={`relative w-full h-11 bg-surface-raised border rounded-lg shadow-sm cursor-pointer overflow-visible flex items-center select-none [-webkit-touch-callout:none] ${isSelected ? 'border-accent' : 'border-line hover:border-line-strong'}`}
         onClick={onClick}
         onMouseEnter={onHoverEnter}
         onMouseLeave={onHoverLeave}
+        onTouchStart={longPress.handlers.onTouchStart}
+        onTouchMove={longPress.handlers.onTouchMove}
+        onTouchCancel={longPress.handlers.onTouchCancel}
+        onTouchEnd={longPress.handlers.onTouchEnd}
+        onClickCapture={longPress.handlers.onClickCapture}
+        onContextMenu={longPress.handlers.onContextMenu}
       >
         {/* Left Color Bar */}
         <div className="h-full w-1.5 shrink-0 rounded-l-[7px]" style={{ background: `linear-gradient(to bottom, ${c1}, ${c2})` }} />
@@ -643,7 +650,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
             popup below a Bench 3 row (near the bottom of the depth chart) had nowhere to
             go and was invisible; centring always keeps it fully on-screen and static
             (never flips) so its badge panel is always readable, not a moving target. */}
-        {isHovered && <PlayerHoverPreview player={player} />}
+        {(isHovered || longPress.open) && <PlayerHoverPreview player={player} />}
       </div>
     );
   }

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { DraftCard, PlayerHoverPreview, CardListRow, Play, PlayerCardData } from './PlayerCard';
 import { useHoverPreview } from './useHoverPreview';
+import { useLongPressPreview } from '@/hooks/useLongPressPreview';
 import { canPlaceAt, positionParts, effectivePosition } from '@/engine/positions';
 import { Button } from './ui/Button';
 import { IconButton } from './ui/IconButton';
@@ -60,6 +61,10 @@ function RosterPlayerRow({ player, selected, onDragStart, onClick }: {
   // `refs` rule conservatively taints every property read off an object that also
   // carries a ref, so `hover.isHovered` gets misflagged as a ref access otherwise.
   const { ref: hoverRef, isHovered, onMouseEnter, onMouseLeave } = useHoverPreview<HTMLDivElement>();
+  // render_and_engine_perf D10/T14: touch has no hover, so a long-press gets the same
+  // screen-centred preview (see `useLongPressPreview` — its `onClickCapture` swallows the
+  // click that follows a press it opened, so a long-press never also places the player).
+  const longPress = useLongPressPreview();
   return (
     <div
       ref={hoverRef}
@@ -69,12 +74,18 @@ function RosterPlayerRow({ player, selected, onDragStart, onClick }: {
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="relative cursor-grab active:cursor-grabbing w-full"
+      onTouchStart={longPress.handlers.onTouchStart}
+      onTouchMove={longPress.handlers.onTouchMove}
+      onTouchCancel={longPress.handlers.onTouchCancel}
+      onTouchEnd={longPress.handlers.onTouchEnd}
+      onClickCapture={longPress.handlers.onClickCapture}
+      onContextMenu={longPress.handlers.onContextMenu}
+      className="relative cursor-grab active:cursor-grabbing w-full select-none [-webkit-touch-callout:none]"
     >
       <CardListRow card={player} selected={selected} />
       {/* Screen-centred + badge panel (D-hover) — a row near the bottom of this
           scrollable list has nowhere for an anchored popup to go. */}
-      {isHovered && <PlayerHoverPreview player={player} />}
+      {(isHovered || longPress.open) && <PlayerHoverPreview player={player} />}
     </div>
   );
 }
