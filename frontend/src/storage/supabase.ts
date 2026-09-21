@@ -668,47 +668,33 @@ export class SupabaseGameStore implements GameStore {
     return 'tombstoned';
   }
 
+  /**
+   * Which side wins, per table (`storage/merge.ts` holds the actual rules):
+   * draft sessions keep the longer pick log, seasons union their played games (that needs
+   * the draft session to recompute standings; without it the row is parked), challenge
+   * runs keep the further phase, rosters keep the newest edit — nothing irreplaceable is
+   * at stake there, both sides hold identical `draftedCards` and only the arrangement
+   * differs. `conflict: true` means a human has to pick a side.
+   */
+  private async mergeRows(table: SyncTable, local: unknown, remote: unknown): Promise<{ merged: unknown; conflict: boolean }> {
+    if (table === 'draft_sessions') return mergeDraftSession(local as DraftSession, remote as DraftSession);
+    if (table === 'rosters') return mergeRoster(local as SavedRoster, remote as SavedRoster);
+    if (table === 'challenge_runs') return mergeChallengeRun(local as ChallengeRun, remote as ChallengeRun);
+    const session = await this.local.getDraftSession((local as Season).sessionId);
+    if (!session) return { merged: local, conflict: true };
+    return mergeSeason(local as Season, remote as Season, session);
+  }
+
   private async resolveViaMerge(table: SyncTable, id: string, local: unknown, remote: unknown, remoteUpdatedAt: string, owner: string): Promise<void> {
     if (this.ownerId !== owner) return; // see `adoptRemoteDelete`
-    const key = `${table}:${id}`;
-    // Adopting the remote's updated_at as the new baseline BEFORE re-pushing matters in
-    // every branch: without it the re-push compares against a stale baseline, the CAS
-    // rejects, and we land back in here — an endless merge/push loop.
-    if (table === 'draft_sessions') {
-      const { merged, conflict } = mergeDraftSession(local as DraftSession, remote as DraftSession);
-      if (conflict) return this.recordConflict(table, id, local, remote);
-      this.setBaseline(owner, key, remoteUpdatedAt);
-      await this.local.saveDraftSession(merged);
-      await this.pushNow(table, id, merged, owner);
-      return;
-    }
-    if (table === 'seasons') {
-      const season = local as Season;
-      const session = await this.local.getDraftSession(season.sessionId);
-      if (!session) return this.recordConflict(table, id, local, remote);
-      const { merged, conflict } = mergeSeason(season, remote as Season, session);
-      if (conflict) return this.recordConflict(table, id, local, remote);
-      this.setBaseline(owner, key, remoteUpdatedAt);
-      await this.local.saveSeason(merged);
-      await this.pushNow(table, id, merged, owner);
-      return;
-    }
-    if (table === 'challenge_runs') {
-      // The later `phase` always wins — never a conflict for a human to resolve.
-      const { merged } = mergeChallengeRun(local as ChallengeRun, remote as ChallengeRun);
-      this.setBaseline(owner, key, remoteUpdatedAt);
-      await this.local.saveChallengeRun(merged);
-      await this.pushNow(table, id, merged, owner);
-      return;
-    }
-    // rosters: newest edit wins, never a prompt — see `mergeRoster` for why nothing
-    // irreplaceable is at stake (both sides hold identical `draftedCards`; only the
-    // arrangement differs).
-    const { merged, conflict } = mergeRoster(local as SavedRoster, remote as SavedRoster);
+    const { merged, conflict } = await this.mergeRows(table, local, remote);
     if (conflict) return this.recordConflict(table, id, local, remote);
-    this.setBaseline(owner, key, remoteUpdatedAt);
-    await this.local.saveRoster(merged);
-    await this.pushNow(table, id, merged, owner);
+    // Adopt the remote's updated_at as the new baseline BEFORE re-pushing: without it the
+    // re-push compares against a stale baseline, the CAS rejects, and we land back in here
+    // — an endless merge/push loop.
+    this.setBaseline(owner, `${table}:${id}`, remoteUpdatedAt);
+    await LOCAL_IO[table].write(this.local, merged);
+    await this.pushNow(table, id, merged as { timestamp?: string }, owner);
   }
 
   private recordConflict(table: SyncTable, id: string, local: unknown, remote: unknown): void {

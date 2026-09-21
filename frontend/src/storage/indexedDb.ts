@@ -213,6 +213,31 @@ function isConstraintError(error: unknown): boolean {
   return name === 'ConstraintError';
 }
 
+type OwnedRow = { id: string; ownerId?: string };
+
+/** What differs between the four synced tables; everything else is shared (see the
+ *  "Per-table CRUD" helpers on `IndexedDbGameStore`). */
+interface TableSpec<T extends OwnedRow> {
+  name: string;
+  table(db: MagicBallDB): Table<T, string>;
+  /** Defensive parse of a stored row; null = unreadable, skipped by listings. */
+  parse(row: unknown): T | null;
+  /** Applied to every row on its way in. */
+  stamp(row: T): T;
+}
+
+/** D4: stamp the card set a draft's/roster's cards came from, once, never overwritten. */
+const stampCardSet = <T extends { cardSetVersion?: string }>(row: T): T =>
+  ({ ...row, cardSetVersion: row.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
+const asIs = <T>(row: T): T => row;
+
+const TABLES = {
+  draftSessions: { name: 'draft session', table: (db) => db.draftSessions, parse: safeParseDraftSession, stamp: stampCardSet } as TableSpec<DraftSession>,
+  rosters: { name: 'roster', table: (db) => db.rosters, parse: safeParseSavedRoster, stamp: stampCardSet } as TableSpec<SavedRoster>,
+  seasons: { name: 'season', table: (db) => db.seasons, parse: safeParseSeason, stamp: asIs } as TableSpec<Season>,
+  challengeRuns: { name: 'challenge run', table: (db) => db.challengeRuns, parse: safeParseChallengeRun, stamp: asIs } as TableSpec<ChallengeRun>,
+};
+
 export class IndexedDbGameStore implements GameStore, OutboxStore {
   private db: MagicBallDB;
   private ownerId: string | null = null;
@@ -246,174 +271,99 @@ export class IndexedDbGameStore implements GameStore, OutboxStore {
     return rows.filter((row) => this.isOwned(row));
   }
 
-  async listDraftSessions(): Promise<DraftSession[]> {
-    const rows = this.owned(await this.db.draftSessions.toArray());
-    return rows.map(safeParseDraftSession).filter((s): s is DraftSession => s !== null);
+  // ── Per-table CRUD (sync_outbox D10) ──────────────────────────────────
+  // The four synced tables behave identically apart from their parser and whether a save
+  // stamps the card set, so that lives in `TABLES` below and the public methods are
+  // one-liners over these helpers instead of four hand-copied variants of each.
+
+  private async listOf<T extends OwnedRow>(spec: TableSpec<T>): Promise<T[]> {
+    const rows = this.owned(await spec.table(this.db).toArray());
+    return rows.map(spec.parse).filter((row): row is T => row !== null);
   }
 
-  async getDraftSession(id: string): Promise<DraftSession | null> {
-    const row = (await this.db.draftSessions.get(id)) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseDraftSession(row) : null;
+  private async getOf<T extends OwnedRow>(spec: TableSpec<T>, id: string): Promise<T | null> {
+    const row = (await spec.table(this.db).get(id)) ?? null;
+    return row && this.isOwned(row) ? spec.parse(row) : null;
   }
 
-  async saveDraftSession(s: DraftSession): Promise<void> {
+  /** The current owner's row for this roster — never the first row of ANY owner. */
+  private async firstByRoster<T extends OwnedRow>(spec: TableSpec<T>, rosterId: string): Promise<T | null> {
+    return (await spec.table(this.db).where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
+  }
+
+  private async getByRosterOf<T extends OwnedRow>(spec: TableSpec<T>, rosterId: string): Promise<T | null> {
+    const row = await this.firstByRoster(spec, rosterId);
+    return row ? spec.parse(row) : null;
+  }
+
+  private async putOf<T extends OwnedRow>(spec: TableSpec<T>, row: T): Promise<void> {
     await guardQuota(async () => {
-      // D4: stamp the card set a draft's cards came from, once, never overwritten.
-      await this.db.draftSessions.put({ ...s, ownerId: this.ownerId ?? s.ownerId, cardSetVersion: s.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
+      await spec.table(this.db).put(spec.stamp({ ...row, ownerId: this.ownerId ?? row.ownerId }));
     });
-  }
-
-  async deleteDraftSession(id: string): Promise<void> {
-    await this.db.draftSessions.delete(id);
-  }
-
-  async listRosters(): Promise<SavedRoster[]> {
-    const rows = this.owned(await this.db.rosters.toArray());
-    return rows.map(safeParseSavedRoster).filter((r): r is SavedRoster => r !== null);
-  }
-
-  async getRoster(id: string): Promise<SavedRoster | null> {
-    const row = (await this.db.rosters.get(id)) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseSavedRoster(row) : null;
-  }
-
-  async saveRoster(r: SavedRoster): Promise<void> {
-    await guardQuota(async () => {
-      // D4: stamp the card set a roster's cards came from, once, never overwritten.
-      await this.db.rosters.put({ ...r, ownerId: this.ownerId ?? r.ownerId, cardSetVersion: r.cardSetVersion ?? CURRENT_CARD_SET_VERSION });
-    });
-  }
-
-  async deleteRoster(id: string): Promise<void> {
-    await this.db.rosters.delete(id);
-  }
-
-  async listSeasons(): Promise<Season[]> {
-    const rows = this.owned(await this.db.seasons.toArray());
-    return rows.map(safeParseSeason).filter((s): s is Season => s !== null);
-  }
-
-  async getSeason(id: string): Promise<Season | null> {
-    const row = (await this.db.seasons.get(id)) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseSeason(row) : null;
-  }
-
-  async getSeasonByRoster(rosterId: string): Promise<Season | null> {
-    const row = (await this.db.seasons.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseSeason(row) : null;
-  }
-
-  async saveSeason(s: Season): Promise<void> {
-    await guardQuota(async () => {
-      await this.db.seasons.put({ ...s, ownerId: this.ownerId ?? s.ownerId });
-    });
-  }
-
-  async deleteSeason(id: string): Promise<void> {
-    await this.db.seasons.delete(id);
   }
 
   /**
-   * sync_outbox D9. The whole check-then-insert runs in ONE `rw` transaction on `seasons`,
-   * and IndexedDB serializes readwrite transactions against the same object store — even
-   * across tabs sharing one database connection — so a second caller's transaction cannot
-   * start until the first one (which inserted the row) has committed; it then simply finds
-   * that row. `table.add()` (never `put`) is the second line of defense: it rejects outright
-   * if the deterministic id is somehow already taken, instead of silently overwriting.
+   * sync_outbox D9. The whole check-then-insert runs in ONE `rw` transaction, and IndexedDB
+   * serializes readwrite transactions against the same object store — even across tabs
+   * sharing one database — so a second caller's transaction cannot start until the first
+   * one (which inserted the row) has committed; it then simply finds that row.
+   * `table.add()` (never `put`) is the second line of defense: it rejects outright if the
+   * deterministic id is somehow already taken, instead of silently overwriting.
    */
-  async getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
-    const owner = this.ownerId;
+  private getOrCreateOf<T extends OwnedRow>(spec: TableSpec<T>, rosterId: string, id: string, factory: () => T): Promise<T> {
+    const parseExisting = (row: T | null): T => {
+      const parsed = row ? spec.parse(row) : null;
+      if (!parsed) throw new Error(`getOrCreate ${spec.name}: the existing row for roster ${rosterId} is corrupt`);
+      return parsed;
+    };
     return guardQuota(() =>
-      this.db.transaction('rw', this.db.seasons, async (): Promise<Season> => {
-        const existing = (await this.db.seasons.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
-        if (this.isOwned(existing)) {
-          const parsed = safeParseSeason(existing);
-          if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
-          return parsed;
-        }
+      this.db.transaction('rw', spec.table(this.db), async (): Promise<T> => {
+        const existing = await this.firstByRoster(spec, rosterId);
+        if (existing) return parseExisting(existing);
 
         const created = factory();
-        const stamped: Season = { ...created, id: seasonIdForRoster(rosterId), ownerId: owner ?? created.ownerId };
+        const stamped = spec.stamp({ ...created, id, ownerId: this.ownerId ?? created.ownerId });
         try {
-          await this.db.seasons.add(stamped);
+          await spec.table(this.db).add(stamped);
           return stamped;
         } catch (err) {
           if (!isConstraintError(err)) throw err;
           // Lost the race (or the id is occupied by a row this owner can't see at all):
           // read what is actually there now rather than clobber it.
-          const row = (await this.db.seasons.get(stamped.id)) ?? null;
-          if (!this.isOwned(row)) {
-            throw new Error(`getOrCreateSeason: season ${stamped.id} already exists under a different owner`);
-          }
-          const parsed = safeParseSeason(row);
-          if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
-          return parsed;
+          const row = (await spec.table(this.db).get(id)) ?? null;
+          if (!this.isOwned(row)) throw new Error(`getOrCreate ${spec.name}: ${id} already exists under a different owner`);
+          return parseExisting(row);
         }
       })
     );
   }
 
-  async listChallengeRuns(): Promise<ChallengeRun[]> {
-    const rows = this.owned(await this.db.challengeRuns.toArray());
-    return rows.map(safeParseChallengeRun).filter((r): r is ChallengeRun => r !== null);
+  listDraftSessions(): Promise<DraftSession[]> { return this.listOf(TABLES.draftSessions); }
+  getDraftSession(id: string): Promise<DraftSession | null> { return this.getOf(TABLES.draftSessions, id); }
+  saveDraftSession(s: DraftSession): Promise<void> { return this.putOf(TABLES.draftSessions, s); }
+  async deleteDraftSession(id: string): Promise<void> { await this.db.draftSessions.delete(id); }
+
+  listRosters(): Promise<SavedRoster[]> { return this.listOf(TABLES.rosters); }
+  getRoster(id: string): Promise<SavedRoster | null> { return this.getOf(TABLES.rosters, id); }
+  saveRoster(r: SavedRoster): Promise<void> { return this.putOf(TABLES.rosters, r); }
+  async deleteRoster(id: string): Promise<void> { await this.db.rosters.delete(id); }
+
+  listSeasons(): Promise<Season[]> { return this.listOf(TABLES.seasons); }
+  getSeason(id: string): Promise<Season | null> { return this.getOf(TABLES.seasons, id); }
+  getSeasonByRoster(rosterId: string): Promise<Season | null> { return this.getByRosterOf(TABLES.seasons, rosterId); }
+  saveSeason(s: Season): Promise<void> { return this.putOf(TABLES.seasons, s); }
+  async deleteSeason(id: string): Promise<void> { await this.db.seasons.delete(id); }
+  getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
+    return this.getOrCreateOf(TABLES.seasons, rosterId, seasonIdForRoster(rosterId), factory);
   }
 
-  async getChallengeRun(id: string): Promise<ChallengeRun | null> {
-    const row = (await this.db.challengeRuns.get(id)) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseChallengeRun(row) : null;
-  }
-
-  async getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> {
-    const row = (await this.db.challengeRuns.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
-    if (!this.isOwned(row)) return null;
-    return row ? safeParseChallengeRun(row) : null;
-  }
-
-  async saveChallengeRun(r: ChallengeRun): Promise<void> {
-    await guardQuota(async () => {
-      await this.db.challengeRuns.put({ ...r, ownerId: this.ownerId ?? r.ownerId });
-    });
-  }
-
-  async deleteChallengeRun(id: string): Promise<void> {
-    await this.db.challengeRuns.delete(id);
-  }
-
-  /** sync_outbox D9: same contract and same transaction/`add()` race handling as
-   *  `getOrCreateSeason`, on `challengeRuns` with `challengeRunIdForRoster`. */
-  async getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun> {
-    const owner = this.ownerId;
-    return guardQuota(() =>
-      this.db.transaction('rw', this.db.challengeRuns, async (): Promise<ChallengeRun> => {
-        const existing = (await this.db.challengeRuns.where('rosterId').equals(rosterId).filter((r) => this.isOwned(r)).first()) ?? null;
-        if (this.isOwned(existing)) {
-          const parsed = safeParseChallengeRun(existing);
-          if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
-          return parsed;
-        }
-
-        const created = factory();
-        const stamped: ChallengeRun = { ...created, id: challengeRunIdForRoster(rosterId), ownerId: owner ?? created.ownerId };
-        try {
-          await this.db.challengeRuns.add(stamped);
-          return stamped;
-        } catch (err) {
-          if (!isConstraintError(err)) throw err;
-          const row = (await this.db.challengeRuns.get(stamped.id)) ?? null;
-          if (!this.isOwned(row)) {
-            throw new Error(`getOrCreateChallengeRun: run ${stamped.id} already exists under a different owner`);
-          }
-          const parsed = safeParseChallengeRun(row);
-          if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
-          return parsed;
-        }
-      })
-    );
+  listChallengeRuns(): Promise<ChallengeRun[]> { return this.listOf(TABLES.challengeRuns); }
+  getChallengeRun(id: string): Promise<ChallengeRun | null> { return this.getOf(TABLES.challengeRuns, id); }
+  getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> { return this.getByRosterOf(TABLES.challengeRuns, rosterId); }
+  saveChallengeRun(r: ChallengeRun): Promise<void> { return this.putOf(TABLES.challengeRuns, r); }
+  async deleteChallengeRun(id: string): Promise<void> { await this.db.challengeRuns.delete(id); }
+  getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun> {
+    return this.getOrCreateOf(TABLES.challengeRuns, rosterId, challengeRunIdForRoster(rosterId), factory);
   }
 
   async exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }> {

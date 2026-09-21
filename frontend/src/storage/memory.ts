@@ -140,37 +140,35 @@ export class MemoryGameStore implements GameStore, OutboxStore {
   }
 
   /**
-   * sync_outbox D9. Everything from the ownership check through the `Map.set()` below runs
-   * with no `await` in between, so it executes as one synchronous block: when two calls
-   * race via `Promise.all`, the first one runs to completion (including the insert) before
-   * the second one's body even starts, and the second one finds the row the first made
-   * instead of calling `factory` again. `Map.set` has no "insert-only" mode like Dexie's
-   * `table.add()`, so the id is checked explicitly before writing rather than trusting a
-   * thrown error to catch the collision.
+   * sync_outbox D9, shared by seasons and challenge runs. Deliberately has NO `await`
+   * between the check and the `set`, so two callers racing through `Promise.all` converge
+   * on one row and one `factory()` call — the in-memory equivalent of IndexedDb's single
+   * `rw` transaction.
    */
-  async getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
-    const existing = this.owned([...this.seasons.values()]).find((s) => s.rosterId === rosterId) ?? null;
-    if (existing) {
-      const parsed = safeParseSeason(existing);
-      if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
+  private getOrCreateIn<T extends { id: string; rosterId: string; ownerId?: string }>(
+    rows: Map<string, T>, parse: (row: unknown) => T | null, name: string, rosterId: string, id: string, factory: () => T,
+  ): T {
+    const parseExisting = (row: T): T => {
+      const parsed = parse(row);
+      if (!parsed) throw new Error(`getOrCreate ${name}: the existing row for roster ${rosterId} is corrupt`);
       return parsed;
-    }
+    };
+    const existing = this.owned([...rows.values()]).find((row) => row.rosterId === rosterId);
+    if (existing) return parseExisting(existing);
 
-    const id = seasonIdForRoster(rosterId);
-    const byId = this.seasons.get(id) ?? null;
+    const byId = rows.get(id);
     if (byId) {
-      if (!this.isOwned(byId)) {
-        throw new Error(`getOrCreateSeason: season ${id} already exists under a different owner`);
-      }
-      const parsed = safeParseSeason(byId);
-      if (!parsed) throw new Error(`getOrCreateSeason: existing season for roster ${rosterId} is corrupt`);
-      return parsed;
+      if (!this.isOwned(byId)) throw new Error(`getOrCreate ${name}: ${id} already exists under a different owner`);
+      return parseExisting(byId);
     }
-
     const created = factory();
-    const stamped: Season = { ...created, id, ownerId: this.ownerId ?? created.ownerId };
-    this.seasons.set(id, stamped);
+    const stamped: T = { ...created, id, ownerId: this.ownerId ?? created.ownerId };
+    rows.set(id, stamped);
     return stamped;
+  }
+
+  async getOrCreateSeason(rosterId: string, factory: () => Season): Promise<Season> {
+    return this.getOrCreateIn(this.seasons, safeParseSeason, 'season', rosterId, seasonIdForRoster(rosterId), factory);
   }
 
   async listChallengeRuns(): Promise<ChallengeRun[]> {
@@ -197,31 +195,8 @@ export class MemoryGameStore implements GameStore, OutboxStore {
     this.challengeRuns.delete(id);
   }
 
-  /** sync_outbox D9: same contract and same synchronous-block reasoning as
-   *  `getOrCreateSeason`, on `challengeRuns` with `challengeRunIdForRoster`. */
   async getOrCreateChallengeRun(rosterId: string, factory: () => ChallengeRun): Promise<ChallengeRun> {
-    const existing = this.owned([...this.challengeRuns.values()]).find((r) => r.rosterId === rosterId) ?? null;
-    if (existing) {
-      const parsed = safeParseChallengeRun(existing);
-      if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
-      return parsed;
-    }
-
-    const id = challengeRunIdForRoster(rosterId);
-    const byId = this.challengeRuns.get(id) ?? null;
-    if (byId) {
-      if (!this.isOwned(byId)) {
-        throw new Error(`getOrCreateChallengeRun: run ${id} already exists under a different owner`);
-      }
-      const parsed = safeParseChallengeRun(byId);
-      if (!parsed) throw new Error(`getOrCreateChallengeRun: existing run for roster ${rosterId} is corrupt`);
-      return parsed;
-    }
-
-    const created = factory();
-    const stamped: ChallengeRun = { ...created, id, ownerId: this.ownerId ?? created.ownerId };
-    this.challengeRuns.set(id, stamped);
-    return stamped;
+    return this.getOrCreateIn(this.challengeRuns, safeParseChallengeRun, 'challenge run', rosterId, challengeRunIdForRoster(rosterId), factory);
   }
 
   async exportAll(): Promise<{ sessions: DraftSession[]; seasons: Season[]; rosters: SavedRoster[] }> {
