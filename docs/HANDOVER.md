@@ -1,4 +1,4 @@
-# Handover — 2026-09-18
+# Handover — 2026-09-21
 
 ## Current state
 
@@ -190,7 +190,14 @@ from `data/`).
 
 What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
-(#10) is unblocked. Owner actions outside the repo:
+(#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
+planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
+(#13); its still-open bugs live in those plans (sync never starts after a soft-nav login,
+back guard leaks history entries, saves await the network). Fixed the same day: opening a
+saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
+seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
+on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
+454/455 tests (`lineup.test.ts` drift only). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
