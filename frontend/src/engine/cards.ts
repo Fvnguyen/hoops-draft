@@ -24,6 +24,3 @@ export function getAllCards(): PlayerCardData[] {
   return cache;
 }
 
-export function getCardById(id: string): PlayerCardData | undefined {
-  return getAllCards().find(c => c.id === id);
-}

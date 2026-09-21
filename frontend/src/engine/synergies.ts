@@ -329,25 +329,21 @@ export interface TeamBonuses {
   /** Plays are resolved per-possession in game.ts (docs/plan_plays_and_synergies_2026-09-13.md
    *  §4-7) — this is always empty from calcTeamBonuses; game.ts fills its own copy. */
   activePlays: { name: string; description: string; activated: 'full' | 'partial' | 'none' }[];
-  /** Playstyle description */
-  playstyle: string[];
 }
 
 /**
  * Calculate a team's archetype-derived bonuses.
  *
- * v3 (2026-09-13): `activePlays`/`possShares` are accepted for call-signature stability
- * (existing callers pass them) but are no longer read here — Plays are resolved
- * per-possession in game.ts against the assigned-player playbook (playbook.ts), not as a
- * roster-wide bonus. Only the caller-selected archetype(s) in `options.archetypes` are
- * applied. This is a TRANSITION STATE: until the roster-builder UI lets a user choose
- * Offense/Defense Philosophy (or a Gold plan), `options` is omitted by every caller and
- * this function returns empty modifiers — no archetype silently auto-activates.
+ * `activePlays`/`possShares` parameters are accepted for call-signature stability with
+ * existing callers but are no longer read here — Plays are resolved per-possession in
+ * game.ts against the assigned-player playbook (playbook.ts). When `options.archetypes`
+ * is supplied, returns the selected archetype(s)' offense/defense modifiers and a
+ * `possessionSwing` bonus; otherwise returns empty modifiers.
  *
  * @param rosterPlayers - All active players (used to evaluate archetype tallies)
- * @param activePlays - Unused (kept for API stability; see above)
- * @param possShares - Unused (kept for API stability; see above)
- * @param options.starterIds - Depth-chart starters, used by archetype tier thresholds. Missing = no starters (tier is computed with starters=0, most plans land on 'none').
+ * @param activePlays - Unused (kept for API stability; plays are resolved per-possession)
+ * @param possShares - Unused (kept for API stability)
+ * @param options.starterIds - Depth-chart starters, used by archetype tier thresholds. Missing = no starters (tier computed with starters=0).
  * @param options.archetypes - The user's chosen Offense/Defense Philosophy (or Gold plan). Missing/empty = no archetype applies.
  */
 export function calcTeamBonuses(
@@ -367,7 +363,6 @@ export function calcTeamBonuses(
       possessionSwing: 0,
       activeSynergies: [],
       activePlays: [],
-      playstyle: [],
     };
   }
 
@@ -386,6 +381,5 @@ export function calcTeamBonuses(
     possessionSwing,
     activeSynergies,
     activePlays: [],
-    playstyle: [],
   };
 }

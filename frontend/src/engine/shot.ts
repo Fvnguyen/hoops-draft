@@ -1,6 +1,6 @@
 /**
  * Scoring Engine (plan render_and_engine_perf D6 — split out of game.ts): the possession
- * count battle, the multi-channel shot profile/steer/edge maths, and per-possession shot
+ * count, the multi-channel shot profile/steer/edge maths, and per-possession shot
  * resolution.
  */
 
@@ -18,7 +18,7 @@ import {
 } from './balance';
 import { lineupValue, lineupMidDefence, lineupMean } from './lineup';
 
-// ── Possession Battle ──────────────────────────────────────────────────────
+// ── Possession Count ───────────────────────────────────────────────────────
 
 
 interface PossessionSplit {

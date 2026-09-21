@@ -54,17 +54,17 @@ Full script contracts (reads/writes/working directory) are in `data/README.md`.
    `Gold`) via `getPool()`.
 3. Computes seven skill ratings per player (finishing, mid-range, perimeter, playmaking,
    rebounding, perimeter defense, post defense) by indexing each raw stat against a
-   benchmark — the mean of the top 7.5% of players in that stat (`RATING_CONFIG
-   .benchmarkCutoff`).
-4. Combines the seven ratings into an overall rating using a positional weight profile
-   (`RATING_CONFIG.ovr.PROFILES`), a top-2-stat boost (`TOP1`/`TOP2`), an off-role
-   forgiveness term (`FORGIVE`/`OFFROLE_MAX_W`/`REF`), a **core-gap penalty** that punishes
-   weakness in a position's top-3 weighted stats (`CORE_PEN`/`CORE_REF`), and a composite
-   PER/VORP/DBPM multiplier (0.80–1.15x).
+   benchmark — the mean of the top 7.5% of rotation players in that stat (`RATING_CONFIG
+   .benchmarkCutoff`). The `idx()` function maps league mean → 0.5 and elite → 1.0.
+4. Overall rating in two passes (card_ratings_rebalance): pass 1 averages each player's
+   seven UNCAPPED dimension raws into one composite (`rawOvrMean`); pass 2 re-indexes that
+   composite through the same `idx()` every dimension uses, so the rotation average lands
+   near 50 OVR and the rotation top 7.5% at 99. No positional weights and no PER/VORP
+   multiplier. OVR is never a game input and never shown to users.
 5. Assigns rarity from the overall rating, then bumps it for MVP/All-NBA/DPOY/All-Defense,
    for a hardcoded `LEGENDARY_PLAYERS` list, and for league-leader status (top scorer,
    rebounder, assister, stealer, blocker, or 3pt-maker).
-6. Assigns badges (`getBadge`, thresholds 80/90/96) and situational traits (Ironman,
+6. Assigns badges (`getBadge`, thresholds from `BADGE_THRESHOLDS` in `balance.ts`) and situational traits (Ironman,
    Sniper, Volume Scorer, etc.) from raw stats.
 
 Delivered as a JavaScript chunk through `import('@/engine/cards')` at the point of use (draft
@@ -88,9 +88,11 @@ step (`RATING_CONFIG`, legendary list, badge/rarity thresholds) live in
   booster-draft snake direction, reversed for the middle pack) via `processPickAndPass`.
   It also records every pick (`DraftPickRecord`) into a `pickLog` for later analysis.
 - **`getBotPick` / `scoreCardForBot`** (`engine/draft.ts`) score each card in a bot's pack:
-  PER-based base value (or a rarity table for play cards), a seeded pseudo-random 15%
-  noise multiplier per bot, a positional-need pivot after pick 10, a synergy/trait-overlap
-  bonus after pick 5, a favored-trait bonus, and a hate-draft floor for high-PER players.
+  value from `ratings.overall` times a rarity multiplier (a rarity base for plays, see
+  `rawBaseValue`), a seeded per-bot noise multiplier, a bomb-pull bonus for a pack's clear
+  best card, a positional-need multiplier and a pull toward the bot's target identity
+  (`planPull`) that both ramp with the plan weight as the draft goes on, and for play cards
+  a staffability blend scaled by the bot's synergy awareness.
 
 ## 4. Deck building (`engine/deckbuilder.ts` + `DeckBuilder.tsx`)
 
@@ -105,40 +107,59 @@ step (`RATING_CONFIG`, legendary list, badge/rarity thresholds) live in
   `DraftSession` (`saveDraftSession`) when the draft ends. See section 8 for the storage
   layer.
 
-## 5. Game engine (`engine/game.ts` + `engine/synergies.ts`)
+## 5. Game engine (`engine/game.ts` and the modules split out of it)
 
 `simulateGame(homeTeam, awayTeam, { rng })` produces a full `GameTheater` object (which
 records its `seed`) that the UI plays back possession-by-possession (no live simulation
 loop in the UI). Every random draw goes through the `Rng`, so the same seed and rosters
-reproduce the same game:
+reproduce the same game. `game.ts` keeps `simulateGame` and re-exports the public API; the
+rest was split into single-purpose modules (render_and_engine_perf D6): `gameTypes.ts`
+(types), `rotation.ts`, `shot.ts`, `possession.ts`, `boxscore.ts`, `teamInfo.ts`.
 
-1. **Possession shares** (`calcPossessionShares`) — per-player share of team possessions,
-   derived from OVR gap between starter/backup/deep bench and blended with real MPG.
-2. **Bonuses** (`synergies.ts` `calcTeamBonuses`) — sums badge levels across the 12-man
-   roster (`countBadges`), checks each `SYNERGIES` entry (stacking / combo / chemistry
-   tiers) and each active `Play`'s requirements (`PLAY_EFFECTS`, full bonus if all
-   requirements met, half if >=50%), and nets them into offense/defense `GameModifiers`
-   (shot-share shifts, efficiency shifts, possession swing, and-1 chance).
-3. **Possession battle** (`calcPossessionSplit` / `calcTeamPossRating`) — starts both
-   teams at 100 possessions +/-5% noise, then shifts up to +/-8% based on a
-   playmaking(40%)/rebounding(35%)/defense(25%) rating (starters weighted 2x), plus
-   synergy/play possession swings.
-4. **Shot profile** (`calcTeamShotProfile`) — blends 50% NBA baseline shot distribution
-   (35% rim / 25% mid / 40% three) with 50% team tendency from finishing/mid-range/
-   perimeter ratings, then applies share-bonus modifiers.
-5. **Per-possession resolution** (`resolvePossession`) — rolls a shot channel from the
-   profile, computes an edge (offense rating vs. matched defense rating, clamped
-   +/-0.25), shifts the channel's baseline efficiency by `edge * 0.30` (clamped +/-10pp,
-   `EFFICIENCY_SCALE` / `MAX_EFF_SHIFT` constants), rolls make/miss, then points (rim
-   averages 1.5 via a 50/50 2-vs-1-point split modeling free throws) and an and-1 check
-   (`AND1_BASE`, per channel).
-6. Rotation timelines (`generateQuarterRotation`) drive substitutions and which 5-man
-   lineup is on court for each possession; overtime uses starters only.
+Once per game:
 
-**Tuning knobs** all live in `engine/balance.ts`: `NBA_BASELINE` (shot shares/efficiency),
-`LEAGUE_AVG` (edge centring), `EFFICIENCY_SCALE`, `MAX_EFF_SHIFT`, `PROFILE_WEIGHT`,
-`AND1_BASE`, `STRENGTH_SWING_PCT`, `NOISE_PCT`, `TURNOVER_RATE`, possession clamps;
-synergy/play tables live in `engine/synergies.ts` (`SYNERGIES`, `PLAY_EFFECTS`).
+1. **Possession shares** (`rotation.ts` `calcPossessionShares`) — each player's share of
+   his position's possessions, from the OVR gap between starter, backup and deep bench
+   blended with real MPG. `prepareLineupDraw` turns them into per-position weights once.
+2. **Playbook and identity** — `playbook.ts` `evaluatePlaybook` decides which assigned
+   plays are active and their call allocation; `synergies.ts` `calcTeamBonuses` turns the
+   chosen archetypes into offense/defense `GameModifiers`. Plays are NOT part of those
+   bonuses: they are rolled per possession.
+3. **Possession count** (`shot.ts` `calcPossessionSplit`) — both teams start at
+   `BASE_PACE` plus independent pace noise (home skewed slightly positive: that is the
+   home-court mechanic), plus identity/play possession swing, clamped to a pace band.
+   There is NO pre-game "possession battle" any more (engine_possession_model D6): what a
+   roster's playmaking, rebounding and defence are worth is settled per possession, below.
+
+Per possession (`possession.ts` `playOnePossession`), from the five on the floor:
+
+4. **Lineup** — `drawPreparedLineup` draws one player per position by share; inside the
+   crunch-time window and in overtime the starters close. A called play can force its
+   assigned players on (`overrideLineupForPlay`).
+5. **Turnover roll** (`turnoverChance`) — lineup playmaking against perimeter defence; the
+   possession may end here.
+6. **Shot profile** — `calcLineupShotProfile` blends the NBA baseline (`PROFILE_WEIGHT`
+   0.50) with the plain mean of the lineup's finishing / mid-range / perimeter ratings,
+   plus identity share mods; a called play shifts it (`applyCalledShareShift`); the
+   creator steer (`steerShotProfile`) moves up to `STEER_CAP` of share toward the shot
+   worth the most against THIS defence.
+7. **Resolution** (`resolvePossession`) — roll the channel, compute `channelEdge`
+   (aggregated lineup offence vs the matched defence, centred on `LINEUP_CENTRE`), shift
+   the channel's base efficiency by `edge x EFFICIENCY_SCALE` (0.20) clamped to
+   `MAX_EFF_SHIFT` (0.08), roll make/miss, then points and an and-1 check.
+8. **Offensive rebound** (`offensiveReboundChance`) — a missed field goal may be kept
+   alive, rebounding against rebounding, up to `OREB_MAX_CHAIN` (2) times.
+
+Five players become one number per dimension in `lineup.ts` (`lineupValue`: standardise,
+self-weighted mean, hole tax). Those aggregates are memoized per game for the lineup arrays
+the simulation interns (`memoLineup`), which is bit-identical and about a third faster.
+`boxscore.ts` derives the box score (`boxScoreThrough` replays it to any possession for the
+live view; `accumulateBoxRow` is the one place rows are summed).
+
+**Tuning knobs** all live in `engine/balance.ts` (`NBA_BASELINE`, `EFFICIENCY_SCALE`,
+`MAX_EFF_SHIFT`, `LINEUP_AGG`, `LINEUP_CENTRE`, `STEER_*`, `TURNOVER_*`, `OREB_*`,
+`AND1_BASE`, the pace noise bounds, `CLUTCH_WINDOW_POSS`); identity data lives in
+`engine/archetypes.ts`, play roles in `engine/playbook.ts`.
 Convention: `TeamBonuses.defenseMods` are deltas added to the *opponent's* offense, so a
 defensive effect is stored negative.
 

@@ -81,8 +81,6 @@ export interface ComputedRatings {
   rebounding: number;
   perimeterDefense: number;
   postDefense: number;
-  _baseOvr?: number;
-  _multiplier?: number;
 }
 
 export interface Trait {

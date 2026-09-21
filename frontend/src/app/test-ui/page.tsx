@@ -112,8 +112,8 @@ const mockGameTheater: GameTheater = {
   possessions: [],
   quarterSummaries: [],
   boxScore: { home: [], away: [] },
-  homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers(), playstyle: [] },
-  awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers(), playstyle: [] },
+  homeBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers() },
+  awayBonuses: { possessionSwing: 0, activeSynergies: [], activePlays: [], offenseMods: emptyModifiers(), defenseMods: emptyModifiers() },
   finalScore: [0, 0],
   seed: 0,
   playbook: { home: mockPlaybookStatus, away: mockPlaybookStatus },
@@ -190,7 +190,6 @@ export default function TestUI() {
                 possessionSwing: 0,
                 activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
                 activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
-                playstyle: [],
               }}
             />
          </div>
@@ -214,7 +213,6 @@ export default function TestUI() {
                 possessionSwing: 0,
                 activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
                 activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
-                playstyle: [],
               }}
             />
          </div>

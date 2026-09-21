@@ -1,7 +1,7 @@
 import { PlayerCardData, Play } from './types';
 import { calcLineupShotProfile } from './game';
-import { countBadges, emptyModifiers, calcTeamBonuses } from './synergies';
-import { evaluateArchetypes, MONO_THRESHOLDS, type ArchetypeSelection } from './archetypes';
+import { emptyModifiers, calcTeamBonuses } from './synergies';
+import { type ArchetypeSelection } from './archetypes';
 
 export interface RosterIdentity {
   finishing: number;
@@ -100,37 +100,6 @@ export function calcRosterShotDiet(
   return calcLineupShotProfile(starters.length > 0 ? starters : allPlayers, bonuses.offenseMods, emptyModifiers());
 }
 
-/**
- * Badge totals plus "teaser" progress toward each MONO archetype's Online tier (the
- * roster-builder UI shows these while a plan is still out of reach — two-colour and
- * Gold plans are more involved to preview inline, so they're left to the full
- * archetype-selection screen). Starters are taken as each position's depth-chart index 0
- * (mirrors calcRosterIdentity's own starter weighting).
- */
-export function getBadgeTally(depthChart: Record<string, PlayerCardData[]>) {
-  const allPlayers: PlayerCardData[] = [];
-  const starterIds = new Set<string>();
-  for (const pos in depthChart) {
-    const players = depthChart[pos];
-    allPlayers.push(...players);
-    if (players[0]) starterIds.add(players[0].id);
-  }
-  const badges = countBadges(allPlayers);
-
-  const statuses = evaluateArchetypes(allPlayers, starterIds);
-  const teasers = statuses
-    .filter(s => s.def.kind === 'mono' && s.tier === 'none')
-    .map(s => {
-      const t = s.tally[s.def.colors.primary]!;
-      return { text: `${s.def.colors.primary} ${t.carriers}/${MONO_THRESHOLDS.online.carriers} carriers`, progress: s.progress };
-    })
-    .filter(t => t.progress > 0);
-
-  return {
-    badges,
-    teasers
-  };
-}
 
 /**
  * League-mean values for each identity axis, computed over the full card pool

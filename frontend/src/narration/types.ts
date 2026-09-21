@@ -72,8 +72,6 @@ export type Beat =
   | { type: 'game_winner'; atIndex: number; side: Side; playerId: string; name: string; score: [number, number] }
   | { type: 'final'; atIndex: number; side: Side; score: [number, number]; margin: number; largestComeback: number };
 
-export type BeatType = Beat['type'];
-
 /** `computeBeats(theater)` returns beats sorted by atIndex; ties keep insertion order.
  *  A beat with atIndex i is shown AFTER possession i in the play-by-play. */
 export type ComputeBeats = (theater: GameTheater) => Beat[];

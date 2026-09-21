@@ -11,12 +11,10 @@
 import type { Play } from './types';
 
 // Plays database (Systems = Rare/Mythic, Plays = Uncommon/Common).
-// `badges` must match the real requirements in engine/synergies.ts PLAY_EFFECTS —
-// engine/draft.ts's bot draft logic scores a play against a bot's drafted player
-// traits by this exact array, so a stale/empty entry here silently makes bots blind
-// to that play's actual synergy. mechanicText was rewritten alongside it (2026-09-17,
-// owner-approved) to name the real badges and drop flavor numbers that no longer
-// match PLAY_EFFECTS' current balance.
+// `badges` field is read by engine/draft.ts's bot draft logic to score plays against
+// a bot's drafted player traits — this exact array must reflect the badge requirements
+// the plays actually enforce at runtime (playbook.ts). mechanicText describes the
+// requirements in prose form for the UI (card details, roster builder progress).
 export const PLAY_CATALOG: Play[] = [
   { type: 'Play', id: 'play-sys-1', name: 'Triangle Offense', rarity: 'Mythic', playCategory: 'system', badges: ['Finisher', 'Mid-Range Maestro'], mechanicText: 'Requires 2 Finishers and 2 Mid-Range Maestros. Boosts rim and mid-range shot volume and efficiency across the half-court offense.' },
   { type: 'Play', id: 'play-sys-2', name: '7 Seconds or Less', rarity: 'Mythic', playCategory: 'system', badges: ['Floor General', 'Sharpshooter'], mechanicText: 'Requires a Floor General and 3 Sharpshooters. Grants legendary transition scoring boost.' },
