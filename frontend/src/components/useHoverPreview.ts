@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useHasFinePointer } from '@/hooks/useHasFinePointer';
 
 /**
  * Hover-preview trigger state (D-hover-stuck). `onMouseEnter`/`onMouseLeave` alone are
@@ -49,6 +50,12 @@ export function useHoverPreview<T extends HTMLElement>() {
   const [isHovered, setIsHovered] = useState(false);
   const ref = useRef<T>(null);
   const enterTimerRef = useRef<number | null>(null);
+  // render_and_engine_perf D10: a TAP on a touch device synthesizes `mouseenter`, which
+  // used to arm this same timer and pop a full-screen dimmed preview ~800ms later that
+  // the user never asked for (reported in the deck builder's roster rows and starters).
+  // Coarse pointers get no hover-preview at all; `useHasFinePointer` is the same shared,
+  // reactive `(pointer: fine)` signal `PlayerCard.tsx` uses to gate its back face.
+  const hasFinePointer = useHasFinePointer();
 
   const clearEnterTimer = useCallback(() => {
     if (enterTimerRef.current !== null) {
@@ -58,12 +65,13 @@ export function useHoverPreview<T extends HTMLElement>() {
   }, []);
 
   const onMouseEnter = useCallback(() => {
+    if (!hasFinePointer) return;
     clearEnterTimer();
     enterTimerRef.current = window.setTimeout(() => {
       enterTimerRef.current = null;
       setIsHovered(true);
     }, HOVER_PREVIEW_DELAY_MS);
-  }, [clearEnterTimer]);
+  }, [clearEnterTimer, hasFinePointer]);
 
   const onMouseLeave = useCallback(() => {
     clearEnterTimer();

@@ -308,3 +308,12 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .crunch-pop { animation: crunch-fade 1.5s linear forwards; }
 }
+
+/* render_and_engine_perf D10: the Mythic rarity gem's shimmer — was an inline <style>
+   tag re-injected on every render of every Mythic RarityGem (PlayerCard.tsx); moved here
+   so it's parsed once instead of once per card. Name/values unchanged. */
+@keyframes gemMythicShimmer {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(249,115,22,0.6)) brightness(1); }
+  50% { filter: drop-shadow(0 0 12px rgba(249,115,22,1)) brightness(1.3); }
+}
+.gem-mythic-shimmer { animation: gemMythicShimmer 3s ease-in-out infinite; }
