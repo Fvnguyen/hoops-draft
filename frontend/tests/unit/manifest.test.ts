@@ -5,7 +5,7 @@
  * real file under `public/` — a broken manifest icon path fails silently in the browser.
  */
 import { describe, it, expect } from 'vitest';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import manifest from '@/app/manifest';
 
@@ -38,6 +38,20 @@ describe('manifest', () => {
     for (const icon of m.icons ?? []) {
       const filePath = path.join(publicDir, icon.src.replace(/^\//, ''));
       expect(existsSync(filePath), `${icon.src} does not exist under public/`).toBe(true);
+    }
+  });
+});
+
+describe('favicon', () => {
+  it('is the brand icon, not the stock create-next-app file', () => {
+    const ico = readFileSync(path.join(__dirname, '..', '..', 'src', 'app', 'favicon.ico'));
+    expect(ico.length).not.toBe(25931); // the exact size of the create-next-app favicon
+    expect(ico.readUInt16LE(2)).toBe(1); // ICO
+    const count = ico.readUInt16LE(4);
+    expect(count).toBeGreaterThanOrEqual(3);
+    for (let i = 0; i < count; i++) {
+      const offset = ico.readUInt32LE(6 + 16 * i + 12);
+      expect(ico.subarray(offset, offset + 8).toString('hex')).toBe('89504e470d0a1a0a'); // PNG entry
     }
   });
 });

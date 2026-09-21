@@ -29,7 +29,7 @@
  */
 
 import sharp from 'sharp';
-import { readFileSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -62,4 +62,34 @@ await render('icon.svg', 'icon-192.png', 192);
 await render('icon.svg', 'icon-512.png', 512);
 await render('icon-maskable.svg', 'icon-maskable-512.png', 512);
 await render('icon.svg', 'apple-touch-icon.png', 180, { flatten: true });
+// The browser-tab icon. `src/app/favicon.ico` was still the stock create-next-app file, so
+// the tab — and any "add to home screen" path that falls back to the favicon instead of
+// the manifest — showed the Next.js logo. An .ico is just a directory of images, and every
+// current browser accepts PNG-encoded entries, so no extra dependency is needed.
+async function renderFavicon(svgFile, outPath, sizes) {
+  const svg = readFileSync(path.join(iconsDir, svgFile));
+  const images = [];
+  for (const size of sizes) images.push(await sharp(svg, { density: DENSITY }).resize(size, size).png().toBuffer());
+
+  const header = Buffer.alloc(6);
+  header.writeUInt16LE(0, 0); // reserved
+  header.writeUInt16LE(1, 2); // type: icon
+  header.writeUInt16LE(images.length, 4);
+  const entries = [];
+  let offset = 6 + 16 * images.length;
+  images.forEach((image, i) => {
+    const entry = Buffer.alloc(16);
+    entry.writeUInt8(sizes[i] >= 256 ? 0 : sizes[i], 0); // width  (0 means 256)
+    entry.writeUInt8(sizes[i] >= 256 ? 0 : sizes[i], 1); // height
+    entry.writeUInt16LE(1, 4);  // colour planes
+    entry.writeUInt16LE(32, 6); // bits per pixel
+    entry.writeUInt32LE(image.length, 8);
+    entry.writeUInt32LE(offset, 12);
+    offset += image.length;
+    entries.push(entry);
+  });
+  writeFileSync(outPath, Buffer.concat([header, ...entries, ...images]));
+  console.log(`  ${path.relative(root, outPath)}  ${sizes.join('/')} px  ${(statSync(outPath).size / 1024).toFixed(1)} KB`);
+}
+await renderFavicon('icon.svg', path.join(root, 'src/app/favicon.ico'), [16, 32, 48, 256]);
 console.log('gen-icons: done.');
