@@ -14,7 +14,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { computeCards } from '../src/engine/ratings';
-import { CARD_SET_VERSION } from '../src/engine/cards';
+import { CARD_SET_VERSION } from '../src/engine/cardSetVersion';
 import type { PlayerBio, SeasonStat, AwardRow, PlayerCardData } from '../src/engine/types';
 
 function mean(arr: number[]): number {

@@ -16,7 +16,7 @@ import type { DraftCard } from '@/engine/types';
 import type { PlayAssignment } from '@/engine/playbook';
 import type { ArchetypeSelection } from '@/engine/archetypes';
 import type { ChallengeHalf } from '@/engine/challenge';
-import { CARD_SET_VERSION } from '@/engine/cards';
+import { CARD_SET_VERSION } from '@/engine/cardSetVersion';
 /**
  * The D1 "completed game" shape (plan_data_storage) is declared in `engine/season.ts`
  * as `StoredGameResult`, not here: `src/engine` must stay free of any dependency on
