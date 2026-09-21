@@ -34,8 +34,9 @@ decisions push through, not the merge logic.
   a prior session's rows.
 - **D3 Write model.** Every `GameStore.save*`/`delete*` resolves once the local Dexie write lands;
   `SupabaseGameStore` never awaits `push()`/`deleteRemote()` inside them. The one remaining `/api/auth/me` fetch
-  (`AuthProvider.tsx`, after D1) gets `AbortSignal.timeout(4000)`; a timeout sets `status = 'signed-out'`, not
-  `'loading'`.
+  (`AuthProvider.tsx`, after D1) gets `AbortSignal.timeout(4000)`. Only a 401/403 signs out; a timeout or
+  network error keeps the last known profile (`lib/authState.ts`, cached in `localStorage`), because with D2 a
+  false "signed out" would hide every roster on a bad connection.
 - **D4 Outbox.** New Dexie table `outbox` (schema version 5), row `OutboxRecord` (`storage/types.ts`): `{ key
   /* `${ownerId}:${table}:${id}` */, ownerId, table, id, op: 'upsert' | 'delete', queuedAt, attempts, lastError?,
   blocked? }`, coalesced per key, drained only for the signed-in `ownerId`. Reached through `OutboxStore`
@@ -77,8 +78,9 @@ decisions push through, not the merge logic.
 - **D10 Table descriptor.** One `SYNC_TABLES` array (name, Dexie table accessor, `stamp`, `merge`, `parse` from
   `safeLoad.ts`) replaces the four-way if-chains in `writeLocalOnly`/`readLocal`/`resolveViaMerge`
   (`supabase.ts`) and the repeated CRUD in `indexedDb.ts`/`memory.ts`. Behavior-preserving only.
-- **D11 Scope of the low findings.** Draft-session autosave after each human pick is in scope (one call, existing
-  handler). `exportAll`/`usage`/backup omitting challenge runs, local-only `clearAll`, no
+- **D11 Scope of the low findings.** Draft autosave is DROPPED (owner, 2026-09-21): nothing can resume a draft
+  (packs live in React state, `DraftRoom.tsx:405` says so), so a per-pick save only litters storage and
+  analytics. The real fix is a future `draft_resume` plan (seed + pick log rebuild the state). `exportAll`/`usage`/backup omitting challenge runs, local-only `clearAll`, no
   `navigator.storage.persist()`, no Dexie `blocked`/`versionchange` handler stay out of scope: small standalone
   fixes for later.
 - **D12 Migrations.** The new migration is written here but applied only by the owner, running `npm run migrate
@@ -89,7 +91,7 @@ decisions push through, not the merge logic.
 - Card-id-only `DraftSession` storage (D7).
 - CRDT/live collaborative roster editing, already out of scope per `accounts_cloud_saves`.
 - The `app/api/auth/login/route.ts` open-redirect fix (separate bug fix).
-- Everything D11 lists as staying out of scope.
+- Everything D11 lists as staying out of scope, and mid-draft kill recovery (future `draft_resume` plan).
 
 ## Tasks
 
@@ -99,9 +101,7 @@ decisions push through, not the merge logic.
 - **T2** Auth wiring: `AuthProvider.tsx` (`refreshAuth`/`onAuthStateChange`), `AuthForm.tsx`/`LogoutButton.tsx`/
   `TopNav.tsx` call sites (D1). Done-when: `npm run test:e2e` (`auto-login.spec.ts`, `topnav.spec.ts`,
   `smoke.spec.ts`) green. Tier: mid.
-- **T3** Draft autosave after each human pick (D11). File: `DraftRoom.tsx`. Done-when: new case in
-  `tests/storage/gameStore.test.ts`: a session exists with the latest pick after a simulated kill before
-  deckbuilding. Tier: low.
+- **T3** Dropped, see D11.
 - **T4** `StorageProvider.tsx` rewrite: derive `ownerId` from `useCurrentProfile()?.id`, `legacy_claimed` gate
   (D1); `useNotices` reloads on owner change (it reads seasons before the owner is set). Done-when: screenshot per AGENTS.md, plus a manual two-login check (sign in, switch account same tab, no
   reload) shows only the new account's rosters. Tier: top.
@@ -123,8 +123,7 @@ decisions push through, not the merge logic.
 
 - **Wave 0** (driver, top): T1. Schema, Dexie version, migration SQL are the contract everything else reads.
   Owner applies the migration before wave 2 starts.
-- **Wave 1**, disjoint files, parallel: T2 (`AuthProvider`/`AuthForm`/`LogoutButton`/`TopNav`) and T3
-  (`DraftRoom.tsx`).
+- **Wave 1**: T2 (`AuthProvider`/`AuthForm`/`LogoutButton`/`TopNav`).
 - **Wave 2**, depends on T1-T2, disjoint files, parallel: T4 (`StorageProvider.tsx`) and T5 (`supabase.ts`
   outbox engine; T5 does not touch `StorageProvider.tsx`).
 - **Wave 3**, depends on T5, sequential since both touch `supabase.ts`/`indexedDb.ts` (one agent, not two in
@@ -136,14 +135,14 @@ decisions push through, not the merge logic.
 Main driver: Sonnet 5 (mid). Reads this plan, runs `tsc`/`npm test`, verifies the owner applied the migration
 before wave 2, screenshots T4, commits. T1, T4, T5, T7 run top tier (Fable 5.1/Opus 5 or Gemini 3 Pro Deep
 Think): schema/RLS/payload-cap correctness, the drain/backoff/tombstone logic, and the account-switch path are
-what corrupts data if wrong. T2/T6 run mid; T3/T8 run low.
+what corrupts data if wrong. T2/T6 run mid; T8 runs low.
 
 ## Verification / exit criteria
 
-- `npm test` green, including cases named in T3/T5/T6's done-when.
+- `npm test` green, including cases named in T5/T6's done-when.
 - `tsc --noEmit`, `npm run lint`, `npm run check:styles` (0 violations) clean.
 - `smoke.spec.ts` 9/9; `topnav.spec.ts`/`auto-login.spec.ts` green.
-- Manual: kill the tab mid-draft before deckbuilding, reload, confirm the last pick survived (T3). Go offline,
+- Manual: go offline,
   delete a roster with a challenge run, reconnect, confirm neither reappears (D5). Log in, switch accounts in
   one tab, confirm no stale-owner rows (T4, screenshotted per AGENTS.md).
 - `npm run analyze` output structurally unchanged; this plan does not touch balance.

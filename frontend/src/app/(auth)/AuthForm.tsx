@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { Button } from '@/components/ui';
+import { useRefreshAuth } from '@/components/AuthProvider';
 
 type AuthFormProps = { mode: 'login' | 'signup' };
 
@@ -14,6 +15,7 @@ const labelClass = 'mb-1 block text-xs font-bold uppercase tracking-[0.2em] text
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
+  const refreshAuth = useRefreshAuth();
   const [identifier, setIdentifier] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -48,6 +50,9 @@ export function AuthForm({ mode }: AuthFormProps) {
       setPassword('');
       return;
     }
+    // sync_outbox D1: this is a soft navigation (push + refresh, no remount), so
+    // AuthProvider's context would otherwise stay stale until a hard reload.
+    await refreshAuth({ identityChanged: true });
     router.push(result.redirect ?? '/');
     router.refresh();
   }

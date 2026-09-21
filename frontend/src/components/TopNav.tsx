@@ -2,7 +2,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, Settings, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
-import { useAuthStatus, useCurrentProfile, type CurrentProfile } from './AuthProvider';
+import { useAuthStatus, useCurrentProfile, useRefreshAuth, type CurrentProfile } from './AuthProvider';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { useNotices, type Notice } from '@/hooks/useNotices';
 import { useUserSeasonStats } from '@/hooks/useUserSeasonStats';
@@ -202,6 +202,7 @@ export function TopNav() {
   const router = useRouter();
   const profile = useCurrentProfile();
   const status = useAuthStatus();
+  const refreshAuth = useRefreshAuth();
   const syncStatus = useSyncStatus();
   const notices = useNotices();
   const seasonStats = useUserSeasonStats();
@@ -214,6 +215,9 @@ export function TopNav() {
 
   async function signOut() {
     await fetch('/api/auth/logout', { method: 'POST' });
+    // sync_outbox D1: soft navigation (push + refresh, no remount) — without this the
+    // profile context keeps showing the old user until a hard reload.
+    await refreshAuth({ identityChanged: true });
     router.push('/login');
     router.refresh();
   }
