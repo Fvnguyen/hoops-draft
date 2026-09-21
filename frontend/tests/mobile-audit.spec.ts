@@ -374,7 +374,12 @@ test.describe('Mobile audit', () => {
     await edit.click();
     await expect(page).toHaveURL(/\/roster\//);
     await audit(page, testInfo, 'deck-builder');
+    // plan_mobile_native_feel D3: the deck builder guards the back button, so a back press
+    // opens the "Leave this screen?" sheet instead of navigating. Confirm it, as a player
+    // would; without this the walk silently stayed on the builder and timed out below.
     await page.goBack();
+    await page.getByRole('button', { name: 'Leave', exact: true }).click();
+    await expect(page).toHaveURL(/\/rosters/);
     await dismissSplash(page);
     await expect(page.getByText('Loading Rosters...')).toHaveCount(0);
 
