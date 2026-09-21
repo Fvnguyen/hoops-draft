@@ -204,7 +204,7 @@ UI code never touches `localStorage` or IndexedDB directly. It calls `getGameSto
 which returns the single `GameStore` implementation for the environment:
 
 - `indexedDb.ts` — Dexie database `MagicBallDB` with tables `draftSessions`, `rosters`,
-  `seasons`, `challengeRuns`, `meta`. Quota failures surface as `StorageQuotaError`, which
+  `seasons`, `challengeRuns`, `outbox`, `meta`. Quota failures surface as `StorageQuotaError`, which
   the deck builder and season view show inline.
 - `memory.ts` — in-memory store used during SSR and in tests.
 - `migrate.ts` — one-time import of the pre-Phase-1 `localStorage` keys
@@ -212,24 +212,44 @@ which returns the single `GameStore` implementation for the environment:
   to `*.migrated`, never deleted.
 - `StorageProvider` (`src/components/StorageProvider.tsx`) runs `initStorage()` once at
   app start and exposes `useStorageReady()` so pages can wait for the migration.
-- `supabase.ts` — `SupabaseGameStore` (accounts_cloud_saves), the browser default in
-  `getGameStore()`: wraps an `IndexedDbGameStore` (every read still goes through it) and,
-  once `setOwnerId` has a real id, pushes every write to Supabase (`draft_sessions`,
-  `rosters`, `seasons` tables, migration `202609140001_cloud_saves.sql`) via a
-  `cas_upsert` RPC — an atomic `update ... where updated_at = expected`, so a push that
-  raced another device is rejected instead of silently clobbering it. A rejection is
-  resolved with `merge.ts` (pure, no Supabase/Dexie/fetch imports, same purity discipline
-  as `engine/`): draft sessions and seasons auto-merge (longer `pickLog` wins; schedule
-  entries are unioned by `played` and standings recomputed via
-  `engine/season.ts#recomputeStandingsFromSchedule`); a roster conflict has no sensible
-  auto-merge and is parked for `SyncConflictPrompt` (driven by `useSyncStatus`/
-  `GameStore.subscribeSyncStatus`) to let the user pick a side. A `ChallengeRun` merges on
-  one rule — the later `phase` on `first < break < second < done` wins outright — and so
-  never raises a conflict. `StorageProvider` also
-  runs a one-time `pushLocalToCloud()` per login, insert-only (never overwrites an
-  existing cloud row). `/api/analytics` and `/admin/analytics` read the same
-  Supabase tables (`src/lib/analyzeStats.ts`, shared with `scripts/analyze.ts`) — `scope=self`
-  works under the caller's own RLS-scoped session, `scope=all` is ADMIN-gated.
+- `StorageProvider` also keeps the store's OWNER in step with `AuthProvider`'s profile
+  (sync_outbox): login, logout and an account switch are soft navigations, so the owner
+  is re-applied on every change, one change after another. Both local stores ALWAYS filter
+  reads by owner (no owner = only never-claimed rows). Ownerless rows are claimed once per
+  device (`legacy_claimed` meta flag). `useStorageReady()` is false while a change applies.
+- `supabase.ts` — `SupabaseGameStore`, the browser default in `getGameStore()`. It wraps a
+  local store (`GameStore & OutboxStore`); every read goes through it. **Local-first with
+  an outbox** (sync_outbox, migration `202609210001_sync_outbox.sql`):
+  - A save or delete resolves on the LOCAL write and leaves one payload-free `OutboxRecord`
+    per `${ownerId}:${table}:${id}` (Dexie table `outbox`, schema v5). Ten offline saves of
+    one roster are one record; a delete replaces a pending upsert.
+  - A single-flight **drain** pushes one key at a time, re-reading the current local row at
+    send time. Triggers: a write, `online`, the tab becoming visible, the end of
+    `setOwnerId`, the backoff timer. Pull and drain share one promise chain, and every
+    request has a timeout (supabase-js has none).
+  - A push is the `cas_upsert` RPC: compare-and-swap against the **baseline** (the
+    `updated_at` the server held when both sides last agreed), persisted per owner in
+    `meta` (`sync.baselines:<ownerId>`). Any rejection that carries a row is merged by the
+    pure `merge.ts` (same purity discipline as `engine/`): draft sessions keep the longer
+    `pickLog`, seasons union played games and recompute standings, rosters keep the newest
+    edit, a `ChallengeRun` keeps the later `phase` (a tie goes to the run created first, so
+    two devices converge). Only a truly diverged draft is parked for `SyncConflictPrompt`.
+  - A delete is a `cas_delete` **tombstone** (`deleted_at`). A pull applies tombstones
+    locally, which is how a second device learns a row is gone; a newer local save still
+    in the outbox beats a tombstone, and an insert revives one.
+  - The **pull** is two-phase: `id, updated_at, deleted_at` first, then `data` only for
+    rows whose stamp differs from the baseline. It runs at sign-in (readiness waits at most
+    6 s for it) and when the app is resumed after 5+ minutes.
+  - Transient errors back off (2 s doubling, 60 s cap). Permanent ones (RLS, payload cap
+    16 MiB, unknown table) park the record as `blocked` (`SyncStatus.blocked`); it gets one
+    fresh attempt per sign-in.
+  - `getOrCreateSeason` / `getOrCreateChallengeRun` create at most one row per roster, in
+    one Dexie `rw` transaction, under `season_<rosterId>` / `challenge_<rosterId>`.
+  - Server side: primary key `(owner_id, id)`, writes only for an APPROVED profile, the
+    table allowlist lives in one `sync_table_allowed()` function. `/api/analytics` and
+    `/admin/analytics` read the same tables (`src/lib/analyzeStats.ts`, shared with
+    `scripts/analyze.ts`) — `scope=self` under the caller's RLS session, `scope=all`
+    ADMIN-gated; both skip tombstones.
 
 ## 9. Headless tooling
 

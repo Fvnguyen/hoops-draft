@@ -14,12 +14,12 @@ archetype identities and assigned-player plays, narrated outside the engine by
 game_theater). Persistence is IndexedDB behind
 `GameStore`, storing a slim per-game result (re-simulated on view from its seed) rather
 than the full play-by-play; a logged-in user's data also cloud-syncs to Supabase
-(`SupabaseGameStore`, accounts_cloud_saves) with optimistic-concurrency conflict handling
-— see the milestones below. The UI runs on semantic tokens + `data-theme` and five
+(`SupabaseGameStore`: local-first writes, an outbox, CAS pushes and tombstones, see
+sync_outbox below). The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-434/435 Vitest tests pass (two pre-existing seeded-statistics drifts, see below), type-check is clean, `npm run lint` is
+506/507 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -46,80 +46,44 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **challenge_loose_ends** (2026-09-19, `plan_challenge_loose_ends_2026-09-19.md`): `PlayCard`/`PlayCardFront` get the same phone `wide` resize as player cards; 82:0 results screen's primary CTA is now "End Challenge — Results Locked In" (`/rosters`), replacing "Draft a new team"; rosters list shows `Start 82:0`/`Continue 82:0`/`View Result` per run phase plus a `W-L · Title (Grade)` summary once done; `TopNav` gains a "82:0 Challenges: N completed, best W-L (grade)" line, omitted at zero completed runs. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9.
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
+- **mobile_native_feel** (2026-09-19): global `touch-action`/`user-select`/`-webkit-touch-callout` in `globals.css` (no context menu/double-tap zoom); Android/PWA back shows a "Leave this screen?" sheet on draft room/deck builder; two per-move undo toasts dropped. Verified in the browser pane only — **not verified** on a real Android device; recheck there first on a long-press/double-tap/back report.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 
 ## card_ratings_rebalance — done 2026-09-18
 
-Plan: `docs/completed/plan_card_ratings_rebalance_2026-09-18.md`. All T1-T8 done. Fixed a
-25-minute backup centre (Queta) being a 90 OVR Mythic while Curry (43-game season) was
-74: the pipeline discarded two thirds of the advanced/shooting stats it already scraped,
-and PER/VORP-driven OVR punished a shorter season.
-What shipped: pipeline widened to 13 previously-discarded columns (usg%/ast%/tov%/stl%/
-blk%/orb%/drb%/trb%/obpm/dws/ws-per-48/pct-ast-fg2/pct-ast-fg3); every dimension rebuilt
-on a single mean-centred `idx()` (league avg → 0.5, rotation top-7.5% → 1.0) over rotation
-players (mpg≥15) instead of the old benchmark-ratio `getIndex`; defence is now
-magnitude(DBPM/DWS-48) × shape(steal% vs block%+DRB% split), not two independent scores;
-shooting channels get a self-creation boost (`1 - pct_ast_fgN`) so Curry's low assisted-3
-rate outweighs a high-volume-but-assisted shooter like Queta; playmaking/rebounding are
-rate-stat power blends (AST%^0.65·APG^0.35, TRB%^0.45·RPG^0.55); a raw exceeding 99 earns
-a gold L4 badge (gold ring/fill, `PlayerCard.tsx`) instead of being clipped.
-**Positions, superseded twice (2026-09-19): `PositionResolver`** (`fetch_players.py`)
-replaced the letter-index/`blend_bio_crossover` approach — those capped at broad G/F/C
-same as bio.csv. Each player's own bref bio page ("Position: X, Y, and Z") gives exact
-eligibility (Shai → PG/SG, Barnes → SG/SF/PF), scraped for all 582 active players into
-`data/bref_player_positions.json` by `download_bref.js`. Primary = bref's season `Pos`;
-eligibility = the bio-text set, trusted verbatim (0 conflicts, only 3/582 non-adjacent,
-~2% three-way+, not pool-skewed → no cut needed, see `data/analyze_positions.py`).
-Missing bio text (3/582, a real bref quirk) falls back to a value **persisted from
-game.db** before overwrite, then season-Pos-only; a genuinely new Rare+ gap logs to
-`REVIEW_MISSING_POSITIONS.md` (gitignored) for a one-time manual edit that persists
-forward on its own — `POSITION_OVERRIDES` is for overruling a wrong signal (Jokić), not
-filling gaps. Giannis (no Position line at all) hand-set to SF/PF/C. Gold-star treatment
-(`getPosColors`, `PlayerCard.tsx`) marks 3+ position eligibility; `multipositionalLevel`
-(`archetypes.ts`) starts credit at 3 positions.
-**OVR follow-up (2026-09-19):** no longer a flat mean of the seven dimensions (regressed
-to the middle, topped out at 90/~47 mean) — `computeCards` now runs two passes: pass 1
-averages each player's seven UNCAPPED dimension raws into `rawOvrMean`; pass 2 re-indexes
-that composite through the same `idx()` every dimension uses (rotation league avg → ~50
-OVR, rotation top-7.5% → 99) before resolving rarity/awards. Untouched: per-dimension
-ratings, the possession engine (OVR isn't a game input). **Not verified**: the plan's
-screenshot exit criterion — no Supabase credentials in this sandbox, every route 500s
-before rendering; do this on a real machine before signing off the gold badge UI.
-**Balance workflow locked in, five hierarchical stages** (`AGENTS.md`), all done
-2026-09-19: **rarity** simplified to band → adjustment → floor/ceiling (`ratings.ts`;
-`RARITY_CUTOFFS` rebanded `<50/50-79/80-89/90+`, `hasAward` folds in every award type);
-**badges** re-hand-binned against the
-post-rebalance raws (target ~62/29/11 → ~56/27/13 holders), fixing playmaking's dead L3
-and the ~3x badge-earn-rate spread (now 10.9-13.4% across all seven dims); **plays/
-archetypes**: dropped the stale `MONO_THRESHOLDS_BY_COLOR` defense discount (existed
-only because defense badges were scarcer — stage 4 fixed that), added Crash and Finish
-(Glass Cleaner's first primary-colour plan), and switched bot archetype selection from
-deterministic-best (tied toward mono via array order) to `pick(rng, eligible)` — every
-two-colour plan went from 0% to a real activation rate (`bestSelection`, `archetypes.ts`).
-PPP steady near 1.05-1.06. Two tests sit just past tolerance from the position-pool + rarity-
-band drift, left for a dedicated recalibration pass, not patched ad hoc: `lineup.test.ts`
-(`LINEUP_CENTRE`) and `game.test.ts`'s home-court test. `card_balance_thresholds` closed
-2026-09-19 by owner override — its D8 target was discarded before `draft_ai` even landed.
-**Gold = a fourth badge level** (owner, 2026-09-19): nothing special-cases it. Archetype
-colour points, `countBadges` and play requirements all read `Trait.level` numerically, so
-one gold Finisher alone activates Post-Up Series (3 levels). Locked by four tests in
-`synergies.test.ts`, including that gold REPLACES the l3 trait rather than adding a second.
-**`draft_ai` landed (2026-09-19):** T1-T3/T5/T6 recovered from an orphaned branch
-(`claude/roadmap-status-96eef9`, forked off main right after `card_balance` closed
-2026-09-17, never merged) — cherry-picked its code (not its stale docs) 47 commits
-later. Bots draw a target/secondary plan at draft start and score picks value-first-
-then-plan (ramping across the draft, bomb-pull override for a clear talent gap), and
-`buildBotRoster` never leaves a depth-chart column empty (fixes the old 4-on-5 bug).
-T4 (D8 identity-reach tuning) stays parked by owner call, not an exit criterion.
-442/443 tests, `npm run balance`/`feasibility` clean, live draft + ticker screenshotted.
-**`mobile_native_feel` done (2026-09-19):** no context menu/double-tap-zoom
-(`touch-action`/`user-select`/`-webkit-touch-callout` globally in `globals.css`),
-Android/PWA back shows a "Leave this screen?" sheet (Cancel/Leave, re-arms on cancel)
-on draft room/deck builder instead of silent history-back, dropped two per-move
-deck-builder undo toasts. Verified via browser-pane mobile-landscape viewport
-(computed styles, live back-guard trigger/cancel/re-arm) — **not verified**: an actual
-Android device or Chrome touch-gesture emulation, unavailable in this sandbox; recheck
-there first if a long-press/double-tap/back-button report comes in.
+Plan: `docs/completed/plan_card_ratings_rebalance_2026-09-18.md`, T1-T8 done. Fixed a
+25-minute backup centre (Queta) rating 90 OVR Mythic while Curry (43 games) was 74: the
+pipeline threw away two thirds of the advanced/shooting stats it scraped, and PER/VORP-
+driven OVR punished a short season. The pipeline now keeps 13 more columns (usg%/ast%/
+tov%/stl%/blk%/orb%/drb%/trb%/obpm/dws/ws-per-48/pct-ast-fg2/pct-ast-fg3). Every dimension
+runs on one mean-centred `idx()` (league avg -> 0.5, rotation top-7.5% -> 1.0) over rotation
+players (mpg>=15); defence = magnitude(DBPM/DWS-48) x shape(steal% vs block%+DRB%);
+shooting gets a self-creation boost (`1 - pct_ast_fgN`); playmaking/rebounding are rate-
+stat power blends (AST%^0.65*APG^0.35, TRB%^0.45*RPG^0.55); a raw over 99 earns a gold L4
+badge (`PlayerCard.tsx`) instead of being clipped.
+**Positions (2026-09-19): `PositionResolver`** (`fetch_players.py`). Each player's bref bio
+page ("Position: X, Y, and Z") gives exact eligibility, scraped for all 582 active players
+into `data/bref_player_positions.json` (`download_bref.js`); primary = bref's season `Pos`.
+Trusted verbatim (0 conflicts, 3/582 non-adjacent, see `data/analyze_positions.py`).
+Missing bio text (3/582) falls back to the value persisted in game.db, then season `Pos`; a
+new Rare+ gap logs to `REVIEW_MISSING_POSITIONS.md` (gitignored). `POSITION_OVERRIDES`
+overrules a wrong signal (Jokic), it does not fill gaps; Giannis is hand-set SF/PF/C. A
+gold star (`getPosColors`) marks 3+ positions; `multipositionalLevel` credits from 3.
+**OVR (2026-09-19):** two passes in `computeCards`: average the seven UNCAPPED dimension
+raws, then re-index that composite through the same `idx()` (rotation avg -> ~50, top-7.5%
+-> 99). OVR is not a game input. **Not verified:** the plan's gold-badge screenshot.
+**Balance workflow, five stages** (`AGENTS.md`), all done 2026-09-19: rarity = band ->
+adjustment -> floor/ceiling (`RARITY_CUTOFFS` `<50/50-79/80-89/90+`); badges re-binned
+(~56/27/13 holders, earn rate 10.9-13.4% across all seven dims, playmaking's dead L3
+fixed); plays/archetypes dropped the stale defense discount, added Crash and Finish, and
+bots pick an archetype with `pick(rng, eligible)`, so two-colour plans activate at all.
+PPP 1.05-1.06. `lineup.test.ts` (`LINEUP_CENTRE`) sits just past tolerance from this drift
+and waits for a recalibration pass (`game.test.ts` home-court passes again).
+**Gold = a fourth badge level**: everything reads `Trait.level` numerically, so one gold
+Finisher activates Post-Up Series. Four tests in `synergies.test.ts` lock it.
+**`draft_ai` (2026-09-19):** recovered from an orphaned branch, code cherry-picked 47
+commits later. Bots draw a target/secondary plan and score value-first-then-plan with a
+bomb-pull override; `buildBotRoster` never leaves a column empty. T4 parked by owner.
 
 ## challenge_mode — done 2026-09-18
 
@@ -153,19 +117,46 @@ What to know before touching it:
 - **The record stays sealed until game 82.** The break shows a pace band only, and
   `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
 
-UAT changed three things worth remembering. The reel was too slow at both ends (a run is now
-~15.6s, not ~29s). The flip blur was twice overcorrected: what seals the record is the strip
-ROLLING, not blur — blur only softens the moving digits, and at 19% of the glyph the cell went
-flat. And the "flicker before the deadline" was a REVEAL: the reel dropped blur to 0 when a
-half ran out, showing the true 41-game record for a frame before the break mounted.
-`/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render the screens
-against the signed boards with no auth, storage or simulation.
+UAT changed three things: the reel was too slow (a run is now ~15.6s, not ~29s); what seals the
+record is the strip ROLLING, not blur (at 19% of the glyph the cell went flat); and the "flicker
+before the deadline" was a REVEAL — blur dropped to 0 as a half ran out, showing the true 41-game
+record for a frame. `/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]`
+render the signed boards with no auth, storage or simulation.
 
 Seams: the pack reveal advances on animation frames, so it stalls if the browser pane stops
 painting (which is why the trade -> deck-builder hand-off is code-verified, not clicked);
 `cas_upsert`'s allowlist is hardcoded in SQL, so a new synced table needs the function
 re-declared (migration `202609170001`); and an untracked asset in `public/` reads as junk to
 the next agent — the 82:0 pack art was deleted on that mistake, so it is tracked now.
+
+## sync_outbox — code complete 2026-09-21, owner checks open
+
+Plan: `docs/plans/plan_sync_outbox_2026-09-21.md` (T1-T8; T3 dropped). Branch
+`claude/sync-outbox`, NOT merged or deployed. The model is in `ARCHITECTURE.md` section 8:
+local-first, a persisted outbox, tombstones, persisted baselines, a two-phase pull.
+What it fixes: sync never started after a login until a hard reload (login/logout are soft
+navigations); the next user of a device saw the previous account's rows; every save hung
+on the network; an offline delete came back; every launch re-uploaded every row; two tabs
+or devices created two seasons/82:0 runs for one roster.
+- **Migration `202609210001_sync_outbox.sql` is APPLIED to production** (2026-09-21):
+  dry-run plus 18 function/RLS checks in a rolled-back transaction, then the same checks
+  live; row counts unchanged. It is backward compatible with the deployed client. The
+  payload cap is 16 MiB, not the planned 1 MiB: 4 legacy seasons are 1.1-4.6 MB.
+- Measured against live Supabase: first visit 229 KB of payload, a relaunch 0 KB.
+- Only a 401/403 signs a user out. A timeout keeps the last known profile
+  (`lib/authState.ts`), because with owner-filtered reads a false "signed out" hides every
+  roster. Login/logout pass `identityChanged` so the old profile is never the fallback.
+- Driver review changed the engine in four ways: a first push over an existing cloud row
+  is merged, not overwritten; blocked records get one attempt per sign-in; every request
+  has a timeout; the app pulls again when resumed after 5+ minutes.
+- 97 storage tests, 506/507 overall, Playwright `smoke`/`season`/`topnav`/`auto-login`/
+  `roster-reopen`/`deckbuilder` green.
+**Do not deploy a partial branch:** with owner-filtered reads but no owner refresh, a
+fresh login shows empty lists. **Open before `/roadmap done`:** the owner's manual checks
+(switch accounts in one tab without a reload; delete a roster offline, reconnect, confirm
+it stays gone); nothing in the UI shows `SyncStatus.blocked` yet; creating an 82:0 run was
+not exercised in a browser (no challenge spec). Same-phase edits of one 82:0 run on two
+devices still re-push each other's copy once per pull (bounded, pre-existing).
 
 ## How to run everything
 
@@ -192,8 +183,8 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13); its still-open bugs live in those plans (sync never starts after a soft-nav login,
-back guard leaks history entries, saves await the network). Fixed the same day: opening a
+(#13). `sync_outbox` is code complete (section above); the back-guard history leak lives
+in `mobile_load`. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
@@ -224,6 +215,16 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    0.12-0.15 pulls it back if seasons feel solved). Unexplained: the player-level on-floor
    regression gives finishing a negative marginal in the 41-55 OVR band while the roster-
    level `--levers` A/B makes finishing the top lever; look with a larger bootstrap first.
+8. **Vercel Deployment Storage at 75% of 10 GB (2026-09-21)** — each push kept a ~90 MB
+   deployment (estimate; `frontend/public` is 104 MB: 481 headshot PNGs 87 MB + ~20 MB card-back/
+   arena/pack art), nothing pruned: 82 hoops-draft deployments (57 production, 25 preview).
+   `frontend/vercel.json`: `ignoreCommand` skips builds with no `frontend/` change since
+   `VERCEL_GIT_PREVIOUS_SHA`, and `claude/*` branches don't build (drop that block if previews are
+   wanted for phone UAT). Root Directory = `frontend` is VERIFIED (build log runs `frontend@0.1.0
+   build`). Owner actions: run `scripts/prune-vercel-deployments.ps1` (dry run by default, `-Execute`
+   deletes permanently; keeps live + 4 newest READY production + last 48h; token via
+   `$env:VERCEL_TOKEN`), set Deployment Retention on both projects (dashboard only, no API), and
+   `mobile_load` D3-D5 shrink `public/` ~5x (originals leave `public/`). Behaviour at 100% is unknown.
 
 ## Where to look
 
