@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { RosterIdentity, LEAGUE_AVG_IDENTITY } from '../engine/rosterStats';
-import type { TeamBonuses } from '../engine/synergies';
 import type { TeamShotProfile } from '../engine/game';
 import type { PlayerCardData } from '../engine/types';
 import {
@@ -150,6 +149,7 @@ export function TopKPIBand({
   average,
   starterIds,
   archetypes,
+  archetypeStatuses,
   onArchetypesChange,
   playsAssigned,
   playsTarget = 3,
@@ -159,14 +159,16 @@ export function TopKPIBand({
 }: {
   identity: RosterIdentity;
   shotDiet: TeamShotProfile;
-  /** Kept for API compatibility with callers; the band derives everything from depthChart. */
-  bonuses?: TeamBonuses;
   depthChart: Record<string, PlayerCardData[]>;
   average?: RosterIdentity;
   /** Depth-chart index-0 players, used for archetype tier thresholds. Defaults to each column's first player. */
   starterIds?: Set<string>;
   /** The user's chosen Offense/Defense plan (or Gold plan). */
   archetypes?: ArchetypeSelection;
+  /** Precomputed `evaluateArchetypes(...)` result, fed by a caller that already has one
+   *  (`DeckBuilder.tsx`'s own `useMemo`) so the band doesn't redo the same pass. Absent
+   *  callers (e.g. `/test-ui`) fall back to computing it here, same as before. */
+  archetypeStatuses?: ArchetypeStatus[];
   /** Present only when the band is editable; absent = read-only. */
   onArchetypesChange?: (sel: ArchetypeSelection) => void;
   /** Plays assigned so far. Optional — the Plays chip hides when this is undefined
@@ -223,7 +225,7 @@ export function TopKPIBand({
   for (const col of Object.values(depthChart)) if (col[0]) defaultStarterIds.add(col[0].id);
   const effectiveStarterIds = starterIds ?? defaultStarterIds;
   const selection = archetypes ?? {};
-  const statuses = evaluateArchetypes(activePlayers, effectiveStarterIds, selection);
+  const statuses = archetypeStatuses ?? evaluateArchetypes(activePlayers, effectiveStarterIds, selection);
 
   // Product rule: a roster is offered at most 4 unlocked plans (shortlistArchetypes
   // keeps the best plan of each lane first). Lanes always render. A locked plan is

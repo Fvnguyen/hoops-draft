@@ -143,3 +143,26 @@ test.describe('Deckbuilder @ D4 both sidebars dock', () => {
     });
   }
 });
+
+/**
+ * render_and_engine_perf T10: the Roster body unmounts whenever the compact drawer closes,
+ * so its position filter must live above it. Picking a filter, closing the drawer and
+ * opening it again has to come back to the same filter.
+ */
+test('compact tier: the roster position filter survives closing and reopening the drawer', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 420 });
+  await gotoDeckbuilder(page);
+  const openDrawer = page.getByRole('button', { name: /^Roster,/ });
+  const guards = page.getByRole('button', { name: 'G', exact: true });
+
+  await openDrawer.click();
+  await expect(guards).not.toHaveClass(/bg-surface-inverse/);
+  await guards.click();
+  await expect(guards).toHaveClass(/bg-surface-inverse/);
+
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(guards).toHaveCount(0);
+
+  await openDrawer.click();
+  await expect(guards).toHaveClass(/bg-surface-inverse/);
+});

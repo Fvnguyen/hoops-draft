@@ -184,13 +184,6 @@ export default function TestUI() {
               playsAssigned={1}
               playsTarget={3}
               actions={mockKpiBandActions}
-              bonuses={{
-                offenseMods: emptyModifiers(),
-                defenseMods: emptyModifiers(),
-                possessionSwing: 0,
-                activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
-                activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
-              }}
             />
          </div>
       </div>
@@ -207,13 +200,6 @@ export default function TestUI() {
               playsAssigned={1}
               playsTarget={3}
               actions={mockKpiBandActions}
-              bonuses={{
-                offenseMods: emptyModifiers(),
-                defenseMods: emptyModifiers(),
-                possessionSwing: 0,
-                activeSynergies: [{ name: 'Paint Dominance', description: '+1% rim share' }],
-                activePlays: [{ name: 'Triangle Offense', activated: 'full', description: 'Strong spacing' }],
-              }}
             />
          </div>
       </div>
