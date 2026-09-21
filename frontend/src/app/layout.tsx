@@ -7,7 +7,7 @@ import { StorageProvider } from '@/components/StorageProvider';
 import { AuthProvider } from '@/components/AuthProvider';
 import { OrientationGate } from '@/components/OrientationGate';
 import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
-import { THEME_COLOR } from './manifest';
+import { APPLE_TOUCH_ICON, THEME_COLOR } from './manifest';
 
 const inter = Inter({
   variable: "--font-inter",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   // already covers the browser-tab favicon; the PNGs in `manifest.ts` are what Android's
   // install prompt/splash screen read, not `metadata.icons`.
   icons: {
-    apple: '/icons/apple-touch-icon.png',
+    apple: APPLE_TOUCH_ICON,
   },
   appleWebApp: {
     title: 'Hoops Draft',
