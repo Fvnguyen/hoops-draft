@@ -3,21 +3,26 @@ import json
 import time
 import requests
 
+# mobile_load T4: source headshots now live outside the deployed `frontend/public/`
+# folder (every Vercel deployment stores the whole thing) — in `data/headshots_src/`,
+# a sibling of `frontend/`, since this script runs from `data/`. `ensure-headshots.mjs`
+# reads from the same folder and pre-generates the WebP thumbnails `public/headshots/`
+# actually serves.
 def download_images():
     with open('players.json', 'r', encoding='utf-8') as f:
         players = json.load(f)
-        
-    os.makedirs('../frontend/public/headshots', exist_ok=True)
-    
+
+    os.makedirs('headshots_src', exist_ok=True)
+
     missing_critical = []
-    
+
     print(f"Checking images for {len(players)} players...")
     for i, p in enumerate(players):
         pid = p['id']
         name = p['name']
         rarity = p.get('rarity', 'Common')
-        
-        path = f"../frontend/public/headshots/{pid}.png"
+
+        path = f"headshots_src/{pid}.png"
         if os.path.exists(path):
             continue
             

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type ReactNode, type JSX } from 'react';
+import { useRef, useState, useSyncExternalStore, type ReactNode, type JSX } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
@@ -11,9 +11,10 @@ import { headshotThumb } from '@/lib/headshotThumb';
  *  `LONG_PRESS_MS`) shows the screen-centred preview while the finger stays down; a
  *  short tap keeps its existing meaning (flip / select). Any movement cancels it, and a
  *  press that opened the preview swallows the following click so it never also picks. */
-/** `sizes` for the card-front headshot: the 1040x760 source PNGs (~180 KB each) are
- *  served by next/image as WebP at the requested width — ~640px on a 3x phone instead
- *  of the full original. Exported so DraftRoom can preload the SAME candidate URLs. */
+/** `sizes` for the card-front headshot. mobile_load D4: card fronts now point straight
+ *  at the pre-generated `headshots/480/<id>.webp` (`headshotThumb`) marked `unoptimized`,
+ *  so this no longer drives a Vercel re-transform — kept only because it's still a
+ *  harmless `<Image>` prop and some other file may still import the constant. */
 export const HEADSHOT_SIZES = '200px';
 
 const LONG_PRESS_MS = 450;
@@ -42,6 +43,49 @@ function useLongPressPreview() {
   const onContextMenu = (e: React.MouseEvent) => { e.preventDefault(); };
   return { open, fired, handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchMove, onClickCapture, onContextMenu } };
 }
+
+/**
+ * mobile_load T8/D8: `PlayerCard`'s back face used to mount unconditionally inside the
+ * `preserve-3d` flip wrapper, but phones never hover-flip (see `useLongPressPreview`
+ * above — the long-press preview is a completely separate portalled component with its
+ * own back face) so every card on a phone paid to mount and lay out a face nobody could
+ * reach. The fix is to mount it only while actually flipped or on a device that can
+ * hover at all (`(pointer: fine)`, same signal `useHoverPreview.ts`'s `isCoarsePointer`
+ * reads, just the inverse and reactive).
+ *
+ * A screen can show 8-30 cards at once, so this is deliberately ONE shared
+ * `MediaQueryList`/native `change` listener for the whole app — not a `matchMedia` call
+ * per card — via a module-level listener registry that every `useHasFinePointer()`
+ * caller just adds a callback to. `useSyncExternalStore`'s separate server snapshot
+ * (always `false`) is what avoids a hydration mismatch: SSR and the first client render
+ * agree the device has no fine pointer, and only a later, post-hydration render (driven
+ * by the store) can flip it to `true` on desktop.
+ */
+let finePointerMql: MediaQueryList | null = null;
+const finePointerListeners = new Set<() => void>();
+function getFinePointerMql(): MediaQueryList | null {
+  if (typeof window === 'undefined') return null;
+  if (!finePointerMql) {
+    finePointerMql = window.matchMedia('(pointer: fine)');
+    finePointerMql.addEventListener('change', () => finePointerListeners.forEach(listener => listener()));
+  }
+  return finePointerMql;
+}
+function subscribeFinePointer(onChange: () => void): () => void {
+  getFinePointerMql();
+  finePointerListeners.add(onChange);
+  return () => { finePointerListeners.delete(onChange); };
+}
+function finePointerSnapshot(): boolean {
+  return getFinePointerMql()?.matches ?? false;
+}
+function finePointerServerSnapshot(): boolean {
+  return false;
+}
+function useHasFinePointer(): boolean {
+  return useSyncExternalStore(subscribeFinePointer, finePointerSnapshot, finePointerServerSnapshot);
+}
+
 import { ClipboardList, MoreHorizontal, X } from 'lucide-react';
 
 import type { PlayerCardData as EnginePlayerCardData, Player as EnginePlayer, Play as EnginePlay, DraftCard as EngineDraftCard, Trait } from '@/engine/types';
@@ -360,7 +404,7 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
   const rowClasses = `@container flex items-center gap-1.5 h-11 px-2 rounded-lg border transition-colors bg-surface-raised ${selected ? 'border-accent ring-1 ring-accent bg-accent-soft/40' : 'border-line hover:border-line-strong hover:bg-surface-sunken'} ${onClick ? 'cursor-pointer' : ''} ${className}`;
 
   if (card.type === 'Player') {
-    const headshotUrl = `/headshots/${card.player.id}.png`;
+    const headshotUrl = headshotThumb(card.player.id, 96);
     return (
       <div className={rowClasses} onClick={onClick}>
         <RarityGem rarity={card.rarity} size="sm" />
@@ -370,6 +414,7 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
           alt=""
           width={28}
           height={28}
+          unoptimized
           className="w-7 h-7 rounded-full object-cover object-top border border-line shrink-0 bg-surface-sunken"
           onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
         />
@@ -419,7 +464,7 @@ function StatCell({ label, value, border = true, className = '' }: { label: stri
 export function MiniPlayerCard({ player, className = "", onClick }: { player: PlayerCardData, className?: string, onClick?: () => void }) {
   const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
   const tmColor = teamColors[player.player.team] || defaultTeamColor;
-  const headshotUrl = `/headshots/${player.player.id}.png`;
+  const headshotUrl = headshotThumb(player.player.id, 96);
 
   return (
     <div
@@ -443,13 +488,18 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
           alt={player.player.name}
           width={36}
           height={36}
+          unoptimized
           className="w-[36px] h-[36px] object-cover object-top rounded-sm border border-line bg-surface-raised"
           onError={(e) => {
+            // Guard with a dataset flag, not a `target.src !== ...` string compare: once
+            // reassigned, `target.src` reads back as a resolved ABSOLUTE URL, so it would
+            // never again equal the relative `headshotThumb(...)` string and this could
+            // reassign (and error) forever if the placeholder itself ever failed to load.
             const target = e.target as HTMLImageElement;
-            if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
-                target.src = 'https://www.transparenttextures.com/patterns/black-mamba.png';
-                target.className = "w-[36px] h-[36px] object-cover object-center opacity-20 rounded-sm border border-line bg-surface-sunken";
-            }
+            if (target.dataset.fallback) return;
+            target.dataset.fallback = '1';
+            target.src = headshotThumb('_missing', 96);
+            target.className = "w-[36px] h-[36px] object-cover object-center opacity-20 rounded-sm border border-line bg-surface-sunken";
           }}
         />
       </div>
@@ -466,7 +516,7 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md', wide 
   const [c1, c2] = getPosColors(player.player.position);
   const teamColor = teamColors[player.player.team] || defaultTeamColorDark;
   const teamId = teamIds[player.player.team];
-  const headshotUrl = `/headshots/${player.player.id}.png`;
+  const headshotUrl = headshotThumb(player.player.id, 480);
   const logoUrl = teamId ? `/logos/${teamId}.svg` : null;
   const isRareOrMythic = player.rarity === 'Rare' || player.rarity === 'Mythic';
   const accentColor = rarityAccentColor[player.rarity];
@@ -475,7 +525,11 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md', wide 
     <div className={`absolute inset-0 bg-surface-sunken rounded-xl overflow-hidden shadow-xl border border-line-strong flex flex-col ${isSelected ? 'ring-2 ring-accent' : ''}`} style={{ background: 'linear-gradient(135deg, var(--surface-sunken) 0%, var(--surface-muted) 100%)' }}>
       {isRareOrMythic && <div className="h-[2px] w-full shrink-0" style={{ backgroundColor: accentColor }} />}
 
-      <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-raised/50 backdrop-blur-sm shadow-sm">
+      {/* mobile_load T8/D8: `backdrop-blur-sm` used to sit here, but this header is in
+          normal flow directly on top of the card's own OPAQUE gradient background
+          (see the outer div's `style` above) — nothing ever renders behind it, so the
+          blur cost a compositing layer per card for zero visible effect. Removed. */}
+      <div className="flex items-center gap-2 px-2.5 py-2 bg-surface-raised/50 shadow-sm">
         <RarityGem rarity={player.rarity} size="lg" />
         <div className="flex-1 min-w-0 flex flex-col leading-tight">
           {/* game_canvas (owner): on a narrow card the name wraps to two lines at the
@@ -499,14 +553,17 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md', wide 
           src={headshotUrl}
           alt={player.player.name}
           fill
+          unoptimized
           sizes={HEADSHOT_SIZES}
           className={`object-cover object-top ${wide ? 'pointer-coarse:max-lg:object-[center_20%]!' : ''}`}
           onError={(e) => {
+            // Dataset guard, not a `target.src !== ...` compare — see the identical note
+            // on MiniPlayerCard's onError above.
             const target = e.target as HTMLImageElement;
-            if (target.src !== 'https://www.transparenttextures.com/patterns/black-mamba.png') {
-              target.src = 'https://www.transparenttextures.com/patterns/black-mamba.png';
-              target.className = "w-full h-full object-cover object-center opacity-10";
-            }
+            if (target.dataset.fallback) return;
+            target.dataset.fallback = '1';
+            target.src = headshotThumb('_missing', 480);
+            target.className = "w-full h-full object-cover object-center opacity-10";
           }}
         />
         {player.rarity === 'Mythic' && (
@@ -616,7 +673,10 @@ export function PlayerCardBack({ player, flipped = true }: { player: PlayerCardD
       <div className="h-1.5 w-full" style={{ background: `linear-gradient(to right, ${c1}, ${c2})` }} />
 
       {/* Header: gem + rarity text + position pill + flip control */}
-      <div className="px-3 py-1.5 flex items-center gap-2 border-b border-line-inverse bg-surface-inverse/80 backdrop-blur">
+      {/* mobile_load T8/D8: same reasoning as the front header — `bg-surface-inverse`
+          on the outer div is opaque and this sits in normal flow, so the removed
+          `backdrop-blur` had nothing to blur. */}
+      <div className="px-3 py-1.5 flex items-center gap-2 border-b border-line-inverse bg-surface-inverse/80">
         <RarityGem rarity={player.rarity} size="lg" />
         <span className={`text-xs font-black uppercase tracking-widest ${rarityTextColor[player.rarity]}`}>{player.rarity}</span>
         <div className="flex-1" />
@@ -715,6 +775,12 @@ export function PlayerHoverPreview({ player }: { player: PlayerCardData }) {
 export function PlayerCard({ player, onClick, isSelected = false, compact = false, size = 'md', wide = false }: { player: PlayerCardData; onClick?: () => void; isSelected?: boolean; compact?: boolean; size?: 'sm' | 'md'; wide?: boolean }) {
   const longPress = useLongPressPreview();
   const [isFlipped, setIsFlipped] = useState(false);
+  // T8/D8: the back face only needs to exist once the card is actually flipped (mouse
+  // hover, `onMouseEnter` below) or on a device that CAN hover — a phone never sets
+  // `isFlipped` through this path (no hover events), so this keeps the back face out of
+  // the DOM there entirely; the long-press preview still gets its own back face via
+  // `PlayerHoverPreview` regardless of this flag.
+  const hasFinePointer = useHasFinePointer();
   // Portalled hover preview needs real hover state, not CSS `group-hover` — a portal
   // renders outside this element's DOM subtree so the CSS selector can't reach it.
   const { ref: hoverRef, isHovered, onMouseEnter: onHoverEnter, onMouseLeave: onHoverLeave } = useHoverPreview<HTMLDivElement>();
@@ -722,7 +788,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
   const [c1, c2] = getPosColors(player.player.position);
 
   // NBA CDN headshot URL -> now served locally via the offline script!
-  const headshotUrl = `/headshots/${player.player.id}.png`;
+  const headshotUrl = headshotThumb(player.player.id, 96);
 
   if (compact) {
     return (
@@ -738,7 +804,7 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
 
         {/* Headshot */}
         <div className="w-9 h-full bg-surface-sunken shrink-0 overflow-hidden relative border-r border-line">
-          <Image src={headshotUrl} alt="" fill sizes="36px" className="object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <Image src={headshotUrl} alt="" fill unoptimized sizes="36px" className="object-cover object-top" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
 
         {/* Details — two-line header: name + position pill, then gem + badges */}
@@ -794,8 +860,8 @@ export function PlayerCard({ player, onClick, isSelected = false, compact = fals
         {/* FRONT */}
         <PlayerCardFront player={player} isSelected={isSelected} size={size} wide={wide} />
 
-        {/* ===== BACK ===== */}
-        <PlayerCardBack player={player} />
+        {/* ===== BACK ===== (T8/D8: only mounted once flipped or on a fine pointer) */}
+        {(isFlipped || hasFinePointer) && <PlayerCardBack player={player} />}
       </motion.div>
     </div>
   );

@@ -26,9 +26,10 @@ export function PackRevealCard({ card, revealed, interactive = true }: { card: D
     return (
       <div className="relative aspect-[5/7] pointer-coarse:max-lg:aspect-[1.15/1]! w-full overflow-hidden rounded-xl border border-line-strong bg-surface-sunken shadow-md">
         <Image
-          src="/cardback.jpg"
+          src="/art/cardback.webp"
           alt=""
           fill
+          unoptimized
           sizes="(min-width: 640px) 25vw, 50vw"
           className="object-cover"
           priority

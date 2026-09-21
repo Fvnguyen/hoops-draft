@@ -19,9 +19,12 @@ const bebasNeue = Bebas_Neue({
   subsets: ["latin"],
 });
 
+// mobile_load T8/D8: Geist_Mono is only used in the box score, game and season views —
+// not every route — so it shouldn't be preloaded on every page load.
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {

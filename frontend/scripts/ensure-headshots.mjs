@@ -29,8 +29,10 @@
  * Both sets resize to WIDTH = size and let height follow the source's 1040x760 aspect
  * ratio (no crop) — every consumer already crops with `object-cover object-top` /
  * `background-size: cover; background-position: top`, so the crop happens in CSS, not in
- * the generated file. The source PNGs stay in `public/` for now; a later task moves them
- * to `data/headshots_src/` once nothing in `src/` points at the untouched `.png`.
+ * the generated file. mobile_load T4: the source PNGs (87 MB — every Vercel deployment
+ * stores the whole `public/`) moved OUT of the deployed folder to `data/headshots_src/`,
+ * a sibling of `frontend/`; nothing under `src/` points at the raw `.png` any more, only
+ * this script and `data/download_images.py` (which writes new ones there).
  *
  * Runs as part of `npm run build:cards`. Re-run it after a pipeline refresh — thumbnail
  * generation is incremental (skipped when the WebP is newer than its source PNG) so a
@@ -47,8 +49,12 @@ import sharp from 'sharp';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cardsPath = path.join(root, 'src/data/cards.json');
+// mobile_load T4: the 1040x760 source PNGs live outside the deployed `public/` folder,
+// in a sibling of `frontend/` — resolved relative to THIS script, not the cwd, so
+// `npm run build:cards` works the same from the repo root or from `frontend/`.
+const srcDir = path.join(root, '../data/headshots_src');
 const dir = path.join(root, 'public/headshots');
-const placeholder = path.join(dir, '_missing.png');
+const placeholder = path.join(srcDir, '_missing.png');
 const FORCE = process.argv.includes('--force');
 
 // Keep this in step with `HEADSHOT_SIZES`/quality in `src/lib/headshotThumb.ts`.
@@ -63,13 +69,14 @@ if (!existsSync(placeholder)) {
 const cards = JSON.parse(readFileSync(cardsPath, 'utf8'));
 const placeholderSize = statSync(placeholder).size;
 
-// --- Step 1: guarantee every card has a full-size PNG (existing behaviour). ---
+// --- Step 1: guarantee every card has a full-size source PNG in `data/headshots_src/`
+// (existing behaviour, just a different directory since mobile_load T4). ---
 const filled = [];
 const alreadyPlaceholder = [];
 for (const card of cards) {
   const id = card.player?.id;
   if (!id) continue;
-  const file = path.join(dir, `${id}.png`);
+  const file = path.join(srcDir, `${id}.png`);
   if (!existsSync(file)) {
     copyFileSync(placeholder, file);
     filled.push(`${card.player.name} (${id})`);
@@ -146,7 +153,7 @@ async function generateThumbnails() {
     }
 
     for (const [id, card] of byPlayerId) {
-      const sourcePng = path.join(dir, `${id}.png`);
+      const sourcePng = path.join(srcDir, `${id}.png`);
       const destWebp = path.join(sizeDir, `${id}.webp`);
       try {
         const r = await ensureThumb(sourcePng, destWebp, size, quality);

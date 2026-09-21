@@ -9,7 +9,7 @@ The pipeline follows this sequence:
 1. **Scrape basketball-reference** → `per_game.html`, `advanced.html`, `shooting.html`, `awards.html`
 2. **Fetch rosters with bio data** → `bio.csv`
 3. **Merge stats and generate database** → `frontend/game.db` (SQLite)
-4. **Download player headshots & team logos** → `frontend/public/headshots` and `frontend/public/logos`
+4. **Download player headshots & team logos** → `data/headshots_src` and `frontend/public/logos` (mobile_load T4: `frontend/scripts/ensure-headshots.mjs` turns `headshots_src` into the WebP thumbnails actually served from `frontend/public/headshots/{96,480}`)
 
 ## Scripts
 
@@ -72,7 +72,9 @@ The pipeline follows this sequence:
 
 **Reads:** `players.json` (player IDs and names from `fetch_players.py`)
 
-**Writes:** `../frontend/public/headshots/{playerId}.png`
+**Writes:** `headshots_src/{playerId}.png` (mobile_load T4: moved out of the deployed
+`frontend/public/` — see `frontend/scripts/ensure-headshots.mjs` for the WebP thumbnails
+that are actually served)
 
 **Dependencies:** `requests`, Python 3
 
