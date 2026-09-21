@@ -19,7 +19,7 @@ sync_outbox below). The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-547/548 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
+631/632 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -175,7 +175,7 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). `sync_outbox` and `mobile_load` are done (sections above); `render_and_engine_perf` (#13) is next. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
+(#13). `sync_outbox` and `mobile_load` are done (sections above); `render_and_engine_perf` (#13) has every task committed on `claude/render-engine-perf` (not merged, no milestone section yet): it closes after the owner's phone round for T14: hold a bench row, a depth-chart starter and a Bench-slot compact card in the deck builder for half a second; the preview must show, release must not place or remove the player, scrolling the bench must never pop a preview, and Android must not start a native drag or a Copy/Share sheet. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
