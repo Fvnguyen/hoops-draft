@@ -14,7 +14,7 @@ export const THEME_COLOR = '#0c0a09';
 
 // `/icons/` is cached for 30 days and launchers cache icons even longer, so new artwork
 // needs NEW FILE NAMES to show up. Bump the tag here and `ICON_TAG` in scripts/gen-icons.mjs.
-export const APPLE_TOUCH_ICON = '/icons/apple-touch-icon.pack1.png';
+export const APPLE_TOUCH_ICON = '/icons/apple-touch-icon.pack2.png';
 
 // mobile_load T9/D9: PNGs (from `node scripts/gen-icons.mjs`) come first — Android's
 // install prompt and richer splash screens use these, not the SVG. The SVG stays last
@@ -33,19 +33,19 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: THEME_COLOR,
     icons: [
       {
-        src: '/icons/icon-192.pack1.png',
+        src: '/icons/icon-192.pack2.png',
         sizes: '192x192',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: '/icons/icon-512.pack1.png',
+        src: '/icons/icon-512.pack2.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'any',
       },
       {
-        src: '/icons/icon-maskable-512.pack1.png',
+        src: '/icons/icon-maskable-512.pack2.png',
         sizes: '512x512',
         type: 'image/png',
         purpose: 'maskable',
