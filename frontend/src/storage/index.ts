@@ -2,8 +2,8 @@
  * Storage layer entry point. See ./README.md for usage.
  */
 
-import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { IndexedDbGameStore } from './indexedDb';
+import { createLazyCloudClient } from './lazyCloudClient';
 import { MemoryGameStore } from './memory';
 import { migrateFromLocalStorage } from './migrate';
 import { SupabaseGameStore, type CloudSyncClient } from './supabase';
@@ -31,7 +31,14 @@ export function getGameStore(): GameStore {
   if (typeof indexedDB === 'undefined') {
     singleton = new MemoryGameStore();
   } else {
-    singleton = new SupabaseGameStore(new IndexedDbGameStore(), createSupabaseBrowserClient() as unknown as CloudSyncClient);
+    // supabase-js is imported on the first cloud call, not here: this runs in the root
+    // layout, and the library has no business in the JavaScript of /login (see
+    // `lazyCloudClient.ts`).
+    const cloud = createLazyCloudClient(async () => {
+      const { createSupabaseBrowserClient } = await import('@/lib/supabase/browser');
+      return createSupabaseBrowserClient() as unknown as CloudSyncClient;
+    });
+    singleton = new SupabaseGameStore(new IndexedDbGameStore(), cloud);
   }
   return singleton;
 }

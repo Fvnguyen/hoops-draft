@@ -135,8 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshAuth]);
 
   // Dynamic import keeps the Supabase browser client out of the root chunk — every page
-  // pays for AuthProvider, but only this one listener needs the client.
+  // pays for AuthProvider, but only this one listener needs the client. And only while
+  // someone is signed in (plan mobile_load D7): a token refresh or a remote sign-out can
+  // only happen to an existing session, so /login never downloads supabase-js at all.
   useEffect(() => {
+    if (status !== 'signed-in') return;
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
     import('@/lib/supabase/browser')
@@ -157,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       unsubscribe?.();
     };
-  }, [refreshAuth]);
+  }, [refreshAuth, status]);
 
   return (
     <AuthContext.Provider value={profile}>
