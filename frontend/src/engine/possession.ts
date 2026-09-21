@@ -19,6 +19,7 @@ import {
   weightedRandom, resolvePossession, calcLineupShotProfile, applyCalledShareShift,
   steerShotProfileDetailed, turnoverChance, offensiveReboundChance, clampTo,
 } from './shot';
+import { memoLineup } from './lineup';
 import { closersOnly } from './rotation';
 
 // ── Playbook call resolution (§7) ───────────────────────────────────────────
@@ -87,6 +88,32 @@ function rollCalledPlay(rng: Rng, scaled: { status: PlayStatus; allocation: numb
  * The caller still owns score accumulation (needs `points` before it can fill in
  * `runningScore`) and pushing the returned event onto `allPossessions`.
  */
+/** Interned on-court arrays, one map per side: both teams can field a player with the same
+ *  id (a drafted star still plays for his real team in 82:0), and they are different cards. */
+export interface LineupPool { home: Map<string, PlayerCardData[]>; away: Map<string, PlayerCardData[]> }
+
+export function createLineupPool(): LineupPool {
+  return { home: new Map(), away: new Map() };
+}
+
+/**
+ * The five cards for `ids`, in that order. With a pool, the same ids return the SAME array
+ * object every time, registered with `memoLineup`, so its lineup aggregates are computed
+ * once per game instead of ~15 times per possession. Order is part of the key on purpose:
+ * the aggregates are floating-point sums, and a different order could differ in the last bit.
+ */
+function playersOnFloor(pool: LineupPool | undefined, side: 'home' | 'away', team: TeamInfo, ids: string[]): PlayerCardData[] {
+  const build = () => ids.map(id => team.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
+  if (!pool) return build();
+  const key = ids.join('|');
+  let lineup = pool[side].get(key);
+  if (!lineup) {
+    lineup = memoLineup(build());
+    pool[side].set(key, lineup);
+  }
+  return lineup;
+}
+
 export function playOnePossession(params: {
   index: number;
   quarter: number;
@@ -110,11 +137,14 @@ export function playOnePossession(params: {
   centre: Record<ShotChannel, { off: number; def: number }>;
   tuning?: EdgeTuning;
   boxStats: Map<string, PlayerBoxScore>;
+  /** One interned player array per distinct lineup, for the whole game (D1). Optional so
+   *  a direct caller without a pool gets fresh, unmemoized arrays, exactly as before. */
+  lineupPool?: LineupPool;
 }): { event: PossessionEvent; points: number } {
   const {
     index, quarter, segment, team, offenseTeam, defenseTeam,
     offenseLineupMap, defenseLineupMap, offenseMods, defFromOpp,
-    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats,
+    offenseScaled, coverageScaled, minutesPerPoss, isPossWin, isClutch, rng, centre, tuning, boxStats, lineupPool,
   } = params;
   const isHome = team === 'home';
 
@@ -150,8 +180,8 @@ export function playOnePossession(params: {
     if (overriddenDef && !(isClutch && !closersOnly(overriddenDef, defenseTeam))) { defenseIds = Array.from(overriddenDef.values()); calledCoverage = rolledCoverage; }
   }
 
-  const offenseLineup = offenseIds.map(id => offenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
-  const defenseLineup = defenseIds.map(id => defenseTeam.players.find(p => p.id === id)).filter(Boolean) as PlayerCardData[];
+  const offenseLineup = playersOnFloor(lineupPool, isHome ? 'home' : 'away', offenseTeam, offenseIds);
+  const defenseLineup = playersOnFloor(lineupPool, isHome ? 'away' : 'home', defenseTeam, defenseIds);
 
   // Playbook on-call modifiers (§7): a called offensive play shifts this possession's
   // shot profile (renormalized) and adds to channel efficiency/and-1; a coverage play's

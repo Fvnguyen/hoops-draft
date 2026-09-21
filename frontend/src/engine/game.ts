@@ -4,10 +4,12 @@
  * Pre-computes a full game into a GameTheater object that the UI plays back.
  *
  * Layers:
- *   1. Rotation Engine — NBA-style substitution patterns
- *   2. Possession Battle — defense + rebounding determines total possessions
- *   3. Scoring Engine — offense vs defense matchup per possession
- *   4. Synergy/Play bonuses applied as modifiers
+ *   1. Rotation — per-possession lineup draws from each position's possession shares
+ *   2. Possession count — base pace plus pace noise and identity/play swing. There is no
+ *      pre-game "possession battle" (engine_possession_model D6): playmaking, rebounding
+ *      and defence are settled inside each possession (turnover, steer, offensive rebound)
+ *   3. Scoring — lineup offence vs lineup defence per possession, per shot channel
+ *   4. Identity bonuses and called plays applied as modifiers
  *
  * Every random draw in this file goes through the injected `Rng` (mulberry32,
  * see rng.ts) instead of `Math.random()` directly, so a game is fully
@@ -30,9 +32,9 @@ import {
   CHANNEL_CENTRE, IDENTITY_CAPS, MAX_OT_PERIODS, OT_POSS_PER_TEAM, OT_PERIOD_MINUTES,
   CLUTCH_WINDOW_POSS, CLUTCH_MARGIN,
 } from './balance';
-import { calcPossessionShares, drawLineup, segmentForQuarter, starterLineupMap } from './rotation';
+import { calcPossessionShares, prepareLineupDraw, drawPreparedLineup, segmentForQuarter, starterLineupMap } from './rotation';
 import { calcPossessionSplit, clampTo } from './shot';
-import { playOnePossession } from './possession';
+import { playOnePossession, createLineupPool } from './possession';
 import { emptyBoxScore } from './boxscore';
 
 // ── Public API re-exports (plan render_and_engine_perf D6) ─────────────────
@@ -65,6 +67,9 @@ export function simulateGame(
   // 1. Calculate possession shares
   const homeShares = calcPossessionShares(homeTeam.depthChart, homeTeam.players);
   const awayShares = calcPossessionShares(awayTeam.depthChart, awayTeam.players);
+  // D1: positions and weights are fixed for the game; only the draw itself is per possession.
+  const homeDraw = prepareLineupDraw(homeTeam.depthChart, homeShares);
+  const awayDraw = prepareLineupDraw(awayTeam.depthChart, awayShares);
 
   // 1b. Evaluate each team's playbook once for the whole game (§4/§7): which assigned
   // plays are active, and each active play's (possibly budget-scaled) call allocation.
@@ -116,6 +121,9 @@ export function simulateGame(
   // Keyed 'home:<id>' / 'away:<id>' — see the note in the possession box-score block: the
   // same card can be on both rosters (challenge mode plays the real NBA teams).
   const boxStats = new Map<string, PlayerBoxScore>();
+  // D1: one interned player array per distinct lineup, for this game only, so the lineup
+  // aggregates are computed once per lineup instead of ~15 times per possession.
+  const lineupPool = createLineupPool();
   for (const p of homeTeam.players) boxStats.set(`home:${p.id}`, emptyBoxScore(p.id, p.player?.name || p.id));
   for (const p of awayTeam.players) boxStats.set(`away:${p.id}`, emptyBoxScore(p.id, p.player?.name || p.id));
 
@@ -156,8 +164,8 @@ export function simulateGame(
       }
       const offenseTeam = isHome ? homeTeam : awayTeam;
       const defenseTeam = isHome ? awayTeam : homeTeam;
-      const offenseShares = isHome ? homeShares : awayShares;
-      const defenseShares = isHome ? awayShares : homeShares;
+      const offenseDraw = isHome ? homeDraw : awayDraw;
+      const defenseDraw = isHome ? awayDraw : homeDraw;
       const offenseMods = isHome ? homeBonuses.offenseMods : awayBonuses.offenseMods;
       const defFromOpp = isHome ? awayBonuses.defenseMods : homeBonuses.defenseMods;
       const offenseScaled = isHome ? homeOffenseScaled : awayOffenseScaled;
@@ -178,10 +186,10 @@ export function simulateGame(
       const { event, points } = playOnePossession({
         index: possIndex, quarter, segment, team,
         offenseTeam, defenseTeam,
-        offenseLineupMap: closers ? starterLineupMap(offenseTeam.depthChart) : drawLineup(offenseTeam.depthChart, offenseShares, rng),
-        defenseLineupMap: closers ? starterLineupMap(defenseTeam.depthChart) : drawLineup(defenseTeam.depthChart, defenseShares, rng),
+        offenseLineupMap: closers ? starterLineupMap(offenseTeam.depthChart) : drawPreparedLineup(offenseDraw, rng),
+        defenseLineupMap: closers ? starterLineupMap(defenseTeam.depthChart) : drawPreparedLineup(defenseDraw, rng),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats,
+        minutesPerPoss: REG_MIN_PER_POSS, isPossWin, isClutch: closers, rng, centre, tuning, boxStats, lineupPool,
       });
 
       if (isHome) homeScore += points; else awayScore += points;
@@ -256,7 +264,7 @@ export function simulateGame(
         offenseLineupMap: starterLineupMap(offenseTeam.depthChart),
         defenseLineupMap: starterLineupMap(defenseTeam.depthChart),
         offenseMods, defFromOpp, offenseScaled, coverageScaled,
-        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats,
+        minutesPerPoss: OT_MIN_PER_POSS, isPossWin: false, isClutch: otClutch, rng, centre, tuning, boxStats, lineupPool,
       });
 
       if (isHome) homeScore += points; else awayScore += points;

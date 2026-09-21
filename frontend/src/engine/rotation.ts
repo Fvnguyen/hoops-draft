@@ -103,12 +103,32 @@ export function calcPossessionShares(
  * something the engine needs to fake for itself.
  */
 export function drawLineup(depthChart: Record<string, string[]>, shares: Map<string, number>, rng: Rng): Map<string, string> {
-  const lineup = new Map<string, string>();
+  return drawPreparedLineup(prepareLineupDraw(depthChart, shares), rng);
+}
+
+/** Everything about a lineup draw that is fixed for a whole game: the positions in
+ *  depth-chart order, who can play them, and their weights. */
+export type PreparedLineupDraw = Array<{ pos: string; ids: string[]; weights: number[] | null }>;
+
+/**
+ * plan render_and_engine_perf D1: the depth chart and the shares do not change during a
+ * game, but `drawLineup` re-derived the position list and every weight array on each of
+ * its ~400 calls per game (11% of engine time). Prepare once, draw many. The draw itself is
+ * untouched: same position order, same `weightedRandom` call, so the same rng sequence.
+ */
+export function prepareLineupDraw(depthChart: Record<string, string[]>, shares: Map<string, number>): PreparedLineupDraw {
+  const prepared: PreparedLineupDraw = [];
   for (const [pos, ids] of Object.entries(depthChart)) {
     if (ids.length === 0) continue;
-    if (ids.length === 1) { lineup.set(pos, ids[0]); continue; }
-    const weights = ids.map(id => shares.get(id) ?? 0);
-    lineup.set(pos, weightedRandom(ids, weights, rng));
+    prepared.push({ pos, ids, weights: ids.length === 1 ? null : ids.map(id => shares.get(id) ?? 0) });
+  }
+  return prepared;
+}
+
+export function drawPreparedLineup(prepared: PreparedLineupDraw, rng: Rng): Map<string, string> {
+  const lineup = new Map<string, string>();
+  for (const slot of prepared) {
+    lineup.set(slot.pos, slot.weights === null ? slot.ids[0] : weightedRandom(slot.ids, slot.weights, rng));
   }
   return lineup;
 }

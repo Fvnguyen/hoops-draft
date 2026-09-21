@@ -62,19 +62,72 @@ export function standardisedRatings(lineup: readonly PlayerCardData[], dim: Rati
   });
 }
 
+// ── Memoization (plan render_and_engine_perf D1) ────────────────────────────
+// A possession asks for ~15 lineup aggregates (steer, turnover, the channel edge, every
+// offensive-rebound retry), each one five `Math.pow` calls plus an array copy and a sort,
+// for about nine distinct answers — and the same five players are on the floor again a
+// few possessions later. Profiling 1,500 games put ~35% of all engine time here.
+//
+// The cache is keyed by the ARRAY OBJECT, and only arrays registered through `memoLineup`
+// take part: the simulation interns one array per distinct lineup per game and promises
+// never to mutate it or its players' ratings. Any other array (tests, balance sweeps that
+// build lineups ad hoc) is computed fresh every time, exactly as before. A hit returns the
+// number the same code produced from the same players in the same order, so results are
+// bit-identical by construction — the bench checksum and the balance baseline pin that.
+
+const memo = new WeakMap<readonly PlayerCardData[], Map<string, number>>();
+
+/** Registers `lineup` for memoization and returns it. The caller must treat the array and
+ *  the ratings of the players in it as frozen for as long as it keeps using the array. */
+export function memoLineup<T extends readonly PlayerCardData[]>(lineup: T): T {
+  if (!memo.has(lineup)) memo.set(lineup, new Map());
+  return lineup;
+}
+
+// No closures and no string building on the hit path: these three are called ~15 times per
+// possession, and a first version that passed a `compute` callback spent 8% of all engine
+// time allocating it.
+const MID_DEFENCE_KEY = 'midDefence';
+const MEAN_KEY = {
+  finishing: 'mean:finishing', midRange: 'mean:midRange', perimeter: 'mean:perimeter',
+  playmaking: 'mean:playmaking', rebounding: 'mean:rebounding',
+  perimeterDefense: 'mean:perimeterDefense', postDefense: 'mean:postDefense',
+} as const satisfies Record<RatingDim, string>;
+
 /** D2: the lineup's value on one dimension, using LINEUP_AGG's parameters for it. */
 export function lineupValue(lineup: readonly PlayerCardData[], dim: RatingDim): number {
-  return aggregateLineup(standardisedRatings(lineup, dim), LINEUP_AGG[dim]);
+  const cache = memo.get(lineup);
+  if (cache) {
+    const hit = cache.get(dim);
+    if (hit !== undefined) return hit;
+  }
+  const value = aggregateLineup(standardisedRatings(lineup, dim), LINEUP_AGG[dim]);
+  if (cache) cache.set(dim, value);
+  return value;
 }
 
 /** Mid-range defence: perimeter and post defence lineup values blended (balance.ts). */
 export function lineupMidDefence(lineup: readonly PlayerCardData[]): number {
-  return MID_DEFENCE_BLEND.perimeterDefense * lineupValue(lineup, 'perimeterDefense')
-       + MID_DEFENCE_BLEND.postDefense * lineupValue(lineup, 'postDefense');
+  const cache = memo.get(lineup);
+  if (cache) {
+    const hit = cache.get(MID_DEFENCE_KEY);
+    if (hit !== undefined) return hit;
+  }
+  const value = MID_DEFENCE_BLEND.perimeterDefense * lineupValue(lineup, 'perimeterDefense')
+              + MID_DEFENCE_BLEND.postDefense * lineupValue(lineup, 'postDefense');
+  if (cache) cache.set(MID_DEFENCE_KEY, value);
+  return value;
 }
 
 /** D4: plain mean of standardised ratings — who shoots is a committee question. */
 export function lineupMean(lineup: readonly PlayerCardData[], dim: RatingDim): number {
+  const cache = memo.get(lineup);
+  if (cache) {
+    const hit = cache.get(MEAN_KEY[dim]);
+    if (hit !== undefined) return hit;
+  }
   const v = standardisedRatings(lineup, dim);
-  return v.length > 0 ? v.reduce((s, x) => s + x, 0) / v.length : STANDARDISE.center;
+  const value = v.length > 0 ? v.reduce((s, x) => s + x, 0) / v.length : STANDARDISE.center;
+  if (cache) cache.set(MEAN_KEY[dim], value);
+  return value;
 }
