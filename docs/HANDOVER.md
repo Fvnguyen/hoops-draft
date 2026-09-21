@@ -46,6 +46,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **challenge_loose_ends** (2026-09-19, `plan_challenge_loose_ends_2026-09-19.md`): `PlayCard`/`PlayCardFront` get the same phone `wide` resize as player cards; 82:0 results screen's primary CTA is now "End Challenge — Results Locked In" (`/rosters`), replacing "Draft a new team"; rosters list shows `Start 82:0`/`Continue 82:0`/`View Result` per run phase plus a `W-L · Title (Grade)` summary once done; `TopNav` gains a "82:0 Challenges: N completed, best W-L (grade)" line, omitted at zero completed runs. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9.
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
+- **mobile_native_feel** (2026-09-19): global `touch-action`/`user-select`/`-webkit-touch-callout` in `globals.css` (no context menu/double-tap zoom); Android/PWA back shows a "Leave this screen?" sheet on draft room/deck builder; two per-move undo toasts dropped. Verified in the browser pane only — **not verified** on a real Android device; recheck there first on a long-press/double-tap/back report.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 
 ## card_ratings_rebalance — done 2026-09-18
@@ -112,14 +113,6 @@ then-plan (ramping across the draft, bomb-pull override for a clear talent gap),
 `buildBotRoster` never leaves a depth-chart column empty (fixes the old 4-on-5 bug).
 T4 (D8 identity-reach tuning) stays parked by owner call, not an exit criterion.
 442/443 tests, `npm run balance`/`feasibility` clean, live draft + ticker screenshotted.
-**`mobile_native_feel` done (2026-09-19):** no context menu/double-tap-zoom
-(`touch-action`/`user-select`/`-webkit-touch-callout` globally in `globals.css`),
-Android/PWA back shows a "Leave this screen?" sheet (Cancel/Leave, re-arms on cancel)
-on draft room/deck builder instead of silent history-back, dropped two per-move
-deck-builder undo toasts. Verified via browser-pane mobile-landscape viewport
-(computed styles, live back-guard trigger/cancel/re-arm) — **not verified**: an actual
-Android device or Chrome touch-gesture emulation, unavailable in this sandbox; recheck
-there first if a long-press/double-tap/back-button report comes in.
 
 ## challenge_mode — done 2026-09-18
 
@@ -153,13 +146,11 @@ What to know before touching it:
 - **The record stays sealed until game 82.** The break shows a pace band only, and
   `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
 
-UAT changed three things worth remembering. The reel was too slow at both ends (a run is now
-~15.6s, not ~29s). The flip blur was twice overcorrected: what seals the record is the strip
-ROLLING, not blur — blur only softens the moving digits, and at 19% of the glyph the cell went
-flat. And the "flicker before the deadline" was a REVEAL: the reel dropped blur to 0 when a
-half ran out, showing the true 41-game record for a frame before the break mounted.
-`/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]` render the screens
-against the signed boards with no auth, storage or simulation.
+UAT changed three things: the reel was too slow (a run is now ~15.6s, not ~29s); what seals the
+record is the strip ROLLING, not blur (at 19% of the glyph the cell went flat); and the "flicker
+before the deadline" was a REVEAL — blur dropped to 0 as a half ran out, showing the true 41-game
+record for a frame. `/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]`
+render the signed boards with no auth, storage or simulation.
 
 Seams: the pack reveal advances on animation frames, so it stalls if the browser pane stops
 painting (which is why the trade -> deck-builder hand-off is code-verified, not clicked);
@@ -224,6 +215,16 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    0.12-0.15 pulls it back if seasons feel solved). Unexplained: the player-level on-floor
    regression gives finishing a negative marginal in the 41-55 OVR band while the roster-
    level `--levers` A/B makes finishing the top lever; look with a larger bootstrap first.
+8. **Vercel Deployment Storage at 75% of 10 GB (2026-09-21)** — each push kept a ~90 MB
+   deployment (estimate; `frontend/public` is 104 MB: 481 headshot PNGs 87 MB + ~20 MB card-back/
+   arena/pack art), nothing pruned: 82 hoops-draft deployments (57 production, 25 preview).
+   `frontend/vercel.json`: `ignoreCommand` skips builds with no `frontend/` change since
+   `VERCEL_GIT_PREVIOUS_SHA`, and `claude/*` branches don't build (drop that block if previews are
+   wanted for phone UAT). Root Directory = `frontend` is VERIFIED (build log runs `frontend@0.1.0
+   build`). Owner actions: run `scripts/prune-vercel-deployments.ps1` (dry run by default, `-Execute`
+   deletes permanently; keeps live + 4 newest READY production + last 48h; token via
+   `$env:VERCEL_TOKEN`), set Deployment Retention on both projects (dashboard only, no API), and
+   `mobile_load` D3-D5 shrink `public/` ~5x (originals leave `public/`). Behaviour at 100% is unknown.
 
 ## Where to look
 
