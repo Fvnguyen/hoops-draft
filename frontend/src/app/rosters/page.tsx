@@ -158,6 +158,11 @@ export default function RostersPage() {
     const store = getGameStore();
     const season = await store.getSeasonByRoster(rosterId);
     if (season) await store.deleteSeason(season.id);
+    // sync_outbox D5: the 82:0 run is scoped to this roster and nothing can reach it once
+    // the roster is gone, so it goes with it (the draft session deliberately does not — a
+    // session can legitimately outlive one of the rosters built from it).
+    const run = await store.getChallengeRunByRoster(rosterId);
+    if (run) await store.deleteChallengeRun(run.id);
     await store.deleteRoster(rosterId);
     await refresh();
   };

@@ -1,58 +1,253 @@
 /**
- * Cloud-synced GameStore (accounts_cloud_saves D3/D4): IndexedDB stays the store every
- * read goes through — this wraps a local `GameStore` and, on every write, pushes to
- * Supabase via the `cas_upsert` RPC (compare-and-swap, migration `202609140001_cloud_saves.sql`).
- * A rejected push either means "already synced" (first-ever push, insert raced an
- * existing row) or a genuine conflict, resolved with `storage/merge.ts`; a merge that
- * can't auto-resolve (only a draft session whose pick logs genuinely diverge, i.e.
- * corruption rather than a normal race) is parked in `conflicts` for
- * `SyncConflictPrompt` to show. A network failure queues the write for retry on the next
- * successful push or a browser `online` event.
+ * Cloud sync for an app that is expected to be offline, backgrounded for days, or killed
+ * mid-write at any moment (sync_outbox D3-D7).
+ *
+ * The model:
+ * - **Local-first.** IndexedDB is the store. Every read goes through the wrapped local
+ *   `GameStore`, and every `save*`/`delete*` resolves as soon as that local write lands.
+ *   Nothing the user can see ever waits on the network.
+ * - **Outbox.** A write leaves one `OutboxRecord` behind per `${owner}:${table}:${id}`, so
+ *   ten saves of one roster while offline are one record, and a delete replaces a pending
+ *   upsert for the same key. The record carries NO payload on purpose.
+ * - **Drain.** A single-flight background loop walks the current owner's records one key
+ *   at a time, re-reading the CURRENT local row at send time — a late push can therefore
+ *   never upload (or merge against) a stale copy. It is kicked by a write, by `online`, by
+ *   the tab becoming visible, at the end of `setOwnerId`, and by the backoff timer.
+ * - **CAS + merge.** A push is `cas_upsert`, a compare-and-swap against the `updated_at`
+ *   the server held when local and remote last agreed (the *baseline*). A rejection is
+ *   either "already exists" / "gone remote" (retried once with the right expectation) or a
+ *   genuine cross-device conflict, handed to the pure `storage/merge.ts`; only a draft
+ *   session whose pick logs truly diverge is parked in `conflicts` for the UI.
+ * - **Tombstones.** A delete is a hard local delete plus `cas_delete` (sets `deleted_at`).
+ *   That is how a second device learns a row is gone instead of re-uploading it forever,
+ *   and how a push that lost the race against a delete knows to drop its local copy.
+ * - **Persisted baselines.** The baseline map is stored per owner in the local store's
+ *   meta table, so a relaunch re-downloads only what actually changed instead of pulling
+ *   and re-merging every row.
+ * - **Failure classes.** Transient (fetch failure, timeout, 5xx) backs off
+ *   `min(60s, 2s * 2 ** attempts)` and retries. Permanent (RLS, payload cap, unknown
+ *   table, constraint violation) parks the record as `blocked`, reported in `SyncStatus`
+ *   and logged once — never retried in a loop, but given one fresh attempt per sign-in.
+ * - **Pulls** run at sign-in/launch and when the app is resumed after 5+ minutes.
  */
 
 import type { DraftSession } from '@/engine/deckbuilder';
 import type { Season } from '@/engine/season';
 import { mergeChallengeRun, mergeDraftSession, mergeRoster, mergeSeason } from './merge';
-import type { ChallengeRun, GameStore, SavedRoster, StorageMeta, SyncConflict, SyncStatus, SyncTable } from './types';
+import { outboxKey } from './types';
+import type {
+  ChallengeRun,
+  GameStore,
+  OutboxRecord,
+  OutboxStore,
+  SavedRoster,
+  StorageMeta,
+  SyncConflict,
+  SyncStatus,
+  SyncTable,
+} from './types';
 
-interface CasUpsertRow {
-  ok: boolean;
-  current_row: { id: string; owner_id: string; data: unknown; updated_at: string } | null;
+/** Every cloud-synced table, in pull order. */
+export const SYNC_TABLES: readonly SyncTable[] = ['draft_sessions', 'rosters', 'seasons', 'challenge_runs'];
+
+const BACKOFF_BASE_MS = 2_000;
+const BACKOFF_CAP_MS = 60_000;
+/** `setOwnerId` never blocks app readiness on the network for longer than this; the pull
+ *  it started keeps running in the background afterwards. */
+const PULL_TIMEOUT_MS = 6_000;
+/** Phase 2 of the pull asks for at most this many rows' `data` per request. */
+const PULL_CHUNK = 50;
+/** Baselines change in bursts (a pull touches every row); coalesce the meta write. */
+const BASELINE_FLUSH_MS = 250;
+/** supabase-js puts no timeout on its fetches, and pull and drain share one promise chain:
+ *  a single request stalled on a flaky mobile connection would freeze ALL sync until the
+ *  app restarts. A timeout is a transient failure like any other. Uploads get longer — a
+ *  legacy season is 4 MB. */
+const READ_TIMEOUT_MS = 20_000;
+const WRITE_TIMEOUT_MS = 45_000;
+/** A PWA is resumed far more often than it is launched; re-pull on becoming visible, but
+ *  not on every tab switch. */
+const RESUME_PULL_MIN_AGE_MS = 5 * 60_000;
+
+// ── The client surface we actually use ──────────────────────────────────────
+
+export interface CloudError {
+  message: string;
+  /** Postgres/PostgREST error code when there is one — the cheapest permanent-vs-transient
+   *  signal available (`23xxx` constraint, `42501` insufficient privilege, ...). */
+  code?: string;
+}
+
+export interface CasUpsertArgs {
+  table_name: SyncTable;
+  p_id: string;
+  p_owner_id: string;
+  expected_updated_at: string | null;
+  p_data: unknown;
+  p_client_timestamp: string;
+}
+
+export interface CasDeleteArgs {
+  table_name: SyncTable;
+  p_id: string;
+  p_owner_id: string;
 }
 
 /**
- * The narrow slice of the Supabase JS client this store actually calls — kept minimal
- * and structural (not `SupabaseClient` itself) so tests can pass a plain mock instead of
+ * One `cas_upsert` result row (migration `202609210001_sync_outbox.sql`).
+ * `ok = true`: `updated_at` is the new server stamp and `current_row` is ONLY
+ * `{id, updated_at}` (the RPC deliberately stopped echoing the payload back).
+ * `ok = false`: `current_row` is the full conflicting row — including `deleted_at`, which
+ * means another device deleted it — or `null` when the server has no such row at all.
+ */
+export interface CasUpsertRow {
+  ok: boolean;
+  updated_at: string | null;
+  current_row: { id: string; updated_at: string; owner_id?: string; data?: unknown; deleted_at?: string | null } | null;
+}
+
+export interface CloudRow {
+  id: string;
+  updated_at: string;
+  /** Only present when the select asked for it (phase 2 of the pull). */
+  data?: unknown;
+  deleted_at?: string | null;
+}
+
+export interface CloudSelectResult {
+  data: CloudRow[] | null;
+  error: CloudError | null;
+}
+
+/**
+ * What `from(t).select(cols).eq('owner_id', id)` returns: awaitable on its own (pull phase
+ * 1) and narrowable with `.in('id', ids)` (phase 2), matching real supabase-js chaining.
+ * PromiseLike, not Promise — `PostgrestBuilder` implements only `then`, so typing this as
+ * a `Promise` once let a `.catch()` chain compile clean and throw at runtime.
+ */
+export interface CloudFilter extends PromiseLike<CloudSelectResult> {
+  in(column: string, values: string[]): PromiseLike<CloudSelectResult>;
+}
+
+/**
+ * The narrow slice of the Supabase JS client this store calls — kept minimal and
+ * structural (not `SupabaseClient` itself) so tests can pass a plain mock instead of
  * standing up a real client.
  */
 export interface CloudSyncClient {
-  rpc(
-    fn: 'cas_upsert',
-    args: {
-      table_name: SyncTable;
-      p_id: string;
-      p_owner_id: string;
-      expected_updated_at: string | null;
-      p_data: unknown;
-      p_client_timestamp: string;
-    }
-  ): Promise<{ data: CasUpsertRow[] | null; error: { message: string } | null }>;
-  from(table: SyncTable): {
-    select(columns: string): { eq(col: string, val: string): Promise<{ data: Array<{ id: string; data: unknown; updated_at: string }> | null; error: { message: string } | null }> };
-    // PromiseLike, not Promise — matches the real supabase-js PostgrestBuilder, which
-    // implements only `then` (no `.catch`/`.finally`). Typing this as `Promise<...>`
-    // once let a `.catch(() => {})` chain compile clean while throwing at runtime.
-    delete(): { eq(col: string, val: string): PromiseLike<{ error: { message: string } | null }> };
-  };
+  rpc(fn: 'cas_upsert', args: CasUpsertArgs): Promise<{ data: CasUpsertRow[] | null; error: CloudError | null }>;
+  rpc(fn: 'cas_delete', args: CasDeleteArgs): Promise<{ data: string | null; error: CloudError | null }>;
+  from(table: SyncTable): { select(columns: string): { eq(column: string, value: string): CloudFilter } };
 }
 
-type RecordOf<T extends SyncTable> = T extends 'draft_sessions' ? DraftSession
-  : T extends 'rosters' ? SavedRoster
-  : T extends 'challenge_runs' ? ChallengeRun
-  : Season;
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+type LocalStore = GameStore & OutboxStore;
+
+/**
+ * Per-table local CRUD in one place, so the push, pull, delete and migration paths don't
+ * each grow their own four-way if-chain. (The full `SYNC_TABLES` descriptor refactor —
+ * merge and parse included — is a separate task.)
+ *
+ * `list` is the owner-filtered listing, NOT `exportAll`: `MemoryGameStore.exportAll`
+ * returns every row regardless of owner, which would hand another account's rows to
+ * `pushLocalToCloud`.
+ */
+const LOCAL_IO: Record<SyncTable, {
+  read(local: LocalStore, id: string): Promise<unknown>;
+  write(local: LocalStore, data: unknown): Promise<void>;
+  remove(local: LocalStore, id: string): Promise<void>;
+  list(local: LocalStore): Promise<Array<{ id: string }>>;
+}> = {
+  draft_sessions: {
+    read: (l, id) => l.getDraftSession(id),
+    write: (l, d) => l.saveDraftSession(d as DraftSession),
+    remove: (l, id) => l.deleteDraftSession(id),
+    list: (l) => l.listDraftSessions(),
+  },
+  rosters: {
+    read: (l, id) => l.getRoster(id),
+    write: (l, d) => l.saveRoster(d as SavedRoster),
+    remove: (l, id) => l.deleteRoster(id),
+    list: (l) => l.listRosters(),
+  },
+  seasons: {
+    read: (l, id) => l.getSeason(id),
+    write: (l, d) => l.saveSeason(d as Season),
+    remove: (l, id) => l.deleteSeason(id),
+    list: (l) => l.listSeasons(),
+  },
+  challenge_runs: {
+    read: (l, id) => l.getChallengeRun(id),
+    write: (l, d) => l.saveChallengeRun(d as ChallengeRun),
+    remove: (l, id) => l.deleteChallengeRun(id),
+    list: (l) => l.listChallengeRuns(),
+  },
+};
 
 function timestampOf(data: { timestamp?: string }): string {
   return data.timestamp ?? new Date().toISOString();
+}
+
+function backoffMs(attempts: number): number {
+  return Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempts);
+}
+
+/** How much of this record's backoff window is left, in ms (0 = send it now). */
+function backoffRemaining(record: OutboxRecord, now: number): number {
+  if (record.attempts <= 0 || !record.lastAttemptAt) return 0;
+  const since = now - Date.parse(record.lastAttemptAt);
+  if (!Number.isFinite(since)) return 0;
+  return Math.max(0, backoffMs(record.attempts) - since);
+}
+
+/** Permanent = retrying cannot help, because the server will never accept this row as it
+ *  stands. Everything else — fetch failure, timeout, 5xx, a thrown TypeError — is
+ *  transient and belongs in the backoff loop. */
+function isPermanent(error: unknown): boolean {
+  const bag = (typeof error === 'object' && error !== null ? error : {}) as { code?: unknown; message?: unknown };
+  const code = bag.code === undefined || bag.code === null ? '' : String(bag.code);
+  // 23xxx: integrity constraint violation. 42501: insufficient privilege (RLS, grants).
+  // 42883/42P01: the function or table does not exist (client older than the schema).
+  if (code.startsWith('23') || code === '42501' || code === '42883' || code === '42P01') return true;
+  const raw = error instanceof Error ? error.message : bag.message;
+  const message = (raw === undefined || raw === null ? '' : String(raw)).toLowerCase();
+  return (
+    message.includes('row-level security') ||
+    message.includes('payload too large') ||
+    message.includes('invalid table_name') ||
+    message.includes('permission denied') ||
+    message.includes('violates') ||
+    message.includes('duplicate key value')
+  );
+}
+
+/** Carries the permanent/transient verdict from where the error was raised (which knows
+ *  the Postgres code) to the drain loop (which only sees a thrown value). */
+class SyncError extends Error {
+  readonly permanent: boolean;
+  constructor(message: string, permanent: boolean) {
+    super(message);
+    this.name = 'SyncError';
+    this.permanent = permanent;
+  }
+}
+
+function errorIsPermanent(error: unknown): boolean {
+  return error instanceof SyncError ? error.permanent : isPermanent(error);
+}
+
+/** Rejects (transient) if `work` has not settled in `ms`. The request itself may still
+ *  land server-side; the CAS makes that safe — the retry is then rejected against our own
+ *  write and merges with identical content. */
+function withTimeout<T>(work: PromiseLike<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SyncError(`${what} timed out after ${ms} ms`, false)), ms);
+    work.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 /** Key-order-independent deep equality (object keys sorted recursively, array order kept
@@ -72,34 +267,68 @@ function sameContent(a: unknown, b: unknown): boolean {
   return stableStringify(a) === stableStringify(b);
 }
 
+function baselineMetaKey(ownerId: string): string {
+  return `sync.baselines:${ownerId}`;
+}
+
+/** What a push ended up doing, so the drain knows whether the record is done with. */
+type PushOutcome = 'ok' | 'merged' | 'tombstoned';
+
 export class SupabaseGameStore implements GameStore {
-  private local: GameStore;
+  private local: LocalStore;
   private client: CloudSyncClient;
   private ownerId: string | null = null;
-  /** `${table}:${id}` -> the `updated_at` we last confirmed the server holds for it. */
+  /** `${table}:${id}` -> the `updated_at` the server held when local and server last
+   *  agreed. Persisted per owner; see `loadBaselines`/`flushBaselines`. */
   private baselines = new Map<string, string>();
   private conflicts: SyncConflict[] = [];
-  private retryQueue = new Set<string>();
   private listeners = new Set<(status: SyncStatus) => void>();
-  private online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  /** Mirror of the outbox for the CURRENT owner, refreshed after every mutation so
+   *  `getSyncStatus()` can stay synchronous. */
+  private counts = { pending: 0, blocked: 0 };
+  /** Pull and drain run behind one promise chain: the same key can never be merged from
+   *  two directions at once, which is the one way this design could corrupt a row. */
+  private chain: Promise<void> = Promise.resolve();
+  private drainQueued = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryAt = 0;
+  private baselineTimer: ReturnType<typeof setTimeout> | null = null;
+  private baselinesDirty = false;
+  /** Tables whose pull completed for the CURRENT owner. `pushLocalToCloud` only trusts
+   *  "no baseline means the cloud has never seen this row" for these. */
+  private pulled = new Set<SyncTable>();
+  /** Strictly increasing `queuedAt` source — `Date.now()` alone repeats within a
+   *  millisecond, and the drain's "did a save land while I was pushing?" guard compares
+   *  `queuedAt` exactly. */
+  private lastQueuedAt = '';
+  private lastPullAt = 0;
 
-  constructor(local: GameStore, client: CloudSyncClient) {
+  constructor(local: LocalStore, client: CloudSyncClient) {
     this.local = local;
     this.client = client;
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => { this.online = true; void this.flushQueue(); });
-      window.addEventListener('offline', () => { this.online = false; this.emit(); });
+    // Guarded for SSR and for the node test environment.
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('online', () => { this.emit(); void this.drain(); });
+      window.addEventListener('offline', () => { this.emit(); });
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      // A PWA backgrounded for days comes back here, not through `online`.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        void this.pullIfStale();
+        void this.drain();
+      });
     }
   }
 
   // ── Status / conflicts ────────────────────────────────────────────────
 
   getSyncStatus(): SyncStatus {
-    if (!this.online) return { state: 'offline', pending: this.retryQueue.size, blocked: 0, conflicts: this.conflicts };
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return {
-      state: this.retryQueue.size > 0 ? 'syncing' : 'idle',
-      pending: this.retryQueue.size,
-      blocked: 0,
+      state: offline ? 'offline' : this.counts.pending > 0 ? 'syncing' : 'idle',
+      pending: this.counts.pending,
+      blocked: this.counts.blocked,
       conflicts: this.conflicts,
     };
   }
@@ -120,114 +349,338 @@ export class SupabaseGameStore implements GameStore {
   }
 
   async resolveConflict(table: SyncTable, id: string, choice: 'local' | 'remote'): Promise<void> {
+    const owner = this.ownerId;
     const idx = this.conflicts.findIndex((c) => c.table === table && c.id === id);
-    if (idx === -1) return;
+    if (idx === -1 || !owner) return;
     const conflict = this.conflicts[idx];
     this.conflicts.splice(idx, 1);
 
-    if (choice === 'remote') {
-      await this.writeLocalOnly(table, conflict.remote as RecordOf<typeof table>);
-    }
-    const key = `${table}:${id}`;
+    if (choice === 'remote') await LOCAL_IO[table].write(this.local, conflict.remote);
     // We don't know the server's current updated_at without a re-fetch, so drop the
-    // baseline: the next push re-derives it (a rejection -> retry-as-update path below).
-    this.baselines.delete(key);
-    const record = choice === 'remote' ? conflict.remote : conflict.local;
-    await this.push(table, id, record as { timestamp?: string });
+    // baseline: the next push re-derives it (the retry-as-update path in `pushNow`).
+    this.clearBaseline(owner, `${table}:${id}`);
+    await this.enqueue(table, id, 'upsert');
     this.emit();
   }
 
-  private async writeLocalOnly(table: SyncTable, data: unknown): Promise<void> {
-    if (table === 'draft_sessions') await this.local.saveDraftSession(data as DraftSession);
-    else if (table === 'rosters') await this.local.saveRoster(data as SavedRoster);
-    else if (table === 'challenge_runs') await this.local.saveChallengeRun(data as ChallengeRun);
-    else await this.local.saveSeason(data as Season);
+  // ── Outbox ────────────────────────────────────────────────────────────
+
+  private nextQueuedAt(): string {
+    const now = new Date().toISOString();
+    this.lastQueuedAt = now > this.lastQueuedAt
+      ? now
+      : new Date(Date.parse(this.lastQueuedAt) + 1).toISOString();
+    return this.lastQueuedAt;
   }
 
-  // ── Push / pull ────────────────────────────────────────────────────────
+  /**
+   * Queue one cloud write. Awaits the LOCAL outbox write only — never the network — and
+   * kicks the drain in the background. Re-queuing a key resets `attempts`/`lastError`/
+   * `blocked`: the user just touched this row, so it deserves a fresh try even if the last
+   * one was parked. With no owner signed in nothing is queued; those rows are picked up by
+   * `pushLocalToCloud` after the next login.
+   */
+  private async enqueue(table: SyncTable, id: string, op: 'upsert' | 'delete'): Promise<void> {
+    const owner = this.ownerId;
+    if (!owner) return;
+    await this.local.putOutbox({
+      key: outboxKey(owner, table, id),
+      ownerId: owner,
+      table,
+      id,
+      op,
+      queuedAt: this.nextQueuedAt(),
+      attempts: 0,
+    });
+    await this.refreshCounts();
+    this.emit();
+    void this.drain();
+  }
 
-  private async rpcOnce(table: SyncTable, id: string, data: unknown, expected: string | null): Promise<CasUpsertRow | null> {
-    const { data: rows, error } = await this.client.rpc('cas_upsert', {
+  private async refreshCounts(): Promise<void> {
+    const owner = this.ownerId;
+    if (!owner) {
+      this.counts = { pending: 0, blocked: 0 };
+      return;
+    }
+    const mine = (await this.local.listOutbox()).filter((r) => r.ownerId === owner);
+    this.counts = {
+      pending: mine.filter((r) => !r.blocked).length,
+      blocked: mine.filter((r) => r.blocked).length,
+    };
+  }
+
+  private async readOutbox(key: string): Promise<OutboxRecord | undefined> {
+    return (await this.local.listOutbox()).find((r) => r.key === key);
+  }
+
+  /** A save that landed while this record was in flight bumped its `queuedAt`; that newer
+   *  write has NOT been pushed, so the record must survive and go out on the next pass. */
+  private async dropIfUnchanged(record: OutboxRecord): Promise<void> {
+    const current = await this.readOutbox(record.key);
+    if (!current || current.queuedAt === record.queuedAt) await this.local.deleteOutbox(record.key);
+  }
+
+  // ── Baselines ─────────────────────────────────────────────────────────
+
+  /**
+   * Baselines belong to one owner. Every mutation names the owner it was computed for and
+   * is dropped if the account changed while the push/pull that produced it was in flight —
+   * otherwise a sign-out landing mid-push would file account A's stamp under account B.
+   */
+  private setBaseline(owner: string, key: string, updatedAt: string | null | undefined): void {
+    if (!updatedAt || this.ownerId !== owner) return;
+    this.baselines.set(key, updatedAt);
+    this.touchBaselines();
+  }
+
+  private clearBaseline(owner: string, key: string): void {
+    if (this.ownerId !== owner) return;
+    if (this.baselines.delete(key)) this.touchBaselines();
+  }
+
+  private touchBaselines(): void {
+    this.baselinesDirty = true;
+    if (this.baselineTimer) return;
+    this.baselineTimer = setTimeout(() => {
+      this.baselineTimer = null;
+      void this.flushBaselines();
+    }, BASELINE_FLUSH_MS);
+  }
+
+  private async flushBaselines(): Promise<void> {
+    const owner = this.ownerId;
+    if (!owner || !this.baselinesDirty) return;
+    this.baselinesDirty = false;
+    try {
+      await this.local.setMeta(baselineMetaKey(owner), JSON.stringify(Object.fromEntries(this.baselines)));
+    } catch {
+      // Losing the persisted copy only costs a full re-pull next launch, never data.
+      this.baselinesDirty = true;
+    }
+  }
+
+  private async loadBaselines(ownerId: string): Promise<void> {
+    this.baselines = new Map();
+    try {
+      const raw = await this.local.getMeta(baselineMetaKey(ownerId));
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (typeof value === 'string') this.baselines.set(key, value);
+      }
+    } catch {
+      // A corrupt map is not worth failing a login over: an empty one just re-pulls.
+      this.baselines = new Map();
+    }
+  }
+
+  // ── Scheduling ────────────────────────────────────────────────────────
+
+  /** One timer for the earliest pending retry, not one per record. */
+  private scheduleRetry(ms: number): void {
+    const at = Date.now() + ms;
+    if (this.retryTimer && this.retryAt <= at) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryAt = at;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.drain();
+    }, ms);
+  }
+
+  private clearTimers(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.retryAt = 0;
+    if (this.baselineTimer) clearTimeout(this.baselineTimer);
+    this.baselineTimer = null;
+  }
+
+  /** Everything that touches a row's local copy or its baseline runs through here. */
+  private serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(fn);
+    this.chain = next.then(() => {}, () => {});
+    return next;
+  }
+
+  /**
+   * Single-flight: while a pass is queued but not started it will already see whatever was
+   * enqueued since, so a second one would be pure duplicate work. A pass kicked WHILE one
+   * is running does queue, because the running pass may have listed the outbox already.
+   */
+  private drain(): Promise<void> {
+    if (!this.ownerId || this.drainQueued) return Promise.resolve();
+    this.drainQueued = true;
+    return this.serialize(async () => {
+      this.drainQueued = false;
+      await this.drainPass();
+    }).catch((err) => {
+      console.warn('Cloud sync drain failed:', err);
+    });
+  }
+
+  private async drainPass(): Promise<void> {
+    const owner = this.ownerId;
+    if (!owner) return;
+    let nextRetry = Infinity;
+    const records = (await this.local.listOutbox()).filter((r) => r.ownerId === owner && !r.blocked);
+
+    for (const record of records) {
+      // An account switch mid-pass must never push the old owner's rows under the new one.
+      if (this.ownerId !== owner) break;
+      const wait = backoffRemaining(record, Date.now());
+      if (wait > 0) {
+        nextRetry = Math.min(nextRetry, wait);
+        continue;
+      }
+      try {
+        if (record.op === 'delete') await this.sendDelete(record, owner);
+        else await this.sendUpsert(record, owner);
+      } catch (error) {
+        // One key's failure stops that key only; the rest of the pass carries on.
+        const retryIn = await this.markFailure(record, error);
+        if (retryIn !== null) nextRetry = Math.min(nextRetry, retryIn);
+      }
+    }
+
+    await this.refreshCounts();
+    await this.flushBaselines();
+    if (nextRetry !== Infinity) this.scheduleRetry(nextRetry);
+    this.emit();
+  }
+
+  private async sendUpsert(record: OutboxRecord, owner: string): Promise<void> {
+    // Re-read at send time: the record carries no payload, so this is always the newest
+    // local content, and a write that happened after the enqueue is included for free.
+    const data = await LOCAL_IO[record.table].read(this.local, record.id);
+    if (!data) {
+      // Deleted locally without an owner, or claimed by another account — nothing to send.
+      // Still guarded: a delete enqueued since replaced this record and must survive.
+      await this.dropIfUnchanged(record);
+      return;
+    }
+    await this.pushNow(record.table, record.id, data as { timestamp?: string }, owner);
+    // Covers 'tombstoned' (the local row is gone, so even if a save re-queued this key
+    // mid-push the next pass finds nothing to read and drops the record) and 'merged' —
+    // including a merge parked as a conflict, which `resolveConflict` re-queues.
+    await this.dropIfUnchanged(record);
+  }
+
+  private async sendDelete(record: OutboxRecord, owner: string): Promise<void> {
+    const { error } = await withTimeout(this.client.rpc('cas_delete', {
+      table_name: record.table,
+      p_id: record.id,
+      p_owner_id: record.ownerId,
+    }), READ_TIMEOUT_MS, 'cas_delete');
+    if (error) throw new SyncError(error.message, isPermanent(error));
+    // A null stamp means the row never reached the cloud — same outcome for us as a
+    // tombstone: there is nothing left to push for this key.
+    this.clearBaseline(owner, `${record.table}:${record.id}`);
+    await this.dropIfUnchanged(record);
+  }
+
+  /** Returns the ms to wait before the next attempt, or null when nothing is scheduled
+   *  (parked permanently, or superseded by a newer enqueue that starts fresh). */
+  private async markFailure(record: OutboxRecord, error: unknown): Promise<number | null> {
+    const message = error instanceof Error ? error.message : String(error);
+    const current = await this.readOutbox(record.key);
+    if (!current || current.queuedAt !== record.queuedAt) return null;
+
+    if (errorIsPermanent(error)) {
+      console.warn(`Cloud sync blocked for ${record.table}/${record.id}: ${message}`);
+      await this.local.putOutbox({ ...current, blocked: true, lastError: message, lastAttemptAt: new Date().toISOString() });
+      return null;
+    }
+    const attempts = current.attempts + 1;
+    await this.local.putOutbox({ ...current, attempts, lastError: message, lastAttemptAt: new Date().toISOString() });
+    return backoffMs(attempts);
+  }
+
+  // ── Push ──────────────────────────────────────────────────────────────
+
+  private async rpcOnce(table: SyncTable, id: string, data: unknown, expected: string | null, owner: string): Promise<CasUpsertRow | null> {
+    const { data: rows, error } = await withTimeout(this.client.rpc('cas_upsert', {
       table_name: table,
       p_id: id,
-      p_owner_id: this.ownerId!,
+      // The OWNER THIS WORK WAS QUEUED FOR, never `this.ownerId`: an account switch that
+      // lands between two awaits here must not file one user's row under another's id.
+      p_owner_id: owner,
       expected_updated_at: expected,
       p_data: data,
       p_client_timestamp: timestampOf(data as { timestamp?: string }),
-    });
-    if (error) throw new Error(error.message);
+    }), WRITE_TIMEOUT_MS, 'cas_upsert');
+    if (error) throw new SyncError(error.message, isPermanent(error));
     return rows?.[0] ?? null;
   }
 
-  /** Normal write path. A rejection's `current_row` tells us what actually happened:
-   *  - `null` means the row doesn't exist server-side at all — either this was a genuine
-   *    first push (`expected` was already `null`, in which case this can't happen — a
-   *    null-expected rejection always returns the conflicting row) or `expected` was a
-   *    baseline for a row that's since been deleted (by us, or another device). Either
-   *    way the fix is the same: retry once as a fresh insert.
-   *  - present with `expected === null` means "already exists" (a first push raced an
-   *    existing row) — retry once as an update using the row's real `updated_at`.
-   *  - present with `expected` non-null means a genuine conflict — hand it to `merge.ts`. */
-  private async push(table: SyncTable, id: string, data: { timestamp?: string }): Promise<void> {
-    if (!this.ownerId) return;
-    const key = `${table}:${id}`;
-    try {
-      const expected = this.baselines.get(key) ?? null;
-      let result = await this.rpcOnce(table, id, data, expected);
-      if (result?.ok) {
-        this.baselines.set(key, result.current_row!.updated_at);
-        this.retryQueue.delete(key);
-        this.emit();
-        return;
-      }
-
-      if (!result?.current_row) {
-        // Our baseline (if any) pointed at a row that's gone — the server has nothing
-        // to compare-and-swap against, so this is really an insert.
-        result = await this.rpcOnce(table, id, data, null);
-      } else if (expected === null) {
-        result = await this.rpcOnce(table, id, data, result.current_row.updated_at);
-      }
-      if (result?.ok) {
-        this.baselines.set(key, result.current_row!.updated_at);
-        this.retryQueue.delete(key);
-        this.emit();
-        return;
-      }
-
-      if (result?.current_row) {
-        await this.resolveViaMerge(table, id, data, result.current_row.data, result.current_row.updated_at);
-      } else {
-        this.retryQueue.add(key);
-      }
-      this.emit();
-    } catch {
-      this.online = false;
-      this.retryQueue.add(key);
-      this.emit();
-    }
+  private static stampOf(result: CasUpsertRow): string | null {
+    return result.updated_at ?? result.current_row?.updated_at ?? null;
   }
 
-  /** One-time migration push (D5): insert-only, skip silently if the row already exists
-   *  remotely — never overwrites, never merges. */
-  private async pushIfMissing(table: SyncTable, id: string, data: { timestamp?: string }): Promise<void> {
-    if (!this.ownerId) return;
-    try {
-      const result = await this.rpcOnce(table, id, data, null);
-      if (result?.ok) this.baselines.set(`${table}:${id}`, result.current_row!.updated_at);
-    } catch {
-      this.retryQueue.add(`${table}:${id}`);
+  /**
+   * Normal write path. A rejection's `current_row` tells us what actually happened:
+   *  - `deleted_at` set: another device deleted this row. A delete is the user's last word
+   *    and there is nothing to merge, so the delete wins — drop the local copy too.
+   *  - `null`: the server has no such row, so our baseline pointed at something that is
+   *    gone. Retry once as a fresh insert.
+   *  - present: the server holds content we have not reconciled with — hand it to
+   *    `merge.ts`. That includes `expected === null` ("already exists": site data was
+   *    cleared, or a first push raced another device). It used to be retried as an update
+   *    against the row's real `updated_at`, which overwrote the cloud copy unmerged.
+   */
+  private async pushNow(table: SyncTable, id: string, data: { timestamp?: string }, owner: string): Promise<PushOutcome> {
+    const key = `${table}:${id}`;
+    const expected = this.baselines.get(key) ?? null;
+    let result = await this.rpcOnce(table, id, data, expected, owner);
+    if (result?.ok) {
+      this.setBaseline(owner, key, SupabaseGameStore.stampOf(result));
+      return 'ok';
     }
+
+    if (result?.current_row?.deleted_at) return this.adoptRemoteDelete(table, id, owner);
+    if (!result?.current_row) result = await this.rpcOnce(table, id, data, null, owner);
+
+    if (result?.ok) {
+      this.setBaseline(owner, key, SupabaseGameStore.stampOf(result));
+      return 'ok';
+    }
+    if (result?.current_row?.deleted_at) return this.adoptRemoteDelete(table, id, owner);
+    if (result?.current_row) {
+      await this.resolveViaMerge(table, id, data, result.current_row.data, result.current_row.updated_at, owner);
+      return 'merged';
+    }
+    // An insert-only push can only be rejected WITH a conflicting row; landing here means
+    // the server disagrees with its own contract. Treat it as transient rather than
+    // dropping the write on the floor.
+    throw new SyncError(`cas_upsert rejected ${table}/${id} without a conflicting row`, false);
   }
 
-  private async resolveViaMerge(table: SyncTable, id: string, local: unknown, remote: unknown, remoteUpdatedAt: string): Promise<void> {
+  /** The remote tombstone wins: hard-delete locally (no re-enqueue — the row is already
+   *  gone server-side) and forget the baseline. */
+  private async adoptRemoteDelete(table: SyncTable, id: string, owner: string): Promise<PushOutcome> {
+    // Ids are only unique per owner (the tables' primary key is `(owner_id, id)`), so
+    // deleting after an account switch could delete the NEW account's row of that id.
+    if (this.ownerId !== owner) return 'tombstoned';
+    await LOCAL_IO[table].remove(this.local, id);
+    this.clearBaseline(owner, `${table}:${id}`);
+    return 'tombstoned';
+  }
+
+  private async resolveViaMerge(table: SyncTable, id: string, local: unknown, remote: unknown, remoteUpdatedAt: string, owner: string): Promise<void> {
+    if (this.ownerId !== owner) return; // see `adoptRemoteDelete`
     const key = `${table}:${id}`;
+    // Adopting the remote's updated_at as the new baseline BEFORE re-pushing matters in
+    // every branch: without it the re-push compares against a stale baseline, the CAS
+    // rejects, and we land back in here — an endless merge/push loop.
     if (table === 'draft_sessions') {
       const { merged, conflict } = mergeDraftSession(local as DraftSession, remote as DraftSession);
       if (conflict) return this.recordConflict(table, id, local, remote);
-      this.baselines.set(key, remoteUpdatedAt);
+      this.setBaseline(owner, key, remoteUpdatedAt);
       await this.local.saveDraftSession(merged);
-      return this.push(table, id, merged);
+      await this.pushNow(table, id, merged, owner);
+      return;
     }
     if (table === 'seasons') {
       const season = local as Season;
@@ -235,28 +688,27 @@ export class SupabaseGameStore implements GameStore {
       if (!session) return this.recordConflict(table, id, local, remote);
       const { merged, conflict } = mergeSeason(season, remote as Season, session);
       if (conflict) return this.recordConflict(table, id, local, remote);
-      this.baselines.set(key, remoteUpdatedAt);
+      this.setBaseline(owner, key, remoteUpdatedAt);
       await this.local.saveSeason(merged);
-      return this.push(table, id, merged);
+      await this.pushNow(table, id, merged, owner);
+      return;
     }
     if (table === 'challenge_runs') {
-      // D11: the later `phase` always wins — never a conflict for a human to resolve.
+      // The later `phase` always wins — never a conflict for a human to resolve.
       const { merged } = mergeChallengeRun(local as ChallengeRun, remote as ChallengeRun);
-      this.baselines.set(key, remoteUpdatedAt);
+      this.setBaseline(owner, key, remoteUpdatedAt);
       await this.local.saveChallengeRun(merged);
-      return this.push(table, id, merged);
+      await this.pushNow(table, id, merged, owner);
+      return;
     }
     // rosters: newest edit wins, never a prompt — see `mergeRoster` for why nothing
     // irreplaceable is at stake (both sides hold identical `draftedCards`; only the
     // arrangement differs).
     const { merged, conflict } = mergeRoster(local as SavedRoster, remote as SavedRoster);
     if (conflict) return this.recordConflict(table, id, local, remote);
-    // Adopt the remote's updated_at as the new baseline BEFORE pushing, exactly as the
-    // branches above do: without it the re-push compares against a stale baseline, the CAS
-    // rejects, and we land back in here — an endless merge/push loop.
-    this.baselines.set(key, remoteUpdatedAt);
+    this.setBaseline(owner, key, remoteUpdatedAt);
     await this.local.saveRoster(merged);
-    return this.push(table, id, merged);
+    await this.pushNow(table, id, merged, owner);
   }
 
   private recordConflict(table: SyncTable, id: string, local: unknown, remote: unknown): void {
@@ -266,91 +718,205 @@ export class SupabaseGameStore implements GameStore {
     else this.conflicts[idx] = entry;
   }
 
-  private async flushQueue(): Promise<void> {
-    if (!this.ownerId || this.retryQueue.size === 0) return;
-    const keys = [...this.retryQueue];
-    for (const key of keys) {
-      const [table, id] = key.split(':') as [SyncTable, string];
-      const record = await this.readLocal(table, id);
-      if (record) await this.push(table, id, record as { timestamp?: string });
-      else this.retryQueue.delete(key);
-    }
-    this.emit();
-  }
+  // ── Pull ──────────────────────────────────────────────────────────────
 
-  /** Best-effort cloud delete: `PostgrestBuilder` is `PromiseLike`, not a real `Promise`
-   *  — it has no `.catch`, so chaining one throws synchronously instead of rejecting.
-   *  `await` inside a real try/catch is the correct way to swallow a failed delete. */
-  private async deleteRemote(table: SyncTable, id: string): Promise<void> {
-    this.baselines.delete(`${table}:${id}`);
-    if (!this.ownerId) return;
-    try {
-      await this.client.from(table).delete().eq('id', id);
-    } catch {
-      // best-effort — a local delete should not be blocked by a network/RLS failure.
-    }
-  }
-
-  private async readLocal(table: SyncTable, id: string): Promise<unknown> {
-    if (table === 'draft_sessions') return this.local.getDraftSession(id);
-    if (table === 'rosters') return this.local.getRoster(id);
-    if (table === 'challenge_runs') return this.local.getChallengeRun(id);
-    return this.local.getSeason(id);
-  }
-
-  /** D3: pull every cloud row for this owner and merge into the local cache — new rows
-   *  are adopted as-is; rows already present are reconciled through the same merge path
-   *  a rejected push would use, so a second device's saves surface on this one too. */
-  private async pullAll(): Promise<void> {
-    if (!this.ownerId) return;
-    const tables: SyncTable[] = ['draft_sessions', 'rosters', 'seasons', 'challenge_runs'];
-    for (const table of tables) {
-      const { data, error } = await this.client.from(table).select('id, data, updated_at').eq('owner_id', this.ownerId);
-      if (error || !data) continue;
-      for (const row of data) {
-        const key = `${table}:${row.id}`;
-        const existing = await this.readLocal(table, row.id);
-        if (!existing) {
-          await this.writeLocalOnly(table, row.data);
-          this.baselines.set(key, row.updated_at);
-        } else if (this.baselines.get(key) !== row.updated_at) {
-          // A missing baseline (e.g. a fresh page load/login) doesn't by itself mean the
-          // row changed — only a real content difference does. Without this check, every
-          // login would run a merge on every already-synced row.
-          if (sameContent(existing, row.data)) {
-            this.baselines.set(key, row.updated_at);
-          } else {
-            await this.resolveViaMerge(table, row.id, existing, row.data, row.updated_at);
-          }
-        }
+  /**
+   * Two-phase (D7). Phase 1 asks only for `id, updated_at, deleted_at` — cheap, and enough
+   * to decide what actually changed. Phase 2 downloads `data` in batches, only for the rows
+   * whose stamp differs from our persisted baseline. Before baselines were persisted this
+   * re-downloaded and re-merged every row on every launch.
+   */
+  private async pullAll(owner: string): Promise<void> {
+    for (const table of SYNC_TABLES) {
+      if (this.ownerId !== owner) return;
+      try {
+        await this.pullTable(table, owner);
+        this.pulled.add(table);
+      } catch (err) {
+        // One table failing (RLS, a bad response) must not cost us the other three.
+        console.warn(`Cloud pull failed for ${table}:`, err);
       }
     }
+    this.lastPullAt = Date.now();
+    await this.flushBaselines();
     this.emit();
+  }
+
+  /** Another device's saves and deletes only reach this one through a pull, and an
+   *  installed PWA can go days between launches — so also pull when it is resumed. */
+  private pullIfStale(): Promise<void> {
+    const owner = this.ownerId;
+    if (!owner || Date.now() - this.lastPullAt < RESUME_PULL_MIN_AGE_MS) return Promise.resolve();
+    this.lastPullAt = Date.now(); // claim the slot now: visibility can flap while one is queued
+    return this.serialize(() => this.pullAll(owner)).catch((err) => {
+      console.warn('Cloud pull on resume failed:', err);
+    });
+  }
+
+  private async pullTable(table: SyncTable, owner: string): Promise<void> {
+    // `.eq('owner_id', ...)` on every select is not decoration: an ADMIN account can read
+    // every owner's rows through RLS, so dropping it would merge strangers' data in.
+    const { data, error } = await withTimeout(
+      this.client.from(table).select('id, updated_at, deleted_at').eq('owner_id', owner), READ_TIMEOUT_MS, `pull ${table}`);
+    if (error) throw new SyncError(error.message, isPermanent(error));
+    if (!data) return;
+
+    const pending = new Map((await this.local.listOutbox())
+      .filter((r) => r.ownerId === owner && r.table === table)
+      .map((r) => [r.id, r] as const));
+    const needed: string[] = [];
+
+    for (const row of data) {
+      const key = `${table}:${row.id}`;
+      if (row.deleted_at) {
+        // This is how device B learns about device A's delete.
+        const queued = pending.get(row.id);
+        const resavedSince = queued?.op === 'upsert' && isAfter(queued.queuedAt, row.deleted_at);
+        if (!resavedSince && this.ownerId === owner) {
+          const existing = await LOCAL_IO[table].read(this.local, row.id);
+          if (existing) await LOCAL_IO[table].remove(this.local, row.id);
+          this.clearBaseline(owner, key);
+        }
+        continue;
+      }
+      // A local delete that hasn't been pushed yet would otherwise be resurrected by the
+      // very next pull, before the drain got to `cas_delete`.
+      if (pending.get(row.id)?.op === 'delete') continue;
+      if (this.baselines.get(key) === row.updated_at) continue;
+      needed.push(row.id);
+    }
+
+    for (let i = 0; i < needed.length; i += PULL_CHUNK) {
+      if (this.ownerId !== owner) return;
+      const chunk = needed.slice(i, i + PULL_CHUNK);
+      const page = await withTimeout(
+        this.client.from(table).select('id, data, updated_at').eq('owner_id', owner).in('id', chunk), WRITE_TIMEOUT_MS, `pull ${table} data`);
+      if (page.error) throw new SyncError(page.error.message, isPermanent(page.error));
+      for (const row of page.data ?? []) await this.applyRemoteRow(table, row, owner);
+    }
+  }
+
+  private async applyRemoteRow(table: SyncTable, row: CloudRow, owner: string): Promise<void> {
+    if (this.ownerId !== owner) return; // the account switched mid-pull; these rows are not theirs
+    const key = `${table}:${row.id}`;
+    const existing = await LOCAL_IO[table].read(this.local, row.id);
+    if (!existing) {
+      await LOCAL_IO[table].write(this.local, row.data);
+      this.setBaseline(owner, key, row.updated_at);
+      return;
+    }
+    // A missing baseline (a fresh device, a cleared map) doesn't by itself mean the row
+    // changed — only a real content difference does. Without this check every login would
+    // run a merge on every already-synced row.
+    if (sameContent(existing, row.data)) {
+      this.setBaseline(owner, key, row.updated_at);
+      return;
+    }
+    await this.resolveViaMerge(table, row.id, existing, row.data, row.updated_at, owner);
   }
 
   // ── GameStore: identity / migration ──────────────────────────────────
 
+  /**
+   * Called on every auth change by `StorageProvider`. Repeating the current owner is cheap
+   * and never starts a second pull. A real change resets everything owner-scoped, loads
+   * that owner's persisted baselines and outbox counts, and pulls — but only waits
+   * `PULL_TIMEOUT_MS` for it, because app readiness hangs off this promise and a slow
+   * network must not hold the whole app hostage. The pull carries on in the background.
+   */
   async setOwnerId(ownerId: string | null): Promise<void> {
+    if (ownerId === this.ownerId) {
+      await this.local.setOwnerId(ownerId);
+      return;
+    }
+
+    await this.flushBaselines(); // still the OLD owner's map at this point
+    this.clearTimers();
+    this.baselinesDirty = false;
+    this.baselines = new Map();
+    this.conflicts = [];
+    this.counts = { pending: 0, blocked: 0 };
+    this.pulled = new Set();
     this.ownerId = ownerId;
     await this.local.setOwnerId(ownerId);
-    if (ownerId) await this.pullAll();
+    if (!ownerId) {
+      this.emit();
+      return;
+    }
+
+    await this.loadBaselines(ownerId);
+    await this.unblockOutbox(ownerId);
+    await this.refreshCounts();
+    this.emit();
+
+    const pull = this.serialize(() => this.pullAll(ownerId)).catch((err) => {
+      console.warn('Cloud pull failed:', err);
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([pull, new Promise<void>((resolve) => { timer = setTimeout(resolve, PULL_TIMEOUT_MS); })]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    void this.drain();
+  }
+
+  /**
+   * A parked record gets ONE fresh attempt per sign-in/launch. "Permanent" is judged from
+   * an error message, and an expired session is indistinguishable from a real permission
+   * error (the request goes out as `anon`), so never retrying would strand a write the
+   * next login could have synced. Once per launch is nowhere near a retry loop.
+   */
+  private async unblockOutbox(owner: string): Promise<void> {
+    for (const record of await this.local.listOutbox()) {
+      if (record.ownerId !== owner || !record.blocked) continue;
+      await this.local.putOutbox({ ...record, blocked: false, attempts: 0, lastAttemptAt: undefined });
+    }
   }
 
   async claimLegacyData(): Promise<void> {
     await this.local.claimLegacyData();
   }
 
-  /** D5: push every locally-owned record missing on the server, once. Safe to call on
-   *  every mount — `pushIfMissing` is a no-op for rows the server already has. */
+  /**
+   * One-time migration of rows this device made before it had an account (or before cloud
+   * sync existed): anything with no baseline and no outbox record has never reached the
+   * cloud, so queue an upsert for it. Rows with a baseline are skipped, which is what keeps
+   * this from re-walking (and re-pushing) the whole account on every launch.
+   *
+   * Runs behind the same chain as the pull, and only for tables that pull actually
+   * reconciled: "no baseline" only means "local-only" once we have seen what the cloud
+   * holds. After a failed pull the same rows would be pushed as first-ever inserts, and the
+   * already-exists retry would overwrite the cloud copy with this device's older one.
+   */
   async pushLocalToCloud(): Promise<void> {
-    if (!this.ownerId) return;
-    const { sessions, rosters, seasons } = await this.local.exportAll();
-    for (const s of sessions) await this.pushIfMissing('draft_sessions', s.id, s);
-    for (const r of rosters) await this.pushIfMissing('rosters', r.id, r);
-    for (const s of seasons) await this.pushIfMissing('seasons', s.id, s);
-    const runs = await this.local.listChallengeRuns();
-    for (const r of runs) await this.pushIfMissing('challenge_runs', r.id, r);
+    const owner = this.ownerId;
+    if (!owner) return;
+    await this.serialize(async () => {
+      if (this.ownerId !== owner) return;
+      const queued = new Set((await this.local.listOutbox()).filter((r) => r.ownerId === owner).map((r) => r.key));
+      for (const table of SYNC_TABLES) {
+        if (!this.pulled.has(table)) continue;
+        for (const row of await LOCAL_IO[table].list(this.local)) {
+          if (this.ownerId !== owner) return;
+          if (this.baselines.has(`${table}:${row.id}`)) continue;
+          if (queued.has(outboxKey(owner, table, row.id))) continue;
+          await this.enqueue(table, row.id, 'upsert');
+        }
+      }
+    });
     this.emit();
+  }
+
+  /** Resolves once the queued pull/drain work has settled. For tests and diagnostics —
+   *  production code never waits on sync by design. */
+  async settle(): Promise<void> {
+    for (let i = 0; i < 50; i++) {
+      const before = this.chain;
+      await before.catch(() => {});
+      await Promise.resolve();
+      if (this.chain === before && !this.drainQueued) return;
+    }
   }
 
   // ── GameStore: draft sessions ─────────────────────────────────────────
@@ -359,15 +925,11 @@ export class SupabaseGameStore implements GameStore {
   getDraftSession(id: string): Promise<DraftSession | null> { return this.local.getDraftSession(id); }
   async saveDraftSession(s: DraftSession): Promise<void> {
     await this.local.saveDraftSession(s);
-    // Push what actually landed locally (indexedDb.ts stamps cardSetVersion on write) —
-    // pushing the caller's pre-stamp `s` would permanently desync local vs. remote and
-    // make every later login look like a genuine cross-device conflict.
-    const stored = await this.local.getDraftSession(s.id);
-    await this.push('draft_sessions', s.id, stored ?? s);
+    await this.enqueue('draft_sessions', s.id, 'upsert');
   }
   async deleteDraftSession(id: string): Promise<void> {
     await this.local.deleteDraftSession(id);
-    await this.deleteRemote('draft_sessions', id);
+    await this.enqueue('draft_sessions', id, 'delete');
   }
 
   // ── GameStore: rosters ────────────────────────────────────────────────
@@ -376,13 +938,11 @@ export class SupabaseGameStore implements GameStore {
   getRoster(id: string): Promise<SavedRoster | null> { return this.local.getRoster(id); }
   async saveRoster(r: SavedRoster): Promise<void> {
     await this.local.saveRoster(r);
-    // See saveDraftSession: push the stamped local record, not the pre-stamp input.
-    const stored = await this.local.getRoster(r.id);
-    await this.push('rosters', r.id, stored ?? r);
+    await this.enqueue('rosters', r.id, 'upsert');
   }
   async deleteRoster(id: string): Promise<void> {
     await this.local.deleteRoster(id);
-    await this.deleteRemote('rosters', id);
+    await this.enqueue('rosters', id, 'delete');
   }
 
   // ── GameStore: seasons ────────────────────────────────────────────────
@@ -392,27 +952,25 @@ export class SupabaseGameStore implements GameStore {
   getSeasonByRoster(rosterId: string): Promise<Season | null> { return this.local.getSeasonByRoster(rosterId); }
   async saveSeason(s: Season): Promise<void> {
     await this.local.saveSeason(s);
-    await this.push('seasons', s.id, s);
+    await this.enqueue('seasons', s.id, 'upsert');
   }
   async deleteSeason(id: string): Promise<void> {
     await this.local.deleteSeason(id);
-    await this.deleteRemote('seasons', id);
+    await this.enqueue('seasons', id, 'delete');
   }
 
-  // ── GameStore: challenge runs (D11) ─────────────────────────────────────
+  // ── GameStore: challenge runs ─────────────────────────────────────────
 
   listChallengeRuns(): Promise<ChallengeRun[]> { return this.local.listChallengeRuns(); }
   getChallengeRun(id: string): Promise<ChallengeRun | null> { return this.local.getChallengeRun(id); }
   getChallengeRunByRoster(rosterId: string): Promise<ChallengeRun | null> { return this.local.getChallengeRunByRoster(rosterId); }
   async saveChallengeRun(r: ChallengeRun): Promise<void> {
     await this.local.saveChallengeRun(r);
-    // See saveDraftSession/saveRoster: push what actually landed locally.
-    const stored = await this.local.getChallengeRun(r.id);
-    await this.push('challenge_runs', r.id, stored ?? r);
+    await this.enqueue('challenge_runs', r.id, 'upsert');
   }
   async deleteChallengeRun(id: string): Promise<void> {
     await this.local.deleteChallengeRun(id);
-    await this.deleteRemote('challenge_runs', id);
+    await this.enqueue('challenge_runs', id, 'delete');
   }
 
   // ── GameStore: bulk / meta ─────────────────────────────────────────────
@@ -423,4 +981,15 @@ export class SupabaseGameStore implements GameStore {
   getStorageMeta(): Promise<StorageMeta | null> { return this.local.getStorageMeta(); }
   getMeta(key: string): Promise<string | null> { return this.local.getMeta(key); }
   setMeta(key: string, value: string): Promise<void> { return this.local.setMeta(key, value); }
+}
+
+/** True when `a` is strictly later than `b`. Both are ISO-ish, but `deleted_at` comes from
+ *  Postgres (`+00:00`, microseconds) and `queuedAt` from the browser (`Z`, milliseconds),
+ *  so they are compared as instants, not as strings. Unparseable input errs towards
+ *  keeping the local row. */
+function isAfter(a: string, b: string): boolean {
+  const left = Date.parse(a);
+  const right = Date.parse(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return true;
+  return left > right;
 }

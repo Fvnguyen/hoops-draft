@@ -62,8 +62,9 @@ decisions push through, not the merge logic.
 - **D7 Sync perf.** `cas_upsert` returns `(ok, updated_at, current_row)`; on success `current_row` is only
   `{id, updated_at}` (keeps the deployed client working while the migration is live), the full row on `ok = false`. `pullAll` first selects `id, updated_at` per table
   (`deleted_at is null`); only ids whose `updated_at` differs or is missing get a second batched
-  `select id, data, updated_at where id = any($ids)`. `pushLocalToCloud` skips `pushIfMissing` for any key
-  already in `this.baselines`. Card-id-only `DraftSession` storage is OUT OF SCOPE, a schema change tangled with
+  `select id, data, updated_at where id = any($ids)`. Baselines persist per owner in `meta` (`sync.baselines:<ownerId>`), else every launch
+  refetches everything; `pushLocalToCloud` only enqueues rows with no baseline. `setOwnerId` awaits the pull for
+  at most 6000 ms, then readiness proceeds and the pull finishes in the background. Card-id-only `DraftSession` storage is OUT OF SCOPE, a schema change tangled with
   `CARD_SET_VERSION`/`cards.json` versioning that needs its own plan.
 - **D8 RLS and payload cap.** Each table's `owner full access` policy splits into `for select` (unchanged) and
   `for insert, update, delete` (adds `and exists (select 1 from public.profiles p where p.id = auth.uid() and

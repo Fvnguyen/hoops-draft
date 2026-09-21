@@ -1,85 +1,19 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MemoryGameStore } from '@/storage/memory';
-import { SupabaseGameStore, type CloudSyncClient } from '@/storage/supabase';
+import { SupabaseGameStore } from '@/storage/supabase';
 import { createSeason, playNextGame } from '@/engine/season';
 import type { DraftSession } from '@/engine/deckbuilder';
 import { loadPlayers, PLAYS, runHeadlessDraft } from '../unit/helpers';
 import { makeChallengeRun, makeDraftSession, makeSavedRoster } from './fixtures';
+import { FakeCloud } from './fakeCloud';
 
 const OWNER = 'owner-1';
 
-/** In-memory stand-in for the three cloud tables + the cas_upsert RPC (migration
- *  202609140001_cloud_saves.sql), enough to exercise SupabaseGameStore's push/pull and
- *  merge paths without a real Supabase project. */
-class FakeCloud implements CloudSyncClient {
-  rows = new Map<string, Map<string, { id: string; owner_id: string; data: unknown; updated_at: string }>>([
-    ['draft_sessions', new Map()],
-    ['rosters', new Map()],
-    ['seasons', new Map()],
-    ['challenge_runs', new Map()],
-  ]);
-  private clock = 0;
-
-  private nextUpdatedAt(): string {
-    this.clock += 1;
-    return `2026-01-01T00:00:${String(this.clock).padStart(2, '0')}Z`;
-  }
-
-  async rpc(_fn: 'cas_upsert', args: Parameters<CloudSyncClient['rpc']>[1]) {
-    const table = this.rows.get(args.table_name)!;
-    const existing = table.get(args.p_id);
-
-    if (args.expected_updated_at === null) {
-      if (existing) return { data: [{ ok: false, current_row: existing }], error: null };
-      const row = { id: args.p_id, owner_id: args.p_owner_id, data: args.p_data, updated_at: this.nextUpdatedAt() };
-      table.set(args.p_id, row);
-      return { data: [{ ok: true, current_row: row }], error: null };
-    }
-
-    if (!existing || existing.updated_at !== args.expected_updated_at) {
-      return { data: [{ ok: false, current_row: existing ?? null }], error: null };
-    }
-    const row = { ...existing, data: args.p_data, updated_at: this.nextUpdatedAt() };
-    table.set(args.p_id, row);
-    return { data: [{ ok: true, current_row: row }], error: null };
-  }
-
-  from(table: 'draft_sessions' | 'rosters' | 'seasons' | 'challenge_runs') {
-    const rows = this.rows.get(table)!;
-    return {
-      select: (_cols: string) => ({
-        eq: async (_col: string, val: string) => ({
-          data: [...rows.values()].filter((r) => r.owner_id === val),
-          error: null,
-        }),
-      }),
-      // Deliberately a bare PromiseLike, no `.catch`/`.finally` — matches the real
-      // supabase-js PostgrestBuilder (implements only `then`), so calling `.catch()` on
-      // this instead of `await`-ing inside a try/catch throws here exactly like it would
-      // against the real client.
-      delete: () => ({
-        eq: (_col: string, val: string): PromiseLike<{ error: null }> => ({
-          then(onfulfilled, onrejected) {
-            rows.delete(val);
-            return Promise.resolve({ error: null as null }).then(onfulfilled, onrejected);
-          },
-        }),
-      }),
-    };
-  }
-
-  /** Simulates another device writing directly (bypassing this SupabaseGameStore). */
-  writeDirect(table: 'draft_sessions' | 'rosters' | 'seasons' | 'challenge_runs', id: string, data: unknown): void {
-    const rows = this.rows.get(table)!;
-    rows.set(id, { id, owner_id: OWNER, data, updated_at: this.nextUpdatedAt() });
-  }
-}
-
-async function flush(): Promise<void> {
-  // Sync methods here are async but resolve on microtasks only — a couple of ticks is
-  // enough to drain any push-then-retry chains (resolveViaMerge recurses through push).
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+/** Every push now goes through the background drain, so "has the cloud caught up?" means
+ *  "has the pull/drain chain settled?" rather than a fixed number of microtask ticks. */
+async function flush(store: SupabaseGameStore): Promise<void> {
+  await store.settle();
 }
 
 describe('SupabaseGameStore', () => {
@@ -92,32 +26,39 @@ describe('SupabaseGameStore', () => {
     await store.setOwnerId(OWNER);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('pushes a new roster to the cloud on save', async () => {
     const roster = makeSavedRoster();
     await store.saveRoster(roster);
-    await flush();
+    await flush(store);
 
     const row = cloud.rows.get('rosters')!.get(roster.id);
     expect(row).toBeDefined();
     expect((row!.data as typeof roster).name).toBe(roster.name);
   });
 
-  it('deleteRoster/deleteSeason/deleteDraftSession actually remove the cloud row', async () => {
+  it('deleteRoster/deleteSeason/deleteDraftSession tombstone the cloud row (D5)', async () => {
     const roster = makeSavedRoster();
     const session = makeDraftSession();
     await store.saveRoster(roster);
     await store.saveDraftSession(session);
-    await flush();
-    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(true);
-    expect(cloud.rows.get('draft_sessions')!.has(session.id)).toBe(true);
+    await flush(store);
+    expect(cloud.live('rosters', roster.id)).toBeDefined();
+    expect(cloud.live('draft_sessions', session.id)).toBeDefined();
 
     await store.deleteRoster(roster.id);
     await store.deleteDraftSession(session.id);
+    await flush(store);
 
-    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(false);
-    expect(cloud.rows.get('draft_sessions')!.has(session.id)).toBe(false);
+    // The row stays, tombstoned — that is how the other device learns about the delete.
+    expect(cloud.rows.get('rosters')!.get(roster.id)!.deleted_at).toBeTruthy();
+    expect(cloud.rows.get('draft_sessions')!.get(session.id)!.deleted_at).toBeTruthy();
     expect(await store.getRoster(roster.id)).toBeNull();
     expect(await store.getDraftSession(session.id)).toBeNull();
+    expect(store.getSyncStatus().pending).toBe(0);
   });
 
   it('re-saving after the known baseline row was deleted server-side re-inserts instead of silently queuing', async () => {
@@ -126,16 +67,16 @@ describe('SupabaseGameStore', () => {
     // merge against, and queue forever without ever writing the new save.
     const roster = makeSavedRoster();
     await store.saveRoster(roster);
-    await flush();
-    expect(cloud.rows.get('rosters')!.has(roster.id)).toBe(true);
+    await flush(store);
+    expect(cloud.live('rosters', roster.id)).toBeDefined();
 
     // Simulate another device deleting it without this store knowing (its baseline for
-    // the id is still the old updated_at).
+    // the id is still the old updated_at). A hard delete, not a tombstone: the row is gone.
     cloud.rows.get('rosters')!.delete(roster.id);
 
     const renamed = { ...roster, name: 'Renamed after delete' };
     await store.saveRoster(renamed);
-    await flush();
+    await flush(store);
 
     expect(store.getSyncStatus().pending).toBe(0);
     expect(await store.listConflicts()).toEqual([]);
@@ -150,7 +91,7 @@ describe('SupabaseGameStore', () => {
 
     const second = new SupabaseGameStore(new MemoryGameStore(), cloud);
     await second.setOwnerId(OWNER);
-    await flush();
+    await flush(second);
 
     expect(await second.getRoster(roster.id)).toMatchObject({ id: roster.id, name: roster.name });
   });
@@ -162,13 +103,13 @@ describe('SupabaseGameStore', () => {
     // always report a conflict from mergeRoster, which never auto-resolves.
     const roster = makeSavedRoster();
     await store.saveRoster(roster);
-    await flush();
+    await flush(store);
 
-    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    const local = new MemoryGameStore();
     await local.saveRoster(roster);
     const freshLogin = new SupabaseGameStore(local, cloud);
     await freshLogin.setOwnerId(OWNER);
-    await flush();
+    await flush(freshLogin);
 
     expect(await freshLogin.listConflicts()).toEqual([]);
   });
@@ -182,17 +123,17 @@ describe('SupabaseGameStore', () => {
     const roster = makeSavedRoster();
     expect(roster.cardSetVersion).toBeUndefined();
     await store.saveRoster(roster);
-    await flush();
+    await flush(store);
 
     // Second "device": same owner set BEFORE saving, so its local record is directly
     // comparable to what the first device pushed (avoids the ownerId-mismatch path in the
     // test above, which short-circuits straight to "adopt cloud row" either way).
-    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    const local = new MemoryGameStore();
     await local.setOwnerId(OWNER);
     await local.saveRoster(roster);
     const freshLogin = new SupabaseGameStore(local, cloud);
     await freshLogin.setOwnerId(OWNER);
-    await flush();
+    await flush(freshLogin);
 
     expect(await freshLogin.listConflicts()).toEqual([]);
   });
@@ -200,7 +141,7 @@ describe('SupabaseGameStore', () => {
   it('auto-merges a draft session pushed further on another device (no conflict)', async () => {
     const session = makeDraftSession({ pickLog: [] });
     await store.saveDraftSession(session);
-    await flush();
+    await flush(store);
 
     // Another device resumed the same draft and picked further.
     const ahead = { ...session, pickLog: [{ packNumber: 1, pickNumber: 1, overallPick: 1, seatId: 'human-0', packContents: ['a'], pickedCardId: 'a' }] };
@@ -208,7 +149,7 @@ describe('SupabaseGameStore', () => {
 
     // This device still only has the shorter log locally when it saves again.
     await store.saveDraftSession(session);
-    await flush();
+    await flush(store);
 
     const merged = await store.getDraftSession(session.id);
     expect(merged?.pickLog).toHaveLength(1);
@@ -220,42 +161,42 @@ describe('SupabaseGameStore', () => {
     const seats = runHeadlessDraft(players, PLAYS);
     const session: DraftSession = { id: 'session-1', timestamp: new Date().toISOString(), seats, pickLog: [] };
     await store.saveDraftSession(session);
-    await flush();
+    await flush(store);
 
     const season = createSeason(session, 'roster-1');
     await store.saveSeason(season);
-    await flush();
+    await flush(store);
 
     const ahead = playNextGame(season, session)!.season;
     cloud.writeDirect('seasons', season.id, ahead);
 
     await store.saveSeason(season); // still at currentGame 0 locally
-    await flush();
+    await flush(store);
 
     const merged = await store.getSeason(season.id);
     expect(merged?.currentGame).toBe(1);
     expect(await store.listConflicts()).toEqual([]);
   });
 
-  it('pushLocalToCloud (D5) migrates local-only rows once and never overwrites an existing cloud row', async () => {
+  it('pushLocalToCloud migrates local-only rows once and never overwrites an existing cloud row', async () => {
     // A record this device already has locally but the cloud has never seen.
     const localOnly = makeSavedRoster();
     await store.saveRoster(localOnly);
-    await flush();
-    expect(cloud.rows.get('rosters')!.get(localOnly.id)).toBeDefined();
+    await flush(store);
+    expect(cloud.live('rosters', localOnly.id)).toBeDefined();
 
     // Simulate a second, never-synced device: fresh local store, same owner, plus a row
-    // the cloud already has under a *different* name (must NOT be overwritten by D5).
+    // the cloud already has under a *different* name (must NOT be overwritten).
     const alreadyCloud = makeSavedRoster({ name: 'Cloud Name' });
     cloud.writeDirect('rosters', alreadyCloud.id, alreadyCloud);
-    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    const local = new MemoryGameStore();
     await local.saveRoster({ ...alreadyCloud, name: 'Stale Local Name' });
     const fresh = new SupabaseGameStore(local, cloud);
     await fresh.setOwnerId(OWNER);
-    await flush();
+    await flush(fresh);
 
     await fresh.pushLocalToCloud();
-    await flush();
+    await flush(fresh);
 
     expect((cloud.rows.get('rosters')!.get(alreadyCloud.id)!.data as { name: string }).name).toBe('Cloud Name');
   });
@@ -266,14 +207,14 @@ describe('SupabaseGameStore', () => {
     // differ in arrangement — nothing worth stopping the user for.
     const roster = makeSavedRoster({ activePlays: ['play-a'], timestamp: '2026-09-18T10:00:00.000Z' });
     await store.saveRoster(roster);
-    await flush();
+    await flush(store);
 
     // Another device saved LATER than the edit we are about to make locally.
     cloud.writeDirect('rosters', roster.id, {
       ...roster, activePlays: ['play-b'], timestamp: '2026-09-18T12:00:00.000Z',
     });
     await store.saveRoster({ ...roster, activePlays: ['play-c'], timestamp: '2026-09-18T11:00:00.000Z' });
-    await flush();
+    await flush(store);
 
     expect(await store.listConflicts()).toEqual([]);
     expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-b']);
@@ -282,13 +223,13 @@ describe('SupabaseGameStore', () => {
   it('keeps the local edit when it is the newer one', async () => {
     const roster = makeSavedRoster({ activePlays: ['play-a'], timestamp: '2026-09-18T10:00:00.000Z' });
     await store.saveRoster(roster);
-    await flush();
+    await flush(store);
 
     cloud.writeDirect('rosters', roster.id, {
       ...roster, activePlays: ['play-b'], timestamp: '2026-09-18T10:30:00.000Z',
     });
     await store.saveRoster({ ...roster, activePlays: ['play-c'], timestamp: '2026-09-18T13:00:00.000Z' });
-    await flush();
+    await flush(store);
 
     expect(await store.listConflicts()).toEqual([]);
     expect((await store.getRoster(roster.id))?.activePlays).toEqual(['play-c']);
@@ -300,29 +241,30 @@ describe('SupabaseGameStore', () => {
   it('pushes a new challenge run to the cloud on save', async () => {
     const run = makeChallengeRun();
     await store.saveChallengeRun(run);
-    await flush();
+    await flush(store);
 
     const row = cloud.rows.get('challenge_runs')!.get(run.id);
     expect(row).toBeDefined();
     expect((row!.data as typeof run).phase).toBe('first');
   });
 
-  it('deleteChallengeRun actually removes the cloud row', async () => {
+  it('deleteChallengeRun tombstones the cloud row', async () => {
     const run = makeChallengeRun();
     await store.saveChallengeRun(run);
-    await flush();
-    expect(cloud.rows.get('challenge_runs')!.has(run.id)).toBe(true);
+    await flush(store);
+    expect(cloud.live('challenge_runs', run.id)).toBeDefined();
 
     await store.deleteChallengeRun(run.id);
+    await flush(store);
 
-    expect(cloud.rows.get('challenge_runs')!.has(run.id)).toBe(false);
+    expect(cloud.live('challenge_runs', run.id)).toBeUndefined();
     expect(await store.getChallengeRun(run.id)).toBeNull();
   });
 
   it('auto-merges a challenge run advanced further on another device by taking the later phase (no conflict)', async () => {
     const run = makeChallengeRun({ phase: 'first' });
     await store.saveChallengeRun(run);
-    await flush();
+    await flush(store);
 
     // Another device moved this run into the front office (break) and then the second
     // half (second) while this device still only knows about `first`.
@@ -330,43 +272,52 @@ describe('SupabaseGameStore', () => {
     cloud.writeDirect('challenge_runs', run.id, ahead);
 
     await store.saveChallengeRun(run); // still `first` locally
-    await flush();
+    await flush(store);
 
     const merged = await store.getChallengeRun(run.id);
     expect(merged?.phase).toBe('second');
     expect(await store.listConflicts()).toEqual([]);
   });
 
-  it('pushLocalToCloud (D5) migrates local-only challenge runs once', async () => {
+  it('pushLocalToCloud migrates local-only challenge runs once', async () => {
     const localOnly = makeChallengeRun();
     await store.saveChallengeRun(localOnly);
-    await flush();
-    expect(cloud.rows.get('challenge_runs')!.get(localOnly.id)).toBeDefined();
+    await flush(store);
+    expect(cloud.live('challenge_runs', localOnly.id)).toBeDefined();
 
     const alreadyCloud = makeChallengeRun({ phase: 'done' });
     cloud.writeDirect('challenge_runs', alreadyCloud.id, alreadyCloud);
-    const local = new (await import('@/storage/memory')).MemoryGameStore();
+    const local = new MemoryGameStore();
     await local.saveChallengeRun({ ...alreadyCloud, phase: 'first' });
     const fresh = new SupabaseGameStore(local, cloud);
     await fresh.setOwnerId(OWNER);
-    await flush();
+    await flush(fresh);
 
     await fresh.pushLocalToCloud();
-    await flush();
+    await flush(fresh);
 
     expect((cloud.rows.get('challenge_runs')!.get(alreadyCloud.id)!.data as { phase: string }).phase).toBe('done');
   });
 
-  it('queues a write when the RPC throws and flushes it back on retry', async () => {
-    const failing: CloudSyncClient = {
-      rpc: async () => { throw new Error('network down'); },
-      from: cloud.from.bind(cloud),
-    };
-    const flaky = new SupabaseGameStore(new MemoryGameStore(), failing);
+  it('queues a write when the RPC throws and pushes it on the backoff retry', async () => {
+    vi.useFakeTimers();
+    const local = new MemoryGameStore();
+    const flaky = new SupabaseGameStore(local, cloud);
     await flaky.setOwnerId(OWNER);
+    cloud.onRpc = () => { throw new Error('network down'); };
 
     const roster = makeSavedRoster();
     await flaky.saveRoster(roster);
+    await flush(flaky);
     expect(flaky.getSyncStatus().pending).toBe(1);
+    expect(cloud.rows.get('rosters')!.size).toBe(0);
+
+    cloud.onRpc = null;
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flush(flaky);
+
+    expect(cloud.live('rosters', roster.id)).toBeDefined();
+    expect(flaky.getSyncStatus().pending).toBe(0);
+    expect(await local.listOutbox()).toEqual([]);
   });
 });

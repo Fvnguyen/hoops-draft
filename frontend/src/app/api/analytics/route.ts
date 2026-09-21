@@ -31,8 +31,10 @@ export async function GET(request: Request) {
   const client = scope === 'all' ? createSupabaseAdminClient() : await createSupabaseServerClient();
 
   const [{ data: sessionRows, error: sessionsError }, { data: seasonRows, error: seasonsError }] = await Promise.all([
-    client.from('draft_sessions').select('data'),
-    client.from('seasons').select('data'),
+    // sync_outbox D5: a deleted row is kept as a tombstone (`deleted_at` set, `data` still
+    // there so older clients don't choke), so analytics has to filter it out explicitly.
+    client.from('draft_sessions').select('data').is('deleted_at', null),
+    client.from('seasons').select('data').is('deleted_at', null),
   ]);
   const error = sessionsError ?? seasonsError;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

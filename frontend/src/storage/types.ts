@@ -218,6 +218,9 @@ export interface OutboxRecord {
   queuedAt: string;
   /** Failed network attempts so far; drives the backoff `min(60000, 2000 * 2 ** attempts)` ms. */
   attempts: number;
+  /** ISO time of the last send attempt — the backoff window is measured from here, so a
+   *  relaunch honours the wait instead of hammering a server that just rejected us. */
+  lastAttemptAt?: string;
   lastError?: string;
   /** Set on a permanent error: parked, skipped by the drain, counted in `SyncStatus.blocked`. */
   blocked?: boolean;
