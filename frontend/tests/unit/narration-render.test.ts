@@ -260,13 +260,24 @@ describe('narration renderer (T2)', () => {
     expect(joined).toContain('Tyrese Haliburton');
     expect(joined).toContain('High Pick & Roll');
     expect(joined).toContain('Grit and Grind');
-    // event 7 is second chance (7 % 7 === 0) on the away team: rebounder a3 = Andrew Nembhard
-    expect(lines[7]).toContain('Andrew Nembhard');
-    // event 34 is a possession win (34 % 17 === 0, not a second chance) for the home team "You"
-    expect(lines[34]).toContain('You');
-    expect(lines[34]).not.toMatch(/\bYou (is|gets|wins|earns)\b/);
+    // event 21 is second chance (21 % 7 === 0) on the away team: rebounder a3 = Andrew Nembhard
+    // (D4: was event 7 before the picker salt changed which coverage/second-chance variants
+    // get picked; 7's coverage-pool body is now long enough that the trim ladder drops its
+    // second-chance prefix before the rebounder name ever renders — a legitimate outcome of
+    // the documented trim order, just no longer on this particular event.)
+    expect(lines[21]).toContain('Andrew Nembhard');
     // event 0 carries both prefixes on a long body: the trim ladder keeps the second chance, drops the win.
     expect(lines[0].length).toBeLessThan(MAX_LINE_CHARS);
+    // Every possession-win prefix ends its sentence on {team} (see templates/index.ts), so
+    // substituting the home team's placeholder name "You" never leaves a verb hanging off it
+    // — true of the template pool regardless of which entry gets picked or later trimmed away.
+    for (const tpl of POSSESSION_WIN_PREFIXES) expect(tpl.replace('{team}', 'You')).not.toMatch(/\bYou (is|gets|wins|earns)\b/);
+    // And the substitution actually happens end-to-end on a possession win whose short body
+    // keeps the prefix under MAX_LINE_CHARS (D4: a fixed seed/index verified to survive the trim).
+    const winEvent = makeEvent(3, { kind: 'turnover', channel: undefined, isPossessionWin: true, isSecondChance: false, assistId: undefined, defenderId: undefined });
+    const winLine = renderPossession(winEvent, { actor: 'Chet Holmgren', team: 'You' }, createPick(0, 3), createRenderState());
+    expect(winLine).toContain('You');
+    expect(winLine).not.toMatch(/\bYou (is|gets|wins|earns)\b/);
   });
 
   it('never reuses a variant within 5 possessions of the same kind', () => {

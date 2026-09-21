@@ -59,13 +59,27 @@ export function createRenderState(): RenderState {
 }
 
 /**
+ * D4 (render_and_engine_perf): `engine/possession.ts` derives its per-possession
+ * "attribution" RNG (who gets the assist/steal/block) with the IDENTICAL formula this
+ * picker used to use, `seed ^ Math.imul(index + 1, 0x9e3779b1)` — same seed, same
+ * generator. That made this picker's FIRST draw equal the engine's first attribution
+ * draw for that possession, so variant choice ended up correlated with what happened:
+ * measured over 200 games, 1,324 of 1,520 block lines drew their variant from the first
+ * tenth of the pool, steals never used the top 45% of theirs, and unforced turnovers
+ * never used the bottom 45%. This constant desyncs the two streams so the picker's
+ * output is independent of the engine's attribution draw again. It must stay distinct
+ * from anything `engine/` mixes into a seed — do not "simplify" it away.
+ */
+const NARRATION_SALT = 0x2545f491;
+
+/**
  * Deterministic picker for one possession. Successive calls advance one mulberry32
- * stream seeded from `(seed ^ Math.imul(index + 1, 0x9E3779B1)) >>> 0`; the `salt`
- * argument is not mixed into the state — it documents the draw order (see SALT), so
- * callers must keep the call order stable for a given event shape.
+ * stream seeded from `(seed ^ Math.imul(index + 1, 0x9E3779B1) ^ NARRATION_SALT) >>> 0`;
+ * the `salt` argument is not mixed into the state — it documents the draw order (see
+ * SALT), so callers must keep the call order stable for a given event shape.
  */
 export function createPick(seed: number, index: number): Pick {
-  const rng = createRng((seed ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0);
+  const rng = createRng((seed ^ Math.imul(index + 1, 0x9e3779b1) ^ NARRATION_SALT) >>> 0);
   return (n: number, _salt: number) => {
     void _salt;
     if (n <= 1) { rng.next(); return 0; }
