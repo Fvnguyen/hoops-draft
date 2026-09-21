@@ -9,11 +9,9 @@
 import cardsJson from '@/data/cards.json';
 import type { PlayerCardData } from './types';
 
-/** card_balance D8: the card set version, stamped onto every card by build-cards.ts and
- *  read back by storage (`CURRENT_CARD_SET_VERSION` in `@/storage`) to flag a
- *  drafted/rostered card set older than the one currently shipped. Bump this whenever
- *  `computeCards`'s output changes (positions, rarity, badges, ratings). */
-export const CARD_SET_VERSION = '2025-26.2';
+/** Re-exported for existing importers. New code that only needs the version must import
+ *  `./cardSetVersion` directly: importing it from here pulls in the whole card set. */
+export { CARD_SET_VERSION } from './cardSetVersion';
 
 let cache: PlayerCardData[] | null = null;
 
