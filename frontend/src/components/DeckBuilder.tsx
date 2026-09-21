@@ -19,19 +19,14 @@ import { DEPTH_COLUMNS, canPlaceAt, positionFit, positionParts, effectivePositio
 import {
   MAX_ROSTER,
   countPlayers,
-  moveWithinChart,
-  removeFromChart,
   type DenseDepthChart,
 } from '@/engine/depthChart';
 import {
-  assignPlayToFirstOpenSlot,
-  initBuilderState,
-  placePlayerInSlot,
   type AssignPlayFailureReason,
-  type PlaySlotsState,
-  type DepthChartState,
-  type PlacePlayerFailureReason,
+  type BuilderActionError,
+  type BuilderState,
 } from '@/engine/deckbuilder';
+import { useRosterBuilder } from '@/hooks/useRosterBuilder';
 import { DepthSlotColumn } from './DepthSlotColumn';
 import { evaluateRosterChecklist } from '@/lib/rosterChecklist';
 import { ToastProvider, useToast } from './Toast';
@@ -65,6 +60,25 @@ function writeStoredDock(key: string, value: boolean): void {
   } catch {
     // best-effort persistence only
   }
+}
+
+/**
+ * A Basic Offense / Basic Defense play card. They are not drafted: the builder mints one
+ * whenever a basic tile is tapped or dragged, and it vanishes again when removed. Module
+ * level on purpose: the id needs a timestamp to stay unique inside a saved roster, and
+ * reading the clock inside the component body trips the react-hooks purity rule.
+ */
+function makeBasicPlay(kind: 'offense' | 'defense'): Play {
+  return {
+    type: 'Play',
+    id: `basic-${kind}-${Date.now()}`,
+    name: kind === 'offense' ? 'Basic Offense' : 'Basic Defense',
+    rarity: 'Common',
+    playCategory: 'basic',
+    mechanicText: kind === 'offense' ? 'Minor boost to all Offensive Badges.' : 'Minor boost to all Defensive Badges.',
+    badges: [],
+    imageUrl: '',
+  } as Play;
 }
 
 const rarityValue: Record<string, number> = {
@@ -170,15 +184,6 @@ export function DeckBuilder(props: DeckBuilderProps) {
   );
 }
 
-/** Snapshot restored by a toast's Undo action (D15). */
-interface BuilderSnapshot {
-  depthChart: Record<string, PlayerCardData[]>;
-  rosterPlayers: PlayerCardData[];
-  playAssignments: Record<string, PlayAssignment>;
-  activePlays: (Play | null)[];
-  rosterPlays: Play[];
-}
-
 function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDepthOrder, initialPlaysOrder, initialPlayAssignments, initialArchetypes, sessionId, gameMode, podAverageIdentity, readOnly = false, embedOverride }: DeckBuilderProps) {
   const router = useRouter();
   const toast = useToast();
@@ -227,18 +232,20 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   // Seeded ONCE, at mount, from the props (every caller mounts the builder only after its
-  // roster has loaded; remount with a `key` to load a different one). Seeding from an
-  // effect raced the activePlays -> playAssignments sync effect below, which still saw
-  // three empty slots on mount and wiped every saved role assignment.
-  const [initial] = useState(() => initBuilderState(draftedCards, {
+  // roster has loaded; remount with a `key` to load a different one) — `useRosterBuilder`
+  // owns the five slices that must change TOGETHER (depthChart/rosterPlayers/activePlays/
+  // rosterPlays/playAssignments) through one pure `applyBuilderAction` transition per user
+  // action. They used to be five separate `useState`s changed by ~15 handlers, two of which
+  // reached into another setter's updater (a StrictMode double-append bug) plus a sync
+  // effect that raced seeding on mount — see `engine/deckbuilder.ts`.
+  const { state: builderState, dispatch } = useRosterBuilder({
+    draftedCards,
     depthOrder: initialDepthOrder,
     playsOrder: initialPlaysOrder,
     playAssignments: initialPlayAssignments,
-  }));
-  const [depthChart, setDepthChart] = useState<Record<string, PlayerCardData[]>>(initial.depthChart);
-  const [activePlays, setActivePlays] = useState<(Play | null)[]>(initial.activePlays);
-  const [rosterPlayers, setRosterPlayers] = useState<PlayerCardData[]>(() => [...initial.rosterPlayers].sort(sortRosterPlayers));
-  const [rosterPlays, setRosterPlays] = useState<Play[]>(initial.rosterPlays);
+    sortRosterPlayers,
+  });
+  const { depthChart, activePlays, rosterPlayers, rosterPlays, playAssignments } = builderState;
   const [draggedItem, setDraggedItem] = useState<{ card: DraftCard, sourceZone: string, sourceIndex?: number } | null>(null);
   // Hidden bench-sized drag image (D24): imperatively updated (not React state) so it's
   // already correct by the time handleDragStart calls setDragImage synchronously.
@@ -256,11 +263,11 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   // Active-play slot (index) whose Remove/Swap popover is open (deckbuilder_ux D3).
   const [openPlaySlotPopover, setOpenPlaySlotPopover] = useState<number | null>(null);
 
-  // Play-role assignment state: cardId -> assignment (roleId -> playerId). Kept in
-  // sync with activePlays by the effect below. `assigning` is the role currently
-  // being filled (selected via a role row click); mutually exclusive with the
-  // player placement selection above.
-  const [playAssignments, setPlayAssignments] = useState<Record<string, PlayAssignment>>(initial.playAssignments);
+  // Play-role assignment state (cardId -> assignment) lives in `builderState.playAssignments`
+  // above — the reducer keeps it in sync with `activePlays` itself (invariant 2), so there's
+  // no separate seed or sync effect here any more. `assigning` is the role currently being
+  // filled (selected via a role row click); mutually exclusive with the player placement
+  // selection above.
   // Chosen roster identity (offense/defense or gold). Selections that fall below Online
   // when the roster changes are dropped automatically (locked plans are never shown).
   const [archetypes, setArchetypes] = useState<ArchetypeSelection>(initialArchetypes ?? {});
@@ -324,25 +331,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   const [rosterName, setRosterName] = useState(existingRosterName || `Draft Roster - ${new Date().toLocaleString()}`);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Keep playAssignments in sync with activePlays: a play entering a slot gets a
-  // fresh (or its previous) assignment; a play leaving a slot drops its assignment
-  // entirely (covers both "swap play" and "return play to Roster").
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPlayAssignments(prev => {
-      const next: Record<string, PlayAssignment> = {};
-      let changed = false;
-      activePlays.forEach(play => {
-        if (!play) return;
-        const existing = prev[play.id];
-        next[play.id] = existing ?? { cardId: play.id, playId: getPlaybookId(play), roles: {} };
-        if (!existing) changed = true;
-      });
-      if (Object.keys(next).length !== Object.keys(prev).length) changed = true;
-      return changed ? next : prev;
-    });
-  }, [activePlays]);
-
   // Escape clears whatever is selected (bench player or a role being assigned —
   // mutually exclusive selection modes; a placed player has no selection state of
   // its own any more, a click on it acts immediately).
@@ -368,82 +356,62 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
 
   // ── Depth chart mutations (D12: every placement rule lives in engine/depthChart) ──
 
-  const cardById = useMemo(() => {
-    const map = new Map<string, PlayerCardData>();
-    draftedCards.forEach(c => { if (c.type === 'Player') map.set(c.id, c as PlayerCardData); });
-    return map;
-  }, [draftedCards]);
-
-  /** PlayerCardData chart → the dense id chart the engine helpers operate on. */
+  /** PlayerCardData chart → the dense id chart a few read-only calcs below still want
+   *  (checklist, `rosterFull`). Placement itself lives in `applyBuilderAction` now. */
   const toIdChart = (chart: Record<string, PlayerCardData[]>): DenseDepthChart =>
     Object.fromEntries(DEPTH_COLUMNS.map(col => [col, (chart[col] ?? []).map(p => p.id)]));
-
-  const fromIdChart = (dense: DenseDepthChart): Record<string, PlayerCardData[]> =>
-    Object.fromEntries(DEPTH_COLUMNS.map(col => [
-      col,
-      (dense[col] ?? []).map(id => cardById.get(id)).filter((p): p is PlayerCardData => !!p),
-    ]));
-
-  const takeSnapshot = (): BuilderSnapshot => ({
-    depthChart, rosterPlayers, playAssignments, activePlays, rosterPlays,
-  });
-
-  const restoreSnapshot = (snap: BuilderSnapshot) => {
-    setDepthChart(snap.depthChart);
-    setRosterPlayers(snap.rosterPlayers);
-    setActivePlays(snap.activePlays);
-    setRosterPlays(snap.rosterPlays);
-    setPlayAssignments(snap.playAssignments);
-    clearSelection();
-  };
 
   /** The move already happened — the toast just offers 5s of regret (D15). Kept only for
    *  the roster-clear bulk action (plan_mobile_native_feel D7): per-move place/swap/remove
    *  toasts were dropped since those are two-way drags the user can trivially reverse by
    *  dragging the card back, and on mobile the toast covered the roster/depth chart. */
-  const toastUndo = (message: string, snap: BuilderSnapshot) => {
-    toast.show(message, { actionLabel: 'Undo', durationMs: 5000, onAction: () => restoreSnapshot(snap) });
+  const toastUndo = (message: string, snap: BuilderState) => {
+    toast.show(message, {
+      actionLabel: 'Undo',
+      durationMs: 5000,
+      onAction: () => { dispatch({ type: 'undo', snapshot: snap }); clearSelection(); },
+    });
   };
 
-  /** Bench players + their raw positions, in the shape `placePlayerInSlot` needs. */
-  const depthChartEngineState = (): DepthChartState => ({
-    chart: toIdChart(depthChart),
-    benchIds: rosterPlayers.map(p => p.id),
-    positionsById: Object.fromEntries(rosterPlayers.map(p => [p.id, effectivePosition(p.player.position, p.traits)])),
-  });
+  const placePlayerFailureMessage = (error: BuilderActionError): string => {
+    switch (error) {
+      case 'ineligible': return 'Not eligible for this position';
+      case 'occupied': return 'That slot is already filled';
+      default: return 'Cannot place there';
+    }
+  };
 
-  const placePlayerFailureMessage: Record<PlacePlayerFailureReason, string> = {
-    ineligible: 'Not eligible for this position',
-    occupied: 'That slot is already filled',
-    unknown: 'Cannot place there',
+  const moveFailureMessage = (error: BuilderActionError): string => {
+    switch (error) {
+      case 'ineligible': return 'Not eligible for this position';
+      case 'full': return 'Column full';
+      case 'not-found': return 'Player is not on the roster';
+      default: return 'Cannot place there';
+    }
   };
 
   /** Move a Roster (bench) player onto the chart. `slotIndex` defaults to the
-   *  column's next open slot — the only slot `DepthSlotColumn` ever lets a
-   *  click or drop target (plan deckbuilder_ux, D3/T2: shares `placePlayerInSlot`
-   *  with the drag path below so click and drag can never disagree). Engine
-   *  refusals become error toasts. */
+   *  column's next open slot — the only slot `DepthSlotColumn` ever lets a click or
+   *  drop target (plan deckbuilder_ux, D3/T2: the `place` action shares `placePlayerInSlot`
+   *  with the drag path below so click and drag can never disagree). Engine refusals
+   *  become error toasts. */
   const placeFromRoster = (player: PlayerCardData, column: DepthColumn, slotIndex?: number) => {
-    const idx = slotIndex ?? (depthChart[column]?.length ?? 0);
-    const result = placePlayerInSlot(depthChartEngineState(), player.id, column, idx);
-    if (!result.ok) {
-      toast.show(placePlayerFailureMessage[result.reason], { tone: 'error' });
+    const error = dispatch({ type: 'place', playerId: player.id, column, slotIndex });
+    if (error) {
+      toast.show(placePlayerFailureMessage(error), { tone: 'error' });
       return;
     }
-    setDepthChart(fromIdChart(result.next.chart));
-    setRosterPlayers(prev => prev.filter(p => p.id !== player.id));
     setSelectedRosterPlayer(null);
     setOpenSlotPopover(null);
   };
 
   /** Move a player already on the chart to another column / slot. */
   const moveOnChart = (player: PlayerCardData, column: DepthColumn, slotIndex?: number) => {
-    const result = moveWithinChart(toIdChart(depthChart), player.id, effectivePosition(player.player.position, player.traits), column, slotIndex);
-    if (!result.ok) {
-      toast.show(result.reason ?? 'Cannot place there', { tone: 'error' });
+    const error = dispatch({ type: 'move', playerId: player.id, column, slotIndex });
+    if (error) {
+      toast.show(moveFailureMessage(error), { tone: 'error' });
       return;
     }
-    setDepthChart(fromIdChart(result.chart));
     setOpenSlotPopover(null);
   };
 
@@ -469,26 +437,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const removeCardFromSource = (cardId: string, sourceZone: string) => {
-    if (sourceZone === 'RosterPlayers') {
-      setRosterPlayers(prev => prev.filter(p => p.id !== cardId));
-    } else if (sourceZone === 'RosterPlays') {
-      setRosterPlays(prev => prev.filter(p => p.id !== cardId));
-    } else if (sourceZone.startsWith('ActivePlay')) {
-      const idx = parseInt(sourceZone.split('-')[1]);
-      setActivePlays(prev => {
-        const next = [...prev];
-        next[idx] = null;
-        return next;
-      });
-    } else if (['PG', 'SG', 'SF', 'PF', 'C'].includes(sourceZone)) {
-      setDepthChart(prev => ({
-        ...prev,
-        [sourceZone]: prev[sourceZone].filter(p => p.id !== cardId)
-      }));
-    }
-  };
-
   /** Drop onto a NON-depth-chart zone (play slots, Roster lanes). Depth-chart
    *  drops go through `handleDropOnSlot` so they share the engine's rules. */
   const handleDropOnZone = (e: React.DragEvent, targetZone: string) => {
@@ -496,40 +444,51 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     if (!draggedItem) return;
 
     const { card, sourceZone } = draggedItem;
+    setDraggedItem(null);
 
-    if (card.type === 'Play' && !targetZone.includes('Play')) { setDraggedItem(null); return; }
-    if (card.type === 'Player' && targetZone.includes('Play')) { setDraggedItem(null); return; }
-    if (targetZone === sourceZone) { setDraggedItem(null); return; }
+    if (card.type === 'Play' && !targetZone.includes('Play')) return;
+    if (card.type === 'Player' && targetZone.includes('Play')) return;
+    if (targetZone === sourceZone) return;
 
-    // Depth chart → Roster: the engine removes, held roles are cleared with it.
-    if (DEPTH_COLUMNS.includes(sourceZone as DepthColumn) && targetZone === 'RosterPlayers') {
-      sendPlacedToRoster(card as PlayerCardData);
-      setDraggedItem(null);
+    if (card.type === 'Player') {
+      // The two guards above leave exactly one reachable case for a Player card:
+      // depth chart -> Roster. The engine removes it and clears any role it held
+      // with it (invariant 3).
+      if (DEPTH_COLUMNS.includes(sourceZone as DepthColumn) && targetZone === 'RosterPlayers') {
+        dispatch({ type: 'sendToRoster', playerId: card.id });
+      }
       return;
     }
 
-    removeCardFromSource(card.id, sourceZone);
+    // card.type === 'Play' from here.
+    const play = card as Play;
 
-    if (targetZone === 'RosterPlayers') {
-      setRosterPlayers(prev => [...prev, card as PlayerCardData].sort(sortRosterPlayers));
-    } else if (targetZone === 'RosterPlays') {
-      if (!card.id.startsWith('basic-')) {
-        setRosterPlays(prev => [...prev, card as Play]);
+    if (targetZone === 'RosterPlays') {
+      // Same-zone drops are already excluded above; the only other Play-card source
+      // that can land here is an active slot (dragging a placed play back to the bench).
+      if (sourceZone.startsWith('ActivePlay')) {
+        dispatch({ type: 'removePlay', slotIndex: parseInt(sourceZone.split('-')[1]) });
       }
-    } else if (targetZone.startsWith('ActivePlay')) {
-      const idx = parseInt(targetZone.split('-')[1]);
-      setActivePlays(prev => {
-        const next = [...prev];
-        const existing = next[idx];
-        if (existing && !existing.id.startsWith('basic-')) {
-          setRosterPlays(g => [...g, existing]);
-        }
-        next[idx] = card as Play;
-        return next;
-      });
+      return;
     }
 
-    setDraggedItem(null);
+    if (targetZone.startsWith('ActivePlay')) {
+      const error = play.id.startsWith('basic-')
+        // A basic play is minted by the drag itself, so it is in neither list `swapPlay`
+        // looks in: it goes through `activatePlay` WITH the slot it was dropped on, and
+        // lands there like any other play drag (displacing the occupant), as it always did.
+        ? dispatch({ type: 'activatePlay', play, slotIndex: parseInt(targetZone.split('-')[1]) })
+        : dispatch({ type: 'swapPlay', slotIndex: parseInt(targetZone.split('-')[1]), playId: play.id });
+      if (error && error !== 'not-found') {
+        toast.show(assignPlayFailureMessage(play, error as AssignPlayFailureReason), { tone: 'error' });
+      }
+      return;
+    }
+
+    // targetZone === 'RosterPlayers' reached with a Play card: this is not expressible by
+    // any of the ten actions (it would need an eleventh, nonsensical "put a Play card into
+    // rosterPlayers" transition) and isn't reachable through the app's own drop zones —
+    // the old code's type-confused `setRosterPlayers` push for this case isn't ported.
   };
 
   /** Native HTML5 drop onto one depth-chart slot (D14 keeps drag for pointer devices). */
@@ -546,17 +505,6 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
     }
   };
 
-  /** Every play the UI currently knows about (active + bench), in the shape
-   *  `assignPlayToFirstOpenSlot` needs. No `slotSides` — the builder has no
-   *  zoned play slots today, so every empty slot accepts any side. */
-  const playSlotsState = (): PlaySlotsState => ({
-    activeSlots: activePlays.map(p => (p ? p.id : null)),
-    playsById: Object.fromEntries(
-      [...activePlays.filter((p): p is Play => p !== null), ...rosterPlays]
-        .map(p => [p.id, { id: p.id, side: PLAYBOOK[getPlaybookId(p)]?.side ?? 'offense' }]),
-    ),
-  });
-
   const assignPlayFailureMessage = (play: Play, reason: AssignPlayFailureReason): string => {
     switch (reason) {
       case 'full': return 'All play slots are full';
@@ -567,78 +515,36 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   /** Click handling for Play cards: click a filled slot opens Remove/Swap
-   *  (deckbuilder_ux D3); click a Roster play fills the first open slot via
-   *  the shared `assignPlayToFirstOpenSlot` rule (same one `handleDropOnZone`'s
-   *  ActivePlay drop target keeps using for its own, index-targeted drop). */
+   *  (deckbuilder_ux D3); click a Roster play fills the first open slot (the
+   *  `activatePlay` action). */
   const handlePlayClick = (play: Play, currentZone: string) => {
     setAssigning(null);
     if (currentZone.startsWith('ActivePlay')) {
-      removeCardFromSource(play.id, currentZone);
-      if (!play.id.startsWith('basic-')) {
-        setRosterPlays(prev => [...prev, play]);
-      }
+      dispatch({ type: 'removePlay', slotIndex: parseInt(currentZone.split('-')[1]) });
       return;
     }
-    const result = assignPlayToFirstOpenSlot(playSlotsState(), play.id);
-    if (!result.ok) {
-      toast.show(assignPlayFailureMessage(play, result.reason), { tone: 'error' });
-      return;
-    }
-    removeCardFromSource(play.id, currentZone);
-    setActivePlays(prev => {
-      const next = [...prev];
-      next[result.slotIndex] = play;
-      return next;
-    });
+    const error = dispatch({ type: 'activatePlay', play });
+    if (error) toast.show(assignPlayFailureMessage(play, error as AssignPlayFailureReason), { tone: 'error' });
   };
 
   /** Tap/click path for the Basic Offense / Basic Defense tiles (no drag-and-drop
    *  on touch devices). Builds the same synthetic Play `handleDragStart` builds for
-   *  these tiles, then goes through the shared `assignPlayToFirstOpenSlot` rule —
-   *  same first-open-slot placement and "slots full" toast as `handlePlayClick`
-   *  uses for a Roster play. The synthetic id is minted fresh per click, so it
-   *  isn't in `playSlotsState()`'s `playsById` yet; it's added inline. */
+   *  these tiles, then goes through `activatePlay` — same first-open-slot placement
+   *  and "slots full" toast as `handlePlayClick` uses for a Roster play. The engine
+   *  treats the freshly minted id exactly like a roster play, except it vanishes
+   *  instead of returning to the bench when removed/swapped/cleared. */
   const handleBasicPlayClick = (kind: 'offense' | 'defense') => {
-    const play: Play = {
-      type: 'Play',
-      id: `basic-${kind}-${Date.now()}`,
-      name: kind === 'offense' ? 'Basic Offense' : 'Basic Defense',
-      rarity: 'Common',
-      playCategory: 'basic',
-      mechanicText: kind === 'offense' ? 'Minor boost to all Offensive Badges.' : 'Minor boost to all Defensive Badges.',
-      badges: [],
-      imageUrl: '',
-    } as Play;
-    const state = playSlotsState();
-    state.playsById[play.id] = { id: play.id, side: kind };
-    const result = assignPlayToFirstOpenSlot(state, play.id);
-    if (!result.ok) {
-      toast.show(assignPlayFailureMessage(play, result.reason), { tone: 'error' });
-      return;
-    }
-    setActivePlays(prev => {
-      const next = [...prev];
-      next[result.slotIndex] = play;
-      return next;
-    });
+    const play = makeBasicPlay(kind);
+    const error = dispatch({ type: 'activatePlay', play });
+    if (error) toast.show(assignPlayFailureMessage(play, error as AssignPlayFailureReason), { tone: 'error' });
   };
 
   /** Swap a bench play into an already-occupied active-play slot (the placed
    *  play's Remove/Swap popover, opened by clicking the slot). The displaced
    *  play returns to the Roster, same as a drag-swap onto that slot. */
   const handlePlaySwap = (slotIndex: number, playId: string) => {
-    const incoming = rosterPlays.find(p => p.id === playId);
-    if (!incoming) return;
-    setRosterPlays(prev => prev.filter(p => p.id !== playId));
-    setActivePlays(prev => {
-      const next = [...prev];
-      const existing = next[slotIndex];
-      if (existing && !existing.id.startsWith('basic-')) {
-        setRosterPlays(g => [...g, existing]);
-      }
-      next[slotIndex] = incoming;
-      return next;
-    });
+    const error = dispatch({ type: 'swapPlay', slotIndex, playId });
+    if (error === 'not-found') return;
     setOpenPlaySlotPopover(null);
   };
 
@@ -671,67 +577,27 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   };
 
   const handleRoleClear = (cardId: string, roleId: string) => {
-    setPlayAssignments(prev => {
-      const a = prev[cardId];
-      if (!a || !(roleId in a.roles)) return prev;
-      const roles = { ...a.roles };
-      delete roles[roleId];
-      return { ...prev, [cardId]: { ...a, roles } };
-    });
+    dispatch({ type: 'clearRole', cardId, roleId });
     setAssigning(null);
   };
 
-  /** Removes every role assignment held by this player, across every active play. */
-  const removePlayerRoles = (playerId: string) => {
-    setPlayAssignments(prev => {
-      let anyChanged = false;
-      const next: Record<string, PlayAssignment> = {};
-      for (const [cardId, a] of Object.entries(prev)) {
-        if (!Object.values(a.roles).includes(playerId)) { next[cardId] = a; continue; }
-        const roles = { ...a.roles };
-        for (const rid of Object.keys(roles)) {
-          if (roles[rid] === playerId) delete roles[rid];
-        }
-        next[cardId] = { ...a, roles };
-        anyChanged = true;
-      }
-      return anyChanged ? next : prev;
-    });
-  };
-
   /** Attempt to place `player` into the role currently being assigned (`assigning`).
-   *  No-ops silently when the player is ineligible or already holds a different
-   *  role in the same play — those cards are dimmed/non-clickable in the UI, but
-   *  this guards drag-and-drop and any other entry point too. */
-  /** Assign `player` to a role of a play if eligible and not already holding another role in it. Returns true on success. */
-  const assignRole = (cardId: string, roleId: string, player: PlayerCardData): boolean => {
-    const play = activePlays.find(p => p?.id === cardId);
-    const def = play ? PLAYBOOK[getPlaybookId(play)] : undefined;
-    const role = def?.roles.find(r => r.id === roleId);
-    if (!def || !role) return false;
-    if (!isEligibleForRole(player, role)) return false;
-    const currentRoles = playAssignments[cardId]?.roles ?? {};
-    const holdsOtherRole = Object.entries(currentRoles).some(([rid, pid]) => rid !== roleId && pid === player.id);
-    if (holdsOtherRole) return false;
-    setPlayAssignments(prev => ({
-      ...prev,
-      [cardId]: { cardId, playId: def.playId, roles: { ...currentRoles, [roleId]: player.id } },
-    }));
-    return true;
-  };
-
+   *  No-ops silently when the player is ineligible or already holds a different role in
+   *  the same play — those cards are dimmed/non-clickable in the UI, but this guards
+   *  drag-and-drop and any other entry point too. Clears the pending assignment on
+   *  success, or when the play it targeted is gone (`'not-found'`); leaves it set on an
+   *  eligibility/conflict refusal so the user can try a different player. */
   const tryAssignRole = (player: PlayerCardData) => {
     if (!assigning) return;
     const { cardId, roleId } = assigning;
-    const play = activePlays.find(p => p?.id === cardId);
-    if (!play) { setAssigning(null); return; }
-    if (assignRole(cardId, roleId, player)) setAssigning(null);
+    const error = dispatch({ type: 'assignRole', cardId, roleId, playerId: player.id });
+    if (!error || error === 'not-found') setAssigning(null);
   };
 
   /** Drop of a depth-chart card (dataTransfer text = card id) onto a play's role row. */
   const handleRoleDrop = (cardId: string, roleId: string, droppedId: string) => {
     const player = allPlayers.find(p => p.id === droppedId);
-    if (player) assignRole(cardId, roleId, player);
+    if (player) dispatch({ type: 'assignRole', cardId, roleId, playerId: player.id });
     setAssigning(null);
   };
 
@@ -756,21 +622,13 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
   /** Send a placed player back to the Roster. Roles they held are cleared with
    *  them — no `confirm`, dragging the player back onto the chart reverses it. */
   const sendPlacedToRoster = (player: PlayerCardData) => {
-    const heldRoles = rolesByPlayer.get(player.id) ?? [];
-    if (heldRoles.length > 0) removePlayerRoles(player.id);
-    setDepthChart(fromIdChart(removeFromChart(toIdChart(depthChart), player.id)));
-    setRosterPlayers(prev => [...prev, player].sort(sortRosterPlayers));
+    dispatch({ type: 'sendToRoster', playerId: player.id });
     setOpenSlotPopover(null);
   };
 
   const handleClearRoster = () => {
-    const snap = takeSnapshot();
-    const allPlaced = Object.values(depthChart).flat();
-    setRosterPlayers(prev => [...prev, ...allPlaced].sort(sortRosterPlayers));
-    setDepthChart({ PG: [], SG: [], SF: [], PF: [], C: [] });
-    const returningPlays = activePlays.filter((p): p is Play => p !== null && !p.id.startsWith('basic-'));
-    setRosterPlays(prev => [...prev, ...returningPlays]);
-    setActivePlays([null, null, null]);
+    const snap = builderState;
+    dispatch({ type: 'clear' });
     setSelectedRosterPlayer(null);
     setAssigning(null);
     setOpenSlotPopover(null);
@@ -1203,7 +1061,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             draggable
             onDragStart={(e) => {
               basicPlayDragRef.current = true;
-              handleDragStart(e, { type: 'Play', id: `basic-offense-${Date.now()}`, name: 'Basic Offense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Offensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays');
+              handleDragStart(e, makeBasicPlay('offense'), 'InfinitePlays');
             }}
             onDragEnd={() => { setTimeout(() => { basicPlayDragRef.current = false; }, 0); }}
             onClick={() => {
@@ -1229,7 +1087,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
             draggable
             onDragStart={(e) => {
               basicPlayDragRef.current = true;
-              handleDragStart(e, { type: 'Play', id: `basic-defense-${Date.now()}`, name: 'Basic Defense', rarity: 'Common', playCategory: 'basic', mechanicText: 'Minor boost to all Defensive Badges.', badges: [], imageUrl: '' } as Play, 'InfinitePlays');
+              handleDragStart(e, makeBasicPlay('defense'), 'InfinitePlays');
             }}
             onDragEnd={() => { setTimeout(() => { basicPlayDragRef.current = false; }, 0); }}
             onClick={() => {
