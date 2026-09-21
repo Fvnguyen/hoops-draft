@@ -11,7 +11,7 @@
  */
 
 import type { PlayerCardData, Play, DraftCard, Rarity } from './types';
-import { createRng, shuffle, type Rng } from './rng';
+import { createRng, shuffle, mixSeed, type Rng } from './rng';
 import { buildBotRoster, chooseBotArchetypes, type DraftSessionSeat } from './deckbuilder';
 import {
   buildTeamInfo, simulateGame, emptyBoxScore,
@@ -165,16 +165,12 @@ export function buildChallengeSchedule(runSeed: number): ChallengeScheduleEntry[
  * Derive a sub-seed from the run seed and a label/index. Every game, the trade pack and
  * the schedule draw their own stream this way rather than sharing one, so results can
  * never depend on the order things are asked for (reveal speed, skip, reload).
+ *
+ * The implementation now lives in `engine/rng.ts` (seasons derive their per-matchup
+ * seeds the same way, and `season.ts` must not import this module); re-exported here
+ * unchanged so every existing importer keeps working.
  */
-export function mixSeed(runSeed: number, label: string | number): number {
-  let h = (runSeed ^ 0x9e3779b9) >>> 0;
-  const s = String(label);
-  for (let i = 0; i < s.length; i++) {
-    h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
-  }
-  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
-  return (h ^ (h >>> 13)) >>> 0;
-}
+export { mixSeed } from './rng';
 
 /** The seed game `index` of this run is simulated with. */
 export function challengeGameSeed(runSeed: number, index: number): number {
@@ -309,7 +305,8 @@ export function halfRange(half: 1 | 2): { start: number; end: number } {
 }
 
 /**
- * Play one half in a single call (~3 ms per game), so the result is committed before
+ * Play one half in a single call (~2.3 ms per game, ~90 ms per half on a desktop: `npm run
+ * bench`; a phone is 3-5x slower), so the result is committed before
  * any animation starts. Each game's RNG comes from `challengeGameSeed`, never from a
  * shared stream — calling this twice, or only for half 2, gives the same games.
  */

@@ -43,7 +43,9 @@ const roster: SavedRoster = {
   sessionId: session.id,
 };
 
-const season = createSeason(session, roster.id, undefined, 'E2E Test');
+const season = createSeason(session, roster.id, undefined, 'E2E Test', {
+  timestamp: new Date().toISOString(),
+});
 season.id = 'e2e-season-1';
 
 const bundle = {

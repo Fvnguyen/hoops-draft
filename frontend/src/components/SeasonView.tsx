@@ -84,7 +84,11 @@ export function SeasonView({ rosterId, sessionId }: SeasonViewProps) {
       let loadedSeason: Season;
       try {
         loadedSeason = await store.getOrCreateSeason(rosterId, () => {
-          created = createSeason(loadedSession, rosterId, undefined, profile?.display_name);
+          // D5: the engine no longer reads the clock — the created-at timestamp is the
+          // caller's to supply (the id it derives is overridden by the store anyway).
+          created = createSeason(loadedSession, rosterId, undefined, profile?.display_name, {
+            timestamp: new Date().toISOString(),
+          });
           return created;
         });
       } catch (err) {

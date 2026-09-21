@@ -8,7 +8,7 @@
 import { DraftSession } from './deckbuilder';
 import { simulateGame, buildTeamInfo, GameTheater, TeamInfo, PlayerBoxScore, emptyBoxScore } from './game';
 import { accumulateBoxRow } from './boxscore';
-import { Rng, createRng, randomSeed } from './rng';
+import { Rng, createRng, randomSeed, mixSeed, nextSeed } from './rng';
 import { BALANCE_VERSION } from './balance';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -86,21 +86,60 @@ export interface Season {
   standings: StandingsEntry[];
   currentGame: number;        // Next game to play (0-6, or 7 if complete)
   humanTeam: TeamInfo;
-  /** RNG seed used to generate the opponent schedule order. */
+  /**
+   * The season's root seed. Every matchup derives its own stream from it
+   * (`mixSeed(seed, 'game:<day>:<matchup>')` — see `playNextGame`), so a whole season is
+   * reproducible from this one number.
+   *
+   * Typed as required because `createSeason` always writes it, but a season SAVED before
+   * render_and_engine_perf D5 may not have one at runtime (`safeParseSeason` never
+   * required it, and `normalizeSeason` does not add it): `playNextGame` mints one on
+   * first use and stores it on the season. Read it with `seasonSeed(season)`.
+   */
   seed: number;
 }
 
 /** The human player's seat id, fixed by `useDraftEngine` at draft creation. */
 export const HUMAN_SEAT_ID = 'human-0';
 
+/** Game days in a season, used only when a record has no schedule at all to count. */
+const DEFAULT_GAME_DAYS = 7;
+
+/**
+ * The season's root seed, minting and storing one for a pre-D5 save that has none.
+ * `randomSeed()` (the engine's only `Math.random()`) is reached here exactly once per
+ * such season, never per game.
+ */
+function seasonSeed(season: Season): number {
+  if (typeof season.seed !== 'number') {
+    season.seed = randomSeed();
+  }
+  return season.seed;
+}
+
 // ── Season Creation ────────────────────────────────────────────────────────
+
+/**
+ * Caller-supplied identity for a new season (D5). The engine never reads the clock, so
+ * anything time- or environment-dependent is passed in from the outside:
+ *  - `id` defaults to `season_<seed>`, deterministic from the season's own seed.
+ *    Production never sees it: `GameStore.getOrCreateSeason` overrides the id with
+ *    `season_<rosterId>` (sync_outbox D9), so it only matters to tests and headless tools.
+ *  - `timestamp` defaults to the draft session's own timestamp. `SeasonView` passes
+ *    `new Date().toISOString()` so the UI-visible date stays "now".
+ */
+export interface SeasonMeta {
+  id?: string;
+  timestamp?: string;
+}
 
 export function createSeason(
   session: DraftSession,
   rosterId: string,
   rng?: Rng,
   /** Human team/standings label (account display name); defaults to 'You'. */
-  humanName: string = 'You'
+  humanName: string = 'You',
+  meta?: SeasonMeta
 ): Season {
   const seasonRng = rng ?? createRng(randomSeed());
   const humanTeam = buildTeamInfo(session.seats[0], true, humanName);
@@ -177,39 +216,55 @@ export function createSeason(
     pointDiff: 0,
   }));
 
+  const seed = seasonRng.seed;
+
   return {
-    id: `season_${Date.now()}`,
+    id: meta?.id ?? `season_${seed}`,
     sessionId: session.id,
     rosterId,
-    timestamp: new Date().toISOString(),
+    timestamp: meta?.timestamp ?? session.timestamp,
     schedule,
     standings,
     currentGame: 0,
     humanTeam,
-    seed: seasonRng.seed,
+    seed,
   };
 }
 
 // ── Play Next Game ─────────────────────────────────────────────────────────
 
+/**
+ * D5: each matchup of a game day gets its OWN seed and its own `Rng`, so the seed stored
+ * on the matchup always replays exactly that matchup (a shared stream could only ever
+ * replay the first game of the day). Seeds come from, in order:
+ *  1. `matchup.seed` — already played, replay it verbatim;
+ *  2. a seed drawn from a caller-supplied `rng` (tests and headless tools), one draw per
+ *     matchup in schedule order;
+ *  3. otherwise (production) `mixSeed(season.seed, 'game:<gameIndex>:<matchupIndex>')`,
+ *     where `gameIndex` is the schedule entry's day (0-6) and `matchupIndex` the
+ *     matchup's position within that day (0-3) — so the whole season is reproducible
+ *     from `season.seed` alone, the way a challenge run is from its run seed.
+ */
 export function playNextGame(
   season: Season,
   session: DraftSession,
   rng?: Rng
 ): { season: Season; gameResult: GameTheater } | null {
-  if (season.currentGame >= 7) return null;
+  if (season.currentGame >= (season.schedule?.length ?? 0)) return null;
 
   const entry = season.schedule[season.currentGame];
+  const rootSeed = seasonSeed(season);
   let humanGameResult: GameTheater | null = null;
 
-  for (const matchup of entry.matchups) {
+  for (let matchupIndex = 0; matchupIndex < entry.matchups.length; matchupIndex++) {
+    const matchup = entry.matchups[matchupIndex];
     const isHumanMatch = matchup.homeSeatIndex === 0 || matchup.awaySeatIndex === 0;
     const homeTeam = matchup.homeSeatIndex === 0 ? season.humanTeam : buildTeamInfo(session.seats[matchup.homeSeatIndex], false);
     const awayTeam = matchup.awaySeatIndex === 0 ? season.humanTeam : buildTeamInfo(session.seats[matchup.awaySeatIndex], false);
 
-    // Reuse seed if replaying
-    const gameRng = rng ?? createRng(matchup.seed ?? randomSeed());
-    const theater = simulateGame(homeTeam, awayTeam, { rng: gameRng });
+    const gameSeed = matchup.seed
+      ?? (rng ? nextSeed(rng) : mixSeed(rootSeed, `game:${entry.gameIndex}:${matchupIndex}`));
+    const theater = simulateGame(homeTeam, awayTeam, { rng: createRng(gameSeed) });
 
     // D1: persist the slim result, not the full theater — it's re-simulated on view.
     // D6 (100 KB/season budget): a full round robin day plays 4 matchups, not just the
@@ -488,7 +543,9 @@ export type SeasonPhase = 'preseason' | 'live' | 'completed';
  */
 export function getSeasonPhase(season: Season | null | undefined): SeasonPhase {
   if (!season || season.currentGame <= 0) return 'preseason';
-  if (season.currentGame >= 7) return 'completed';
+  // Game days actually scheduled; a record with no schedule at all falls back to the
+  // standard 7 rather than reporting a 1-game season completed.
+  if (season.currentGame >= (season.schedule?.length || DEFAULT_GAME_DAYS)) return 'completed';
   return 'live';
 }
 
