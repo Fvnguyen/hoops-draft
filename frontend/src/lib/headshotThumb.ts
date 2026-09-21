@@ -20,7 +20,9 @@
  * and the service worker fetch the new file; bump `CARD_SET_VERSION` with every refresh.
  */
 
-import { CARD_SET_VERSION } from '@/engine/cardSetVersion';
+// Relative, not '@/': next.config.ts imports this file (through lib/cacheHeaders.ts), and
+// Next's config loader does not resolve the path alias in transitively required modules.
+import { CARD_SET_VERSION } from '../engine/cardSetVersion';
 
 export type HeadshotSize = 96 | 480;
 
