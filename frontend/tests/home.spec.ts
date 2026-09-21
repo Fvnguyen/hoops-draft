@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { dismissSplash } from './helpers/splash';
 
 /**
  * D1: mode is chosen before the draft. The two home CTAs ("In-Season Tournament" /
@@ -11,6 +12,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Home page mode + draft-style CTAs', () => {
   test('In-Season Tournament opens its picker; Premier routes with game=tournament', async ({ page }) => {
     await page.goto('/');
+    await dismissSplash(page);
     await page.getByTestId('cta-tournament').click();
     await expect(page.getByTestId('home-mode-picker')).toBeVisible();
     await page.getByTestId('pick-premier').click();
@@ -19,6 +21,7 @@ test.describe('Home page mode + draft-style CTAs', () => {
 
   test('In-Season Tournament picker: Quick Draft routes with game=tournament', async ({ page }) => {
     await page.goto('/');
+    await dismissSplash(page);
     await page.getByTestId('cta-tournament').click();
     await page.getByTestId('pick-quick').click();
     await expect(page).toHaveURL(/\/draft\?mode=quick&game=tournament/);
@@ -26,6 +29,7 @@ test.describe('Home page mode + draft-style CTAs', () => {
 
   test('82:0 Challenge opens its picker; Premier routes with game=challenge', async ({ page }) => {
     await page.goto('/');
+    await dismissSplash(page);
     await page.getByTestId('cta-challenge').click();
     await expect(page.getByTestId('home-mode-picker')).toBeVisible();
     await page.getByTestId('pick-premier').click();
@@ -34,6 +38,7 @@ test.describe('Home page mode + draft-style CTAs', () => {
 
   test('82:0 Challenge picker: Quick Draft routes with game=challenge', async ({ page }) => {
     await page.goto('/');
+    await dismissSplash(page);
     await page.getByTestId('cta-challenge').click();
     await page.getByTestId('pick-quick').click();
     await expect(page).toHaveURL(/\/draft\?mode=quick&game=challenge/);
@@ -41,6 +46,7 @@ test.describe('Home page mode + draft-style CTAs', () => {
 
   test('Back closes the picker without navigating', async ({ page }) => {
     await page.goto('/');
+    await dismissSplash(page);
     await page.getByTestId('cta-tournament').click();
     await expect(page.getByTestId('home-mode-picker')).toBeVisible();
     await page.getByText('Back').click();

@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { dismissSplash } from './helpers/splash';
 
 test.describe('Synergy UI & Team Stats Visual Tests', () => {
   test('DeckBuilder Top KPI Band', async ({ page }) => {
     await page.goto('/test-ui');
+    await dismissSplash(page);
 
     // D2/T3 (plan_deckbuilder_ux): every chip and icon-button inside the band is a
     // real 44px control, collapsed and expanded alike.
@@ -32,6 +34,7 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
 
   test('Season View Franchise Dashboard', async ({ page }) => {
     await page.goto('/test-ui');
+    await dismissSplash(page);
     const dashboard = page.locator('#franchise-dashboard-test');
     await expect(dashboard).toBeVisible();
     await expect(dashboard).toHaveScreenshot('franchise-dashboard.png', { maxDiffPixelRatio: 0.1 });
@@ -39,6 +42,7 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
 
   test('Game View Matchup Header and Tape', async ({ page }) => {
     await page.goto('/test-ui');
+    await dismissSplash(page);
     const gameView = page.locator('#game-view-test');
     await expect(gameView).toBeVisible();
     
@@ -51,6 +55,7 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
   // one attribute and not a component change.
   test('UI primitives gallery, court and night', async ({ page }) => {
     await page.goto('/test-ui');
+    await dismissSplash(page);
     const gallery = page.locator('#ui-primitives-test');
     await expect(gallery).toBeVisible();
 
@@ -77,6 +82,7 @@ test.describe('Synergy UI & Team Stats Visual Tests', () => {
   // docs/design/deckbuilder_ux/PlayTiles.dc.html.
   test('Play tiles', async ({ page }) => {
     await page.goto('/test-ui');
+    await dismissSplash(page);
     const section = page.locator('#play-tiles-test');
     await expect(section).toBeVisible();
 
