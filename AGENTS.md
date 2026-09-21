@@ -31,7 +31,7 @@ frontend/        The Next.js app (see frontend/README.md)
                  challenge/ (FlipClock, TierLadder, ChallengeReel, FrontOffice, Trade, Results)
   src/app/       App Router pages + API routes (see below)
   game.db        SQLite output of the data pipeline; read ONLY by scripts/build-cards.ts
-  public/        headshots/, logos/, players.json, arena_*.jpg
+  public/        headshots/{96,480}/ (WebP thumbnails), art/, logos/, icons/ — 13 MB; masters live in data/
   tests/         Playwright specs (visual/home/smoke) + win32 snapshots; tests/unit/ =
                  Vitest tests importing the real engine
   scripts/       balance.ts + challenge-sim.ts (headless simulators), build-cards.ts
@@ -107,7 +107,10 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 - Path alias `@/*` -> `frontend/src/*` (see `frontend/tsconfig.json`).
 - Client components are marked `'use client'`; API routes run server-side only.
 - Player data: the app never opens a database. `src/data/cards.json` is generated from
-  `frontend/game.db` by `scripts/build-cards.ts`; `/api/cards` serves that JSON statically.
+  `frontend/game.db` by `scripts/build-cards.ts` and loaded with `import('@/engine/cards')` where needed
+  (never from the root layout; the home page uses the Mythic/Rare slice `src/data/showcase.json`).
+- Headshot URLs come ONLY from `headshotThumb(playerId, 96 | 480)` (`src/lib/headshotThumb.ts`); bump
+  `CARD_SET_VERSION` (`engine/cardSetVersion.ts`) with every pipeline refresh, it busts the image cache.
 - State persistence is client-side IndexedDB via `GameStore` (draft sessions, rosters,
   seasons), per browser. A remote backend fits behind the same interface.
 - Windows dev machine, `core.autocrlf=true` — LF/CRLF diff noise in `git diff` is expected.
@@ -118,9 +121,10 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 Lives in `data/`, run from `data/`. Script order, inputs/outputs and table schema are in
 `data/README.md` — don't duplicate it here. Short version: `download_bref.js` scrapes HTML ->
 `fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` and `players.json` ->
-`download_images.py`/`download_logos.py` pull media into `frontend/public` ->
-`npm run build:cards` turns `game.db` into `src/data/cards.json` and backfills any missing
-headshot with a placeholder (`ensure-headshots.mjs`; a bref-hash id means no NBA match).
+`download_images.py` pulls source PNGs into `data/headshots_src/` (logos into `frontend/public`) ->
+`npm run build:cards` turns `game.db` into `src/data/cards.json` + `showcase.json`, backfills a
+missing headshot with a placeholder and writes the 96/480 px WebP sets (`ensure-headshots.mjs`;
+a bref-hash id means no NBA match). Art: `node scripts/gen-art.mjs` from `data/art_src/`.
 
 ## Balance workflow (owner-locked, 2026-09-19)
 

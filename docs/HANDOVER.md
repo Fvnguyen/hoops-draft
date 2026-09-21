@@ -19,7 +19,7 @@ sync_outbox below). The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-506/507 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
+547/548 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
@@ -47,43 +47,8 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 - **mobile_native_feel** (2026-09-19): global `touch-action`/`user-select`/`-webkit-touch-callout` in `globals.css` (no context menu/double-tap zoom); Android/PWA back shows a "Leave this screen?" sheet on draft room/deck builder; two per-move undo toasts dropped. Verified in the browser pane only — **not verified** on a real Android device; recheck there first on a long-press/double-tap/back report.
+- **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
-
-## card_ratings_rebalance — done 2026-09-18
-
-Plan: `docs/completed/plan_card_ratings_rebalance_2026-09-18.md`, T1-T8 done. Fixed a
-25-minute backup centre (Queta) rating 90 OVR Mythic while Curry (43 games) was 74: the
-pipeline threw away two thirds of the advanced/shooting stats it scraped, and PER/VORP-
-driven OVR punished a short season. The pipeline now keeps 13 more columns (usg%/ast%/
-tov%/stl%/blk%/orb%/drb%/trb%/obpm/dws/ws-per-48/pct-ast-fg2/pct-ast-fg3). Every dimension
-runs on one mean-centred `idx()` (league avg -> 0.5, rotation top-7.5% -> 1.0) over rotation
-players (mpg>=15); defence = magnitude(DBPM/DWS-48) x shape(steal% vs block%+DRB%);
-shooting gets a self-creation boost (`1 - pct_ast_fgN`); playmaking/rebounding are rate-
-stat power blends (AST%^0.65*APG^0.35, TRB%^0.45*RPG^0.55); a raw over 99 earns a gold L4
-badge (`PlayerCard.tsx`) instead of being clipped.
-**Positions (2026-09-19): `PositionResolver`** (`fetch_players.py`). Each player's bref bio
-page ("Position: X, Y, and Z") gives exact eligibility, scraped for all 582 active players
-into `data/bref_player_positions.json` (`download_bref.js`); primary = bref's season `Pos`.
-Trusted verbatim (0 conflicts, 3/582 non-adjacent, see `data/analyze_positions.py`).
-Missing bio text (3/582) falls back to the value persisted in game.db, then season `Pos`; a
-new Rare+ gap logs to `REVIEW_MISSING_POSITIONS.md` (gitignored). `POSITION_OVERRIDES`
-overrules a wrong signal (Jokic), it does not fill gaps; Giannis is hand-set SF/PF/C. A
-gold star (`getPosColors`) marks 3+ positions; `multipositionalLevel` credits from 3.
-**OVR (2026-09-19):** two passes in `computeCards`: average the seven UNCAPPED dimension
-raws, then re-index that composite through the same `idx()` (rotation avg -> ~50, top-7.5%
--> 99). OVR is not a game input. **Not verified:** the plan's gold-badge screenshot.
-**Balance workflow, five stages** (`AGENTS.md`), all done 2026-09-19: rarity = band ->
-adjustment -> floor/ceiling (`RARITY_CUTOFFS` `<50/50-79/80-89/90+`); badges re-binned
-(~56/27/13 holders, earn rate 10.9-13.4% across all seven dims, playmaking's dead L3
-fixed); plays/archetypes dropped the stale defense discount, added Crash and Finish, and
-bots pick an archetype with `pick(rng, eligible)`, so two-colour plans activate at all.
-PPP 1.05-1.06. `lineup.test.ts` (`LINEUP_CENTRE`) sits just past tolerance from this drift
-and waits for a recalibration pass (`game.test.ts` home-court passes again).
-**Gold = a fourth badge level**: everything reads `Trait.level` numerically, so one gold
-Finisher activates Post-Up Series. Four tests in `synergies.test.ts` lock it.
-**`draft_ai` (2026-09-19):** recovered from an orphaned branch, code cherry-picked 47
-commits later. Bots draw a target/secondary plan and score value-first-then-plan with a
-bomb-pull override; `buildBotRoster` never leaves a column empty. T4 parked by owner.
 
 ## challenge_mode — done 2026-09-18
 
@@ -156,6 +121,34 @@ stays gone). **Still open:** nothing in the UI shows `SyncStatus.blocked` yet; c
 82:0 run was not exercised in a browser (no challenge spec); same-phase edits of one 82:0
 run on two devices re-push each other's copy once per pull (bounded, pre-existing).
 
+## mobile_load — done 2026-09-21
+
+Plan: `docs/completed/plan_mobile_load_2026-09-21.md` (T1-T11). Measure with
+`node scripts/route-js-size.mjs` after `npm run build` (Next 16 prints no size column).
+- **JS, gzipped first load:** `/login` 405 -> 262 KB, `/` 469 -> 333, `/rosters` 470 -> 327.
+  The card set left the root layout (`engine/cardSetVersion.ts`; cards arrive through
+  `import('@/engine/cards')`, the home page uses `showcase.json`); supabase-js loads on the
+  first cloud call (`storage/lazyCloudClient.ts`). A Postgrest builder is a THENABLE:
+  passing one through a promise executes it, so build the query inside one callback.
+- **Images:** `public/` 104 -> 13 MB. `headshotThumb(playerId, 96 | 480)` is the only way to
+  build a headshot URL; files come from `ensure-headshots.mjs`, masters live in
+  `data/headshots_src/` and `data/art_src/` (`scripts/gen-art.mjs`). URLs carry
+  `?v=<CARD_SET_VERSION>` because they are cached immutable for a year: BUMP THE VERSION
+  with every pipeline refresh. Nothing goes through Vercel's image optimizer any more.
+- **Proxy:** `getClaims()` verifies the ES256 session locally (no auth round trip); prefetches
+  and static files skip it; `/roster`, `/challenge`, `/admin` were never gated and are now
+  (`lib/routeGate.ts`, tested). Functions run in `fra1`, next to the database.
+- **Back guard:** exactly one history entry (reuse on arm, remove on disarm, `exitTo` +
+  `router.replace` after a save). `tests/back-guard.spec.ts`; the phone audit walks all 8
+  screens again, 0 findings.
+- **Service worker** (`lib/serviceWorker.ts`, served by `app/sw.js/route.ts`, production
+  only): assets only, never HTML/RSC/`/api`. `mb-static-<build>` is dropped per deploy,
+  `mb-assets-v1` survives. **Kill switch:** deploy with `NEXT_PUBLIC_DISABLE_SW=1`.
+- `next.config.ts` cannot resolve `@/` in files it imports transitively: `lib/cacheHeaders.ts`
+  and `lib/headshotThumb.ts` use relative imports on purpose.
+**Open:** owner phone UAT (install icon, landscape cutout padding, back/Leave in the deck
+builder); confirm the deployment reports `fra1`.
+
 ## How to run everything
 
 ```bash
@@ -181,8 +174,7 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). `sync_outbox` is done (section above); the back-guard history leak lives
-in `mobile_load`. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
+(#13). `sync_outbox` and `mobile_load` are done (sections above); `render_and_engine_perf` (#13) is next. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).

@@ -1,6 +1,6 @@
 # Plan: mobile_load
 
-File: `docs/plans/plan_mobile_load_2026-09-21.md`. Status: in progress.
+File: `docs/plans/plan_mobile_load_2026-09-21.md`. Status: done 2026-09-21.
 Sequence: 11 in `docs/ROADMAP.md`. Depends on: nothing (only D7 waits for `sync_outbox`). Files owned (all under `frontend/`):
 `src/engine/{cardSetVersion.ts (new),cards.ts}`, `src/data/showcase.json` (new), `src/storage/{types.ts,index.ts (shared with sync_outbox, see D6)}`,
 `scripts/{build-cards.ts,ensure-headshots.mjs}`, `src/lib/headshotThumb.ts` (new),

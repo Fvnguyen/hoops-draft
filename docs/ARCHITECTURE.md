@@ -10,9 +10,9 @@ flowchart TD
     C --> D
     D --> E["frontend/game.db\n(SQLite, pipeline output)"]
     D --> F["data/players.json"]
-    F -->|"data/download_images.py\ndata/download_logos.py"| G["frontend/public/\nheadshots, logos"]
+    F -->|"data/download_images.py\ndata/download_logos.py"| G["data/headshots_src (PNG masters)\n-> ensure-headshots.mjs ->\nfrontend/public/headshots/{96,480} WebP, logos"]
     E -->|"npm run build:cards\nscripts/build-cards.ts\nengine/ratings.ts computeCards()"| H["frontend/src/data/cards.json\n(build artifact, committed)"]
-    H --> I["/api/cards route.ts\n(static JSON)"]
+    H --> I["import('@/engine/cards')\n(dynamic, per route)"]
     I --> J["useDraftEngine hook\n+ engine/draft.ts\ngenerateCubePool(rng), bot picks"]
     J --> K["DraftRoom.tsx\n(draft UI)"]
     K --> L["botDeckBuilder.ts\nbuildBotRoster (bots)\nDeckBuilder.tsx (human)"]
@@ -35,8 +35,10 @@ flowchart TD
   joins with `bio.csv`, computes the raw per-player stat rows, and writes both
   `frontend/game.db` (tables `Player`, `SeasonStat`, `Award`) and `players.json`. Filters
   to players with >=20 games and >=5.0 MPG.
-- **`download_images.py`** / **`download_logos.py`** — pull headshots and team logos into
-  `frontend/public/{headshots,logos}`.
+- **`download_images.py`** / **`download_logos.py`** — pull 1040x760 headshot PNGs into
+  `data/headshots_src/` (masters, never deployed) and team logos into `frontend/public/logos`.
+  `frontend/scripts/ensure-headshots.mjs` turns the masters into the 96 px and 480 px WebP sets
+  the app serves.
 
 Full script contracts (reads/writes/working directory) are in `data/README.md`.
 
@@ -45,8 +47,7 @@ Full script contracts (reads/writes/working directory) are in `data/README.md`.
 `computeCards(input)` is the only place ratings are computed. It is pure: it takes the
 `Player`, `SeasonStat` and `Award` rows as plain arrays and returns cards. It runs in
 `scripts/build-cards.ts` (`npm run build:cards`), which reads `game.db` and writes
-`frontend/src/data/cards.json`; the app only ever reads that JSON (`engine/cards.ts`,
-`/api/cards`). Steps:
+`frontend/src/data/cards.json`; the app only ever reads that JSON (`engine/cards.ts`). Steps:
 
 1. Takes the latest `SeasonStat` row per player.
 2. Buckets each player into a positional pool (`PG`/`SG`/`SF`/`PF`/`C`/`G`/`F`/`G-F`/`F-C`/
@@ -66,8 +67,10 @@ Full script contracts (reads/writes/working directory) are in `data/README.md`.
 6. Assigns badges (`getBadge`, thresholds 80/90/96) and situational traits (Ironman,
    Sniper, Volume Scorer, etc.) from raw stats.
 
-Served to the client via `frontend/src/app/api/cards/route.ts` (`GET /api/cards`), which
-returns the committed JSON with a one-hour cache header. All tuning constants for this
+Delivered as a JavaScript chunk through `import('@/engine/cards')` at the point of use (draft
+room, `/data`, `/deckbuilder-test`), never from the root layout; the home page imports only
+`src/data/showcase.json` (Mythic + Rare). `CARD_SET_VERSION` lives in the data-free
+`engine/cardSetVersion.ts` so storage can read it without the card set. All tuning constants for this
 step (`RATING_CONFIG`, legendary list, badge/rarity thresholds) live in
 `engine/balance.ts`.
 
