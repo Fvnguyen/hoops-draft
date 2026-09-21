@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { getGameStore } from '@/storage';
-import { useLocalStoreReady } from '@/components/StorageProvider';
+import { useLocalStoreReady, useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase } from '@/engine/season';
 import { WHATS_NEW, type ChangelogEntry } from '@/data/whatsnew';
 
@@ -47,6 +47,11 @@ export function useNotices(): {
   // informational, so it must not wait on the cloud pull — that delay is what made the
   // What's New splash land in the draft room instead of on the home page.
   const ready = useLocalStoreReady();
+  // The season half of the feed is OWNED data, and the stores filter every read by owner
+  // (sync_outbox D2): at local readiness no owner is applied yet, so those rows only show
+  // up once full readiness flips — which it also does again after a login, a logout or an
+  // account switch. Reloading then keeps the bell from showing the previous user's seasons.
+  const ownerReady = useStorageReady();
   const [notices, setNotices] = useState<Notice[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestUnseenEntry, setLatestUnseenEntry] = useState<ChangelogEntry | null>(null);
@@ -93,7 +98,7 @@ export function useNotices(): {
     // no error anywhere.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load().catch((err) => console.error('Failed to load notices:', err));
-  }, [ready, load]);
+  }, [ready, ownerReady, load]);
 
   const markChangelogSeen = useCallback(() => {
     if (WHATS_NEW.length === 0) return;
