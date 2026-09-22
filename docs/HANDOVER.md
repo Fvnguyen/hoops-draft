@@ -88,8 +88,10 @@ block lists every RPC and its error codes.
   matches between the two E2E accounts before and after.
 - Verified: `npm test` 655/655, `playoffs-invite.spec` green twice, smoke 9/9,
   `route-js-size` `/` 335 -> 336 KB gz, bench checksum 219438687.
-- Open: two `useNotices` mounts (TopNav, WhatsNewSplash) each run the match query per page
-  load; no unit test of the simulate route handler itself (its logic is tested).
+- `useMatchList` is one module-level store: however many components call it, a page load
+  makes one `match_expire` + one select (`tests/unit/match-list.test.ts`).
+- Open: no unit test of the simulate route handler itself; add it in pvp_series with the
+  advance route.
 
 ## render_and_engine_perf — done 2026-09-22
 

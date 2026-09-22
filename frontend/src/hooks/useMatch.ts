@@ -7,7 +7,7 @@
  * `version_mismatch`, see `sendMatchAction`). `useMatchList()` is the bell/`/playoffs`
  * source: expires stale rows server-side, then lists the caller's matches newest first.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useCurrentProfile } from '@/components/AuthProvider';
 import { loadMatchClient, openMatchChannel, sendMatchAction, type MatchClient } from '@/lib/matchChannel';
 import {
@@ -143,60 +143,127 @@ export function useMatch(id: string | null | undefined): UseMatchResult {
   return { match, me, transport, opponentOnline, error, send, refetch };
 }
 
-/** D3/D4/D8: expires stale rows, then lists every match the signed-in user is a
- *  participant in, newest first. Used both by `/playoffs/new` (pending invites) and
- *  `useNotices` (match-invite/match-turn/match-done kinds). */
-export function useMatchList(): UseMatchListResult {
-  const profile = useCurrentProfile();
-  const userId = profile?.id ?? null;
+// ── useMatchList: one shared list per page ─────────────────────────────────
+//
+// `useNotices` is mounted twice (TopNav and WhatsNewSplash) and `/playoffs/new` adds
+// `InviteList`, so a per-hook fetch ran `match_expire` + the list select once per caller on
+// every page load. The list now lives in one module-level store: callers that mount
+// together share one in-flight load, a list younger than `MATCH_LIST_FRESH_MS` is reused,
+// and `refetch()` always loads again (after an Accept, for instance).
 
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
+const MATCH_LIST_FRESH_MS = 2_000;
 
-  const load = useCallback(async () => {
-    if (!userId) {
-      setMatches([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const client = await loadMatchClient();
-      // D8: no cron — the caller's own reads sweep expiry first.
-      await client.rpc('match_expire', { p_id: null });
-      // `MatchPollClient` only models the single-row `eq(...).maybeSingle()` shape used by
-      // `useMatch`; the list query needs `or`/`order`, so it goes through the underlying
-      // client directly rather than widening that shared interface for one call site.
-      const listClient = client as unknown as {
-        from(table: string): {
-          select(columns: string): {
-            or(filter: string): {
-              order(column: string, opts: { ascending: boolean }): Promise<{ data: Match[] | null; error: { message?: string } | null }>;
-            };
-          };
+interface MatchListState {
+  userId: string | null;
+  matches: MatchSummary[];
+  loading: boolean;
+  loadedAt: number;
+}
+
+const INITIAL_LIST_STATE: MatchListState = { userId: null, matches: [], loading: true, loadedAt: 0 };
+let listState: MatchListState = INITIAL_LIST_STATE;
+let listInflight: { userId: string; promise: Promise<void> } | null = null;
+const listListeners = new Set<() => void>();
+
+function setListState(next: MatchListState) {
+  listState = next;
+  listListeners.forEach((listener) => listener());
+}
+
+function subscribeMatchList(listener: () => void): () => void {
+  listListeners.add(listener);
+  return () => listListeners.delete(listener);
+}
+
+async function loadMatchListRows(userId: string): Promise<MatchSummary[]> {
+  const client = await loadMatchClient();
+  // D8: no cron — the caller's own reads sweep expiry first.
+  await client.rpc('match_expire', { p_id: null });
+  // `MatchPollClient` only models the single-row `eq(...).maybeSingle()` shape used by
+  // `useMatch`; the list query needs `or`/`order`, so it goes through the underlying
+  // client directly rather than widening that shared interface for one call site.
+  const listClient = client as unknown as {
+    from(table: string): {
+      select(columns: string): {
+        or(filter: string): {
+          order(column: string, opts: { ascending: boolean }): Promise<{ data: MatchSummary[] | null; error: { message?: string } | null }>;
         };
       };
-      const { data: rows, error: listError } = await listClient
-        .from('matches')
-        .select(MATCH_SUMMARY_COLUMNS)
-        .or(`host_id.eq.${userId},guest_id.eq.${userId}`)
-        .order('updated_at', { ascending: false });
-      if (listError) throw new Error(listError.message ?? 'Failed to load matches');
-      setMatches(rows ?? []);
+    };
+  };
+  const { data: rows, error: listError } = await listClient
+    .from('matches')
+    .select(MATCH_SUMMARY_COLUMNS)
+    .or(`host_id.eq.${userId},guest_id.eq.${userId}`)
+    .order('updated_at', { ascending: false });
+  if (listError) throw new Error(listError.message ?? 'Failed to load matches');
+  return rows ?? [];
+}
+
+/** Loads the shared list for `userId`. Concurrent calls for the same user share one
+ *  request; `force` waits for any in-flight load and then loads again. Exported for tests. */
+export async function fetchMatchList(userId: string | null, force = false, now: () => number = Date.now): Promise<void> {
+  if (!userId) {
+    if (listState.userId !== null || listState.loading || listState.matches.length > 0) {
+      setListState({ userId: null, matches: [], loading: false, loadedAt: 0 });
+    }
+    return;
+  }
+  if (listInflight && listInflight.userId === userId) {
+    if (!force) return listInflight.promise;
+    await listInflight.promise.catch(() => {});
+  }
+  if (!force && listState.userId === userId && !listState.loading && now() - listState.loadedAt < MATCH_LIST_FRESH_MS) {
+    return;
+  }
+
+  // An account switch shows the new user's list as loading, never the previous user's rows.
+  setListState(listState.userId === userId ? { ...listState, loading: true } : { userId, matches: [], loading: true, loadedAt: 0 });
+  const promise = (async () => {
+    let matches: MatchSummary[] = [];
+    try {
+      matches = await loadMatchListRows(userId);
     } catch (err) {
       // A warning, not an error: the bell mounts on every route and a missing table or an
       // offline blip must not read as a page failure (smoke.spec fails on console.error).
       console.warn('Failed to load matches:', err);
-      setMatches([]);
-    } finally {
-      setLoading(false);
     }
-  }, [userId]);
+    // Drop a result for a user who is no longer the one being shown.
+    if (listState.userId === userId) {
+      setListState({ userId, matches, loading: false, loadedAt: now() });
+    }
+  })();
+  listInflight = { userId, promise };
+  try {
+    await promise;
+  } finally {
+    if (listInflight?.promise === promise) listInflight = null;
+  }
+}
+
+/** Test-only: forget the shared list between cases. */
+export function resetMatchListForTests() {
+  listState = INITIAL_LIST_STATE;
+  listInflight = null;
+  listListeners.clear();
+}
+
+/** D3/D4/D8: every match the signed-in user is a participant in, newest first, after
+ *  expiring stale rows server-side. Shared by `/playoffs/new` (pending invites) and
+ *  `useNotices` (match-invite/match-turn/match-done kinds): one load per page, however
+ *  many components call it. */
+export function useMatchList(): UseMatchListResult {
+  const profile = useCurrentProfile();
+  const userId = profile?.id ?? null;
+  const state = useSyncExternalStore(subscribeMatchList, () => listState, () => INITIAL_LIST_STATE);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load, same pattern as useNotices' load()
-    void load();
-  }, [load]);
+    void fetchMatchList(userId);
+  }, [userId]);
 
-  return { matches, loading, refetch: load };
+  const refetch = useCallback(() => fetchMatchList(userId, true), [userId]);
+
+  if (!userId) return { matches: [], loading: false, refetch };
+  const mine = state.userId === userId;
+  return { matches: mine ? state.matches : [], loading: mine ? state.loading : true, refetch };
 }
