@@ -150,5 +150,7 @@ of stages 1-2 and needs its own pass, not an ad-hoc fix, when an earlier stage's
   script. `/api/game-logs` (dev-only) writes to `../data/game_logs` relative to cwd.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
   player cards when the pool has 264+ players; it has 448.
+- CI runs Node 24 so its npm matches the npm 11 that writes `package-lock.json` here; on
+  npm 10 `npm ci` fails with `Missing: @emnapi/runtime from lock file`. Keep the two aligned.
 - Not junk: `/test-ui` (fixture for `visual`/`smoke`), `/theater-preview`, `/challenge/preview`,
   `/challenge/preview-results`, `/debug`, `/deckbuilder-test`, `/data` are real pages.

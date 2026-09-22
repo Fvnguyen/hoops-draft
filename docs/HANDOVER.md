@@ -21,7 +21,8 @@ at 0 violations. On phones (coarse pointer under 1000px) the whole document rend
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
 631/632 Vitest tests pass (one seeded-statistics drift, `lineup.test.ts`, see below), type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
-(`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR. A runtime
+(`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR (green since
+2026-09-22; before that every run died at `npm ci` on Node 22, see the workflow comment). A runtime
 error boundary (`app/error.tsx`/`global-error.tsx`/`ErrorRecovery.tsx`) shows a recovery
 screen instead of a blank page; `smoke.spec.ts` fails on any console/page error.
 
