@@ -62,11 +62,12 @@ Commits `b86dbe4` (draft_resume) and `98cf50b` (pvp_match T1-T5), local on `main
   `supabase/tests/202609220001_matches_test.sql` (16 cases, rolled back; passed on PGlite,
   not yet on Supabase), `useMatch`/`useMatchList`, `/playoffs/new`, bell Accept/Decline,
   `POST /api/match/[id]/simulate`. `/` first-load JS 335 -> 336 KB gz.
-- **Deploy order: apply the migration BEFORE pushing.** Until it exists every route's bell
-  query 404s, which is why `smoke.spec` is 1/9 locally right now (both plans close on it).
-- Open: T6 with the owner in manual mode (dry run of migration + test file in one
-  rolled-back transaction, then apply); run `bootstrap:e2e` for `E2E_TEST_EMAIL_2`, then
-  `playoffs-invite.spec`. Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the
+- **Migration APPLIED to production 2026-09-22** after a dry run (migration + all 16 test
+  cases on Supabase in one rolled-back transaction, clean afterwards). Live checks: 9 RPCs,
+  2 policies, RLS on, in `supabase_realtime`, anon cannot invite or read `user_directory`,
+  helpers not client-callable, 0 rows. Smoke 9/9 again (it was 1/9 while the table was missing).
+- Open: add `E2E_TEST_EMAIL_2`/`E2E_TEST_PASSWORD_2` to `.env.local`, run `npm run
+  bootstrap:e2e`, then `playoffs-invite.spec`; pushing `main` is safe now. Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the
   match query, so a page load makes 2 `match_expire` + 2 selects; dedupe if it shows up.
 
 ## sync_outbox — done 2026-09-21
