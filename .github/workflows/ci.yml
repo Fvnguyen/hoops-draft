@@ -30,6 +30,12 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      # Next 16 declares route/layout types (LayoutProps, PageProps) in .next/types, which
+      # next-env.d.ts imports; a fresh checkout has none until typegen or a build runs.
+      - name: Generate route types
+        run: npx next typegen
+        working-directory: frontend
+
       - name: Type check
         run: npx tsc --noEmit
         working-directory: frontend
