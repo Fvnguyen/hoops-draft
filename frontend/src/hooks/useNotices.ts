@@ -194,7 +194,9 @@ export function useNotices(): {
       const myLockedAt = side === 'host' ? match.host_locked_at : match.guest_locked_at;
       const mySeenGame = side === 'host' ? match.host_seen?.game ?? 0 : match.guest_seen?.game ?? 0;
       const myTurn =
-        (match.status === 'drafting' && myPicks.length < theirPicks.length) ||
+        // Even counts are my turn too: both owe this pick (and at 0-0 it is how the host
+        // learns the invite was accepted).
+        (match.status === 'drafting' && myPicks.length <= theirPicks.length) ||
         (match.status === 'building' && !myLockedAt) ||
         ((match.status === 'series' || match.status === 'sideboard') && match.games.length > mySeenGame);
       if (myTurn) {
@@ -203,7 +205,9 @@ export function useNotices(): {
           kind: 'match-turn',
           date: match.updated_at,
           title: 'Your move',
-          body: 'Your playoffs opponent is waiting on you.',
+          body: match.status === 'drafting' && myPicks.length === theirPicks.length
+            ? 'Your playoffs draft is live. Make your pick.'
+            : 'Your playoffs opponent is waiting on you.',
         });
       }
     }

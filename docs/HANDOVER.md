@@ -76,7 +76,8 @@ Commit `98cf50b`. Migration `202609220001_matches.sql` APPLIED to production 202
 after a dry run (migration + 16 test cases of `supabase/tests/202609220001_matches_test.sql`
 in one rolled-back transaction). Live: 9 RPCs, RLS on, in `supabase_realtime`, anon cannot
 invite or read `user_directory`, helpers not client-callable. `/` JS 335 -> 336 KB gz.
-Closes after `playoffs-invite.spec` passes with the second E2E account (`E2E_TEST_EMAIL_2`).
+Second E2E account (`E2E_TEST_EMAIL_2`, username `e2e_test_2`) created; `playoffs-invite.spec` passes
+(it deletes matches between the two E2E accounts before and after). Ready to close.
 Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the match query per page load.
 
 ## mobile_load — done 2026-09-21
