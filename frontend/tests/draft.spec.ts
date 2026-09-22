@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { dismissSplash, clickPastSplash } from './helpers/splash';
+import { clearAnyUnfinishedDraft } from './helpers/draft';
 
 /**
  * plan_ui_foundation T5 (D7/D8): the confirm control is one component docked at a fixed
@@ -15,6 +16,7 @@ test.describe('Draft room: confirm dock + pack pass', () => {
   test('confirm button stays docked at the same spot across picks; the settled pack node never remounts', async ({ page }) => {
     test.setTimeout(90_000);
 
+    await clearAnyUnfinishedDraft(page);
     await page.goto('/draft?mode=quick&clock=fast');
 
     // Shared helper: waits for the splash to mount (it can be seconds behind `goto` on

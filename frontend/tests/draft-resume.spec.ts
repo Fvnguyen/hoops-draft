@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { dismissSplash, clickPastSplash } from './helpers/splash';
+import { clearAnyUnfinishedDraft } from './helpers/draft';
 
 /**
  * draft_resume T4: a reload mid-draft (OS kill, phone lock, browser crash) must come back
@@ -44,24 +45,6 @@ async function currentPackFingerprint(page: Page): Promise<string[]> {
     .locator('[role="button"][aria-label^="Select "]')
     .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? ''));
   return labels.sort();
-}
-
-/** Each test starts fresh: if a PREVIOUS run (or a failed earlier test) left an unfinished
- *  draft behind, the resume sheet would otherwise block `/draft` before this test's own
- *  scripted picks even start. Abandon it so every test is self-contained. */
-async function clearAnyUnfinishedDraft(page: Page) {
-  await page.goto('/draft?mode=quick&clock=fast');
-  await dismissSplash(page);
-  const sheet = page.locator(RESUME_SHEET);
-  // Loop: only the single newest unfinished session shows at a time, so a run with
-  // several stale ones left behind (e.g. an earlier failed run) needs more than one pass.
-  for (let i = 0; i < 40; i++) {
-    if (!(await sheet.isVisible({ timeout: 3000 }).catch(() => false))) return;
-    await sheet.getByRole('button', { name: 'Abandon' }).click();
-    await expect(sheet).toHaveCount(0);
-    await page.reload();
-    await dismissSplash(page);
-  }
 }
 
 test.describe('Draft resume', () => {

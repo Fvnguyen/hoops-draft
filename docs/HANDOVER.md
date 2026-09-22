@@ -51,51 +51,33 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **mobile_native_feel** (2026-09-19): global `touch-action`/`user-select`/`-webkit-touch-callout` in `globals.css` (no context menu/double-tap zoom); Android/PWA back shows a "Leave this screen?" sheet on draft room/deck builder; two per-move undo toasts dropped. Verified in the browser pane only — **not verified** on a real Android device; recheck there first on a long-press/double-tap/back report.
 - **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
+- **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
 
-## draft_resume + pvp_match — built 2026-09-22, not closed
+## draft_resume — done 2026-09-22
 
-Commits `b86dbe4` (draft_resume) and `98cf50b` (pvp_match T1-T5), local on `main`, not pushed.
-- draft_resume: `engine/draftReplay.ts` rebuilds a draft from seed + human picks; the hook
-  derives everything from it; the session is saved after each pick and `/draft` offers
-  Resume/Abandon. 200-draft equivalence test, draft/draft-resume/visual green, phone audit 0.
-- pvp_match: `supabase/migrations/202609220001_matches.sql` (RPCs, RLS, `user_directory`),
-  `supabase/tests/202609220001_matches_test.sql` (16 cases, rolled back; passed on PGlite,
-  not yet on Supabase), `useMatch`/`useMatchList`, `/playoffs/new`, bell Accept/Decline,
-  `POST /api/match/[id]/simulate`. `/` first-load JS 335 -> 336 KB gz.
-- **Migration APPLIED to production 2026-09-22** after a dry run (migration + all 16 test
-  cases on Supabase in one rolled-back transaction, clean afterwards). Live checks: 9 RPCs,
-  2 policies, RLS on, in `supabase_realtime`, anon cannot invite or read `user_directory`,
-  helpers not client-callable, 0 rows. Smoke 9/9 again (it was 1/9 while the table was missing).
-- Open: add `E2E_TEST_EMAIL_2`/`E2E_TEST_PASSWORD_2` to `.env.local`, run `npm run
-  bootstrap:e2e`, then `playoffs-invite.spec`; pushing `main` is safe now. Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the
-  match query, so a page load makes 2 `match_expire` + 2 selects; dedupe if it shows up.
+Plan: `docs/completed/plan_draft_resume_2026-09-22.md`, commits `b86dbe4` + the close-out.
+- `engine/draftReplay.ts`: `replayDraft(seed, humanPicks, ...)` rebuilds the room; bots are
+  deterministic from the seed. Takes several human seats (`human-0`, `human-4`) for pvp_draft.
+- `useDraftEngine` state is `(seed, humanPicks, humanAutoPicks)`, no cached packs; it no
+  longer auto-starts: `DraftRoom` calls `startNewDraft()` or `resumeDraft(session)` once
+  the unfinished-session check resolves. A resumed draft keeps its saved mode/game.
+- The in-progress `DraftSession` (`status: 'drafting'`, `seats: []`) is saved after every
+  pick under the id the complete session later overwrites.
+- Tests share one cloud-synced E2E account, so a spec that stops mid-draft leaves a resume
+  sheet for the next one: call `clearAnyUnfinishedDraft` (`tests/helpers/draft.ts`) before
+  visiting `/draft` (it broke `mobile-audit` once).
+- Verified: 200-draft equivalence vs the old hook's logic; `npm test` 655/655; bench
+  checksum 219438687; `playwright test draft draft-resume visual smoke topnav` 20/20;
+  `mobile-audit --project=phone-landscape` 0 findings over 9 screens.
 
-## sync_outbox — done 2026-09-21
+## pvp_match — T1-T6 done, open
 
-Plan: `docs/completed/plan_sync_outbox_2026-09-21.md` (T1-T8; T3 dropped), merged to
-`main` and deployed 2026-09-21. The model is in `ARCHITECTURE.md` section 8:
-local-first, a persisted outbox, tombstones, persisted baselines, a two-phase pull.
-What it fixes: sync never started after a login until a hard reload (login/logout are soft
-navigations); the next user of a device saw the previous account's rows; every save hung
-on the network; an offline delete came back; every launch re-uploaded every row; two tabs
-or devices created two seasons/82:0 runs for one roster.
-- **Migration `202609210001_sync_outbox.sql` is APPLIED to production** (2026-09-21):
-  dry-run plus 18 function/RLS checks in a rolled-back transaction, then the same checks
-  live; row counts unchanged. It is backward compatible with the deployed client. The
-  payload cap is 16 MiB, not the planned 1 MiB: 4 legacy seasons are 1.1-4.6 MB.
-- Measured against live Supabase: first visit 229 KB of payload, a relaunch 0 KB.
-- Only a 401/403 signs a user out. A timeout keeps the last known profile
-  (`lib/authState.ts`), because with owner-filtered reads a false "signed out" hides every
-  roster. Login/logout pass `identityChanged` so the old profile is never the fallback.
-- Driver review changed the engine in four ways: a first push over an existing cloud row
-  is merged, not overwritten; blocked records get one attempt per sign-in; every request
-  has a timeout; the app pulls again when resumed after 5+ minutes.
-- 97 storage tests, 506/507 overall, Playwright `smoke`/`season`/`topnav`/`auto-login`/
-  `roster-reopen`/`deckbuilder` green.
-Owner confirmed the two manual checks (account switch in one tab; an offline roster delete
-stays gone). **Still open:** nothing in the UI shows `SyncStatus.blocked` yet; creating an
-82:0 run was not exercised in a browser (no challenge spec); same-phase edits of one 82:0
-run on two devices re-push each other's copy once per pull (bounded, pre-existing).
+Commit `98cf50b`. Migration `202609220001_matches.sql` APPLIED to production 2026-09-22
+after a dry run (migration + 16 test cases of `supabase/tests/202609220001_matches_test.sql`
+in one rolled-back transaction). Live: 9 RPCs, RLS on, in `supabase_realtime`, anon cannot
+invite or read `user_directory`, helpers not client-callable. `/` JS 335 -> 336 KB gz.
+Closes after `playoffs-invite.spec` passes with the second E2E account (`E2E_TEST_EMAIL_2`).
+Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the match query per page load.
 
 ## mobile_load — done 2026-09-21
 
@@ -182,11 +164,11 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). All three are done (sections above); `render_and_engine_perf` sits on `claude/render-engine-perf`, merge and push on the owner's word. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
+(#13). All three are done and merged into `main`. `draft_resume` (#14) is done; `pvp_match` (#15) is open (section above). Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
-631/632 tests (`lineup.test.ts` drift only). Owner actions outside the repo:
+655/655 tests (the `lineup.test.ts` drift is an `it.fails` marker). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as
@@ -214,8 +196,7 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    regression gives finishing a negative marginal in the 41-55 OVR band while the roster-
    level `--levers` A/B makes finishing the top lever; look with a larger bootstrap first.
 8. **Vercel Deployment Storage at 75% of 10 GB (2026-09-21)** — each push kept a ~90 MB
-   deployment (estimate; `frontend/public` is 104 MB: 481 headshot PNGs 87 MB + ~20 MB card-back/
-   arena/pack art), nothing pruned: 82 hoops-draft deployments (57 production, 25 preview).
+   deployment (estimate, from when `frontend/public` was 104 MB; it is 13 MB since mobile_load), nothing pruned: 82 hoops-draft deployments (57 production, 25 preview).
    `frontend/vercel.json`: `ignoreCommand` skips builds with no `frontend/` change since
    `VERCEL_GIT_PREVIOUS_SHA` (it must exit ONLY 0 = skip or 1 = build: Vercel clones shallowly, a
    push deeper than the clone made `git diff` exit 128 and the deploy ERRORED, fixed in `30c4878`),
@@ -223,8 +204,7 @@ Vercel image-optimization quota is the first place to look if headshots ever bre
    wanted for phone UAT). Root Directory = `frontend` is VERIFIED (build log runs `frontend@0.1.0
    build`). Owner actions: run `scripts/prune-vercel-deployments.ps1` (dry run by default, `-Execute`
    deletes permanently; keeps live + 4 newest READY production + last 48h; token via
-   `$env:VERCEL_TOKEN`), set Deployment Retention on both projects (dashboard only, no API), and
-   `mobile_load` D3-D5 shrink `public/` ~5x (originals leave `public/`). Behaviour at 100% is unknown.
+   `$env:VERCEL_TOKEN`), set Deployment Retention on both projects (dashboard only, no API). Behaviour at 100% is unknown.
 
 ## Where to look
 

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { dismissSplash as dismissSplashShared } from './helpers/splash';
+import { clearAnyUnfinishedDraft } from './helpers/draft';
 
 /**
  * plan_mobile_responsive T1 — the audit harness.
@@ -345,7 +346,7 @@ test.describe('Mobile audit', () => {
     await page.goto('/');
     await audit(page, testInfo, 'home');
 
-    await page.goto('/draft?mode=quick&clock=fast');
+    await clearAnyUnfinishedDraft(page);
     await audit(page, testInfo, 'draft-entry');
 
     // Open the pack and skip the reveal animation to reach the pick spread — the densest

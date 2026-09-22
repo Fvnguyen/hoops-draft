@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { clearAnyUnfinishedDraft } from './helpers/draft';
 
 /**
  * plan_ui_foundation T4/D6: the header never reflows once the auth status settles, and
@@ -51,7 +52,7 @@ test.describe('TopNav: no layout shift while auth resolves', () => {
 
 test.describe('TopNav: game routes have no bar, just the gear menu', () => {
   test('/draft?mode=quick: no page title, gear menu opens with Sign out', async ({ page }) => {
-    await page.goto('/draft?mode=quick');
+    await clearAnyUnfinishedDraft(page, '/draft?mode=quick');
 
     await expect(page.getByText('Draft Room', { exact: true })).toHaveCount(0);
 
