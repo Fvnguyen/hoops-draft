@@ -125,6 +125,19 @@ export function challengeRunIdForRoster(rosterId: string): string {
   return `challenge_${rosterId}`;
 }
 
+/** draft_resume D3: a session saved mid-draft. Missing `status` = complete (old rows). */
+export function isUnfinishedDraft(s: DraftSession): boolean {
+  return s.status === 'drafting';
+}
+
+/** draft_resume D4: the current owner's newest unfinished draft, for the resume sheet.
+ *  Reads through `listDraftSessions`, which the stores already filter by owner. */
+export async function findUnfinishedDraft(store: Pick<GameStore, 'listDraftSessions'>): Promise<DraftSession | null> {
+  const open = (await store.listDraftSessions()).filter(isUnfinishedDraft);
+  open.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  return open[0] ?? null;
+}
+
 export interface GameStore {
   setOwnerId(ownerId: string | null): Promise<void>;
   claimLegacyData(): Promise<void>;

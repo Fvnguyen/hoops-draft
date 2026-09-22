@@ -12,13 +12,16 @@ import { DraftSidebar } from './DraftSidebar';
 import { PackPassStage, passStaggerDelayMs } from './PackPassStage';
 import { ConfirmPickDock } from './ConfirmPickDock';
 import { IconButton } from './ui/IconButton';
+import { Panel, Button } from './ui';
 import { PickTimerRing } from './PickTimerRing';
 import { RoundSummary } from './RoundSummary';
 import { getGameStore } from '@/storage';
-import { StorageQuotaError } from '@/storage/types';
+import { StorageQuotaError, findUnfinishedDraft } from '@/storage/types';
+import { useStorageReady } from './StorageProvider';
 import { HUMAN_SEAT_ID } from '@/engine/season';
-import { buildDraftSession } from '../lib/sessionBuilder';
+import { buildDraftSession, buildInProgressDraftSession } from '../lib/sessionBuilder';
 import { buildBotRoster } from '../engine/deckbuilder';
+import type { DraftSession } from '../engine/deckbuilder';
 import { calcRosterIdentity, resolveDepthChart } from '../engine/rosterStats';
 import type { RosterIdentity } from '../engine/rosterStats';
 import type { PlayerCardData } from '../engine/types';
@@ -34,6 +37,64 @@ import { headshotThumb } from '@/lib/headshotThumb';
 // Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
 const TOTAL_PICKS = CUBE_PACKS * PICKS_PER_PACK;
+
+/** draft_resume D4: pack/pick label for a saved in-progress session, from the human's own
+ *  pick count alone (no need to replay — one human seat picks once per overall pick). */
+function resumeLabel(session: DraftSession): string {
+  const count = session.humanPicks?.[HUMAN_SEAT_ID]?.length ?? 0;
+  const pack = Math.min(CUBE_PACKS, Math.floor(count / PICKS_PER_PACK) + 1);
+  const pick = (count % PICKS_PER_PACK) + 1;
+  return `Resume draft, pack ${pack} pick ${pick}`;
+}
+
+/** draft_resume D4: shown on `/draft` when an unfinished session for this owner exists —
+ *  resume it exactly (no auto-resume) or abandon it (delete + start fresh). Deliberately
+ *  NOT built on the shared `Overlay` primitive: `Overlay` marks itself `data-overlay`,
+ *  which is the exact marker `tests/helpers/splash.ts` uses to find (and blindly
+ *  backdrop-click) the "what's new" splash — this sheet can be on screen at the same
+ *  mount moment as that splash, and must not be mistaken for it (or dismissed by a
+ *  backdrop click at all; only the two explicit actions below resolve it). */
+function DraftResumeSheet({
+  session,
+  onResume,
+  onAbandon,
+}: {
+  session: DraftSession | null;
+  onResume: (session: DraftSession) => void;
+  onAbandon: (session: DraftSession) => void;
+}) {
+  if (!session) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-surface-scrim p-4 backdrop-blur-sm"
+      data-draft-resume-sheet
+    >
+      <Panel role="dialog" aria-modal="true" aria-labelledby="draft-resume-heading" padding="none" variant="inverse" className="relative w-full max-w-sm shadow-2xl">
+        <div className="p-6">
+          <h2 id="draft-resume-heading" className="text-xl font-bold uppercase text-ink-inverse mb-2">
+            {resumeLabel(session)}
+          </h2>
+          <p className="text-ink-inverse-muted text-sm mb-6">
+            You left this draft mid-pick. Pick up right where you left off, or abandon it and start a new one.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => onAbandon(session)}
+              className="text-ink-inverse-muted hover:text-ink-inverse hover:bg-white/10"
+            >
+              Abandon
+            </Button>
+            <Button variant="primary" size="md" onClick={() => onResume(session)}>
+              Resume
+            </Button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
 
 // The play catalog lives in the pure engine (`engine/plays.ts`) so the draft room, the
 // challenge mode's NBA opponents, the balance script and the unit tests all read one copy.
@@ -189,7 +250,12 @@ export interface DraftRoomProps {
   clockFast?: boolean;
 }
 
-export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast = false }: DraftRoomProps = {}) {
+export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = 'tournament', clockFast = false }: DraftRoomProps = {}) {
+  // draft_resume: a resumed draft keeps the mode and game it was started with, whatever
+  // `/draft?mode=&game=` says now (the URL only picks the mode of a NEW draft).
+  const [resumedModes, setResumedModes] = useState<{ mode: 'quick' | 'premier'; gameMode: 'tournament' | 'challenge' } | null>(null);
+  const mode = resumedModes?.mode ?? urlMode;
+  const gameMode = resumedModes?.gameMode ?? urlGameMode;
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
@@ -199,10 +265,20 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   const [isSidebarOpenToggled, setIsSidebarOpenToggled] = useState(
     () => typeof window !== 'undefined' && window.innerWidth >= 1024
   );
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Set once the FINAL 'complete' session write lands (not the same moment the hook mints
+  // the draft's id) — DeckBuilder reads this session back from the store, so it must not
+  // see the id before that row actually exists.
+  const [completedSessionId, setCompletedSessionId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
   const [showBackGuard, setShowBackGuard] = useState(false);
+  // draft_resume D4: 'checking' until the one-time unfinished-session lookup resolves;
+  // then either the session to prompt about, or null (nothing to resume). Gates whether
+  // `startNewDraft` fires, so no draft is ever generated behind the player's back only to
+  // be thrown away when a resume was actually available.
+  const [resumeCandidate, setResumeCandidate] = useState<DraftSession | null | 'checking'>('checking');
+  const resumeDecidedRef = useRef(false);
+  const draftStartedRef = useRef(false);
 
   // D4: `?clock=fast` (dev-only — clockScaleFromQuery ignores it in production)
   // scales the pick clock down; passed straight into `armIntroClock(scale)`.
@@ -226,7 +302,75 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     expirePick,
     armIntroClock,
     receivingFromSeat,
+    startNewDraft,
+    resumeDraft,
+    humanPicks,
+    humanAutoPicks,
+    sessionId,
   } = useDraftEngine(allPlayers, playsDB, mode, gameMode);
+
+  // draft_resume D4: look up an unfinished session for this owner exactly once, before
+  // ever starting a fresh draft (no auto-resume — the sheet always gets first say). Gated
+  // on `useStorageReady()`: right after a reload the store's owner isn't applied yet
+  // (`GameStore.setOwnerId` is async, see `StorageProvider`), and every read filters by
+  // owner — checking too early always finds nothing, silently skipping the resume prompt.
+  const storageReady = useStorageReady();
+  useEffect(() => {
+    if (!storageReady) return;
+    let cancelled = false;
+    findUnfinishedDraft(getGameStore())
+      .then((session) => {
+        if (!cancelled) setResumeCandidate(session);
+      })
+      .catch((err) => {
+        console.error('Failed to check for an unfinished draft session:', err);
+        if (!cancelled) setResumeCandidate(null);
+      });
+    return () => { cancelled = true; };
+  }, [storageReady]);
+
+  // draft_resume D4/D5: once the resume check has resolved (found nothing, or the player
+  // decided), start a fresh draft. Resuming an unfinished session takes the other path
+  // (`handleResume`) and never falls through to this.
+  useEffect(() => {
+    if (allPlayers.length === 0) return;
+    if (resumeCandidate === 'checking' || resumeCandidate) return; // still checking, or the sheet is up
+    if (draftStartedRef.current) return;
+    draftStartedRef.current = true;
+    startNewDraft();
+  }, [allPlayers, resumeCandidate, startNewDraft]);
+
+  const handleResume = (session: DraftSession) => {
+    if (resumeDecidedRef.current) return;
+    resumeDecidedRef.current = true;
+    draftStartedRef.current = true;
+    setResumedModes({ mode: session.mode ?? 'premier', gameMode: session.gameMode ?? 'tournament' });
+    resumeDraft(session);
+    setResumeCandidate(null);
+  };
+
+  const handleAbandon = (session: DraftSession) => {
+    if (resumeDecidedRef.current) return;
+    resumeDecidedRef.current = true;
+    getGameStore()
+      .deleteDraftSession(session.id)
+      .catch((err) => console.error('Failed to delete abandoned draft session:', err))
+      .finally(() => setResumeCandidate(null));
+  };
+
+  // draft_resume D3: after every human pick, upsert the in-progress row (status
+  // 'drafting', no seats/pickLog — `replayDraft` rebuilds those from seed + picks). Skips
+  // the very first render of a fresh draft (zero picks yet — nothing worth persisting)
+  // and stops once the draft is complete (the final save below takes over that id).
+  useEffect(() => {
+    if (draftState === 'deckbuilding' || draftState === 'loading') return;
+    if (!sessionId || draftSeed === undefined) return;
+    const pickCount = Object.values(humanPicks).reduce((n, ids) => n + ids.length, 0);
+    if (pickCount === 0) return;
+    getGameStore()
+      .saveDraftSession(buildInProgressDraftSession(sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode))
+      .catch((err) => console.error('Failed to autosave draft session:', err));
+  }, [draftState, sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode]);
 
   // plan_mobile_native_feel D3: only while still picking — no partial draft is ever
   // persisted (the pod is only saved once, on the transition to 'deckbuilding' above),
@@ -271,15 +415,17 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     );
   }, [seats, draftState]);
 
-  // Persist the full draft pod + pick history when transitioning to deckbuilding
+  // Persist the full draft pod + pick history when transitioning to deckbuilding. Same
+  // `sessionId` the in-progress autosaves used (draft_resume D3), so this upsert replaces
+  // that 'drafting' row with the 'complete' one instead of leaving it behind.
   useEffect(() => {
-    if (draftState === 'deckbuilding' && seats.length > 0 && !sessionId && !savingSessionRef.current) {
+    if (draftState === 'deckbuilding' && seats.length > 0 && !completedSessionId && !savingSessionRef.current) {
       savingSessionRef.current = true;
-      const session = buildDraftSession(seats, pickLog, draftSeed, mode, gameMode);
+      const session = buildDraftSession(seats, pickLog, draftSeed, mode, gameMode, sessionId ?? undefined);
       getGameStore()
         .saveDraftSession(session)
         .then(() => {
-          setSessionId(session.id);
+          setCompletedSessionId(session.id);
           console.log(`Draft session saved: ${session.id} (${seats.length} seats, ${pickLog.length} pick records, ${seats.reduce((s, seat) => s + seat.drafted.length, 0)} total cards)`);
         })
         .catch((err) => {
@@ -291,7 +437,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
           }
         });
     }
-  }, [draftState, seats, sessionId, pickLog, draftSeed, mode, gameMode]);
+  }, [draftState, seats, completedSessionId, sessionId, pickLog, draftSeed, mode, gameMode]);
 
   useEffect(() => {
     import('@/engine/cards')
@@ -371,6 +517,11 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
   if (draftState === 'loading' || !humanSeat) {
     return (
       <div className="flex h-dvh-z items-center justify-center font-sans">
+        <DraftResumeSheet
+          session={resumeCandidate === 'checking' ? null : resumeCandidate}
+          onResume={handleResume}
+          onAbandon={handleAbandon}
+        />
         <div className="text-2xl font-semibold text-ink-subtle animate-pulse">Generating Draft Pod...</div>
       </div>
     );
@@ -380,7 +531,7 @@ export function DraftRoom({ mode = 'premier', gameMode = 'tournament', clockFast
     return (
       <>
         <SaveErrorBanner message={saveError} />
-        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={sessionId ?? undefined} podAverageIdentity={podAverageIdentity} gameMode={gameMode} />
+        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={completedSessionId ?? undefined} podAverageIdentity={podAverageIdentity} gameMode={gameMode} />
       </>
     );
   }

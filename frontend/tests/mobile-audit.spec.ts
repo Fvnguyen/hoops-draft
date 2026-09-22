@@ -360,6 +360,20 @@ test.describe('Mobile audit', () => {
     ).toBeVisible({ timeout: 20000 });
     await audit(page, testInfo, 'draft-pack');
 
+    // draft_resume T4: confirm one pick, reload (simulating a phone lock / crash), and
+    // audit the resume sheet that greets the player on the way back in.
+    await page.locator('[role="button"][aria-label^="Select "]').first().click();
+    await page.getByRole('button', { name: /^Confirm pick$/i }).click({ timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    await page.reload();
+    await dismissSplash(page);
+    await expect(page.locator('[data-draft-resume-sheet]')).toBeVisible({ timeout: 20000 });
+    await audit(page, testInfo, 'draft-resume-sheet');
+    // Abandon rather than resume: nothing after this needs the draft itself, and
+    // abandoning leaves no dangling 'drafting' session behind for a later test run.
+    await page.getByRole('button', { name: 'Abandon' }).click();
+    await expect(page.locator('[data-draft-resume-sheet]')).toHaveCount(0);
+
     await importFixture(page);
     await audit(page, testInfo, 'rosters');
 

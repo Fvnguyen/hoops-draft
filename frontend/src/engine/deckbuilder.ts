@@ -581,6 +581,14 @@ export interface DraftSession {
    *  (every session that predates the 82:0 Challenge). A roster can only start the
    *  mode it was drafted for. */
   gameMode?: 'tournament' | 'challenge';
+  /** draft_resume D3: `'drafting'` while the draft is in progress (saved after every
+   *  human pick with `seats: []`, `pickLog: []` and the fields below; the room is rebuilt
+   *  by `replayDraft`). Missing = `'complete'` (every session saved before this field). */
+  status?: 'drafting' | 'complete';
+  /** draft_resume D1: the human seats' card ids in pick order, keyed by seat id. */
+  humanPicks?: Record<string, string[]>;
+  /** draft_resume: 0-based pick indexes the pick clock took, per human seat. */
+  humanAutoPicks?: Record<string, number[]>;
 }
 
 // ── Position Eligibility ───────────────────────────────────────────────────

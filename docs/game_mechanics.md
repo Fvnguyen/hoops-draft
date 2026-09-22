@@ -92,6 +92,18 @@ Synergies and Plays act as modifiers on the engine. They can influence the follo
 - `possessionSwing`: Fixed bonus possessions added/removed from the team.
 - `and1Bonus`: Additive shift to the chance of drawing an and-1 on a made shot.
 
+## Draft — 2026-09-22
+
+A cube draft is a pure function of its seed: `generateCubePool` builds 24 packs (8 seats x
+3 rounds, 7 players + 1 play each) from one `Rng`, then each bot draws a fixed profile from
+the same `Rng` stream, so bots are fully deterministic once the seed is fixed. The record
+of a draft is therefore the seed plus the pick log — not a snapshot of packs or seats.
+`engine/draftReplay.ts`'s `replayDraft(seed, humanPicks, ...)` rebuilds the exact room
+(seats, pick log, whose turn it is) from just the seed and each human seat's card ids in
+pick order; this is what makes a draft resumable across a reload, crash or phone lock (the
+app autosaves the seed + picks after every human pick) and is the same substrate a
+same-room multiplayer draft stands on (two human seats instead of one).
+
 ## Roster identities (archetypes) — 2026-09-13
 
 The seven skill badges are the game's colours. At roster lock the player chooses up to
