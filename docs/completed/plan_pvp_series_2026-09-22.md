@@ -1,6 +1,6 @@
 # Plan: pvp_series
 
-File: `docs/plans/plan_pvp_series_2026-09-22.md`. Status: planned.
+File: `docs/plans/plan_pvp_series_2026-09-22.md`. Status: done 2026-09-22.
 Sequence: 17 in `docs/ROADMAP.md`. Depends on: `pvp_match`, `pvp_draft`.
 Files owned (under `frontend/src/` unless noted): `engine/playoffs.ts` (new), `engine/challengeAdvice.ts`
 (input adapter only), `app/api/match/[id]/advance/route.ts` (new), `app/playoffs/[id]/page.tsx` (new),

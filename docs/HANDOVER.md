@@ -2,10 +2,12 @@
 
 ## Current state
 
-Magic Ball is playable end to end in TWO modes, chosen on the start page before the draft:
+Magic Ball is playable end to end in THREE modes, chosen on the start page before the draft:
 draft (cube, 8 seats, 8-card packs) -> deck builder (depth chart, play assignments, identity)
--> either the 7-game "In-Season Tournament" against your draft table, or the 82:0 Challenge
-(82 games vs all 30 real NBA teams, flip-clock reveal, one trade, one grade — see below). The engine is
+-> the 7-game "In-Season Tournament" against your draft table, the 82:0 Challenge
+(82 games vs all 30 real NBA teams, flip-clock reveal, one trade, one grade — see below), or
+Playoffs: invite another player, draft the same cube live from opposite seats, then a
+best-of-seven with a sideboard at two wins (`/playoffs`, see pvp_series below). The engine is
 a pure, seeded TypeScript module (`frontend/src/engine/`) with a multi-channel shot model
 resolved per possession from the five on the floor (standardised, designed lineup
 aggregation; turnovers, offensive rebounds and a creator steer — engine_possession_model),
@@ -52,10 +54,11 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 - **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
+- **pvp_match** (2026-09-22, `plan_pvp_match_2026-09-22.md`): `public.matches` + security-definer RPCs (invite/respond/pick/autopick/lock/sideboard/seen/heartbeat/expire/void), version CAS, participant-only RLS, approved-only `user_directory`; Realtime with a polling fallback (`lib/matchChannel.ts`, `useMatch`), invites from the bell. Migrations `202609220001`/`202609220002` applied to production after rolled-back dry runs; `supabase/tests/202609220001_matches_test.sql` is the 17-case script to re-run against a branch DB.
 - **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
 - **render_and_engine_perf** (2026-09-22, `plan_render_and_engine_perf_2026-09-21.md`): 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms; `game.ts` 1500 -> 364 lines over five modules, `DeckBuilder.tsx` 1536 -> 686, `PlayerCard.tsx` 1450 -> 918; seasons reproducible from their seed; narration off the engine's rng; long-press preview on every deck-builder card. Engine checksum 219438687 is the behaviour baseline (`scripts/bench-engine.ts`).
 
-## pvp_series — built 2026-09-22, awaiting the owner playtest
+## pvp_series — done 2026-09-22
 
 Best-of-seven Playoffs: coin flip (2-2-1-1-1), server-simulated games, the 82:0 front
 office as a mid-series sideboard, results, rematch and the `/playoffs` list.
@@ -83,13 +86,22 @@ office as a mid-series sideboard, results, rematch and the `/playoffs` list.
 - Verified: `npm test` 726/726; `pvp-series.spec` green twice (~1.8 min); the full
   Playwright set 32/32; phone audit 0 findings across 14 screens; bench checksum
   219438687 and `balance-baseline` IDENTICAL.
-- Open: owner plays one full series including a sideboard trade, then `/roadmap done`.
-  The series and sideboard pages scroll on a phone (710px against a 385px viewport); they
-  are not in the audit's no-scroll list — owner call whether they should be.
-  `pvp-draft.spec`'s 24-round test flaked once in three full-suite runs (passed on rerun
-  and twice more in the suite); watch it.
+- Owner playtested PvP on the deployed app and closed both plans (2026-09-22) after the
+  six fixes below; they are testing the phone UI themselves and will open a plan if it
+  needs one. The plans' "owner plays a full series" and phone-audit criteria were waived
+  by that call, and the engine checksum was skipped on the fix commit (no engine change).
+- Owner feedback fixed in `e045f31`: `/playoffs` refreshes while open (an accepted invite
+  only appeared in the bell); the waiting state is a pill below the header, not a
+  full-screen overlay on every pick; a game's score is hidden until the viewer watched it
+  and the series score counts watched games only (the tournament's rule); the game page
+  has a "Series" exit and is a GAME route (in the page shell the play-by-play was squeezed
+  into a narrow box); informational notices can be dismissed.
+- Open: the series and sideboard pages scroll on a phone (710px against a 385px viewport)
+  and are not in the audit's no-scroll list. A match does not record its card-set version,
+  so a deploy landing mid-draft could make one client reject a legal pick and void the
+  match. `pvp-draft.spec`'s 24-round test flaked once in four full-suite runs.
 
-## pvp_draft — built 2026-09-22, awaiting the owner playtest
+## pvp_draft — done 2026-09-22
 
 Two humans draft one cube live from seats 0 and 4 (`usePvpDraft` over `useDraftEngine`'s
 `PvpDraftBinding`, `/playoffs/[id]/draft` and `/build`, `WaitingFor`). Migration
@@ -124,28 +136,6 @@ Plan: `docs/completed/plan_draft_resume_2026-09-22.md`, commits `b86dbe4` + the 
   checksum 219438687; `playwright test draft draft-resume visual smoke topnav` 20/20;
   `mobile-audit --project=phone-landscape` 0 findings over 9 screens.
 
-## pvp_match — done 2026-09-22
-
-Plan: `docs/completed/plan_pvp_match_2026-09-22.md`, commits `98cf50b`..the close-out. The
-shared record of a two-player Playoffs match; no draft or series screens yet (pvp_draft,
-pvp_series). `storage/matchTypes.ts` is the contract: `Match` mirrors the row, the comment
-block lists every RPC and its error codes.
-- Migration `202609220001_matches.sql` APPLIED to production 2026-09-22 after a dry run
-  (migration + the 16 cases of `supabase/tests/202609220001_matches_test.sql` in one
-  rolled-back transaction). Live: 9 RPCs, RLS on, in `supabase_realtime`, anon cannot invite
-  or read `user_directory`, helpers not client-callable.
-- Clients never write `matches`; games are written only by `POST /api/match/[id]/simulate`
-  (service role, `lib/matchSimulate.ts`, game numbers 1-based, `engine/playoffs.ts`).
-  Heartbeats do not bump `version`. The bell reads slim columns (`MATCH_SUMMARY_COLUMNS`).
-- Second E2E account `E2E_TEST_EMAIL_2` (`e2e_test_2`); `playoffs-invite.spec` deletes the
-  matches between the two E2E accounts before and after.
-- Verified: `npm test` 655/655, `playoffs-invite.spec` green twice, smoke 9/9,
-  `route-js-size` `/` 335 -> 336 KB gz, bench checksum 219438687.
-- `useMatchList` is one module-level store: however many components call it, a page load
-  makes one `match_expire` + one select (`tests/unit/match-list.test.ts`).
-- Open: no unit test of the simulate route handler itself; add it in pvp_series with the
-  advance route.
-
 ## How to run everything
 
 ```bash
@@ -171,7 +161,7 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). All three are done and merged into `main`, as are `draft_resume` (#14) and `pvp_match` (#15); `pvp_draft` (#16) is unblocked. Fixed the same day: opening a
+(#13). All three are done and merged into `main`, as is the whole PvP sequence: `draft_resume` (#14), `pvp_match` (#15), `pvp_draft` (#16) and `pvp_series` (#17). `mode_picker` (#10) and `android_twa` (#7) are the only rows left. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).

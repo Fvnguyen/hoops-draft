@@ -1,6 +1,6 @@
 # Plan: pvp_draft
 
-File: `docs/plans/plan_pvp_draft_2026-09-22.md`. Status: planned.
+File: `docs/plans/plan_pvp_draft_2026-09-22.md`. Status: done 2026-09-22.
 Sequence: 16 in `docs/ROADMAP.md`. Depends on: `draft_resume`, `pvp_match`.
 Files owned (under `frontend/src/` unless noted): `engine/draftReplay.ts`, `engine/balance.ts`
 (`PVP_PICK_SECONDS`, `PVP_AUTOPICK_PROFILE` only), `hooks/useDraftEngine.ts`, `hooks/usePvpDraft.ts` (new),
