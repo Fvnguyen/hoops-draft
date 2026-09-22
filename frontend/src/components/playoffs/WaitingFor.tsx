@@ -1,13 +1,17 @@
 'use client';
 
 /**
- * pvp_draft D2/D5: shown over the settled pack once the local seat has picked and the
- * opponent has not — "Waiting for <name>", the server clock, an online/offline indicator
- * off the opponent's heartbeat, and (D5) a "Finish the draft" button once the opponent has
- * been offline long enough that the present player may auto-pick the rest for them.
+ * pvp_draft D2/D5: the local seat has picked and the opponent has not.
+ *
+ * A slim pill, not a modal (the caller positions it: the draft room floats it over the
+ * settled pack, the build and series pages drop it in the flow): this is the NORMAL state for half of every pick
+ * (whoever picks first waits for the other), bots pass instantly, and the opponent still
+ * has their clock. A full-screen overlay on every pick made the room feel stuck (owner
+ * feedback 2026-09-22). It shows who we are waiting for, the shared clock, their
+ * online state, and (D5) "Finish the draft" once they have been offline long enough.
  */
 import { Wifi, WifiOff } from 'lucide-react';
-import { Button, Panel } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { PickTimerRing } from '@/components/PickTimerRing';
 
 export interface WaitingForProps {
@@ -25,43 +29,36 @@ export function WaitingFor({
 }: WaitingForProps) {
   const label = name ?? 'your opponent';
   return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-surface-scrim p-4 backdrop-blur-sm"
-      data-waiting-for
-    >
-      <Panel role="status" padding="none" variant="inverse" className="relative w-full max-w-sm shadow-2xl">
-        <div className="p-6 flex flex-col items-center gap-4 text-center">
-          <PickTimerRing pickDeadline={pickDeadline} pickNumber={1} size={56} />
-          <h2 className="text-xl font-bold uppercase text-ink-inverse">Waiting for {label}</h2>
-          <div className="flex items-center gap-1.5 text-sm font-medium">
-            {opponentOnline ? (
-              <span className="flex items-center gap-1.5 text-ink-inverse-muted">
-                <Wifi size={14} /> Online
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-warn">
-                <WifiOff size={14} /> Offline
-              </span>
-            )}
-          </div>
-          {canFinishForOpponent && (
-            <div className="flex flex-col items-center gap-2 pt-2">
-              <p className="text-ink-inverse-muted text-xs max-w-xs">
-                {label} has been offline a while. You can finish the draft for both of you — their
-                remaining picks will be taken by the clock, one at a time.
-              </p>
-              <Button
-                variant="primary"
-                size="md"
-                onClick={onFinishForOpponent}
-                disabled={finishingForOpponent}
-              >
-                {finishingForOpponent ? 'Finishing the draft…' : 'Finish the draft'}
-              </Button>
-            </div>
-          )}
-        </div>
-      </Panel>
+    <div className="flex justify-center px-4" data-waiting-for>
+      <div
+        role="status"
+        className="flex min-h-control flex-wrap items-center justify-center gap-3 rounded-full border border-line bg-surface-raised/95 px-4 py-1.5 shadow-lg backdrop-blur-sm"
+      >
+        <PickTimerRing pickDeadline={pickDeadline} pickNumber={1} size={28} />
+        <span className="text-sm font-bold uppercase tracking-wide text-ink">
+          Waiting for {label}
+        </span>
+        {opponentOnline ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-ink-muted" title="Online">
+            <Wifi size={14} aria-hidden="true" /> Online
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-xs font-medium text-warn" title="Offline">
+            <WifiOff size={14} aria-hidden="true" /> Offline
+          </span>
+        )}
+        {canFinishForOpponent && (
+          <Button
+            variant="primary"
+            onClick={onFinishForOpponent}
+            disabled={finishingForOpponent}
+            className="px-3 py-1 text-xs"
+            title={`${label} has been offline a while — their remaining picks will be taken by the clock, one at a time.`}
+          >
+            {finishingForOpponent ? 'Finishing…' : 'Finish the draft'}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

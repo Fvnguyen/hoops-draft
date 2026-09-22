@@ -62,7 +62,7 @@ function NoticesList({ notices, dismissNotice }: { notices: Notice[]; dismissNot
         <div key={notice.id} className="min-h-control px-3 py-2">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-bold text-ink">{notice.title}</p>
-            {notice.kind === 'season-complete' && (
+            {notice.dismissible && (
               <Button
                 variant="ghost"
                 onClick={() => dismissNotice(notice.id)}

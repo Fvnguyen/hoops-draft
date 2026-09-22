@@ -34,9 +34,12 @@ export interface Notice {
   date: string;
   title: string;
   body: string;
-  /** pvp_match D4: Accept/Decline on an invite notice. Only `match-invite` sets these
-   *  today; every other kind keeps the plain Dismiss button TopNav already renders. */
+  /** pvp_match D4: Accept/Decline on an invite notice, "Open"/"See results" on the others. */
   actions?: NoticeAction[];
+  /** Shows the Dismiss button. A notice the user can act away (an invite has Accept and
+   *  Decline; "Your move" disappears when they move) is not dismissible; a purely
+   *  informational one (season complete, series complete) is. */
+  dismissible?: boolean;
 }
 
 /** pvp_match D4: which side I'm on for a match, or null if I'm not signed in / not a
@@ -96,6 +99,7 @@ export function useNotices(): {
       .map((s) => ({
         id: s.id,
         kind: 'season-complete' as const,
+        dismissible: true,
         date: s.timestamp,
         title: 'Season complete',
         body: `Your season finished — check the standings for the final record.`,
@@ -189,6 +193,7 @@ export function useNotices(): {
           built.push({
             id: doneId,
             kind: 'match-done',
+            dismissible: true,
             date: match.updated_at,
             title: won ? 'Series won' : 'Series complete',
             body: won ? 'You won the series. Check the results.' : 'Your playoffs series is over.',

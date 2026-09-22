@@ -19,8 +19,14 @@ export function SeriesStrip({ match, me, opponentName }: SeriesStripProps) {
   const flipWinner = coinFlip(match.seed);
   const sideboardHappened = Boolean(match.sideboard.host && match.sideboard.guest);
   const state = seriesState(match.games, sideboardHappened);
-  const myWins = me === 'host' ? state.hostWins : state.guestWins;
-  const oppWins = me === 'host' ? state.guestWins : state.hostWins;
+  // A game the viewer has not watched yet must not show its score anywhere — same rule as
+  // the tournament, where a result only exists once you have watched it (owner,
+  // 2026-09-22). The series score counts watched games only; the real `state` still drives
+  // what happens next (which game is up, the sideboard, who won).
+  const mySeenGame = (me === 'host' ? match.host_seen?.game : match.guest_seen?.game) ?? 0;
+  const seenState = seriesState(match.games.filter((g) => g.game <= mySeenGame), sideboardHappened);
+  const myWins = me === 'host' ? seenState.hostWins : seenState.guestWins;
+  const oppWins = me === 'host' ? seenState.guestWins : seenState.hostWins;
   const opponentLabel = opponentName ?? 'your opponent';
   const gamesById = new Map<number, MatchGame>(match.games.map((g) => [g.game, g]));
 
@@ -62,13 +68,17 @@ export function SeriesStrip({ match, me, opponentName }: SeriesStripProps) {
                   href={`/playoffs/${match.id}/game/${n}`}
                   className="flex min-h-control w-full flex-col items-center justify-center gap-0.5 text-xs font-bold text-ink hover:text-accent"
                 >
-                  <span className="font-mono">
-                    {me === 'host' ? game.score.host : game.score.guest}
-                    {'–'}
-                    {me === 'host' ? game.score.guest : game.score.host}
-                  </span>
+                  {n <= mySeenGame ? (
+                    <span className="font-mono">
+                      {me === 'host' ? game.score.host : game.score.guest}
+                      {'–'}
+                      {me === 'host' ? game.score.guest : game.score.host}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-ink-subtle">?–?</span>
+                  )}
                   <span className="flex items-center gap-1 text-xs uppercase tracking-wide text-accent">
-                    <Play size={10} /> Watch
+                    <Play size={10} /> {n <= mySeenGame ? 'Rewatch' : 'Watch'}
                   </span>
                 </Link>
               ) : past || state.over ? (

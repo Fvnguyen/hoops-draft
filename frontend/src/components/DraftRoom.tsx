@@ -647,9 +647,11 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         />
       )}
 
-      {/* pvp_draft D2: the local seat has picked, the opponent hasn't — shown over the
-          settled pack, same slot the solo RoundSummary overlay uses. */}
+      {/* pvp_draft D2: the local seat has picked, the opponent hasn't. A floating pill over
+          the settled pack, never a blocking overlay: waiting is the normal state for
+          whoever picks first, and the pack behind it stays readable (owner, 2026-09-22). */}
       {isPvp && pvpRoom.phase === 'waiting' && (
+        <div className="pointer-events-none absolute inset-x-0 top-[4.5rem] z-30 [&>*]:pointer-events-auto">
         <WaitingFor
           name={pvpRoom.opponentName}
           pickDeadline={pickDeadline}
@@ -658,6 +660,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
           finishingForOpponent={pvpRoom.finishingForOpponent}
           onFinishForOpponent={pvpRoom.finishForOpponent}
         />
+        </div>
       )}
 
       {/* Main Draft Area */}

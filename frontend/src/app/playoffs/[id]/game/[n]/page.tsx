@@ -11,12 +11,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { ChevronLeft } from 'lucide-react';
+import { Button } from '@/components/ui';
 import { useMatch } from '@/hooks/useMatch';
 import { GameView } from '@/components/GameView';
 import { theaterForMatchGame } from '@/lib/matchSimulate';
 import { MATCH_SEAT_ID, type DirectoryUser } from '@/storage/matchTypes';
 import type { GameTheater } from '@/engine/gameTypes';
-import type { MatchSide } from '@/engine/playoffs';
+import { SERIES_MAX_GAMES, type MatchSide } from '@/engine/playoffs';
 
 export default function PlayoffsGamePage() {
   const params = useParams<{ id: string; n: string }>();
@@ -79,21 +81,29 @@ export default function PlayoffsGamePage() {
 
   if (!match || !me || !built) {
     return (
-      <main className="mx-auto max-w-5xl px-4 pb-16 pt-nav">
+      <div className="min-h-dvh-z flex items-center justify-center">
         <p className="text-sm text-ink-muted">Loading...</p>
-      </main>
+      </div>
     );
   }
 
   const opponentSide: MatchSide = me === 'host' ? 'guest' : 'host';
   const hideOpponentDetails = built.home === opponentSide ? 'home' : 'away';
 
+  // Same shell as the tournament's game view (`SeasonView`): a full-height column with the
+  // exit control above it, not a page-width `main` — inside `max-w-5xl` with the nav bar's
+  // padding the play-by-play was squeezed into a narrow box (owner, 2026-09-22).
   return (
-    <main className="mx-auto max-w-5xl px-4 pb-16 pt-nav">
-      <p className="mb-1 text-xs font-bold uppercase tracking-[0.3em] text-ink-subtle">
-        Playoffs · Game {gameNum}
-      </p>
-      <div className="h-[calc(100dvh-160px)] min-h-[480px]">
+    <div className="min-h-dvh-z p-4 flex flex-col">
+      <div className="mb-3 flex items-center gap-3">
+        <Button onClick={() => router.push(`/playoffs/${matchId}`)} variant="secondary" icon={<ChevronLeft className="w-4 h-4" />}>
+          Series
+        </Button>
+        <span className="text-sm font-bold uppercase tracking-wider text-ink-subtle">
+          Game {gameNum} of {SERIES_MAX_GAMES}
+        </span>
+      </div>
+      <div className="flex-1 min-h-0">
         <GameView
           game={built.theater}
           context={{ userSeatId: MATCH_SEAT_ID[me] }}
@@ -101,6 +111,6 @@ export default function PlayoffsGamePage() {
           hideOpponentDetails={hideOpponentDetails}
         />
       </div>
-    </main>
+    </div>
   );
 }

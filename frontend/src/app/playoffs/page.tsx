@@ -23,6 +23,9 @@ import {
 import { Button, Panel } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
+/** How often the open list re-reads the caller's matches (see the effect below). */
+const PLAYOFFS_LIST_REFRESH_MS = 10_000;
+
 const STATUS_LABEL: Record<string, string> = {
   drafting: 'Drafting',
   building: 'Building roster',
@@ -71,6 +74,22 @@ export default function PlayoffsPage() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  // The list is the way into a match, so it has to notice an opponent accepting an invite
+  // (or finishing their pick) while this page is open: refresh on a timer and whenever the
+  // tab is focused again. Without this an accepted invite only showed up in the bell until
+  // the page was reloaded (owner, 2026-09-22).
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') void refetch(); };
+    const timer = window.setInterval(tick, PLAYOFFS_LIST_REFRESH_MS);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [refetch]);
 
   const nameOf = useCallback((id: string) => names.get(id) ?? 'your opponent', [names]);
 

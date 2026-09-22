@@ -13,10 +13,11 @@ export function isGameRoute(pathname: string): boolean {
     || pathname.startsWith('/challenge') || PLAYOFFS_ROOM.test(pathname);
 }
 
-/** pvp_draft: the Playoffs draft room and deck builder are the solo screens in PvP form.
- *  Without this the fixed bar sat over the deck builder's KPI band and ate "Lock roster".
- *  `/playoffs/new` and the series page `/playoffs/<id>` stay ordinary pages. */
-const PLAYOFFS_ROOM = /^\/playoffs\/[^/]+\/(draft|build)(\/|$)/;
+/** pvp_draft/pvp_series: the Playoffs draft room, deck builder and game page are the solo
+ *  screens in PvP form. Without this the fixed bar sat over the deck builder's KPI band and
+ *  ate "Lock roster", and the game page rendered inside a page shell instead of the
+ *  tournament's full-height one. `/playoffs/new` and the series page stay ordinary pages. */
+const PLAYOFFS_ROOM = /^\/playoffs\/[^/]+\/(draft|build|game)(\/|$)/;
 
 /** Full-bleed dark shells with no room for an opaque bar: the home hero and every (auth)
  *  page (login/signup/pending share AuthLayout's dark shell). The 82:0 Challenge is NOT
