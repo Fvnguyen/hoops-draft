@@ -150,7 +150,9 @@ of stages 1-2 and needs its own pass, not an ad-hoc fix, when an earlier stage's
   script. `/api/game-logs` (dev-only) writes to `../data/game_logs` relative to cwd.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
   player cards when the pool has 264+ players; it has 448.
-- CI runs Node 24 so its npm matches the npm 11 that writes `package-lock.json` here; on
-  npm 10 `npm ci` fails with `Missing: @emnapi/runtime from lock file`. Keep the two aligned.
+- Write `frontend/package-lock.json` with npm >= 11.19 (`npx npm@11.19.0 install ...` if the
+  global npm is older): npm 11.6.2 drops the wasm32 optional deps' transitive nodes
+  (`@emnapi/runtime`, `@emnapi/core`) and every other npm's `npm ci` then fails with
+  `Missing: ... from lock file`, which is what kept CI red from 2026-09-13 to 2026-09-22.
 - Not junk: `/test-ui` (fixture for `visual`/`smoke`), `/theater-preview`, `/challenge/preview`,
   `/challenge/preview-results`, `/debug`, `/deckbuilder-test`, `/data` are real pages.

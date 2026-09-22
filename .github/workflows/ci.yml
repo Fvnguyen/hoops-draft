@@ -12,10 +12,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Node 24 = npm 11, the dev machine's npm. Node 22's npm 10 rejects this lockfile
-          # ("Missing: @emnapi/runtime from lock file": npm 11 omits the wasm32 optional
-          # deps' transitive nodes that npm 10 insists on). Every CI run failed on that from
-          # 2026-09-13 to 2026-09-22.
+          # Node 24 (npm 11.19) matches the dev machine's Node major. Every run from
+          # 2026-09-13 to 2026-09-22 failed at `npm ci` with "Missing: @emnapi/runtime from
+          # lock file": npm 11.6.2 wrote frontend/package-lock.json without the wasm32
+          # optional deps' transitive nodes and its own `ci` never noticed. Write the lock
+          # with npm >= 11.19 (see AGENTS.md gotchas).
           node-version: 24
           cache: npm
           cache-dependency-path: |
