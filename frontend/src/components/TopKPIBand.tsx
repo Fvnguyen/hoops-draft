@@ -35,6 +35,10 @@ export interface KpiBandActions {
   /** plan_challenge_mode T7: hides "Save & play season" entirely — the front office
    *  embeds this band with its own "Spin the second half" CTA, which supersedes it. */
   hideSaveAndPlay?: boolean;
+  /** pvp_draft T4: overrides the Save icon button's accessible label — e.g. "Lock roster"
+   *  when saving commits an unchangeable match roster instead of an ordinary save.
+   *  Defaults to "Save". */
+  saveLabel?: string;
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'LOCKED', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -313,7 +317,7 @@ export function TopKPIBand({
             <Trash2 size={20} aria-hidden="true" />
           </IconButton>
           <IconButton
-            label={actions.canSave ? 'Save' : `Save — ${actions.disabledReason}`}
+            label={actions.canSave ? (actions.saveLabel ?? 'Save') : `${actions.saveLabel ?? 'Save'} — ${actions.disabledReason}`}
             variant="raised"
             disabled={!actions.canSave}
             onClick={actions.onSave}

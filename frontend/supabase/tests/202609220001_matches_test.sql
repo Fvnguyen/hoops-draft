@@ -243,10 +243,11 @@ begin
   v_match := public.match_respond(v_match_id, v_match.version, true);
   call pg_temp.deauth();
 
-  if v_match.status <> 'drafting' or v_match.pick_deadline is null then
-    raise exception 'FAIL: expected drafting with a pick_deadline, got status=% deadline=%', v_match.status, v_match.pick_deadline;
+  -- 202609220002: no clock until someone picks (the host may not have the room open yet).
+  if v_match.status <> 'drafting' or v_match.pick_deadline is not null then
+    raise exception 'FAIL: expected drafting with no pick_deadline, got status=% deadline=%', v_match.status, v_match.pick_deadline;
   end if;
-  raise notice 'PASS: accept moves match to drafting';
+  raise notice 'PASS: accept moves match to drafting, clock not started';
 end;
 $$;
 
@@ -267,6 +268,10 @@ begin
   v_match := public.match_pick(v_match_id, v_match.version, 0, 'card_h0');
   if jsonb_array_length(v_match.host_picks) <> 1 then
     raise exception 'FAIL: host pick 0 did not land';
+  end if;
+  -- 202609220002: the first pick of pick 1 starts the other side's clock.
+  if v_match.pick_deadline is null then
+    raise exception 'FAIL: the first pick did not start the clock';
   end if;
 
   -- wrong index (must be 1, tried 0 again)
@@ -584,6 +589,52 @@ begin
   end if;
 
   raise notice 'PASS: an unapproved caller cannot read user_directory';
+end;
+$$;
+
+-- ── match_void (202609220002): participant only, drafting/building only ─────
+
+do $$
+declare
+  v_host uuid := (select id from test_ids where key = 'host');
+  v_guest uuid := (select id from test_ids where key = 'guest');
+  v_bystander uuid := (select id from test_ids where key = 'bystander');
+  v_match public.matches;
+  v_failed boolean := false;
+begin
+  call pg_temp.impersonate(v_host);
+  v_match := public.match_invite(v_bystander);
+  call pg_temp.deauth();
+  call pg_temp.impersonate(v_bystander);
+  v_match := public.match_respond(v_match.id, v_match.version, true);
+  call pg_temp.deauth();
+
+  call pg_temp.impersonate(v_guest);
+  begin
+    perform public.match_void(v_match.id, v_match.version, 'not mine');
+  exception when others then
+    if sqlerrm like 'not_participant:%' then v_failed := true;
+    else raise exception 'FAIL: expected not_participant voiding someone else''s match, got %', sqlerrm; end if;
+  end;
+  call pg_temp.deauth();
+  if not v_failed then raise exception 'FAIL: a non-participant voided a match'; end if;
+
+  call pg_temp.impersonate(v_host);
+  v_match := public.match_void(v_match.id, v_match.version, 'replay: seat human-4 pick 3 not in its pack');
+  if v_match.status <> 'void' or v_match.void_reason not like 'replay:%' then
+    raise exception 'FAIL: expected void with a reason, got status=% reason=%', v_match.status, v_match.void_reason;
+  end if;
+  v_failed := false;
+  begin
+    perform public.match_void(v_match.id, v_match.version, 'again');
+  exception when others then
+    if sqlerrm like 'bad_status:%' then v_failed := true;
+    else raise exception 'FAIL: expected bad_status voiding twice, got %', sqlerrm; end if;
+  end;
+  call pg_temp.deauth();
+  if not v_failed then raise exception 'FAIL: a void match was voided again'; end if;
+
+  raise notice 'PASS: match_void is participant-only, records the reason, and is final';
 end;
 $$;
 

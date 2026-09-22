@@ -54,6 +54,24 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
 - **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
 
+## pvp_draft — built 2026-09-22, awaiting the owner playtest
+
+Two humans draft one cube live from seats 0 and 4 (`usePvpDraft` over `useDraftEngine`'s
+`PvpDraftBinding`, `/playoffs/[id]/draft` and `/build`, `WaitingFor`). Migration
+`202609220002_match_void.sql` APPLIED to production (dry run 17/17): `match_void`,
+`void_reason`, and no pick clock until the first pick (accepting used to start it, so an
+absent host's pick 1 was auto-picked on arrival). "Finish the draft" only after 5 min
+offline, and it stops when the opponent's heartbeat returns.
+- Fixed on the way: Realtime joined before the session loaded, so RLS silently dropped
+  every event (`loadMatchClient` awaits `getSession`); the heartbeat called `.catch` on a
+  Postgrest thenable; the nav bar covered "Lock roster" (PvP draft/build are game routes).
+- Verified: `npm test` 670/670; `pvp-draft.spec` 2/2 (24 rounds + build + lock -> series,
+  offline finish) plus draft/resume/visual/smoke/topnav/invite 24/24; phone audit 0 over 11.
+- Open: owner plays one full PvP draft on phone + desktop, then `/roadmap done pvp_draft`.
+  Both clients must run the same card set: a replay on different `cards.json` versions
+  would reject a legal pick and void the match (store the version on the row if deploys
+  ever straddle a live draft).
+
 ## draft_resume — done 2026-09-22
 
 Plan: `docs/completed/plan_draft_resume_2026-09-22.md`, commits `b86dbe4` + the close-out.

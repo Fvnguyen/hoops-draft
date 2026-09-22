@@ -25,6 +25,13 @@ export const MATCH_OFFLINE_MS = 45_000;
 /** D5: fall back to polling if the Realtime channel is not SUBSCRIBED within this. */
 export const MATCH_SUBSCRIBE_TIMEOUT_MS = 5_000;
 export const MATCH_POLL_MS = 3_000;
+/** pvp_draft D4: the server accepts `match_autopick` for an absent seat this long after
+ *  `pick_deadline` (SQL mirrors it). */
+export const PVP_AUTOPICK_GRACE_MS = 10_000;
+/** pvp_draft D5: an opponent offline (no heartbeat) this long lets the present player
+ *  press "Finish the draft"; from then on their client auto-picks for the absent seat at
+ *  each deadline + grace. Before that the room waits. */
+export const PVP_OFFLINE_FINISH_MS = 5 * 60_000;
 
 export type MatchStatus =
   | 'invited'   // host invited guest, waiting on match_respond
@@ -90,6 +97,8 @@ export interface Match {
   host_seen_at: string | null;
   guest_seen_at: string | null;
   winner_id: string | null;
+  /** pvp_draft D3: why the match was voided (a replay found an illegal pick). */
+  void_reason: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -112,13 +121,14 @@ export interface DirectoryUser {
  *     caller = host. guest must be approved and != caller. One `invited` row per pair
  *     (either direction) at a time. seed = DB-drawn non-negative int. status 'invited'.
  *   match_respond(p_id text, p_version int, p_accept boolean) -> matches
- *     caller = guest, status 'invited'. accept -> 'drafting' and pick_deadline = now()+45s;
- *     else 'declined'.
+ *     caller = guest, status 'invited'. accept -> 'drafting' with pick_deadline NULL (no
+ *     clock until someone picks; 202609220002); else 'declined'.
  *   match_pick(p_id text, p_version int, p_index int, p_card_id text, p_auto boolean default false) -> matches
  *     caller = either side, status 'drafting'. p_index must equal len(my picks) and
  *     len(my picks) <= len(their picks) (nobody runs more than one pick ahead). Appends;
  *     p_auto appends p_index to my autopicks. When both sides have picked p_index,
- *     pick_deadline = now()+45s. When both have 24 picks -> 'building', pick_deadline null.
+ *     pick_deadline = now()+45s; when I am the first to pick p_index and there is no
+ *     deadline yet (pick 1), pick_deadline = now()+45s for the other side (202609220002). When both have 24 picks -> 'building', pick_deadline null.
  *   match_autopick(p_id text, p_version int, p_seat text, p_index int, p_card_id text) -> matches
  *     caller = the OTHER side of p_seat, status 'drafting', now() > pick_deadline + 10s,
  *     p_index = len(that seat's picks). Appends the card and the index to that seat's
@@ -131,6 +141,9 @@ export interface DirectoryUser {
  *     participant, any non-terminal status. Sets my *_seen = {game, at: now()}.
  *   match_heartbeat(p_id text) -> void
  *     participant. Sets my *_seen_at = now(). No version check, no version bump.
+ *   match_void(p_id text, p_version int, p_reason text) -> matches   [202609220002_match_void.sql]
+ *     participant, status 'drafting' or 'building' -> 'void', void_reason = p_reason
+ *     (truncated to 500 chars). pvp_draft D3: called when a replay rejects a pick.
  *   match_expire(p_id text default null) -> int
  *     D8 over one match (or every match of the caller when null): 'invited' older than 7
  *     days -> 'expired'; a non-terminal status whose awaited player has been idle for 7
@@ -162,7 +175,8 @@ export type MatchAction =
   | { type: 'autopick'; seat: MatchSide; index: number; cardId: string }
   | { type: 'lockRoster'; roster: SavedRoster }
   | { type: 'sideboard'; roster: SavedRoster; trade?: ChallengeTrade }
-  | { type: 'seen'; game: number };
+  | { type: 'seen'; game: number }
+  | { type: 'void'; reason: string };
 
 /** D5: how the match row is kept fresh. */
 export type MatchTransport = 'connecting' | 'realtime' | 'polling';
@@ -189,7 +203,7 @@ export type MatchSummary = Omit<Match, 'host_roster' | 'guest_roster' | 'sideboa
 export const MATCH_SUMMARY_COLUMNS =
   'id,seed,host_id,guest_id,status,host_picks,guest_picks,host_autopicks,guest_autopicks,' +
   'pick_deadline,host_locked_at,guest_locked_at,games,host_seen,guest_seen,host_seen_at,' +
-  'guest_seen_at,winner_id,version,created_at,updated_at';
+  'guest_seen_at,winner_id,void_reason,version,created_at,updated_at';
 
 export interface UseMatchListResult {
   matches: MatchSummary[];

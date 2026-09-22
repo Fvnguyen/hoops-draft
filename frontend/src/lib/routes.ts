@@ -10,8 +10,13 @@
  *  the right so their controls clear the fixed gear. */
 export function isGameRoute(pathname: string): boolean {
   return pathname.startsWith('/draft') || pathname.startsWith('/roster/') || pathname.startsWith('/season')
-    || pathname.startsWith('/challenge');
+    || pathname.startsWith('/challenge') || PLAYOFFS_ROOM.test(pathname);
 }
+
+/** pvp_draft: the Playoffs draft room and deck builder are the solo screens in PvP form.
+ *  Without this the fixed bar sat over the deck builder's KPI band and ate "Lock roster".
+ *  `/playoffs/new` and the series page `/playoffs/<id>` stay ordinary pages. */
+const PLAYOFFS_ROOM = /^\/playoffs\/[^/]+\/(draft|build)(\/|$)/;
 
 /** Full-bleed dark shells with no room for an opaque bar: the home hero and every (auth)
  *  page (login/signup/pending share AuthLayout's dark shell). The 82:0 Challenge is NOT

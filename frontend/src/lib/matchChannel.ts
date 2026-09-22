@@ -62,11 +62,25 @@ let clientPromise: Promise<MatchClient> | null = null;
 
 /** Memoized lazy Supabase browser client, shared by every `useMatch`/`useMatchList` call
  *  on the page. A failed import/construction (offline, a chunk 404 after a deploy) is not
- *  cached, so the next call tries again instead of staying dead for the session. */
+ *  cached, so the next call tries again instead of staying dead for the session.
+ *
+ * pvp_draft: `createBrowserClient` (`@supabase/ssr`) reads the session from cookies
+ * asynchronously — the client object exists before that resolves. `openMatchChannel`
+ * subscribes to the row's `postgres_changes` channel as soon as this promise resolves; a
+ * channel joined before the client's own auth is attached connects unauthenticated, and
+ * RLS then silently drops every event for a private row like `matches` FOREVER (the
+ * subscription never re-authenticates on its own) — the symptom is a room that looks
+ * "SUBSCRIBED" but never hears the other side's picks. Awaiting `getSession()` here, once,
+ * before the client is handed out guarantees the realtime socket's first join already
+ * carries a token. */
 export function loadMatchClient(): Promise<MatchClient> {
   if (!clientPromise) {
     clientPromise = import('@/lib/supabase/browser')
-      .then(({ createSupabaseBrowserClient }) => createSupabaseBrowserClient() as unknown as MatchClient)
+      .then(async ({ createSupabaseBrowserClient }) => {
+        const client = createSupabaseBrowserClient();
+        await client.auth.getSession();
+        return client as unknown as MatchClient;
+      })
       .catch((error: unknown) => {
         clientPromise = null;
         throw error;
@@ -227,6 +241,8 @@ export function rpcForAction(id: string, version: number, action: MatchAction): 
       };
     case 'seen':
       return { fn: 'match_seen', args: { p_id: id, p_version: version, p_game: action.game } };
+    case 'void':
+      return { fn: 'match_void', args: { p_id: id, p_version: version, p_reason: action.reason } };
     default: {
       const exhaustive: never = action;
       throw new Error(`Unknown match action: ${JSON.stringify(exhaustive)}`);
@@ -270,7 +286,13 @@ export async function sendMatchAction(
  *  function; failures are swallowed (heartbeat is informational — see D6). */
 export function startHeartbeat(client: MatchRpcClient, id: string, intervalMs: number): () => void {
   const beat = () => {
-    void client.rpc('match_heartbeat', { p_id: id }).catch(() => {
+    // pvp_draft: the real supabase-js client's `.rpc()` returns a `PostgrestFilterBuilder`
+    // — thenable (has `.then`) but NOT a real Promise, so it has no `.catch`. `void x.catch`
+    // threw (`TypeError: ... .catch is not a function`) the moment this ever actually ran
+    // against a live client (only exercised once a per-match page — pvp_draft's room —
+    // mounted `useMatch`; nothing before this plan did). `Promise.resolve(...)` normalizes
+    // it to a real Promise first.
+    void Promise.resolve(client.rpc('match_heartbeat', { p_id: id })).catch(() => {
       // best-effort; opponentOnline just stays stale until the next beat succeeds
     });
   };

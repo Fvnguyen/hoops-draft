@@ -33,6 +33,10 @@ describe('canShowWhatsNew', () => {
 describe('route classification', () => {
   it('treats the 82:0 run as a game route, so it keeps the gear menu and loses the bar', () => {
     expect(isGameRoute('/challenge/roster_1')).toBe(true);
+    expect(isGameRoute('/playoffs/match_abc/draft')).toBe(true);
+    expect(isGameRoute('/playoffs/match_abc/build')).toBe(true);
+    expect(isGameRoute('/playoffs/new')).toBe(false);
+    expect(isGameRoute('/playoffs/match_abc')).toBe(false);
     expect(isBareRoute('/challenge/roster_1')).toBe(false);
   });
 

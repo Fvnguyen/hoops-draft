@@ -8,6 +8,7 @@
 
 import type { Rarity } from './types';
 import type { DepthColumn } from './positions';
+import type { BotProfile } from './draft';
 
 /**
  * Bumped whenever a change to this file or game.ts/playbook.ts/archetypes.ts would
@@ -403,6 +404,20 @@ export const RARITY_CUTOFFS: { min: number; rarity: Rarity }[] = [
 export const CUBE_SEATS = 8;
 export const CUBE_PACKS = 3;
 export const CUBE_PLAYER_CARDS_PER_PACK = 7; // 7 players + 1 play per pack (8 cards total)
+
+/** pvp_draft D4: seconds each human has per pick in a Playoffs draft. The server sets
+ *  `pick_deadline = now() + this` (SQL mirrors the number; change both together). */
+export const PVP_PICK_SECONDS = 45;
+/** pvp_draft D4: who picks when a Playoffs pick clock runs out, for either seat. Fixed and
+ *  neutral (no plan pull, mid synergy awareness) so both clients compute the same card:
+ *  `getBotPick`'s noise is a hash of `noiseSeed` + card id, never an rng draw. */
+export const PVP_AUTOPICK_PROFILE: BotProfile = {
+  id: 'pvp-clock',
+  name: 'The Clock',
+  noiseSeed: 424242,
+  targetArchetypeId: '',
+  synergyAwareness: 0.75,
+};
 
 /** Bot pick noise: score *= 0.85 .. 1.15 (±15%). */
 export const BOT_NOISE_PCT = 0.15;

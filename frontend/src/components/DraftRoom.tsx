@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useRouter } from 'next/navigation';
 import { PlayerCard, PlayCard, Player, Play } from './PlayerCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Volume2, VolumeX } from 'lucide-react';
 import { useDraftEngine } from '../hooks/useDraftEngine';
+import { usePvpDraft } from '../hooks/usePvpDraft';
+import { WaitingFor } from './playoffs/WaitingFor';
 import { DeckBuilder } from './DeckBuilder';
 import { PackOpener } from './PackOpener';
 import { isCoarsePointer } from './useHoverPreview';
@@ -29,7 +32,7 @@ import type { DraftSeat } from '../engine/draft';
 import type { DraftPickRecord } from '../engine/deckbuilder';
 import { isSfxEnabled, setSfxEnabled } from '../audio/sfx';
 import { clockScaleFromQuery } from '../lib/draftTimer';
-import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from '../engine/balance';
+import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK, CUBE_SEATS } from '../engine/balance';
 import { useAndroidBackGuard } from '../hooks/useAndroidBackGuard';
 import { BackGuardSheet } from './BackGuardSheet';
 import { headshotThumb } from '@/lib/headshotThumb';
@@ -107,24 +110,33 @@ import { PLAY_CATALOG as playsDB } from '../engine/plays';
 // a separate id->card map, since every picked card already lives there.
 // Neighbour seats' picks are prioritized to the front of the ticker. A
 // human pick shows up too, but only when the clock made it (D5).
-function resolvePickLabel(record: DraftPickRecord, seats: DraftSeat[]): string | null {
+function resolvePickLabel(record: DraftPickRecord, seats: DraftSeat[], localSeatId: string): string | null {
   const seat = seats.find(s => s.id === record.seatId);
   if (!seat) return null;
   const card = seat.drafted.find(c => c.id === record.pickedCardId);
   if (!card) return null;
   const cardName = card.type === 'Play' ? card.name : card.player.name;
   if (record.autoPicked) {
-    return `Clock took ${cardName} for you`;
+    return record.seatId === localSeatId ? `Clock took ${cardName} for you` : `Clock took ${cardName}`;
   }
   const botName = seat.botProfile?.name || 'Bot';
   return `${botName} took ${cardName}`;
 }
 
-function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: DraftSeat[] }) {
-  const neighbourIds = new Set([seats[7]?.id, seats[1]?.id].filter(Boolean));
+function BotPickTicker({ pickLog, seats, localSeatId, leftIndex, rightIndex }: {
+  pickLog: DraftPickRecord[];
+  seats: DraftSeat[];
+  /** HUMAN_SEAT_ID for solo; the local `useDraftEngine` humanSeat.id for PvP. */
+  localSeatId: string;
+  leftIndex: number;
+  rightIndex: number;
+}) {
+  const neighbourIds = new Set([seats[leftIndex]?.id, seats[rightIndex]?.id].filter(Boolean));
 
   const items = pickLog
-    .filter(r => r.seatId !== HUMAN_SEAT_ID || r.autoPicked)
+    // pvp_draft D6: never surface the OTHER human seat's picks — only our own (only when
+    // the clock took it) and bot picks, exactly like the solo ticker.
+    .filter(r => (r.seatId === localSeatId ? r.autoPicked : !r.seatId.startsWith('human-')))
     .slice(-16)
     .sort((a, b) => {
       const aFirst = neighbourIds.has(a.seatId) ? 0 : 1;
@@ -132,7 +144,7 @@ function BotPickTicker({ pickLog, seats }: { pickLog: DraftPickRecord[]; seats: 
       if (aFirst !== bFirst) return aFirst - bFirst;
       return b.overallPick - a.overallPick;
     })
-    .map(r => resolvePickLabel(r, seats))
+    .map(r => resolvePickLabel(r, seats, localSeatId))
     .filter((s): s is string => !!s)
     .slice(0, 6);
 
@@ -248,14 +260,24 @@ export interface DraftRoomProps {
    *  can be exercised quickly in tests/manual QA. Converted to a multiplier
    *  via `clockScaleFromQuery` and passed straight into `armIntroClock`. */
   clockFast?: boolean;
+  /** pvp_draft T3: renders this room from a Playoffs match row instead of local solo
+   *  state (`usePvpDraft`). `mode`/`gameMode` are ignored — PvP is always Quick visuals
+   *  (D7) under `gameMode: 'playoffs'`. */
+  pvpMatchId?: string;
 }
 
-export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = 'tournament', clockFast = false }: DraftRoomProps = {}) {
+export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = 'tournament', clockFast = false, pvpMatchId }: DraftRoomProps = {}) {
+  const isPvp = !!pvpMatchId;
+  const router = useRouter();
+  // pvp_draft: hooks are never conditional — this is a no-op (`useMatch` skips its effects
+  // on a falsy id) when `pvpMatchId` is absent, i.e. every solo draft.
+  const pvpRoom = usePvpDraft(pvpMatchId ?? '');
+
   // draft_resume: a resumed draft keeps the mode and game it was started with, whatever
   // `/draft?mode=&game=` says now (the URL only picks the mode of a NEW draft).
   const [resumedModes, setResumedModes] = useState<{ mode: 'quick' | 'premier'; gameMode: 'tournament' | 'challenge' } | null>(null);
-  const mode = resumedModes?.mode ?? urlMode;
-  const gameMode = resumedModes?.gameMode ?? urlGameMode;
+  const mode = isPvp ? 'pvp' : (resumedModes?.mode ?? urlMode);
+  const gameMode = isPvp ? 'playoffs' : (resumedModes?.gameMode ?? urlGameMode);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
   const [allPlayers, setAllPlayers] = useState<Player[]>([]);
@@ -307,7 +329,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     humanPicks,
     humanAutoPicks,
     sessionId,
-  } = useDraftEngine(allPlayers, playsDB, mode, gameMode);
+  } = useDraftEngine(allPlayers, playsDB, mode, gameMode, isPvp ? (pvpRoom.binding ?? undefined) : undefined);
 
   // draft_resume D4: look up an unfinished session for this owner exactly once, before
   // ever starting a fresh draft (no auto-resume — the sheet always gets first say). Gated
@@ -316,6 +338,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
   // owner — checking too early always finds nothing, silently skipping the resume prompt.
   const storageReady = useStorageReady();
   useEffect(() => {
+    if (isPvp) return; // pvp_draft D9: no resume sheet — the room always rebuilds from the row.
     if (!storageReady) return;
     let cancelled = false;
     findUnfinishedDraft(getGameStore())
@@ -327,18 +350,19 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         if (!cancelled) setResumeCandidate(null);
       });
     return () => { cancelled = true; };
-  }, [storageReady]);
+  }, [isPvp, storageReady]);
 
   // draft_resume D4/D5: once the resume check has resolved (found nothing, or the player
   // decided), start a fresh draft. Resuming an unfinished session takes the other path
   // (`handleResume`) and never falls through to this.
   useEffect(() => {
+    if (isPvp) return; // pvp_draft: never starts/resumes a draft itself (the row drives it).
     if (allPlayers.length === 0) return;
     if (resumeCandidate === 'checking' || resumeCandidate) return; // still checking, or the sheet is up
     if (draftStartedRef.current) return;
     draftStartedRef.current = true;
     startNewDraft();
-  }, [allPlayers, resumeCandidate, startNewDraft]);
+  }, [isPvp, allPlayers, resumeCandidate, startNewDraft]);
 
   const handleResume = (session: DraftSession) => {
     if (resumeDecidedRef.current) return;
@@ -363,20 +387,22 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
   // the very first render of a fresh draft (zero picks yet — nothing worth persisting)
   // and stops once the draft is complete (the final save below takes over that id).
   useEffect(() => {
+    if (isPvp) return; // pvp_draft D9: no local autosave — the match row is the record.
     if (draftState === 'deckbuilding' || draftState === 'loading') return;
     if (!sessionId || draftSeed === undefined) return;
     const pickCount = Object.values(humanPicks).reduce((n, ids) => n + ids.length, 0);
     if (pickCount === 0) return;
     getGameStore()
-      .saveDraftSession(buildInProgressDraftSession(sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode))
+      .saveDraftSession(buildInProgressDraftSession(sessionId, draftSeed, humanPicks, humanAutoPicks, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge'))
       .catch((err) => console.error('Failed to autosave draft session:', err));
-  }, [draftState, sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode]);
+  }, [isPvp, draftState, sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode]);
 
   // plan_mobile_native_feel D3: only while still picking — no partial draft is ever
   // persisted (the pod is only saved once, on the transition to 'deckbuilding' above),
   // so back here can only warn, not save. Once deckbuilding starts, `DeckBuilder` below
   // mounts its own guard and takes over; disabling this one avoids a double prompt.
-  const backGuardEnabled = isClient && draftState !== 'loading' && draftState !== 'deckbuilding';
+  // pvp_draft: no back guard — the room is always resumable from the row (D9).
+  const backGuardEnabled = isClient && !isPvp && draftState !== 'loading' && draftState !== 'deckbuilding';
   const { goBack } = useAndroidBackGuard({
     enabled: backGuardEnabled,
     onBackAttempt: () => setShowBackGuard(true),
@@ -419,9 +445,10 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
   // `sessionId` the in-progress autosaves used (draft_resume D3), so this upsert replaces
   // that 'drafting' row with the 'complete' one instead of leaving it behind.
   useEffect(() => {
+    if (isPvp) return; // pvp_draft: never reaches 'deckbuilding' — build page reads the row directly.
     if (draftState === 'deckbuilding' && seats.length > 0 && !completedSessionId && !savingSessionRef.current) {
       savingSessionRef.current = true;
-      const session = buildDraftSession(seats, pickLog, draftSeed, mode, gameMode, sessionId ?? undefined);
+      const session = buildDraftSession(seats, pickLog, draftSeed, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge', sessionId ?? undefined);
       getGameStore()
         .saveDraftSession(session)
         .then(() => {
@@ -437,7 +464,18 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
           }
         });
     }
-  }, [draftState, seats, completedSessionId, sessionId, pickLog, draftSeed, mode, gameMode]);
+  }, [isPvp, draftState, seats, completedSessionId, sessionId, pickLog, draftSeed, mode, gameMode]);
+
+  // pvp_draft T3/T4: route away once the room itself has nothing left to show. 'complete'
+  // (both made 24 picks — status flipped to 'building') and a 'building' row opened here
+  // both go to the build page; anything else non-drafting (invited/series/done/...) or a
+  // caller who isn't a participant goes back to the match list.
+  useEffect(() => {
+    if (!isPvp || !pvpMatchId) return;
+    if (pvpRoom.phase === 'complete') router.replace(`/playoffs/${pvpMatchId}/build`);
+    else if (pvpRoom.phase === 'not-drafting') router.replace(`/playoffs/${pvpMatchId}`);
+    else if (pvpRoom.phase === 'not-participant') router.replace('/playoffs/new');
+  }, [isPvp, pvpMatchId, pvpRoom.phase, router]);
 
   useEffect(() => {
     import('@/engine/cards')
@@ -514,7 +552,34 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
 
   if (!isClient) return null;
 
-  if (draftState === 'loading' || !humanSeat) {
+  if (isPvp) {
+    if (pvpRoom.phase === 'void') {
+      return (
+        <div className="flex h-dvh-z flex-col items-center justify-center gap-3 px-6 text-center font-sans">
+          <h1 className="font-display text-3xl uppercase tracking-tight text-ink">This match was voided</h1>
+          {pvpRoom.voidReason && <p className="max-w-md text-sm text-ink-muted">{pvpRoom.voidReason}</p>}
+        </div>
+      );
+    }
+    if (pvpRoom.phase === 'not-participant') {
+      return (
+        <div className="flex h-dvh-z items-center justify-center font-sans">
+          <div className="text-2xl font-semibold text-ink-subtle">You are not in this match.</div>
+        </div>
+      );
+    }
+    // 'loading', 'not-drafting' (about to redirect) and "binding/cards not ready yet" all
+    // show the same generic loading state — the redirect effect above handles routing.
+    if (pvpRoom.phase === 'loading' || pvpRoom.phase === 'not-drafting' || pvpRoom.phase === 'complete' || !humanSeat) {
+      return (
+        <div className="flex h-dvh-z items-center justify-center font-sans">
+          <div className="text-2xl font-semibold text-ink-subtle animate-pulse">Loading the room...</div>
+        </div>
+      );
+    }
+  }
+
+  if (!isPvp && (draftState === 'loading' || !humanSeat)) {
     return (
       <div className="flex h-dvh-z items-center justify-center font-sans">
         <DraftResumeSheet
@@ -531,7 +596,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     return (
       <>
         <SaveErrorBanner message={saveError} />
-        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={completedSessionId ?? undefined} podAverageIdentity={podAverageIdentity} gameMode={gameMode} />
+        <DeckBuilder draftedCards={humanSeat.drafted} sessionId={completedSessionId ?? undefined} podAverageIdentity={podAverageIdentity} gameMode={gameMode as 'tournament' | 'challenge'} />
       </>
     );
   }
@@ -546,6 +611,13 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     : null;
 
   const packDirection = currentPackNumber === 2 ? 1 : -1;
+  // pvp_draft: the header's neighbour seats are relative to the LOCAL seat (0 or 4), not
+  // always table seats 7/1 — matches `useDraftEngine`'s own passingToSeat/receivingFromSeat.
+  const localSeatIndex = humanSeat.id === 'human-4' ? 4 : 0;
+  const rightIndex = (localSeatIndex + 1) % CUBE_SEATS;
+  const leftIndex = (localSeatIndex + CUBE_SEATS - 1) % CUBE_SEATS;
+  const leftSeat = seats[leftIndex];
+  const rightSeat = seats[rightIndex];
   const isPackIntro = draftState === 'pack-intro';
   const isRoundSummary = draftState === 'round-summary';
   // Owner call: selecting/picking a card must not pop the sidebar open; only its toggle does.
@@ -575,6 +647,19 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         />
       )}
 
+      {/* pvp_draft D2: the local seat has picked, the opponent hasn't — shown over the
+          settled pack, same slot the solo RoundSummary overlay uses. */}
+      {isPvp && pvpRoom.phase === 'waiting' && (
+        <WaitingFor
+          name={pvpRoom.opponentName}
+          pickDeadline={pickDeadline}
+          opponentOnline={pvpRoom.opponentOnline}
+          canFinishForOpponent={pvpRoom.canFinishForOpponent}
+          finishingForOpponent={pvpRoom.finishingForOpponent}
+          onFinishForOpponent={pvpRoom.finishForOpponent}
+        />
+      )}
+
       {/* Main Draft Area */}
       <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* Arena Style Header */}
@@ -582,16 +667,22 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
             so on a phone they give their height to the two-row spread instead. */}
         <header className={`px-8 py-4 flex justify-between items-center border-b border-line bg-surface-raised/50 backdrop-blur-sm shrink-0 transition-[filter] duration-200 ${backdropClass} ${isPackIntro ? 'pointer-coarse:max-lg:hidden' : ''}`}>
           <div className="w-64 hidden lg:flex items-center gap-2">
-            <ModePill mode={mode} />
+            {isPvp ? (
+              <span className="font-display text-xs uppercase tracking-widest bg-surface-inverse-deep text-accent px-2.5 py-1 rounded-full border border-accent shadow-sm">
+                Playoffs
+              </span>
+            ) : (
+              <ModePill mode={mode as 'quick' | 'premier'} />
+            )}
             {gameMode === 'challenge' && <ChallengeBadge />}
-            {mode === 'premier' && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
+            {(mode === 'premier' || isPvp) && <PickTimerRing pickDeadline={isPackIntro ? null : pickDeadline} pickNumber={currentPickNumber} size={34} />}
             <SfxToggle />
           </div>
 
           {/* game_canvas T0: the seats are shrink-0 and the bar/chevrons scale with the
               breakpoint, so this row fits 830px without pushing a seat past x=0. */}
           <div className="min-w-0 flex-1 flex justify-center items-center gap-4 lg:gap-8">
-             {/* Left Player (Seat 7) */}
+             {/* Left neighbour seat (seat 7 relative to the local seat) */}
              <motion.div
                key={`left-${passSeq}`}
                initial={{ scale: 1 }}
@@ -600,7 +691,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
                className="flex shrink-0 flex-col items-center gap-1 opacity-80"
              >
                 <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber !== 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
-                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[7]?.botProfile?.name || 'Player'}</span>
+                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber !== 2 ? 'text-ink' : 'text-ink-subtle'}`}>{leftSeat?.botProfile?.name || 'Player'}</span>
              </motion.div>
 
              {/* Central Pass UI */}
@@ -634,7 +725,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
                className="flex shrink-0 flex-col items-center gap-1 opacity-80"
              >
                 <div className={`w-8 h-8 rounded-full bg-surface-raised border flex items-center justify-center text-sm ${currentPackNumber === 2 ? 'border-ink-subtle shadow-sm' : 'border-line'}`}>🤖</div>
-                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-ink' : 'text-ink-subtle'}`}>{seats[1]?.botProfile?.name || 'Player'}</span>
+                <span className={`max-w-24 truncate text-xs uppercase tracking-widest font-bold ${currentPackNumber === 2 ? 'text-ink' : 'text-ink-subtle'}`}>{rightSeat?.botProfile?.name || 'Player'}</span>
              </motion.div>
           </div>
 
@@ -646,7 +737,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         </header>
 
         <div className={`transition-[filter] duration-200 ${backdropClass} ${isPackIntro ? 'pointer-coarse:max-lg:hidden' : ''}`}>
-          <BotPickTicker pickLog={pickLog} seats={seats} />
+          <BotPickTicker pickLog={pickLog} seats={seats} localSeatId={humanSeat.id} leftIndex={leftIndex} rightIndex={rightIndex} />
         </div>
 
         {isPackIntro ? (
@@ -659,7 +750,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
               pack={humanSeat.currentPack}
               packNumber={currentPackNumber}
               totalPacks={CUBE_PACKS}
-              mode={mode}
+              mode={mode as 'quick' | 'premier'}
               pickDeadline={pickDeadline}
               embedded
               className="max-w-[1500px] mx-auto"

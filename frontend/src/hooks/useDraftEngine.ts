@@ -1,10 +1,10 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Player, Play } from '../components/PlayerCard';
 import { getBotPick, type BotProfile } from '../engine/draft';
 import { DraftSession } from '../engine/deckbuilder';
 import { replayDraft, type HumanPicks } from '../engine/draftReplay';
 import { randomSeed } from '../engine/rng';
-import { CUBE_PLAYER_CARDS_PER_PACK, CUBE_PACKS, BOT_SYNERGY_AWARENESS_RANGE } from '../engine/balance';
+import { CUBE_PLAYER_CARDS_PER_PACK, CUBE_PACKS, CUBE_SEATS, BOT_SYNERGY_AWARENESS_RANGE } from '../engine/balance';
 import { HUMAN_SEAT_ID } from '../engine/season';
 import { deadlineFor } from '../lib/draftTimer';
 
@@ -25,13 +25,33 @@ const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
 
 /** Draft mode (plan ui_draft_deckbuild_pack, D1). Quick skips the timer and the
  *  round-summary pause; Premier gets both. */
-export type DraftMode = 'quick' | 'premier';
+export type DraftMode = 'quick' | 'premier' | 'pvp';
 
 /** Which game this draft is for (plan_challenge_mode D1). Doesn't change draft
  *  mechanics (D5's steeper difficulty only applies to challenge games, not the
  *  draft) — carried through so the caller can stamp it onto the saved
  *  `DraftSession` without keeping a second piece of state in sync. */
-export type GameMode = 'tournament' | 'challenge';
+export type GameMode = 'tournament' | 'challenge' | 'playoffs';
+
+/**
+ * pvp_draft D1: when passed to `useDraftEngine`, the room is driven by a Playoffs match row
+ * instead of local state. The engine then derives everything from
+ * `replayDraft(seed, humanPicks, ..., { autoPicked: humanAutoPicks })`, never starts,
+ * resumes or saves a draft itself, treats `localSeatId` as "the human" (seat 0 or 4, with
+ * passing/receiving neighbours relative to it), and hands the local pick to `onLocalPick`
+ * instead of appending it (the owner sends `match_pick` and folds it into `humanPicks`
+ * optimistically). Quick visuals: no intro opener pause, no round summaries (D7). The
+ * clock is `pickDeadline` from the server; the owner does the expiry auto-pick.
+ */
+export interface PvpDraftBinding {
+  seed: number;
+  localSeatId: 'human-0' | 'human-4';
+  humanPicks: HumanPicks;
+  humanAutoPicks: Record<string, number[]>;
+  /** Epoch ms of the server `pick_deadline`, or null while no clock runs. */
+  pickDeadline: number | null;
+  onLocalPick: (cardId: string) => void;
+}
 
 function freshId(): string {
   return `session_${Date.now()}`;
@@ -58,17 +78,32 @@ export function useDraftEngine(
   playsDB: Play[],
   mode: DraftMode = 'premier',
   gameMode: GameMode = 'tournament',
+  /** pvp_draft: drive the room from a match row (see `PvpDraftBinding`). Wired in T3. */
+  pvp?: PvpDraftBinding,
 ) {
-  const [draftState, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'round-summary' | 'deckbuilding'>('loading');
-  const [draftSeed, setDraftSeed] = useState<number | undefined>(undefined);
-  const [humanPicks, setHumanPicks] = useState<HumanPicks>({ [HUMAN_SEAT_ID]: [] });
-  const [humanAutoPicks, setHumanAutoPicks] = useState<Record<string, number[]>>({});
+  const [draftStateLocal, setDraftState] = useState<'loading' | 'pack-intro' | 'drafting' | 'round-summary' | 'deckbuilding'>('loading');
+  const [draftSeedLocal, setDraftSeed] = useState<number | undefined>(undefined);
+  const [humanPicksLocal, setHumanPicksLocal] = useState<HumanPicks>({ [HUMAN_SEAT_ID]: [] });
+  const [humanAutoPicksLocal, setHumanAutoPicksLocal] = useState<Record<string, number[]>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
   // D4: epoch ms the current pick expires at; null outside a timed Premier pick.
-  const [pickDeadline, setPickDeadline] = useState<number | null>(null);
+  const [pickDeadlineLocal, setPickDeadline] = useState<number | null>(null);
   // Bumped once per pass so `PackPassStage` (T3) can key its animation off a
   // value that changes even when pack contents coincidentally look the same.
   const [passSeq, setPassSeq] = useState(0);
+
+  // pvp_draft: everything the room is driven from comes off the `pvp` binding instead of
+  // this hook's own state — no local starts/resumes/saves happen on that path (see
+  // `PvpDraftBinding`'s doc comment).
+  const draftSeed = pvp ? pvp.seed : draftSeedLocal;
+  const humanPicks = pvp ? pvp.humanPicks : humanPicksLocal;
+  const humanAutoPicks = pvp ? pvp.humanAutoPicks : humanAutoPicksLocal;
+  const pickDeadline = pvp ? pvp.pickDeadline : pickDeadlineLocal;
+  // D7: PvP is always in the "drafting" view — no loading/pack-intro/round-summary/
+  // deckbuilding pauses (Quick visuals); the room page (T3) handles its own
+  // loading/complete/void screens off `usePvpDraft`'s phase instead.
+  const draftState = pvp ? 'drafting' : draftStateLocal;
+  const humanSeatId = pvp ? pvp.localSeatId : HUMAN_SEAT_ID;
 
   // Derived: the whole room, rebuilt from the seed + picks so far. `undefined` seed (not
   // started yet) or an empty pool (cards not loaded yet) both mean "nothing to show".
@@ -85,8 +120,8 @@ export function useDraftEngine(
 
   const startNewDraft = useCallback(() => {
     setDraftSeed(randomSeed());
-    setHumanPicks({ [HUMAN_SEAT_ID]: [] });
-    setHumanAutoPicks({});
+    setHumanPicksLocal({ [HUMAN_SEAT_ID]: [] });
+    setHumanAutoPicksLocal({});
     setSessionId(freshId());
     setPickDeadline(null);
     setDraftState('pack-intro');
@@ -100,8 +135,8 @@ export function useDraftEngine(
    *  auto-taken). */
   const resumeDraft = useCallback((session: DraftSession) => {
     setDraftSeed(session.seed);
-    setHumanPicks(session.humanPicks ?? { [HUMAN_SEAT_ID]: [] });
-    setHumanAutoPicks(session.humanAutoPicks ?? {});
+    setHumanPicksLocal(session.humanPicks ?? { [HUMAN_SEAT_ID]: [] });
+    setHumanAutoPicksLocal(session.humanAutoPicks ?? {});
     setSessionId(session.id);
     setPickDeadline(null);
     setDraftState('drafting');
@@ -109,7 +144,8 @@ export function useDraftEngine(
 
   // Shared core of processPickAndPass/pickFromIntro/expirePick (D5's timeout
   // auto-pick and D7's pick-from-the-opener-spread both need the exact same
-  // pick/pass mechanics — only how `cardId` was chosen differs).
+  // pick/pass mechanics — only how `cardId` was chosen differs). Solo drafts only
+  // (`pvp` takes the branch below in processPickAndPass instead).
   const applyPick = useCallback((cardId: string, autoPicked: boolean) => {
     if (!replay) return;
     const humanSeat = replay.seats.find(s => s.id === HUMAN_SEAT_ID);
@@ -120,9 +156,9 @@ export function useDraftEngine(
     const prevPackNumber = replay.packNumber;
     const idxInHumanPicks = humanPicks[HUMAN_SEAT_ID]?.length ?? 0;
 
-    setHumanPicks(prev => ({ ...prev, [HUMAN_SEAT_ID]: [...(prev[HUMAN_SEAT_ID] ?? []), cardId] }));
+    setHumanPicksLocal(prev => ({ ...prev, [HUMAN_SEAT_ID]: [...(prev[HUMAN_SEAT_ID] ?? []), cardId] }));
     if (autoPicked) {
-      setHumanAutoPicks(prev => ({ ...prev, [HUMAN_SEAT_ID]: [...(prev[HUMAN_SEAT_ID] ?? []), idxInHumanPicks] }));
+      setHumanAutoPicksLocal(prev => ({ ...prev, [HUMAN_SEAT_ID]: [...(prev[HUMAN_SEAT_ID] ?? []), idxInHumanPicks] }));
     }
     setPickDeadline(null);
 
@@ -148,17 +184,31 @@ export function useDraftEngine(
   }, [replay, humanPicks, mode]);
 
   const processPickAndPass = useCallback((humanPickId: string) => {
+    if (pvp) {
+      // pvp_draft D1: hand off to the room instead of appending locally — `usePvpDraft`
+      // applies it optimistically and sends `match_pick`. Same "must be in my current
+      // pack" guard `applyPick` does for the solo path. No `passSeq` bump here — unlike
+      // solo, our own pick alone often doesn't change `currentPack` yet (the opponent may
+      // not have picked this round), so the pass animation is driven by `overallPick`
+      // actually advancing instead (see the effect below), not by the local click.
+      if (!replay) return;
+      const seat = replay.seats.find(s => s.id === pvp.localSeatId);
+      if (!seat || !seat.currentPack.some(c => c.id === humanPickId)) return;
+      pvp.onLocalPick(humanPickId);
+      return;
+    }
     if (draftState !== 'drafting') return;
     applyPick(humanPickId, false);
-  }, [draftState, applyPick]);
+  }, [pvp, replay, draftState, applyPick]);
 
   /** Pick straight from the intro/premier opener spread (D7) instead of via the
    *  post-reveal grid. Same pick/pass mechanics as `processPickAndPass`, just
-   *  valid while the draft is still showing the opener. */
+   *  valid while the draft is still showing the opener. Never used in PvP (D7: no
+   *  opener pause). */
   const pickFromIntro = useCallback((cardId: string) => {
-    if (draftState !== 'pack-intro') return;
+    if (pvp || draftState !== 'pack-intro') return;
     applyPick(cardId, false);
-  }, [draftState, applyPick]);
+  }, [pvp, draftState, applyPick]);
 
   /** Leaves `round-summary` for the next pack's opener (D3). The next pack's cards are
    *  already in `seats` (derived eagerly by `replayDraft`) — this only flips the view. */
@@ -202,14 +252,31 @@ export function useDraftEngine(
     setPickDeadline(deadlineFor(currentPickNumber, Date.now(), scale));
   }, [mode, draftState, currentPickNumber]);
 
+  // pvp_draft D1: neighbours relative to the LOCAL seat (0 or 4), not always seat 0.
+  const localIndex = pvp?.localSeatId === 'human-4' ? 4 : 0;
+  const rightIndex = (localIndex + 1) % CUBE_SEATS;
+  const leftIndex = (localIndex + CUBE_SEATS - 1) % CUBE_SEATS;
   const packDirection = currentPackNumber === 2 ? 1 : -1;
-  const passingToSeat = seats.length > 0 ? seats[packDirection === 1 ? 1 : 7] : undefined;
-  const receivingFromSeat = seats.length > 0 ? seats[packDirection === 1 ? 7 : 1] : undefined;
+  const passingToSeat = seats.length > 0 ? seats[packDirection === 1 ? rightIndex : leftIndex] : undefined;
+  const receivingFromSeat = seats.length > 0 ? seats[packDirection === 1 ? leftIndex : rightIndex] : undefined;
+  const humanSeat = seats.find(s => s.id === humanSeatId) ?? seats[0];
+
+  // pvp_draft: the pass animation follows the round ACTUALLY resolving (both humans
+  // picked, packs rotated), not the local click — `overallPick` only advances at that
+  // point, unlike solo where the same click always both picks and resolves.
+  const prevOverallPickRef = useRef(overallPick);
+  useEffect(() => {
+    if (!pvp) return;
+    if (prevOverallPickRef.current !== overallPick) {
+      prevOverallPickRef.current = overallPick;
+      setPassSeq(prev => prev + 1);
+    }
+  }, [pvp, overallPick]);
 
   return {
     draftState,
     seats,
-    humanSeat: seats[0],
+    humanSeat,
     passingToSeat,
     receivingFromSeat,
     currentPackNumber,

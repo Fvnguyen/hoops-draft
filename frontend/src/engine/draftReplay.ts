@@ -15,7 +15,7 @@ import type { DraftSeat } from './draft';
 import { generateCubePool, getBotPick, createBotProfiles } from './draft';
 import type { DraftPickRecord } from './deckbuilder';
 import { createRng } from './rng';
-import { CUBE_SEATS, CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK } from './balance';
+import { CUBE_SEATS, CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK, PVP_AUTOPICK_PROFILE } from './balance';
 
 /** Cards per pack (7 players + 1 play); picks per pack matches (one per card). */
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
@@ -180,4 +180,38 @@ export function replayDraft(
   }
 
   return { seats, packNumber, pickNumber, overallPick, pickLog, awaiting: [], phase: 'complete' };
+}
+
+// ── pvp_draft (D3/D4) ────────────────────────────────────────────────────────
+
+/**
+ * pvp_draft D4: the card the pick clock takes for `seatId` at the current pick, the same
+ * on every device: `getBotPick` over that seat's pack with the fixed `PVP_AUTOPICK_PROFILE`.
+ * Returns null when the seat does not owe a pick (not in `awaiting`, or the draft is done).
+ */
+export function pvpAutopick(state: DraftState, seatId: string): string | null {
+  if (state.phase !== 'drafting' || !state.awaiting.includes(seatId)) return null;
+  const seat = state.seats.find((s) => s.id === seatId);
+  if (!seat || seat.currentPack.length === 0) return null;
+  const asBot: DraftSeat = { ...seat, isBot: true, botProfile: PVP_AUTOPICK_PROFILE };
+  return getBotPick(asBot, state.overallPick) || null;
+}
+
+/**
+ * pvp_draft D3: replays the row's picks and reports whether every pick was legal (each card
+ * in the pack its seat held). `ok: false` is what voids a match; it can only happen when a
+ * client was tampered with, because the server enforces order but not contents.
+ */
+export function validateReplay(
+  seed: number,
+  humanPicks: HumanPicks,
+  allPlayers: Player[],
+  playsDB: Play[],
+  options?: ReplayOptions,
+): { ok: true; state: DraftState } | { ok: false; reason: string } {
+  try {
+    return { ok: true, state: replayDraft(seed, humanPicks, allPlayers, playsDB, options) };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
 }

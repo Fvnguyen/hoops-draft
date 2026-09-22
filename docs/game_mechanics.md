@@ -104,6 +104,32 @@ pick order; this is what makes a draft resumable across a reload, crash or phone
 app autosaves the seed + picks after every human pick) and is the same substrate a
 same-room multiplayer draft stands on (two human seats instead of one).
 
+## Playoffs draft (two humans) — 2026-09-22
+
+A "Playoffs" match seats one human at seat 0 (host) and one at seat 4 (guest), six bots
+between them, drafting the same cube live from opposite devices — `replayDraft`'s two-
+human path (above). The `matches` row (seed, each side's picks/autopicks) is the only
+state; both clients rebuild the room from it, so a reload always lands back where it was
+(no resume prompt — unlike a solo draft, an absent player may be waiting).
+
+A pick index advances only once BOTH humans have picked it; bots pick instantly inside
+the replay once they do. Whoever picks first sees "Waiting for &lt;name&gt;" over their
+still-full pack until the other catches up — the bot ticker and the roster sidebar never
+show the other human's picks or card counts (hidden information). The pick clock is 45
+seconds, starting the moment either side makes the very first pick (not on accept); it
+resets to 45s each time a pick index is completed by both sides. If the clock runs out, a
+client auto-picks for its OWN seat with a fixed neutral bot profile — no plan pull, medium
+synergy awareness — so both devices always compute the identical card. If the other player
+is gone entirely, the present player waits until they've been offline 5 minutes, then may
+press "Finish the draft": from then on their own client auto-picks for the absent seat too,
+one pick at a time as each deadline (plus a 10s grace) passes — never a batch jump, so the
+room stays a normal, resumable replay throughout.
+
+Once both sides have made all 24 picks the match moves to building rosters: each player
+builds their 12-man roster from their own 24 drafted cards (no auto-fill) and presses "Lock
+roster" instead of an ordinary save — a locked roster can't be edited. Once both are locked
+the match becomes a series.
+
 ## Roster identities (archetypes) — 2026-09-13
 
 The seven skill badges are the game's colours. At roster lock the player chooses up to

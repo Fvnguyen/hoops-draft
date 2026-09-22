@@ -59,7 +59,12 @@ export interface DeckBuilderProps {
    *  to land only in the run's `rosterPost` SNAPSHOT, never mutate the roster record
    *  the user actually drafted — and hands the built `SavedRoster` to this callback
    *  instead. "Save & play season" is hidden (superseded by "Spin the second half"). */
-  embedOverride?: { onSave: (roster: SavedRoster) => void };
+  embedOverride?: {
+    onSave: (roster: SavedRoster) => void;
+    /** pvp_draft T4: "Lock roster" — Save icon button's accessible label, since locking
+     *  commits an unchangeable match roster rather than an ordinary save. */
+    saveLabel?: string;
+  };
 }
 
 /** Mounts the toast layer the builder body needs (D15) around the real builder. */
@@ -568,6 +573,7 @@ function DeckBuilderBody({ draftedCards, existingRosterName, rosterId, initialDe
           disabledReason: isComplete ? undefined : statusText,
           saveAndPlayLabel: isChallenge ? 'Save & start 82:0' : 'Save & play season',
           hideSaveAndPlay: !!embedOverride,
+          saveLabel: embedOverride?.saveLabel,
         }}
         challengeBadge={isChallenge}
       />

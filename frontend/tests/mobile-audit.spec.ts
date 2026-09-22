@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { test, expect, type Page, type TestInfo } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 import { dismissSplash as dismissSplashShared } from './helpers/splash';
 import { clearAnyUnfinishedDraft } from './helpers/draft';
 
@@ -436,5 +437,68 @@ test.describe('Mobile audit', () => {
         `\n  report: ${path.join(dir, 'findings.json')}\n`,
     );
     reports.length = 0;
+  });
+
+  // pvp_draft T3: the two-human draft room + WaitingFor overlay, the same D1 audit as the
+  // solo screens above — a separate two-context test since it needs the second E2E
+  // account, unlike everything walked in one context above.
+  test.describe('pvp draft room', () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const admin = url && serviceKey
+      ? createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+      : null;
+    const authFile2 = 'tests/.auth/user2.json';
+
+    test.skip(
+      !process.env.E2E_TEST_EMAIL_2 || !process.env.E2E_TEST_PASSWORD_2 || !admin,
+      'Set E2E_TEST_EMAIL_2/E2E_TEST_PASSWORD_2 (and the Supabase keys) and run `npm run bootstrap:e2e`.',
+    );
+
+    test.beforeAll(async () => {
+      if (!admin) return;
+      const { error } = await admin.from('matches').select('void_reason').limit(1);
+      test.skip(!!error, `void_reason column missing — 202609220002_match_void.sql not applied: ${error?.message}`);
+    });
+
+    test('draft room + WaitingFor at the D1 touch viewport', async ({ page, browser }, testInfo) => {
+      test.skip(!fs.existsSync(authFile2), `${authFile2} missing: auth2.setup.ts did not run.`);
+      test.setTimeout(120_000);
+
+      const contextB = await browser.newContext({ storageState: authFile2 });
+      const pageB = await contextB.newPage();
+
+      await page.goto('/');
+      await pageB.goto('/');
+      const [a, b] = await Promise.all([
+        page.request.get('/api/auth/me').then((r) => r.json()) as Promise<{ id: string }>,
+        pageB.request.get('/api/auth/me').then((r) => r.json()) as Promise<{ id: string }>,
+      ]);
+      await admin!.from('matches').delete()
+        .or(`and(host_id.eq.${a.id},guest_id.eq.${b.id}),and(host_id.eq.${b.id},guest_id.eq.${a.id})`);
+
+      try {
+        const matchId = `e2e-mobile-audit-${Date.now()}`;
+        const { error } = await admin!.from('matches').insert({ id: matchId, seed: 1, host_id: a.id, guest_id: b.id, status: 'drafting' });
+        if (error) throw error;
+
+        await page.goto(`/playoffs/${matchId}/draft`);
+        await audit(page, testInfo, 'pvp-draft-room');
+
+        // A picks first — B has not, so A's own room shows WaitingFor over its pack.
+        const cardLocator = page.locator('[role="button"][aria-label^="Select "]').first();
+        await expect(cardLocator).toBeVisible({ timeout: 20_000 });
+        await cardLocator.click();
+        await page.getByRole('button', { name: /^Confirm pick$/ }).click();
+        await expect(page.locator('[data-waiting-for]')).toBeVisible({ timeout: 15_000 });
+        await audit(page, testInfo, 'pvp-waiting-for');
+
+        await admin!.from('matches').delete().eq('id', matchId);
+      } finally {
+        await admin!.from('matches').delete()
+          .or(`and(host_id.eq.${a.id},guest_id.eq.${b.id}),and(host_id.eq.${b.id},guest_id.eq.${a.id})`);
+        await contextB.close();
+      }
+    });
   });
 });

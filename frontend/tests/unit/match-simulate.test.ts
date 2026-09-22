@@ -72,6 +72,7 @@ function baseMatch(overrides: Partial<Match> = {}): Match {
     host_seen_at: null,
     guest_seen_at: null,
     winner_id: null,
+    void_reason: null,
     version: 1,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
