@@ -1,6 +1,6 @@
 # Analysis: player-level win-shares bootstrap
 
-File: `docs/plans/analysis_player_win_shares_bootstrap_2026-09-16.md`. Not a locked plan
+File: `docs/completed/analysis_player_win_shares_bootstrap_2026-09-16.md`. Not a locked plan
 (no tasks/decisions of its own) — a findings doc referenced by
 `plan_card_balance_2026-09-13.md`'s "Real-data findings" section. Internal/analysis use
 only.

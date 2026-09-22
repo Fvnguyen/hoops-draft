@@ -1,6 +1,6 @@
 # Analysis: Mythic/Rare/Uncommon eyeball pass
 
-File: `docs/plans/analysis_mythic_rare_uncommon_review_2026-09-16.md`. Not a locked plan —
+File: `docs/completed/analysis_mythic_rare_uncommon_review_2026-09-16.md`. Not a locked plan —
 a findings doc referenced by `plan_card_balance_2026-09-13.md`'s "Real-data findings"
 section, requested by the owner as a manual pass over the top three rarity tiers after
 T1 (positions). Internal/analysis use only.

@@ -30,12 +30,12 @@ after every T1-T5 commit.
 - **Pre-T1 baseline (2026-09-14/16)**: real-user cube spot-check Mythic 12/Rare 15/
   Uncommon 57/Common 108; post-merge D9 "before" PPP 1.050, home win 57.2%, corr(OVR,
   WS/g) 0.691, pool 20/22/58/348, OVR floor 204/448, only 9 real position labels. Full
-  tables: [win-shares bootstrap](../plans/analysis_player_win_shares_bootstrap_2026-09-16.md), [rarity review](../plans/analysis_mythic_rare_uncommon_review_2026-09-16.md).
+  tables: [win-shares bootstrap](../completed/analysis_player_win_shares_bootstrap_2026-09-16.md), [rarity review](../completed/analysis_mythic_rare_uncommon_review_2026-09-16.md).
 - **2026-09-16, T1 + cleanup + pedigree**: bref-primary positions + bio adjacent-
   crossover blend (PG 76, SG 98, SG/SF 53, SF 50, PF 71, PF/C 56, C 44); dead `G`/`F`
   profiles removed; fixed the discarded awards.html scrape (`264d71c`), shipped
   `Positionless`, Jokić to `PF/C`, dropped Chris Paul from `LEGENDARY_PLAYERS`, an MPG
-  rating floor ([detail](../plans/proposal_pedigree_tuning_2026-09-16.md)); `game.test.ts`
+  rating floor ([detail](../completed/proposal_pedigree_tuning_2026-09-16.md)); `game.test.ts`
   minutes floor 18→16. corr(OVR, WS/g) 0.691→0.677 (T2 recovers this). 254/254 tests.
 - **2026-09-17, T3 done**: badge L1/L2/L3 hand-binned 70-79/80-89/90-99 (~62/29/11 per
   dimension, rejected an equal-percentile "absolute balance" fix). Two-Way Disruptor/

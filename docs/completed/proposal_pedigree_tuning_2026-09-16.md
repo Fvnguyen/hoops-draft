@@ -1,6 +1,6 @@
 # Proposal: pedigree tuning (positionless cards, legendary list, root-cause review)
 
-File: `docs/plans/proposal_pedigree_tuning_2026-09-16.md`. Referenced by
+File: `docs/completed/proposal_pedigree_tuning_2026-09-16.md`. Referenced by
 `plan_card_balance_2026-09-13.md`. Round 1 (below) is implemented and verified; two
 open questions from the owner's round-2 feedback are still awaiting an answer.
 
