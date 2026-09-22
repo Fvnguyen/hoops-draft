@@ -7,6 +7,7 @@
  * D6 in the plan for why that's an acceptable tradeoff here.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { useLocalStoreReady, useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase } from '@/engine/season';
@@ -14,14 +15,16 @@ import { WHATS_NEW, type ChangelogEntry } from '@/data/whatsnew';
 import { useCurrentProfile } from '@/components/AuthProvider';
 import { useMatchList } from './useMatch';
 import { loadMatchClient } from '@/lib/matchChannel';
-import { TERMINAL_MATCH_STATUSES, sideOf, type MatchSummary, type MatchSide } from '@/storage/matchTypes';
+import { TERMINAL_MATCH_STATUSES, matchHref, sideOf, type MatchSummary, type MatchSide } from '@/storage/matchTypes';
 
 const LAST_SEEN_CHANGELOG_KEY = 'lastSeenChangelogId';
 const DISMISSED_NOTICES_KEY = 'dismissedNoticeIds';
 
 export interface NoticeAction {
   label: string;
-  onClick: () => void | Promise<void>;
+  /** A navigation action (e.g. "Open" on a match notice) renders as a link instead. */
+  href?: string;
+  onClick?: () => void | Promise<void>;
   tone?: 'default' | 'danger';
 }
 
@@ -140,17 +143,22 @@ export function useNotices(): {
   const profile = useCurrentProfile();
   const userId = profile?.id ?? null;
   const { matches, refetch: refetchMatches } = useMatchList();
+  const router = useRouter();
 
   const respondToInvite = useCallback(async (match: MatchSummary, accept: boolean) => {
     try {
       const client = await loadMatchClient();
-      await client.rpc('match_respond', { p_id: match.id, p_version: match.version, p_accept: accept });
+      // supabase-js reports RPC errors in the result rather than throwing.
+      const { error } = await client.rpc('match_respond', { p_id: match.id, p_version: match.version, p_accept: accept });
+      if (error) throw new Error(error.message);
+      // Accepting starts the draft: go straight to the room.
+      if (accept) router.push(`/playoffs/${match.id}/draft`);
     } catch (err) {
       console.error('Failed to respond to match invite:', err);
     } finally {
       void refetchMatches();
     }
-  }, [refetchMatches]);
+  }, [refetchMatches, router]);
 
   const matchNotices = useMemo<Notice[]>(() => {
     if (!userId) return [];
@@ -184,6 +192,7 @@ export function useNotices(): {
             date: match.updated_at,
             title: won ? 'Series won' : 'Series complete',
             body: won ? 'You won the series. Check the results.' : 'Your playoffs series is over.',
+            actions: [{ label: 'See results', href: matchHref(match) }],
           });
         }
         continue;
@@ -207,7 +216,10 @@ export function useNotices(): {
           title: 'Your move',
           body: match.status === 'drafting' && myPicks.length === theirPicks.length
             ? 'Your playoffs draft is live. Make your pick.'
-            : 'Your playoffs opponent is waiting on you.',
+            : match.status === 'series' || match.status === 'sideboard'
+              ? 'A playoffs game is ready to watch.'
+              : 'Your playoffs opponent is waiting on you.',
+          actions: [{ label: 'Open', href: matchHref(match) }],
         });
       }
     }

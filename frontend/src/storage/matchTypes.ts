@@ -211,6 +211,14 @@ export interface UseMatchListResult {
   refetch: () => Promise<void>;
 }
 
+/** Where a match lives in the app for its current status: the draft room while drafting,
+ *  the deck builder while building, the series page otherwise. */
+export function matchHref(match: Pick<Match, 'id' | 'status'>): string {
+  if (match.status === 'drafting') return `/playoffs/${match.id}/draft`;
+  if (match.status === 'building') return `/playoffs/${match.id}/build`;
+  return `/playoffs/${match.id}`;
+}
+
 /** Which side the user is on, or null when not a participant. */
 export function sideOf(match: Pick<Match, 'host_id' | 'guest_id'>, userId: string | null | undefined): MatchSide | null {
   if (!userId) return null;

@@ -1,7 +1,8 @@
 'use client';
 import { useRouter, usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, Settings, ShieldCheck, UserCircle, Wrench } from 'lucide-react';
+import Link from 'next/link';
+import { BarChart3, Bell, Cloud, CloudOff, Home, LogOut, RefreshCw, Settings, ShieldCheck, Trophy, UserCircle, Wrench } from 'lucide-react';
 import { useAuthStatus, useCurrentProfile, useRefreshAuth, type CurrentProfile } from './AuthProvider';
 import { useSyncStatus } from '@/hooks/useSyncStatus';
 import { useNotices, type Notice } from '@/hooks/useNotices';
@@ -76,11 +77,19 @@ function NoticesList({ notices, dismissNotice }: { notices: Notice[]; dismissNot
           {/* pvp_match D4: Accept/Decline on a 'match-invite' notice. */}
           {notice.actions && notice.actions.length > 0 && (
             <div className="mt-2 flex gap-2">
-              {notice.actions.map((action) => (
+              {notice.actions.map((action) => action.href ? (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="inline-flex min-h-control items-center rounded-md border border-line bg-surface-raised px-3 text-xs font-bold text-ink hover:bg-surface-sunken"
+                >
+                  {action.label}
+                </Link>
+              ) : (
                 <Button
                   key={action.label}
                   variant={action.tone === 'danger' ? 'ghost' : 'secondary'}
-                  onClick={() => void action.onClick()}
+                  onClick={() => void action.onClick?.()}
                   className={cn('px-2 py-1 text-xs normal-case tracking-normal', action.tone === 'danger' && 'text-danger hover:text-danger')}
                 >
                   {action.label}
@@ -157,6 +166,7 @@ function ProfileMenu({ profile, stats, onSignOut, inverse = false }: { profile: 
           <ProfileSummary profile={profile} stats={stats} />
         </MenuSection>
         <MenuSection>
+          <MenuItem href="/playoffs" icon={<Trophy className="h-4 w-4" />}>Playoffs</MenuItem>
           <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
         </MenuSection>
         {profile.role === 'ADMIN' && (
@@ -286,6 +296,7 @@ export function TopNav() {
             {status === 'signed-in' && profile && (
               <MenuSection>
                 <ProfileSummary profile={profile} stats={seasonStats} />
+                <MenuItem href="/playoffs" icon={<Trophy className="h-4 w-4" />}>Playoffs</MenuItem>
                 <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
                 {profile.role === 'ADMIN' && (
                   <>

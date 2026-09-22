@@ -6,10 +6,9 @@ import { dismissSplash, clickPastSplash } from './helpers/splash';
 /**
  * pvp_match T4: two browser contexts. User A (the default `tests/.auth/user.json`) invites
  * user B (`E2E_TEST_EMAIL_2`, `tests/.auth/user2.json` from `auth2.setup.ts`) from
- * `/playoffs/new`; B accepts from the notification bell; both then see the drafting match.
- * There is no drafting screen yet (pvp_draft), so "sees it" means the bell's "Your move"
- * notice, which each client derives from its own RLS-scoped read of the row; the row's
- * status is also checked with the service role.
+ * `/playoffs/new`; B accepts from the notification bell and lands in the draft room; A's bell
+ * shows "Your move" (derived from its own RLS-scoped read of the row) and its "Open" link
+ * leads to the same room. The row's status is also checked with the service role.
  *
  * Needs the matches migration (applied to production 2026-09-22) and the second account
  * (`npm run bootstrap:e2e` with `E2E_TEST_EMAIL_2`/`E2E_TEST_PASSWORD_2` set). Matches
@@ -75,14 +74,17 @@ test.describe('playoffs invite', () => {
       await openBell(pageB);
       await expect(pageB.getByText('Playoffs invite')).toBeVisible({ timeout: 10_000 });
       await pageB.getByRole('button', { name: /^accept$/i }).click();
-      await expect(pageB.getByText('Playoffs invite')).toHaveCount(0, { timeout: 10_000 });
-      await expect(pageB.getByText('Your move')).toBeVisible({ timeout: 10_000 });
+      // Accepting opens the draft room.
+      await expect(pageB).toHaveURL(/\/playoffs\/[^/]+\/draft$/, { timeout: 15_000 });
 
       // A sees the same drafting match through its own session.
       await page.reload();
       await dismissSplash(page);
       await openBell(page);
       await expect(page.getByText('Your move')).toBeVisible({ timeout: 10_000 });
+      // The notice links to the same room.
+      await page.getByRole('link', { name: 'Open' }).first().click();
+      await expect(page).toHaveURL(/\/playoffs\/[^/]+\/draft$/, { timeout: 15_000 });
 
       const { data, error } = await admin!
         .from('matches')
