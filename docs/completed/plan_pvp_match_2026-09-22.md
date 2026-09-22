@@ -1,6 +1,6 @@
 # Plan: pvp_match
 
-File: `docs/plans/plan_pvp_match_2026-09-22.md`. Status: planned.
+File: `docs/plans/plan_pvp_match_2026-09-22.md`. Status: done 2026-09-22.
 Sequence: 15 in `docs/ROADMAP.md`. Depends on: nothing (runs in parallel with `draft_resume`).
 Files owned (under `frontend/` unless noted): `supabase/migrations/202609220001_matches.sql` (new),
 `src/storage/matchTypes.ts` (new), `src/lib/matchChannel.ts` (new), `src/hooks/useMatch.ts` (new),

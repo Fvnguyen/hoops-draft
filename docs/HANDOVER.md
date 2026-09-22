@@ -52,6 +52,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 - **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
+- **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
 
 ## draft_resume — done 2026-09-22
 
@@ -70,44 +71,25 @@ Plan: `docs/completed/plan_draft_resume_2026-09-22.md`, commits `b86dbe4` + the 
   checksum 219438687; `playwright test draft draft-resume visual smoke topnav` 20/20;
   `mobile-audit --project=phone-landscape` 0 findings over 9 screens.
 
-## pvp_match — T1-T6 done, open
+## pvp_match — done 2026-09-22
 
-Commit `98cf50b`. Migration `202609220001_matches.sql` APPLIED to production 2026-09-22
-after a dry run (migration + 16 test cases of `supabase/tests/202609220001_matches_test.sql`
-in one rolled-back transaction). Live: 9 RPCs, RLS on, in `supabase_realtime`, anon cannot
-invite or read `user_directory`, helpers not client-callable. `/` JS 335 -> 336 KB gz.
-Second E2E account (`E2E_TEST_EMAIL_2`, username `e2e_test_2`) created; `playoffs-invite.spec` passes
-(it deletes matches between the two E2E accounts before and after). Ready to close.
-Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the match query per page load.
-
-## mobile_load — done 2026-09-21
-
-Plan: `docs/completed/plan_mobile_load_2026-09-21.md` (T1-T11). Measure with
-`node scripts/route-js-size.mjs` after `npm run build` (Next 16 prints no size column).
-- **JS, gzipped first load:** `/login` 405 -> 262 KB, `/` 469 -> 333, `/rosters` 470 -> 327.
-  The card set left the root layout (`engine/cardSetVersion.ts`; cards arrive through
-  `import('@/engine/cards')`, the home page uses `showcase.json`); supabase-js loads on the
-  first cloud call (`storage/lazyCloudClient.ts`). A Postgrest builder is a THENABLE:
-  passing one through a promise executes it, so build the query inside one callback.
-- **Images:** `public/` 104 -> 13 MB. `headshotThumb(playerId, 96 | 480)` is the only way to
-  build a headshot URL; files come from `ensure-headshots.mjs`, masters live in
-  `data/headshots_src/` and `data/art_src/` (`scripts/gen-art.mjs`). URLs carry
-  `?v=<CARD_SET_VERSION>` because they are cached immutable for a year: BUMP THE VERSION
-  with every pipeline refresh. Nothing goes through Vercel's image optimizer any more.
-- **Proxy:** `getClaims()` verifies the ES256 session locally (no auth round trip); prefetches
-  and static files skip it; `/roster`, `/challenge`, `/admin` were never gated and are now
-  (`lib/routeGate.ts`, tested). Functions run in `fra1`, next to the database.
-- **Back guard:** exactly one history entry (reuse on arm, remove on disarm, `exitTo` +
-  `router.replace` after a save). `tests/back-guard.spec.ts`; the phone audit walks all 8
-  screens again, 0 findings.
-- **Service worker** (`lib/serviceWorker.ts`, served by `app/sw.js/route.ts`, production
-  only): assets only, never HTML/RSC/`/api`. `mb-static-<build>` is dropped per deploy,
-  `mb-assets-v1` survives. **Kill switch:** deploy with `NEXT_PUBLIC_DISABLE_SW=1`.
-- `next.config.ts` cannot resolve `@/` in files it imports transitively: `lib/cacheHeaders.ts`
-  and `lib/headshotThumb.ts` use relative imports on purpose.
-Deployed 2026-09-21 (`30c4878`): deployment reports `fra1`, cache headers, the gate and
-`/sw.js` (cache `mb-static-<sha>`) verified on hoops-draft.vercel.app. **Open:** owner phone
-UAT (install icon, landscape cutout padding, back/Leave in the deck builder).
+Plan: `docs/completed/plan_pvp_match_2026-09-22.md`, commits `98cf50b`..the close-out. The
+shared record of a two-player Playoffs match; no draft or series screens yet (pvp_draft,
+pvp_series). `storage/matchTypes.ts` is the contract: `Match` mirrors the row, the comment
+block lists every RPC and its error codes.
+- Migration `202609220001_matches.sql` APPLIED to production 2026-09-22 after a dry run
+  (migration + the 16 cases of `supabase/tests/202609220001_matches_test.sql` in one
+  rolled-back transaction). Live: 9 RPCs, RLS on, in `supabase_realtime`, anon cannot invite
+  or read `user_directory`, helpers not client-callable.
+- Clients never write `matches`; games are written only by `POST /api/match/[id]/simulate`
+  (service role, `lib/matchSimulate.ts`, game numbers 1-based, `engine/playoffs.ts`).
+  Heartbeats do not bump `version`. The bell reads slim columns (`MATCH_SUMMARY_COLUMNS`).
+- Second E2E account `E2E_TEST_EMAIL_2` (`e2e_test_2`); `playoffs-invite.spec` deletes the
+  matches between the two E2E accounts before and after.
+- Verified: `npm test` 655/655, `playoffs-invite.spec` green twice, smoke 9/9,
+  `route-js-size` `/` 335 -> 336 KB gz, bench checksum 219438687.
+- Open: two `useNotices` mounts (TopNav, WhatsNewSplash) each run the match query per page
+  load; no unit test of the simulate route handler itself (its logic is tested).
 
 ## render_and_engine_perf — done 2026-09-22
 
@@ -165,7 +147,7 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). All three are done and merged into `main`. `draft_resume` (#14) is done; `pvp_match` (#15) is open (section above). Fixed the same day: opening a
+(#13). All three are done and merged into `main`, as are `draft_resume` (#14) and `pvp_match` (#15); `pvp_draft` (#16) is unblocked. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
