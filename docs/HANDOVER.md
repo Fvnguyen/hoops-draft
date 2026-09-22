@@ -52,6 +52,23 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 
+## draft_resume + pvp_match — built 2026-09-22, not closed
+
+Commits `b86dbe4` (draft_resume) and `98cf50b` (pvp_match T1-T5), local on `main`, not pushed.
+- draft_resume: `engine/draftReplay.ts` rebuilds a draft from seed + human picks; the hook
+  derives everything from it; the session is saved after each pick and `/draft` offers
+  Resume/Abandon. 200-draft equivalence test, draft/draft-resume/visual green, phone audit 0.
+- pvp_match: `supabase/migrations/202609220001_matches.sql` (RPCs, RLS, `user_directory`),
+  `supabase/tests/202609220001_matches_test.sql` (16 cases, rolled back; passed on PGlite,
+  not yet on Supabase), `useMatch`/`useMatchList`, `/playoffs/new`, bell Accept/Decline,
+  `POST /api/match/[id]/simulate`. `/` first-load JS 335 -> 336 KB gz.
+- **Deploy order: apply the migration BEFORE pushing.** Until it exists every route's bell
+  query 404s, which is why `smoke.spec` is 1/9 locally right now (both plans close on it).
+- Open: T6 with the owner in manual mode (dry run of migration + test file in one
+  rolled-back transaction, then apply); run `bootstrap:e2e` for `E2E_TEST_EMAIL_2`, then
+  `playoffs-invite.spec`. Two `useNotices` mounts (TopNav, WhatsNewSplash) each run the
+  match query, so a page load makes 2 `match_expire` + 2 selects; dedupe if it shows up.
+
 ## sync_outbox — done 2026-09-21
 
 Plan: `docs/completed/plan_sync_outbox_2026-09-21.md` (T1-T8; T3 dropped), merged to
