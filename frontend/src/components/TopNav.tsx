@@ -73,6 +73,21 @@ function NoticesList({ notices, dismissNotice }: { notices: Notice[]; dismissNot
             )}
           </div>
           <p className="mt-0.5 text-xs text-ink-muted">{notice.body}</p>
+          {/* pvp_match D4: Accept/Decline on a 'match-invite' notice. */}
+          {notice.actions && notice.actions.length > 0 && (
+            <div className="mt-2 flex gap-2">
+              {notice.actions.map((action) => (
+                <Button
+                  key={action.label}
+                  variant={action.tone === 'danger' ? 'ghost' : 'secondary'}
+                  onClick={() => void action.onClick()}
+                  className={cn('px-2 py-1 text-xs normal-case tracking-normal', action.tone === 'danger' && 'text-danger hover:text-danger')}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </>

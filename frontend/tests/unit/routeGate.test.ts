@@ -4,7 +4,7 @@ import { PUBLIC_PATHS, isProtected } from '@/lib/routeGate';
 describe('isProtected', () => {
   it('gates the home page and every app route', () => {
     for (const path of ['/', '/draft', '/rosters', '/roster/roster_123', '/season', '/season/abc',
-      '/challenge/roster_123', '/admin/analytics', '/data', '/debug']) {
+      '/challenge/roster_123', '/playoffs/new', '/admin/analytics', '/data', '/debug']) {
       expect(isProtected(path), path).toBe(true);
     }
   });

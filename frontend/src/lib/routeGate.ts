@@ -4,7 +4,7 @@
  */
 
 export const PUBLIC_PATHS = new Set(['/login', '/signup', '/pending']);
-const PROTECTED_PREFIXES = ['/draft', '/rosters', '/roster', '/season', '/challenge', '/admin', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview', '/theater-preview'];
+const PROTECTED_PREFIXES = ['/draft', '/rosters', '/roster', '/season', '/challenge', '/playoffs', '/admin', '/deckbuilder-test', '/data', '/debug', '/test-ui', '/pack-opener-preview', '/theater-preview'];
 // AGENTS.md: the no-auth design sign-off routes. They render fixtures only — no storage,
 // no simulation — and must stay reachable without a session.
 const PUBLIC_PREVIEWS = new Set(['/challenge/preview', '/challenge/preview-results']);

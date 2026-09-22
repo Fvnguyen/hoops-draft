@@ -6,21 +6,40 @@
  * dismissed state is device-local (`GameStore.getMeta/setMeta`), not cloud-synced — see
  * D6 in the plan for why that's an acceptable tradeoff here.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getGameStore } from '@/storage';
 import { useLocalStoreReady, useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase } from '@/engine/season';
 import { WHATS_NEW, type ChangelogEntry } from '@/data/whatsnew';
+import { useCurrentProfile } from '@/components/AuthProvider';
+import { useMatchList } from './useMatch';
+import { loadMatchClient } from '@/lib/matchChannel';
+import { TERMINAL_MATCH_STATUSES, sideOf, type MatchSummary, type MatchSide } from '@/storage/matchTypes';
 
 const LAST_SEEN_CHANGELOG_KEY = 'lastSeenChangelogId';
 const DISMISSED_NOTICES_KEY = 'dismissedNoticeIds';
 
+export interface NoticeAction {
+  label: string;
+  onClick: () => void | Promise<void>;
+  tone?: 'default' | 'danger';
+}
+
 export interface Notice {
   id: string;
-  kind: 'changelog' | 'season-complete';
+  kind: 'changelog' | 'season-complete' | 'match-invite' | 'match-turn' | 'match-done';
   date: string;
   title: string;
   body: string;
+  /** pvp_match D4: Accept/Decline on an invite notice. Only `match-invite` sets these
+   *  today; every other kind keeps the plain Dismiss button TopNav already renders. */
+  actions?: NoticeAction[];
+}
+
+/** pvp_match D4: which side I'm on for a match, or null if I'm not signed in / not a
+ *  participant. Small wrapper so the notice builders below don't repeat the null check. */
+function mySide(match: MatchSummary, userId: string | null): MatchSide | null {
+  return sideOf(match, userId);
 }
 
 async function loadDismissedIds(): Promise<Set<string>> {
@@ -52,9 +71,10 @@ export function useNotices(): {
   // up once full readiness flips — which it also does again after a login, a logout or an
   // account switch. Reloading then keeps the bell from showing the previous user's seasons.
   const ownerReady = useStorageReady();
-  const [notices, setNotices] = useState<Notice[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [localNotices, setLocalNotices] = useState<Notice[]>([]);
+  const [unseenChangelogCount, setUnseenChangelogCount] = useState(0);
   const [latestUnseenEntry, setLatestUnseenEntry] = useState<ChangelogEntry | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     const store = getGameStore();
@@ -63,6 +83,7 @@ export function useNotices(): {
       loadDismissedIds(),
       store.listSeasons(),
     ]);
+    setDismissedIds(dismissed);
 
     const lastSeenIndex = lastSeenChangelogId ? WHATS_NEW.findIndex((e) => e.id === lastSeenChangelogId) : -1;
     const unseenChangelog = WHATS_NEW.slice(lastSeenIndex + 1);
@@ -85,9 +106,8 @@ export function useNotices(): {
       body: e.subtitle,
     }));
 
-    const all = [...seasonNotices, ...changelogNotices].sort((a, b) => (a.date < b.date ? 1 : -1));
-    setNotices(all);
-    setUnreadCount(unseenChangelog.length + seasonNotices.length);
+    setLocalNotices([...seasonNotices, ...changelogNotices]);
+    setUnseenChangelogCount(unseenChangelog.length);
     setLatestUnseenEntry(unseenChangelog.length > 0 ? unseenChangelog[unseenChangelog.length - 1] : null);
   }, []);
 
@@ -112,6 +132,89 @@ export function useNotices(): {
       getGameStore().setMeta(DISMISSED_NOTICES_KEY, JSON.stringify([...dismissed])).then(load);
     });
   }, [load]);
+
+  // pvp_match D4: 'match-invite'/'match-turn'/'match-done', sourced from `useMatchList()`
+  // (its own load on mount, plus `refetchMatches` after Accept/Decline below — no push).
+  // `useMatchList` never throws (it catches internally and falls back to []), so a match
+  // query failure never blocks the changelog/season half of the feed above.
+  const profile = useCurrentProfile();
+  const userId = profile?.id ?? null;
+  const { matches, refetch: refetchMatches } = useMatchList();
+
+  const respondToInvite = useCallback(async (match: MatchSummary, accept: boolean) => {
+    try {
+      const client = await loadMatchClient();
+      await client.rpc('match_respond', { p_id: match.id, p_version: match.version, p_accept: accept });
+    } catch (err) {
+      console.error('Failed to respond to match invite:', err);
+    } finally {
+      void refetchMatches();
+    }
+  }, [refetchMatches]);
+
+  const matchNotices = useMemo<Notice[]>(() => {
+    if (!userId) return [];
+    const built: Notice[] = [];
+    for (const match of matches) {
+      const side = mySide(match, userId);
+      if (!side) continue;
+
+      if (match.status === 'invited' && match.guest_id === userId) {
+        built.push({
+          id: `match-invite:${match.id}`,
+          kind: 'match-invite',
+          date: match.created_at,
+          title: 'Playoffs invite',
+          body: 'Someone challenged you to a head-to-head draft.',
+          actions: [
+            { label: 'Accept', onClick: () => respondToInvite(match, true) },
+            { label: 'Decline', onClick: () => respondToInvite(match, false), tone: 'danger' },
+          ],
+        });
+        continue;
+      }
+
+      if (TERMINAL_MATCH_STATUSES.includes(match.status)) {
+        const doneId = `match-done:${match.id}`;
+        if (match.status === 'done' && !dismissedIds.has(doneId)) {
+          const won = match.winner_id === userId;
+          built.push({
+            id: doneId,
+            kind: 'match-done',
+            date: match.updated_at,
+            title: won ? 'Series won' : 'Series complete',
+            body: won ? 'You won the series. Check the results.' : 'Your playoffs series is over.',
+          });
+        }
+        continue;
+      }
+
+      const myPicks = side === 'host' ? match.host_picks : match.guest_picks;
+      const theirPicks = side === 'host' ? match.guest_picks : match.host_picks;
+      const myLockedAt = side === 'host' ? match.host_locked_at : match.guest_locked_at;
+      const mySeenGame = side === 'host' ? match.host_seen?.game ?? 0 : match.guest_seen?.game ?? 0;
+      const myTurn =
+        (match.status === 'drafting' && myPicks.length < theirPicks.length) ||
+        (match.status === 'building' && !myLockedAt) ||
+        ((match.status === 'series' || match.status === 'sideboard') && match.games.length > mySeenGame);
+      if (myTurn) {
+        built.push({
+          id: `match-turn:${match.id}`,
+          kind: 'match-turn',
+          date: match.updated_at,
+          title: 'Your move',
+          body: 'Your playoffs opponent is waiting on you.',
+        });
+      }
+    }
+    return built;
+  }, [matches, userId, dismissedIds, respondToInvite]);
+
+  const notices = useMemo(
+    () => [...localNotices, ...matchNotices].sort((a, b) => (a.date < b.date ? 1 : -1)),
+    [localNotices, matchNotices],
+  );
+  const unreadCount = unseenChangelogCount + localNotices.filter((n) => n.kind === 'season-complete').length + matchNotices.length;
 
   return { notices, unreadCount, latestUnseenEntry, markChangelogSeen, dismissNotice };
 }
