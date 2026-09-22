@@ -1,4 +1,4 @@
-# Handover — 2026-09-21
+# Handover — 2026-09-22
 
 ## Current state
 
@@ -44,55 +44,12 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **game_canvas** (2026-09-16, `plan_game_canvas_2026-09-16.md`): `html { zoom: 0.7 }` under `(pointer: coarse) and (max-width: 999px)` with `h-dvh-z` shells so the five main screens fit a phone in landscape without scrolling; tap-to-select touch contract, long-press preview, `tests/mobile-audit.spec.ts` rules 5/6.
 - **phone_card** (2026-09-19, `plan_phone_card_2026-09-19.md`): owner rejected two landscape redesign mocks against a real S26+ screenshot, signed off a modest resize instead — phone-only `wide` prop on `size="sm"` `PlayerCard`/`PackRevealCard`, aspect 5/7 → 1.15/1, badge gap 4px → 6px, image crop retargeted (`object-[center_20%]`), grid `max-w` factor `10/7` → `2.3`. `DepthSlotColumn` untouched. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9, verified via browser-pane touch emulation at 760×385.
 - **challenge_loose_ends** (2026-09-19, `plan_challenge_loose_ends_2026-09-19.md`): `PlayCard`/`PlayCardFront` get the same phone `wide` resize as player cards; 82:0 results screen's primary CTA is now "End Challenge — Results Locked In" (`/rosters`), replacing "Draft a new team"; rosters list shows `Start 82:0`/`Continue 82:0`/`View Result` per run phase plus a `W-L · Title (Grade)` summary once done; `TopNav` gains a "82:0 Challenges: N completed, best W-L (grade)" line, omitted at zero completed runs. 442/443 tests, tsc/lint/check:styles clean, smoke 9/9.
+- **challenge_mode** (2026-09-18, `plan_challenge_mode_2026-09-17.md`): the 82:0 Challenge as a second mode picked before the draft; a half is simulated in one call and saved before anything animates, every game seeded from (run seed, index), `CHALLENGE_TUNING` challenge-only, NBA rosters locked in (box stats keyed by side), record sealed until game 82; reel pacing constants atop `ChallengeReel.tsx`, `/challenge/preview` routes render the signed boards with no auth.
 - **engine_possession_model** (2026-09-16, `plan_engine_possession_model_2026-09-16.md`): standardised lineup aggregation (`RATING_NORM`/`LINEUP_AGG`/`LINEUP_CENTRE`), possession events (turnover/rebound/creator steer) replace the possession battle, edge 0.20/0.08; talent share 21.9% game/49.3% season; commits `ff6a59a`..`18eb277`.
 - **card_balance** (2026-09-17): bref-primary positions + bio crossover, rarity redistribution, badge hand-binning, play catalog 10→14. Superseded by card_ratings_rebalance below.
 - **mobile_native_feel** (2026-09-19): global `touch-action`/`user-select`/`-webkit-touch-callout` in `globals.css` (no context menu/double-tap zoom); Android/PWA back shows a "Leave this screen?" sheet on draft room/deck builder; two per-move undo toasts dropped. Verified in the browser pane only — **not verified** on a real Android device; recheck there first on a long-press/double-tap/back report.
 - **card_ratings_rebalance + draft_ai** (2026-09-18/19, `plan_card_ratings_rebalance_2026-09-18.md`): pipeline keeps 13 more advanced columns; every dimension on one mean-centred `idx()` over rotation players; OVR = re-indexed mean of the uncapped raws; bref bio-page positions (`PositionResolver`); rarity band -> adjustment -> floor/ceiling; badges re-binned; gold = a fourth badge level; bots draft value-first-then-plan. `lineup.test.ts` (`LINEUP_CENTRE`) drifts past tolerance since, awaiting a recalibration pass.
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
-
-## challenge_mode — done 2026-09-18
-
-Plan: `docs/completed/plan_challenge_mode_2026-09-17.md` (T1-T9). Owner signed off live
-2026-09-18 after two rounds of UAT; exit criteria re-run at close: 431/431 vitest, smoke 9/9,
-tsc clean, lint 0 errors, check:styles 0, `npm run balance -- 500 --seed 42` unchanged at PPP
-1.044, and a tournament roster refused at `/challenge/<id>` with no run created. The 82:0 Challenge is a
-second game mode picked on the start page BEFORE the draft: 82 games against all 30 real NBA
-teams, revealed as a flip clock in two spins, with a front office and one trade at game 41 and
-a single grade at the end. `docs/game_mechanics.md` describes it in prose, `ARCHITECTURE.md`
-§6b how the pieces connect.
-
-What to know before touching it:
-
-- **A half is simulated in ONE call and saved before anything animates**, and a half already
-  in `run.halves` is never re-simulated. That is the whole reason a reload replays the reveal
-  instead of re-rolling the season. Don't move simulation into a component. Reel pacing is
-  five constants at the top of `ChallengeReel.tsx` (retuned after UAT: a run is ~15.6s, not
-  ~29s); the blur radius is a FRACTION of the glyph in `FlipClock.tsx` — fixed pixels left a
-  168px digit legible and the half-time record could be read off the sealed reel.
-- **Every game's seed derives from (run seed, game index)**, never a shared stream, so reveal
-  speed, a skip or a reload cannot shift a result. Same for the trade pack and the schedule.
-- **Difficulty is challenge-only**: `CHALLENGE_TUNING` (0.50/0.20 vs the engine's 0.20/0.08)
-  is passed to `simulateGame`; tournament balance is untouched and `npm run balance` is
-  unchanged at PPP 1.044. Calibrated with `npm run challenge` — 2,000 seat-seasons put the
-  best drafted seat at 60 wins mean, p90 70, and wins fall monotonically by seat rank.
-- **NBA rosters are locked in** (owner call): a drafted Luka faces Lakers Luka. That forced a
-  real engine fix — `simulateGame` kept ONE box-score map keyed by player id for both teams,
-  so a shared id merged into one row emitted on the home side only; 13 of 41 games had a box
-  score disagreeing with the scoreboard, one by 32 points. Box stats are now keyed by side.
-- **The record stays sealed until game 82.** The break shows a pace band only, and
-  `challengeAdvice.test.ts` scans every generated string for a rating or a W-L record.
-
-UAT changed three things: the reel was too slow (a run is now ~15.6s, not ~29s); what seals the
-record is the strip ROLLING, not blur (at 19% of the glyph the cell went flat); and the "flicker
-before the deadline" was a REVEAL — blur dropped to 0 as a half ran out, showing the true 41-game
-record for a frame. `/challenge/preview?at=6|28|79` and `/challenge/preview-results[?trade=0]`
-render the signed boards with no auth, storage or simulation.
-
-Seams: the pack reveal advances on animation frames, so it stalls if the browser pane stops
-painting (which is why the trade -> deck-builder hand-off is code-verified, not clicked);
-`cas_upsert`'s allowlist is hardcoded in SQL, so a new synced table needs the function
-re-declared (migration `202609170001`); and an untracked asset in `public/` reads as junk to
-the next agent — the 82:0 pack art was deleted on that mistake, so it is tracked now.
 
 ## sync_outbox — done 2026-09-21
 
@@ -150,6 +107,37 @@ Deployed 2026-09-21 (`30c4878`): deployment reports `fra1`, cache headers, the g
 `/sw.js` (cache `mb-static-<sha>`) verified on hoops-draft.vercel.app. **Open:** owner phone
 UAT (install icon, landscape cutout padding, back/Leave in the deck builder).
 
+## render_and_engine_perf — done 2026-09-22
+
+Plan: `docs/completed/plan_render_and_engine_perf_2026-09-21.md` (T1-T14, `faae707`..`b21a285`).
+Behaviour-preserving throughout: `npx tsx scripts/bench-engine.ts` prints a checksum of a
+simulated 82:0 season that must stay 219438687, and `node scripts/balance-baseline.mjs` must
+print IDENTICAL against `tests/fixtures/balance-500-seed42.txt` (never `--write` it without
+an owner-approved balance change). Both held after every commit.
+- **Engine:** 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms on the dev machine.
+  `memoLineup` caches lineup aggregates per five-man array (WeakMap; unregistered arrays are
+  never cached, tests edit ratings in place); `prepareLineupDraw` hoists the depth-chart
+  weights out of the possession loop; `simulateGame(..., { events: false })` skips the
+  play-by-play for `simulateHalf` (a viewer re-simulates the seed with events); the trade
+  ghost runs only when `rosterChanged` says the roster differs. `game.ts` is 364 lines over
+  `gameTypes/shot/rotation/possession/teamInfo/boxscore.ts`. A season's games are seeded
+  `mixSeed(season.seed, 'game:<day>:<matchup>')`, no clock reads, so a season replays from
+  its seed. Narration picks variants off its own salted stream, never the engine's.
+- **Deck builder:** roster editing is one pure reducer, `applyBuilderAction` in
+  `engine/deckbuilder.ts` (43 tests incl. a 300-action property run); `useRosterBuilder`
+  returns a dispatch's error synchronously. `DeckBuilder.tsx` 686 lines; layout in
+  `useDockLayout`, derived playbook in `useBuilderPlaybook`, saving in `useSaveRoster`,
+  `RosterSidebar`/`PlaysSidebar`/`SaveRosterModal`/`ClearRosterModal`/`DragGhost`. Roster
+  filter and lane state live ABOVE the sidebar body (`useRosterSidebarView`): the body
+  unmounts when the phone drawer closes, and `deckbuilder.spec` asserts the filter survives.
+- **Render:** `TeamBlock`/`TaleOfTheTape` memoized, live box only while on screen
+  (`tests/game-view-render.spec.ts`: 46 -> 10 renders per 23 possessions). `PlayerCard.tsx`
+  918 lines (`PlayArt.tsx`, `BadgeIcon.tsx`); hover previews arm only on fine pointers;
+  long-press preview on bench rows, starters, compact cards and rosters-page starters
+  (`tests/long-press.spec.ts`, dispatched touch events, chromium project). Rosters page renders
+  front-only starter cards, stagger capped at 1 s, `content-visibility:auto` per roster.
+Owner phone round for the long-press attach signed off 2026-09-22.
+
 ## How to run everything
 
 ```bash
@@ -175,11 +163,11 @@ What to do next is `docs/ROADMAP.md`; `draft_ai`, `card_balance_thresholds`,
 `mobile_native_feel`, `phone_card` and `challenge_loose_ends` all closed. `mode_picker`
 (#10) is unblocked. **2026-09-21 review** (code, architecture, mobile/PWA) produced three
 planned, unstarted plans: `mobile_load` (#11), `sync_outbox` (#12), `render_and_engine_perf`
-(#13). `sync_outbox` and `mobile_load` are done (sections above); `render_and_engine_perf` (#13) has every task committed on `claude/render-engine-perf` (not merged, no milestone section yet): it closes after the owner's phone round for T14: hold a bench row, a depth-chart starter and a Bench-slot compact card in the deck builder for half a second; the preview must show, release must not place or remove the player, scrolling the bench must never pop a preview, and Android must not start a native drag or a Copy/Share sheet. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
+(#13). All three are done (sections above); `render_and_engine_perf` sits on `claude/render-engine-perf`, merge and push on the owner's word. `draft_resume` (#14) replaces the dropped per-pick autosave. Fixed the same day: opening a
 saved roster wiped every play-role assignment (`initBuilderState` in `engine/deckbuilder.ts`
 seeds the builder at mount; `tests/roster-reopen.spec.ts` fails on the old code), Enter/Space
 on a pack card picked it instantly, login `next` open redirect (`lib/safeNextPath.ts`).
-454/455 tests (`lineup.test.ts` drift only). Owner actions outside the repo:
+631/632 tests (`lineup.test.ts` drift only). Owner actions outside the repo:
 Supabase dashboard Authentication → Sessions refresh-token/inactivity timeout >= 90 days;
 Vercel image-optimization quota is the first place to look if headshots ever break. The
 2026-09-12 code review that produced Phases 0-1 is archived as

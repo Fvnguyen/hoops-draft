@@ -1,6 +1,6 @@
 # Plan: render_and_engine_perf
 
-File: `docs/plans/plan_render_and_engine_perf_2026-09-21.md`. Status: in progress. Sequence: 13 in `docs/ROADMAP.md`.
+File: `docs/plans/plan_render_and_engine_perf_2026-09-21.md`. Status: done 2026-09-22. Sequence: 13 in `docs/ROADMAP.md`.
 Depends on: nothing. Line numbers refreshed 2026-09-21 (after `sync_outbox`/`mobile_load`); the symbol name wins.
 Files owned (all under `frontend/src/` unless noted): `engine/{game,lineup,challenge,season,cards,rosterStats,
 synergies,deckbuilder,boxscore,gameTypes,rotation,shot,possession,teamInfo}.ts` (last 5 new),
