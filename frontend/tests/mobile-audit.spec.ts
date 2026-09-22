@@ -4,6 +4,13 @@ import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
 import { dismissSplash as dismissSplashShared } from './helpers/splash';
 import { clearAnyUnfinishedDraft } from './helpers/draft';
+import { getAllCards } from '@/engine/cards';
+import { PLAY_CATALOG } from '@/engine/plays';
+import { buildBotRoster } from '@/engine/deckbuilder';
+import { simulateMatchGame } from '@/lib/matchSimulate';
+import type { Match } from '@/storage/matchTypes';
+import type { SavedRoster } from '@/storage/types';
+import type { DraftCard } from '@/engine/types';
 
 /**
  * plan_mobile_responsive T1 — the audit harness.
@@ -498,6 +505,133 @@ test.describe('Mobile audit', () => {
         await admin!.from('matches').delete()
           .or(`and(host_id.eq.${a.id},guest_id.eq.${b.id}),and(host_id.eq.${b.id},guest_id.eq.${a.id})`);
         await contextB.close();
+      }
+    });
+  });
+
+  // pvp_series T4: the series page, a game page and the sideboard screen, same D1 audit.
+  // Builds its own fixture (two locked rosters, two games already simulated so the strip
+  // has something to show, plus a 2-0 row for the sideboard screen) directly with the
+  // service role — mirrors `pvp-draft.spec.ts`/`playoffs-invite.spec.ts` but never runs
+  // those specs' own cleanup, so it can't clobber a match between the two E2E accounts.
+  test.describe('playoffs series', () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const admin = url && serviceKey
+      ? createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+      : null;
+    const authFile2 = 'tests/.auth/user2.json';
+
+    test.skip(
+      !process.env.E2E_TEST_EMAIL_2 || !process.env.E2E_TEST_PASSWORD_2 || !admin,
+      'Set E2E_TEST_EMAIL_2/E2E_TEST_PASSWORD_2 (and the Supabase keys) and run `npm run bootstrap:e2e`.',
+    );
+
+    let cachedPlayers: DraftCard[] | null = null;
+    function players(): DraftCard[] {
+      if (!cachedPlayers) cachedPlayers = getAllCards();
+      return cachedPlayers;
+    }
+
+    function draftedFor(offset: number): DraftCard[] {
+      return [...players().slice(offset, offset + 21), ...PLAY_CATALOG.slice(0, 3)];
+    }
+
+    function rosterFrom(id: string, name: string, drafted: DraftCard[]): SavedRoster {
+      const built = buildBotRoster(drafted);
+      return {
+        id,
+        name,
+        timestamp: new Date().toISOString(),
+        draftedCards: drafted,
+        depthChartOrder: built.depthChart,
+        activePlays: built.activePlays,
+        playAssignments: built.playAssignments,
+        archetypes: built.archetypes,
+        version: built.version ?? 2,
+        sessionId: null,
+      };
+    }
+
+    /** `winsForHost` games are simulated with the host winning every game (forced by
+     *  swapping which side "wins" isn't controllable directly — this fixture only needs
+     *  the games to exist and be watchable, not a particular score, so it takes whatever
+     *  `simulateMatchGame` produces and just plays enough games to reach the count). */
+    function buildFixtureBase(hostId: string, guestId: string, seed: number, id: string) {
+      const rosterA = rosterFrom(`${id}-roster-a`, 'Host Roster', draftedFor(0));
+      const rosterB = rosterFrom(`${id}-roster-b`, 'Guest Roster', draftedFor(60));
+      const now = new Date().toISOString();
+      return {
+        id, seed, host_id: hostId, guest_id: guestId, status: 'series' as const,
+        host_picks: draftedFor(0).map((c) => c.id), guest_picks: draftedFor(60).map((c) => c.id),
+        host_autopicks: [], guest_autopicks: [], pick_deadline: null,
+        host_roster: rosterA, guest_roster: rosterB,
+        host_locked_at: now, guest_locked_at: now,
+        sideboard: {}, host_seen: null, guest_seen: null,
+        host_seen_at: now, guest_seen_at: now, winner_id: null, void_reason: null,
+      };
+    }
+
+    test.beforeAll(async () => {
+      if (!admin) return;
+      const { error } = await admin.from('matches').select('void_reason').limit(1);
+      test.skip(!!error, `void_reason column missing — 202609220002_match_void.sql not applied: ${error?.message}`);
+    });
+
+    test('series page, game page and sideboard at the D1 touch viewport', async ({ page }, testInfo) => {
+      test.skip(!fs.existsSync(authFile2), `${authFile2} missing: auth2.setup.ts did not run.`);
+      test.setTimeout(120_000);
+
+      await page.goto('/');
+      const a = await page.request.get('/api/auth/me').then((r) => r.json()) as { id: string };
+      // Second account's id: `user_directory` filters by RLS against the CALLER's session,
+      // which the service role has none of, so it comes back empty here — the auth admin
+      // API (service-role only, bypasses RLS entirely) is the reliable way to resolve it.
+      const { data: usersData } = await admin!.auth.admin.listUsers({ perPage: 1000 });
+      const guestId = usersData?.users?.find((u: { email?: string }) => u.email === process.env.E2E_TEST_EMAIL_2)?.id as string | undefined;
+      test.skip(!guestId, 'second E2E account not found');
+
+      const seriesId = `e2e-mobile-audit-series-${Date.now()}`;
+      const sideboardId = `e2e-mobile-audit-sideboard-${Date.now()}`;
+      await admin!.from('matches').delete().like('id', 'e2e-mobile-audit-series-%');
+      await admin!.from('matches').delete().like('id', 'e2e-mobile-audit-sideboard-%');
+
+      try {
+        // Series screen + game screen: two games already simulated.
+        const base = buildFixtureBase(a.id, guestId!, 727272, seriesId);
+        const matchForSim1 = { ...base, games: [] } as unknown as Match;
+        const game1 = simulateMatchGame(matchForSim1, 1);
+        const matchForSim2 = { ...base, games: [game1] } as unknown as Match;
+        const game2 = simulateMatchGame(matchForSim2, 2);
+        const { error: err1 } = await admin!.from('matches').insert({ ...base, games: [game1, game2] });
+        if (err1) throw err1;
+
+        await page.goto(`/playoffs/${seriesId}`);
+        await dismissSplash(page);
+        const goBtn = page.getByRole('button', { name: /let's go/i });
+        if (await goBtn.isVisible().catch(() => false)) await goBtn.click();
+        await expect(page.getByRole('heading', { name: 'Series' })).toBeVisible({ timeout: 15_000 });
+        await audit(page, testInfo, 'playoffs-series');
+
+        await page.goto(`/playoffs/${seriesId}/game/1`);
+        await expect(page.getByRole('button', { name: /Tip Off/i })).toBeVisible({ timeout: 15_000 });
+        await audit(page, testInfo, 'playoffs-game');
+
+        // Sideboard screen: a fresh row already AT status 'sideboard' (skips playing out
+        // to 2-0 — this fixture only needs the screen to be reachable and watchable).
+        const sideboardBase = buildFixtureBase(a.id, guestId!, 828282, sideboardId);
+        const { error: err2 } = await admin!.from('matches').insert({ ...sideboardBase, status: 'sideboard', games: [] });
+        if (err2) throw err2;
+
+        await page.goto(`/playoffs/${sideboardId}`);
+        await dismissSplash(page);
+        const goBtn2 = page.getByRole('button', { name: /let's go/i });
+        if (await goBtn2.isVisible().catch(() => false)) await goBtn2.click();
+        await page.waitForTimeout(1000);
+        await audit(page, testInfo, 'playoffs-sideboard');
+      } finally {
+        await admin!.from('matches').delete().like('id', 'e2e-mobile-audit-series-%');
+        await admin!.from('matches').delete().like('id', 'e2e-mobile-audit-sideboard-%');
       }
     });
   });

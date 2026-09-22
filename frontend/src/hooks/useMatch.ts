@@ -74,7 +74,15 @@ export function useMatch(id: string | null | undefined): UseMatchResult {
     setTransport('connecting');
     void fetchMatch();
     const handle = openMatchChannel(id, {
-      onChange: (row) => { if (!cancelled) applyMatch(row); },
+      // pvp_series T4 fix: a Realtime `UPDATE` payload omits any column Postgres didn't
+      // touch AND had TOASTed out-of-line (large values — `games` on a series match can be
+      // tens of KB of box scores) unless the table has REPLICA IDENTITY FULL, which this
+      // one doesn't. A bare `match_heartbeat` (writes only `*_seen_at`, no version bump)
+      // then arrives here missing `games` entirely, and a blind overwrite would wipe it
+      // from local state until the next full refetch. Merging onto the last known row
+      // keeps whatever the payload didn't actually change; a real change to `games` is
+      // always present in its own payload, so this never masks one.
+      onChange: (row) => { if (!cancelled) applyMatch(matchRef.current ? { ...matchRef.current, ...row } : row); },
       onTransport: (t) => { if (!cancelled) setTransport(t); },
       onError: (err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Realtime error'); },
     });

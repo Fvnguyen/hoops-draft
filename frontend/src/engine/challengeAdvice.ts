@@ -20,10 +20,16 @@
  * badge/plan names are fair game.
  */
 
-import type { TeamInfo } from './game';
+import type { TeamInfo, PlayerBoxScore } from './game';
+import { emptyBoxScore } from './game';
+import { accumulateBoxRow } from './boxscore';
 import type { PlayerCardData } from './types';
-import type { ChallengeGrade, ChallengeHalf, ChallengePlayerTotals } from './challenge';
+import type {
+  ChallengeGrade, ChallengeHalf, ChallengePlayerTotals, ChallengeTeamTotals,
+  ChallengeGameResult, ChallengeTopPerformer,
+} from './challenge';
 import { CHALLENGE_GRADES, gradeForWins, mixSeed } from './challenge';
+import type { MatchSide } from './playoffs';
 import {
   CHALLENGE_GAMES, PACE_BAND_SPREAD, HOLD_BAND_MIN_WINS, LEAGUE_FOUR_FACTORS,
   LEAGUE_POINTS_PER_GAME, ROTATION_MIN_MPG, BENCH_MIN_MPG, BENCH_SCORING_EDGE_PER36,
@@ -574,4 +580,108 @@ export function challengeAdvice(input: ChallengeAdviceInput): ChallengeAdvice {
   const band = challengePaceBand(input.half.wins);
   const reasons = challengeReasons(input);
   return { band, reasons, quotes: challengeQuotes(reasons, input.seed ?? 0) };
+}
+
+// ── pvp_series D4: series input adapter ─────────────────────────────────────
+
+/**
+ * The part of a stored series game this adapter reads — structural, mirroring
+ * `engine/playoffs.ts`'s `SeriesGameLike`, so this file stays free of a `@/storage`
+ * dependency (the real shape is `storage/matchTypes.ts`'s `MatchGame`, a structural
+ * superset of this).
+ */
+export interface SeriesAdviceGame {
+  home: MatchSide;
+  score: { host: number; guest: number };
+  box: { host: PlayerBoxScore[]; guest: PlayerBoxScore[] };
+}
+
+/** Game score (Hollinger-lite), same formula as `challenge.ts`'s private
+ *  `topPerformerOf` — duplicated rather than imported/exported so this file adds only
+ *  an adapter and never reaches into `challenge.ts`'s simulation internals. */
+function seriesTopPerformer(rows: PlayerBoxScore[]): ChallengeTopPerformer {
+  let best: PlayerBoxScore | undefined;
+  let bestScore = -Infinity;
+  for (const r of rows) {
+    const rebounds = (r.offensiveRebounds ?? 0) + (r.defensiveRebounds ?? 0);
+    const score = (r.points ?? 0) + 1.2 * rebounds + 1.5 * (r.assists ?? 0)
+      + 2 * ((r.steals ?? 0) + (r.blocks ?? 0)) - 1.5 * (r.turnovers ?? 0);
+    if (score > bestScore) { bestScore = score; best = r; }
+  }
+  return {
+    playerId: best?.playerId ?? '',
+    playerName: best?.playerName ?? '',
+    points: best?.points ?? 0,
+    rebounds: (best?.offensiveRebounds ?? 0) + (best?.defensiveRebounds ?? 0),
+    assists: best?.assists ?? 0,
+  };
+}
+
+/**
+ * pvp_series D4: turns the series' games so far (2-3 games, sampled at `sideboardDue`
+ * rather than 41) into a `ChallengeHalf`-shaped bag of stats, for `PlayoffsFrontOffice`
+ * to feed straight into `challengeAdvice`/`challengeReasons`/`challengeTeamSplits`
+ * unchanged. Tagged `half: 1` throughout — nothing downstream reads that field, only
+ * `.games` / `.wins` / `.playerTotals` / `.opponentTotals` (see this file's product-rule
+ * tests). Callers combine this with their own `team` (`buildTeamInfo` over the live
+ * sideboard draft, same as `FrontOffice`'s own `rosterDraft` -> `team` memo) and a seed
+ * (`mixSeed(match.seed, 'advice:<side>')`, so host and guest read different quote
+ * variants for the same match) to build the full `ChallengeAdviceInput`.
+ */
+export function seriesAdviceHalf(games: readonly SeriesAdviceGame[], me: MatchSide): ChallengeHalf {
+  const opponent: MatchSide = me === 'host' ? 'guest' : 'host';
+  const totals = new Map<string, ChallengePlayerTotals>();
+  const opponentTotals: ChallengeTeamTotals = {
+    points: 0, fieldGoalsMade: 0, fieldGoalsAttempted: 0, threesMade: 0, threesAttempted: 0,
+    freeThrowsMade: 0, freeThrowsAttempted: 0, turnovers: 0, assists: 0,
+    offensiveRebounds: 0, defensiveRebounds: 0, steals: 0, blocks: 0,
+  };
+
+  const results: ChallengeGameResult[] = games.map((g, i) => {
+    const myRows = g.box[me] ?? [];
+    const oppRows = g.box[opponent] ?? [];
+    for (const row of myRows) {
+      let t = totals.get(row.playerId);
+      if (!t) { t = { ...emptyBoxScore(row.playerId, row.playerName), gamesPlayed: 0 }; totals.set(row.playerId, t); }
+      t.gamesPlayed += (row.minutes ?? 0) > 0 ? 1 : 0;
+      accumulateBoxRow(t, row);
+    }
+    for (const row of oppRows) {
+      opponentTotals.points += row.points ?? 0;
+      opponentTotals.fieldGoalsMade += row.fieldGoalsMade ?? 0;
+      opponentTotals.fieldGoalsAttempted += row.fieldGoalsAttempted ?? 0;
+      opponentTotals.threesMade += row.threesMade ?? 0;
+      opponentTotals.threesAttempted += row.threesAttempted ?? 0;
+      opponentTotals.freeThrowsMade += row.freeThrowsMade ?? 0;
+      opponentTotals.freeThrowsAttempted += row.freeThrowsAttempted ?? 0;
+      opponentTotals.turnovers += row.turnovers ?? 0;
+      opponentTotals.assists += row.assists ?? 0;
+      opponentTotals.offensiveRebounds += row.offensiveRebounds ?? 0;
+      opponentTotals.defensiveRebounds += row.defensiveRebounds ?? 0;
+      opponentTotals.steals += row.steals ?? 0;
+      opponentTotals.blocks += row.blocks ?? 0;
+    }
+    const myScore = g.score[me];
+    const oppScore = g.score[opponent];
+    return {
+      index: i,
+      opponent: 'series',
+      isHome: g.home === me,
+      seed: 0,
+      won: myScore > oppScore,
+      score: [myScore, oppScore] as [number, number],
+      topPerformer: seriesTopPerformer(myRows),
+    };
+  });
+
+  const wins = results.filter((g) => g.won).length;
+  return {
+    half: 1,
+    results: results.map((g) => (g.won ? 'W' : 'L')).join(''),
+    games: results,
+    wins,
+    losses: results.length - wins,
+    playerTotals: Array.from(totals.values()).sort((a, b) => b.points - a.points),
+    opponentTotals,
+  };
 }

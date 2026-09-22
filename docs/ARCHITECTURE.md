@@ -206,6 +206,44 @@ simulation — the design-sign-off routes.
 Storage is a `ChallengeRun` per roster (see §8), and `frontend/scripts/challenge-sim.ts`
 (`npm run challenge`) is the headless calibrator for `CHALLENGE_TUNING`.
 
+## 6c. Playoffs (PvP) (`engine/playoffs.ts` + `lib/matchAdvance.ts`/`matchSimulate.ts` + `app/api/match/[id]/advance/` + `app/playoffs/`)
+
+A "Playoffs" match is a two-human best-of-seven, drafted live from the same cube
+(`pvp_draft`) and then played out as a server-simulated series (`pvp_series`). Unlike
+every other mode, the record of TRUTH is one `public.matches` row, not each client's own
+store: `Match` (`storage/matchTypes.ts`) mirrors the row column for column, and every
+client mutation goes through a versioned, security-definer RPC (`match_invite`,
+`match_respond`, `match_pick`, `match_lock_roster`, `match_sideboard`, `match_seen`,
+`match_heartbeat`, `match_expire`, `match_void`) — never a direct table write. Both
+participants can read both sides of the row under RLS; hiding the opponent's bench, plays
+and identity before/during a game is a UI-only gate (`GameView`'s `hideOpponentDetails`),
+not a data-access restriction — the server never has less to send one side than the other.
+
+Once both rosters are locked, `POST /api/match/[id]/advance` is the ONLY writer of a
+series' progress. It is thin glue: load the row with the service role (after running
+`match_expire` through the CALLER's own client first, so a stale/idle match can't be
+advanced into), loop `planAdvance` (`lib/matchAdvance.ts`) at most 8 times applying each
+step under version CAS, and re-plan from a reload on a lost race — so two overlapping
+calls (a client visit and the opponent's) never double-simulate a game. `planAdvance` is
+pure and unit-tested without Next or Supabase: over -> `done`; the first side to reach 2
+wins with no sideboard yet -> `sideboard`; no games yet -> simulate game 1; both sides have
+seen the last game (or one has, 24h ago) -> simulate the next one; otherwise wait. The
+actual game is `lib/matchSimulate.ts`'s `simulateMatchGame` — `engine/playoffs.ts`'s
+`coinFlip`/`homeFor`/`gameSeed` (pure functions of the match seed, so a viewer replays
+exactly what the server simulated from just the stored seed and rosters, no separate
+play-by-play log needed) feeding `buildTeamInfo` + `simulateGame` with TOURNAMENT balance,
+never `CHALLENGE_TUNING`. Which roster plays is `rostersForNextGame`: the locked roster
+until both sideboard entries exist, the sideboarded snapshot after.
+
+The route is called from two places, both idempotent and safe to re-fire: the series page
+(`app/playoffs/[id]/page.tsx`) on load and whenever the row's version changes (debounced
+300ms — the timer, not the scheduling, is what stamps the per-version dedupe ref, so a
+StrictMode dev double-effect doesn't permanently skip a version), and the game page
+(`app/playoffs/[id]/game/[n]/page.tsx`) once a viewer's playback reaches the end (which
+also sends `match_seen`). No polling loop drives the series forward on its own — Realtime
+(`useMatch`, same channel/heartbeat/offline-detection machinery as `pvp_draft`) carries the
+result back to both clients once the route has written it.
+
 ## 7. Logging and analysis
 
 The `/debug` page calls `GameStore.exportAll()` and `POST`s the result to `/api/game-logs`

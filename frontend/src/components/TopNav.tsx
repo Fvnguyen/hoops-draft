@@ -148,6 +148,11 @@ function ProfileSummary({ profile, stats }: { profile: CurrentProfile; stats: Re
           82:0 Challenges: {stats.challenge.completed} completed, best {stats.challenge.best.wins}-{stats.challenge.best.losses} ({stats.challenge.best.grade})
         </p>
       )}
+      {stats.playoffs.series > 0 && (
+        <p className="px-3 pb-2 pt-1 text-xs text-ink-muted">
+          Playoffs: {stats.playoffs.wins}-{stats.playoffs.losses} series
+        </p>
+      )}
     </>
   );
 }
@@ -296,7 +301,9 @@ export function TopNav() {
             {status === 'signed-in' && profile && (
               <MenuSection>
                 <ProfileSummary profile={profile} stats={seasonStats} />
-                <MenuItem href="/playoffs" icon={<Trophy className="h-4 w-4" />}>Playoffs</MenuItem>
+                {/* No Playoffs item in the GAME gear menu: one more row tipped the panel
+                    over a phone-landscape screen height (mobile audit, deck-builder). Home
+                    is here, and Playoffs is one tap further from the start page. */}
                 <MenuItem href="/debug" icon={<Wrench className="h-4 w-4" />}>Debug export</MenuItem>
                 {profile.role === 'ADMIN' && (
                   <>

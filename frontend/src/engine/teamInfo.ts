@@ -6,9 +6,25 @@ import type { PlayerCardData, Play } from './types';
 import { DraftSessionSeat, normalizeBuiltRoster } from './deckbuilder';
 import type { TeamInfo } from './gameTypes';
 import { OFF_POSITION_PENALTY } from './balance';
-import { naturalPositions, effectivePosition, type DepthColumn } from './positions';
+import { DEPTH_COLUMNS, naturalPositions, effectivePosition, type DepthColumn } from './positions';
 
 // ── Team Builder Helper ────────────────────────────────────────────────────
+
+/**
+ * The depth chart in canonical column order (PG, SG, SF, PF, C, then any other key in its
+ * existing order). The simulation iterates depth-chart keys, so key ORDER changes results,
+ * and Postgres `jsonb` stores keys shortest-first (C, PF, PG, SF, SG): a roster that went
+ * through cloud sync or a Playoffs match row replayed to a different score than the same
+ * roster fresh from the deck builder. Every roster the app builds already uses canonical
+ * order, so this changes no existing result; it only makes the order independent of where
+ * the roster was loaded from.
+ */
+export function canonicalDepthChart(depthChart: Record<string, string[]>): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const col of DEPTH_COLUMNS) if (col in depthChart) out[col] = depthChart[col];
+  for (const [col, ids] of Object.entries(depthChart)) if (!(col in out)) out[col] = ids;
+  return out;
+}
 
 export function buildTeamInfo(
   seat: DraftSessionSeat,
@@ -18,6 +34,7 @@ export function buildTeamInfo(
   humanName: string = 'You'
 ): TeamInfo {
   const roster = seat.builtRoster;
+  const depthChart = canonicalDepthChart(roster.depthChart);
   const allCards = seat.drafted;
   const playerMap = new Map<string, PlayerCardData>();
   const playMap = new Map<string, Play>();
@@ -53,7 +70,7 @@ export function buildTeamInfo(
   const activePlayers: PlayerCardData[] = [];
   const starters: string[] = [];
 
-  for (const [pos, ids] of Object.entries(roster.depthChart)) {
+  for (const [pos, ids] of Object.entries(depthChart)) {
     for (const id of ids) {
       const player = playerMap.get(id);
       if (player && !activePlayers.find(p => p.id === id)) {
@@ -85,7 +102,7 @@ export function buildTeamInfo(
     players: activePlayers,
     starters,
     plays: activePlays,
-    depthChart: roster.depthChart,
+    depthChart,
     playAssignments: normalized.playAssignments,
     archetypes: normalized.archetypes,
   };

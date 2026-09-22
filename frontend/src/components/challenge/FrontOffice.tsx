@@ -5,22 +5,30 @@
  * `app/challenge/[rosterId]/page.tsx` in place of its `BreakPlaceholder` once `phase`
  * is `'break'`. See this file's bottom export for the exact mount contract.
  *
+ * pvp_series D4: reused by `components/playoffs/PlayoffsFrontOffice.tsx` for the
+ * mid-series sideboard — this component takes PROPS ONLY (no `ChallengeRun`), so a
+ * second caller can feed it a series' 2-3 games instead of a 41-game half without this
+ * file knowing which one it is. The two slots that read differently per caller — the
+ * header bar and the "On pace for.../TierLadder" block (a series shows the score
+ * instead of a season pace band) — are `ReactNode` props; everything else (the quote
+ * cards, the lineup editor, the trade flow) is identical for both callers by
+ * construction. `onDraftChange`/`onPrimary` replace the direct `getGameStore()` writes
+ * this component used to make, so persistence (a `ChallengeRun` here, a `match_sideboard`
+ * RPC there) is entirely the caller's business.
+ *
  * D11 in one sentence: every edit here (lineup, plays, identity, the trade) lands only
- * in this component's own `rosterDraft` state and the `ChallengeRun.rosterPost`
- * snapshot it persists — never `store.saveRoster`, never the draft session's
- * `builtRoster` — so the roster the user actually drafted is untouched no matter what
- * happens at the deadline.
+ * in this component's own `rosterDraft` state and whatever the caller does with
+ * `onDraftChange`/`onPrimary` — never `store.saveRoster` directly, never a draft
+ * session's `builtRoster` — so the roster the user actually drafted is untouched no
+ * matter what happens at the deadline.
  */
 
-import { useMemo, useState } from 'react';
-import { getGameStore } from '@/storage';
-import type { ChallengeRun, ChallengeTrade, SavedRoster } from '@/storage/types';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { ChallengeTrade, SavedRoster } from '@/storage/types';
 import { buildTeamInfo } from '@/engine/game';
-import { CHALLENGE_GAMES } from '@/engine/balance';
+import type { ChallengeHalf } from '@/engine/challenge';
 import { challengeAdvice, type ChallengeQuote, type ChallengeAction } from '@/engine/challengeAdvice';
 import { seatFromRoster } from './rosterSeat';
-import { TierLadder } from './TierLadder';
-import { FlipClock } from './FlipClock';
 import { Trade } from './Trade';
 import { Button, Panel } from '@/components/ui';
 import { DeckBuilder } from '@/components/DeckBuilder';
@@ -62,53 +70,80 @@ function QuoteCard({ quote }: { quote: ChallengeQuote }) {
 }
 
 export interface FrontOfficeProps {
-  run: ChallengeRun;
+  /** The season stats this break's advice is drawn from: games 1-41 for 82:0, the
+   *  series' games so far for pvp_series (`engine/challengeAdvice.ts`'s
+   *  `seriesAdviceHalf`). Only `.games`/`.wins`/`.playerTotals`/`.opponentTotals` are
+   *  ever read — `.half` itself is not. */
+  half: ChallengeHalf;
+  /** Quote-variant stream (`challengeAdvice`'s `seed`). */
+  seed: number;
+  /** The roster this break starts from (already reflects any earlier save this session). */
+  roster: SavedRoster;
+  trade?: ChallengeTrade;
+  /** `DeckBuilder`'s session id, when one exists (82:0 only — a series roster was never
+   *  drafted through a live session by the time it reaches the sideboard). */
+  sessionId?: string;
+  /** The sticky top bar. A full slot because pvp_series' opponent/score strip has
+   *  nothing in common with 82:0's "All-Star break" bar + sealed-record `FlipClock`. */
+  header: ReactNode;
+  /** Replaces the "On pace for / <label> / TierLadder" block wholesale — pvp_series
+   *  shows the series score instead of a full-season pace band (D4: no record is
+   *  hidden here, since it is the OPPONENT's score, not the sealed 82:0 record). */
+  paceDisplay: ReactNode;
+  /** Trade sourcing (D4/D9): which cards can never be offered, and the RNG seed the
+   *  pack draws from. 82:0 excludes only the roster's own cards, seeded off its own
+   *  run; pvp_series excludes BOTH players' drafted cards, seeded off
+   *  `mixSeed(match.seed, 'trade:<side>')`. */
+  tradeOwnedIds: Set<string>;
+  tradeSeed: number;
+  /** Fired after every local edit (a lineup save, a trade confirm) so the caller can
+   *  persist an in-progress snapshot. Optional: pvp_series has nothing worth persisting
+   *  before the primary action locks it in. */
+  onDraftChange?: (roster: SavedRoster, trade: ChallengeTrade | undefined) => void;
+  /** The footer's primary button label — "Spin the second half" for 82:0, "Lock" for
+   *  pvp_series. */
+  primaryLabel: string;
+  /** The footer's small print next to the primary button, when there is any. */
+  primaryHint?: ReactNode;
+  /** The footer's primary action: 82:0 persists `rosterPost`/`trade` and starts half 2;
+   *  pvp_series calls `match_sideboard` (`onLock`). Thrown errors are caught here and
+   *  logged — the button just stops spinning, exactly as before this refactor. */
+  onPrimary: (roster: SavedRoster, trade: ChallengeTrade | undefined) => Promise<void>;
   /**
-   * Fired once "Spin the second half" is pressed, AFTER this component has already
-   * persisted `rosterPost`/`trade` to the store. Hands back the merged run so the
-   * caller's own phase transition (`phase: 'break' -> 'second'`) can spread from THIS
-   * object instead of its own possibly-stale `run` prop — spreading the stale prop would
-   * silently drop whatever the front office just saved. See the T7 handover notes for
-   * the one-line change `page.tsx`'s `startSecondHalf` needs to accept it.
+   * The outer shell. `'fullscreen'` (default, unchanged) is 82:0's own game-route chrome
+   * — `h-dvh-z`, a sticky header, a scrolling middle, a docked footer — built for a route
+   * `isGameRoute` hides the ordinary nav bar on. `'inline'` is a plain top-to-bottom flow
+   * (no fixed viewport height, no docked footer) for pvp_series' `PlayoffsFrontOffice`,
+   * which sits mid-page inside the series page's own `<main>` under the ordinary TopNav —
+   * `/playoffs/[id]` is NOT a game route (`src/lib/routes.ts`), so a full-viewport shell
+   * there would run its own header straight under the fixed nav bar.
    */
-  onSpin: (updatedRun: ChallengeRun) => void;
+  variant?: 'fullscreen' | 'inline';
 }
 
-export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
-  const [rosterDraft, setRosterDraft] = useState<SavedRoster>(run.rosterPost ?? run.rosterPre);
-  const [trade, setTrade] = useState<ChallengeTrade | undefined>(run.trade);
+export function FrontOffice({
+  half, seed, roster, trade: tradeInitial, sessionId, header, paceDisplay,
+  tradeOwnedIds, tradeSeed, onDraftChange, primaryLabel, primaryHint, onPrimary,
+  variant = 'fullscreen',
+}: FrontOfficeProps) {
+  const [rosterDraft, setRosterDraft] = useState<SavedRoster>(roster);
+  const [trade, setTrade] = useState<ChallengeTrade | undefined>(tradeInitial);
   const [showEditor, setShowEditor] = useState(false);
   const [showTrade, setShowTrade] = useState(false);
   const [spinning, setSpinning] = useState(false);
-
-  const half = run.halves[0];
 
   const team = useMemo(
     () => buildTeamInfo(seatFromRoster(rosterDraft), true, rosterDraft.name || 'Your team'),
     [rosterDraft],
   );
-  const advice = useMemo(
-    () => (half ? challengeAdvice({ team, half, seed: run.seed }) : null),
-    [team, half, run.seed],
-  );
+  const advice = useMemo(() => challengeAdvice({ team, half, seed }), [team, half, seed]);
 
-  // The page never mounts this before half 1 is committed (see the mount contract at
-  // the bottom of this file) — this is only a defensive fallback.
-  if (!half || !advice) return null;
-
-  const persist = async (patch: Partial<Pick<ChallengeRun, 'rosterPost' | 'trade' | 'phase'>>) => {
-    const next: ChallengeRun = { ...run, rosterPost: rosterDraft, trade, ...patch };
-    await getGameStore().saveChallengeRun(next);
-    return next;
-  };
-
-  const handleSpin = async () => {
+  const handlePrimary = async () => {
     setSpinning(true);
     try {
-      const next = await persist({});
-      onSpin(next);
+      await onPrimary(rosterDraft, trade);
     } catch (err) {
-      console.error('Failed to save the front office before spinning the second half:', err);
+      console.error('Failed to complete the front office action:', err);
       setSpinning(false);
     }
   };
@@ -116,85 +151,59 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
   const handleEditorSave = (saved: SavedRoster) => {
     setRosterDraft(saved);
     setShowEditor(false);
-    void getGameStore().saveChallengeRun({ ...run, rosterPost: saved, trade }).catch((err) => {
-      console.error('Failed to save the front office lineup edit:', err);
-    });
+    onDraftChange?.(saved, trade);
   };
 
   /**
    * The acquired card lands on the BENCH (D9), so a trade always leaves the depth chart a
    * man short. Go straight into the lineup editor instead of back to the quotes: otherwise
-   * the natural path — trade, then spin — silently plays games 42-82 with eleven.
+   * the natural path — trade, then spin/lock — silently plays (or locks) with eleven.
    */
   const handleTradeConfirm = (updatedRoster: SavedRoster, madeTrade: ChallengeTrade) => {
     setRosterDraft(updatedRoster);
     setTrade(madeTrade);
     setShowTrade(false);
     setShowEditor(true);
-    void getGameStore().saveChallengeRun({ ...run, rosterPost: updatedRoster, trade: madeTrade }).catch((err) => {
-      console.error('Failed to save the front office trade:', err);
-    });
+    onDraftChange?.(updatedRoster, madeTrade);
   };
 
-  const band = advice.band;
   const tradeUsed = !!trade;
 
-  return (
-    <div className="flex h-dvh-z flex-col">
-      <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line pl-6 pr-nav-gear">
-        <span className="font-display text-3xl leading-none text-accent">82:0</span>
-        <span className="text-xs font-black uppercase tracking-widest text-ink-muted">
-          All-Star break &middot; {CHALLENGE_GAMES / 2} games played &middot; trade deadline
-        </span>
-        <div className="grow" />
-        {/* D8: the record stays sealed until game 82 — these are decorative placeholder
-            flaps, never `half.wins`/`half.losses`, so even a reduced-motion viewer (whose
-            flaps never blur) can't read a real result off them. */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-ink-subtle">Record sealed</span>
-          <FlipClock wins={0} losses={0} blur={0.55} size="sm" />
-        </div>
-      </header>
+  const quotesGrid = (
+    <div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
+      {advice.quotes.map((quote, i) => (
+        <QuoteCard key={i} quote={quote} />
+      ))}
+    </div>
+  );
 
-      <div className="flex grow flex-col items-center justify-center gap-7 overflow-y-auto px-8 py-6">
-        <div className="flex w-full max-w-4xl flex-col items-center gap-3">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-ink-subtle">On pace for</p>
-          <h1 className="font-display text-5xl leading-none text-ink-strong sm:text-6xl">{band.label}</h1>
-          <TierLadder band={[band.low, band.high]} className="w-full" />
-        </div>
+  const adjustButton = (
+    <Button variant="secondary" size="lg" onClick={() => setShowEditor(true)}>
+      Adjust lineup and plays
+    </Button>
+  );
+  const tradeButton = (
+    <Button
+      variant="secondary"
+      size="lg"
+      onClick={() => setShowTrade(true)}
+      disabled={tradeUsed}
+      className="border-accent text-accent hover:bg-accent-soft/20"
+    >
+      Make a trade
+      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent">
+        {tradeUsed ? '0 left' : '1 left'}
+      </span>
+    </Button>
+  );
+  const primaryButton = (
+    <Button size="lg" onClick={handlePrimary} disabled={spinning}>
+      {spinning ? 'Saving…' : primaryLabel}
+    </Button>
+  );
 
-        <div className="grid w-full max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3">
-          {advice.quotes.map((quote, i) => (
-            <QuoteCard key={i} quote={quote} />
-          ))}
-        </div>
-      </div>
-
-      <footer className="flex h-20 shrink-0 items-center gap-3 border-t border-line px-6 sm:px-10">
-        <Button variant="secondary" size="lg" onClick={() => setShowEditor(true)}>
-          Adjust lineup and plays
-        </Button>
-        <Button
-          variant="secondary"
-          size="lg"
-          onClick={() => setShowTrade(true)}
-          disabled={tradeUsed}
-          className="border-accent text-accent hover:bg-accent-soft/20"
-        >
-          Make a trade
-          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs text-accent">
-            {tradeUsed ? '0 left' : '1 left'}
-          </span>
-        </Button>
-        <div className="grow" />
-        <p className="hidden text-xs text-ink-subtle lg:block">
-          Both are optional. Changes apply to games 42 to 82.
-        </p>
-        <Button size="lg" onClick={handleSpin} disabled={spinning}>
-          {spinning ? 'Saving…' : 'Spin the second half'}
-        </Button>
-      </footer>
-
+  const overlays = (
+    <>
       {showEditor && (
         <div className="fixed inset-0 z-[100] bg-surface">
           <DeckBuilder
@@ -205,7 +214,7 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
             initialPlaysOrder={rosterDraft.activePlays}
             initialPlayAssignments={rosterDraft.playAssignments}
             initialArchetypes={rosterDraft.archetypes}
-            sessionId={run.sessionId || undefined}
+            sessionId={sessionId}
             gameMode="challenge"
             embedOverride={{ onSave: handleEditorSave }}
           />
@@ -222,32 +231,53 @@ export function FrontOffice({ run, onSpin }: FrontOfficeProps) {
 
       {showTrade && (
         <Trade
-          run={run}
+          half={half}
           roster={rosterDraft}
+          ownedIds={tradeOwnedIds}
+          rngSeed={tradeSeed}
           onCancel={() => setShowTrade(false)}
           onConfirm={handleTradeConfirm}
         />
       )}
+    </>
+  );
+
+  if (variant === 'inline') {
+    return (
+      <div className="flex flex-col gap-6">
+        {header}
+        {paceDisplay}
+        {quotesGrid}
+        <div className="flex flex-wrap items-center gap-3">
+          {adjustButton}
+          {tradeButton}
+          <div className="grow" />
+          {primaryHint && <p className="text-xs text-ink-subtle">{primaryHint}</p>}
+          {primaryButton}
+        </div>
+        {overlays}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-dvh-z flex-col">
+      {header}
+
+      <div className="flex grow flex-col items-center justify-center gap-7 overflow-y-auto px-8 py-6">
+        {paceDisplay}
+        {quotesGrid}
+      </div>
+
+      <footer className="flex h-20 shrink-0 items-center gap-3 border-t border-line px-6 sm:px-10">
+        {adjustButton}
+        {tradeButton}
+        <div className="grow" />
+        {primaryHint && <p className="hidden text-xs text-ink-subtle lg:block">{primaryHint}</p>}
+        {primaryButton}
+      </footer>
+
+      {overlays}
     </div>
   );
 }
-
-/*
- * MOUNT CONTRACT for `app/challenge/[rosterId]/page.tsx` (T6, not edited here):
- *
- *   } else if (run.phase === 'break') {
- *     body = <FrontOffice run={run} onSpin={startSecondHalf} />;
- *
- * `startSecondHalf` currently reads `(r) => ({ ...r, phase: 'second' })` off the page's
- * OWN closure state, which this component never updates (it writes straight to the
- * store). Change its signature to accept the run FrontOffice hands back:
- *
- *   const startSecondHalf = useCallback((updated: ChallengeRun) => {
- *     void commit({ ...updated, phase: 'second' });
- *   }, [commit]);
- *
- * Both call sites already thread `run`/`onSpin` as props with matching names, so the
- * only other change is deleting `BreakPlaceholder` and its now-unused import of
- * `TierLadder`/`CHALLENGE_GAMES` (still used elsewhere in the file — check before
- * removing the import line itself).
- */

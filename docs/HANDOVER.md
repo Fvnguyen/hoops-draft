@@ -53,6 +53,41 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **game_theater** (2026-09-17, manual override, `plan_game_theater_2026-09-13.md`): structured per-event `narrative` renders broadcast play-by-play, game-flow beats, crunch time, box score + Summary; 333/333 tests. Open: `narrativeText` fallback removal (D7/T6), skipped by owner call.
 - **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
 - **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
+- **render_and_engine_perf** (2026-09-22, `plan_render_and_engine_perf_2026-09-21.md`): 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms; `game.ts` 1500 -> 364 lines over five modules, `DeckBuilder.tsx` 1536 -> 686, `PlayerCard.tsx` 1450 -> 918; seasons reproducible from their seed; narration off the engine's rng; long-press preview on every deck-builder card. Engine checksum 219438687 is the behaviour baseline (`scripts/bench-engine.ts`).
+
+## pvp_series — built 2026-09-22, awaiting the owner playtest
+
+Best-of-seven Playoffs: coin flip (2-2-1-1-1), server-simulated games, the 82:0 front
+office as a mid-series sideboard, results, rematch and the `/playoffs` list.
+- `POST /api/match/[id]/advance` is the ONLY writer of series progress (games, sideboard,
+  done, winner). It replaced pvp_match's `/simulate` route, which let a participant
+  simulate the next game whenever they liked. Rules are pure in `lib/matchAdvance.ts`
+  (`planAdvance`): a game waits until both have watched the last one, or 24 h after the
+  first did; the sideboard opens the first time a side reaches 2 wins.
+- `MatchGame.rosters` records whether a game played the locked or the sideboard rosters,
+  so a replay after a trade still reproduces the stored score; `theaterForMatchGame` is
+  the one replay path (server and game page).
+- Reveal gate (D3): the opponent's bench, plays, identity and DNP list are never shown,
+  only their five starters and whoever appears in the box score. UI-only — RLS lets both
+  participants read both rosters.
+- **Engine fix found here:** `buildTeamInfo` now canonicalises depth-chart column order
+  (`engine/teamInfo.ts`). The simulation iterates those keys, and Postgres `jsonb` reorders
+  them (C, PF, PG, SF, SG), so ANY roster loaded back from the cloud replayed to a
+  different score than the same roster fresh from the deck builder — 4 of 4 probe games
+  differed, one winner flipped. Affected solo seasons too (games re-simulate from a seed).
+  Guarded by `tests/unit/depth-chart-key-order.test.ts`; checksum and balance baseline
+  unchanged.
+- Other fixes: a Realtime UPDATE omits large columns it did not touch, so a heartbeat
+  wiped `games` locally (the row is now merged, not replaced); the series never advanced
+  on first load under React's dev double-mount.
+- Verified: `npm test` 726/726; `pvp-series.spec` green twice (~1.8 min); the full
+  Playwright set 32/32; phone audit 0 findings across 14 screens; bench checksum
+  219438687 and `balance-baseline` IDENTICAL.
+- Open: owner plays one full series including a sideboard trade, then `/roadmap done`.
+  The series and sideboard pages scroll on a phone (710px against a 385px viewport); they
+  are not in the audit's no-scroll list — owner call whether they should be.
+  `pvp-draft.spec`'s 24-round test flaked once in three full-suite runs (passed on rerun
+  and twice more in the suite); watch it.
 
 ## pvp_draft — built 2026-09-22, awaiting the owner playtest
 
@@ -110,37 +145,6 @@ block lists every RPC and its error codes.
   makes one `match_expire` + one select (`tests/unit/match-list.test.ts`).
 - Open: no unit test of the simulate route handler itself; add it in pvp_series with the
   advance route.
-
-## render_and_engine_perf — done 2026-09-22
-
-Plan: `docs/completed/plan_render_and_engine_perf_2026-09-21.md` (T1-T14, `faae707`..`b21a285`).
-Behaviour-preserving throughout: `npx tsx scripts/bench-engine.ts` prints a checksum of a
-simulated 82:0 season that must stay 219438687, and `node scripts/balance-baseline.mjs` must
-print IDENTICAL against `tests/fixtures/balance-500-seed42.txt` (never `--write` it without
-an owner-approved balance change). Both held after every commit.
-- **Engine:** 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms on the dev machine.
-  `memoLineup` caches lineup aggregates per five-man array (WeakMap; unregistered arrays are
-  never cached, tests edit ratings in place); `prepareLineupDraw` hoists the depth-chart
-  weights out of the possession loop; `simulateGame(..., { events: false })` skips the
-  play-by-play for `simulateHalf` (a viewer re-simulates the seed with events); the trade
-  ghost runs only when `rosterChanged` says the roster differs. `game.ts` is 364 lines over
-  `gameTypes/shot/rotation/possession/teamInfo/boxscore.ts`. A season's games are seeded
-  `mixSeed(season.seed, 'game:<day>:<matchup>')`, no clock reads, so a season replays from
-  its seed. Narration picks variants off its own salted stream, never the engine's.
-- **Deck builder:** roster editing is one pure reducer, `applyBuilderAction` in
-  `engine/deckbuilder.ts` (43 tests incl. a 300-action property run); `useRosterBuilder`
-  returns a dispatch's error synchronously. `DeckBuilder.tsx` 686 lines; layout in
-  `useDockLayout`, derived playbook in `useBuilderPlaybook`, saving in `useSaveRoster`,
-  `RosterSidebar`/`PlaysSidebar`/`SaveRosterModal`/`ClearRosterModal`/`DragGhost`. Roster
-  filter and lane state live ABOVE the sidebar body (`useRosterSidebarView`): the body
-  unmounts when the phone drawer closes, and `deckbuilder.spec` asserts the filter survives.
-- **Render:** `TeamBlock`/`TaleOfTheTape` memoized, live box only while on screen
-  (`tests/game-view-render.spec.ts`: 46 -> 10 renders per 23 possessions). `PlayerCard.tsx`
-  918 lines (`PlayArt.tsx`, `BadgeIcon.tsx`); hover previews arm only on fine pointers;
-  long-press preview on bench rows, starters, compact cards and rosters-page starters
-  (`tests/long-press.spec.ts`, dispatched touch events, chromium project). Rosters page renders
-  front-only starter cards, stagger capped at 1 s, `content-visibility:auto` per roster.
-Owner phone round for the long-press attach signed off 2026-09-22.
 
 ## How to run everything
 

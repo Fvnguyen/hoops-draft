@@ -4,7 +4,7 @@
  * `Match` mirrors a `public.matches` row column for column (snake_case, as supabase-js
  * returns it) so there is no mapping layer to drift. Clients never write the table
  * directly: every change goes through one of the security-definer RPCs listed below,
- * and game results are written only by `POST /api/match/[id]/simulate` (service role).
+ * and game results are written only by `POST /api/match/[id]/advance` (service role).
  *
  * Host is seat 0 (`human-0`), guest is seat 4 (`human-4`). Game numbers are 1-based.
  */
@@ -59,6 +59,13 @@ export interface MatchGame {
   overtimePeriods: number;
   box: { host: PlayerBoxScore[]; guest: PlayerBoxScore[] };
   simulatedAt: string;
+  /** pvp_series: which rosters played. 'sideboard' for every game simulated after both
+   *  sideboard entries were locked; missing = 'locked'. A replay on the game page must use
+   *  the same rosters or it would not reproduce the stored score. */
+  rosters?: 'locked' | 'sideboard';
+  /** pvp_series D3: each side's five starters (player ids) — all the game page shows of
+   *  the opponent before tip-off. */
+  starters?: { host: string[]; guest: string[] };
 }
 
 export interface MatchSideboardEntry {

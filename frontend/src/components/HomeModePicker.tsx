@@ -4,8 +4,12 @@ import { Clock3, ChevronsRight } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
-/** plan_challenge_mode D1: which game a draft picked from the start page is for. */
-export type HomeGame = 'tournament' | 'challenge';
+/** plan_challenge_mode D1: which game a draft picked from the start page is for.
+ *  pvp_series D7: 'playoffs' is a third home entry, but it has no Premier/Quick
+ *  picker of its own (a live two-player draft, not a solo one) — it routes straight to
+ *  `/playoffs` from `app/page.tsx` instead of opening `HomeModePicker`. Included here so
+ *  every caller of `HomeGame` accounts for it. */
+export type HomeGame = 'tournament' | 'challenge' | 'playoffs';
 
 interface ModeCardProps {
   game: HomeGame;

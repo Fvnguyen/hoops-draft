@@ -75,7 +75,7 @@ function pct(made: number, att: number): string {
   return att > 0 ? `${Math.round((made / att) * 100)}%` : '—';
 }
 
-export function BoxScoreTable({ teamName, side, box, starters, isUser, live }: {
+export function BoxScoreTable({ teamName, side, box, starters, isUser, live, hideDnp }: {
   teamName: string;
   side: Side;
   box: PlayerBoxScore[];
@@ -83,6 +83,9 @@ export function BoxScoreTable({ teamName, side, box, starters, isUser, live }: {
   isUser?: boolean;
   /** Live (mid-game) tables hide the DNP toggle: nobody has "not played" yet. */
   live?: boolean;
+  /** pvp_series D3: a Playoffs opponent's unused players are never listed (the DNP list
+   *  would reveal their bench); only who actually played shows. */
+  hideDnp?: boolean;
 }) {
   const [sort, setSort] = useState<Col>('points');
   const [showDnp, setShowDnp] = useState(false);
@@ -178,7 +181,7 @@ export function BoxScoreTable({ teamName, side, box, starters, isUser, live }: {
           </tbody>
         </table>
       </div>
-      {!live && dnp.length > 0 && (
+      {!live && !hideDnp && dnp.length > 0 && (
         <div className="mt-1">
           <Button variant="ghost" onClick={() => setShowDnp(s => !s)} className="px-2 text-xs tracking-wide">
             {showDnp ? 'Hide' : 'Show'} {dnp.length} DNP

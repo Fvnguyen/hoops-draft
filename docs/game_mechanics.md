@@ -130,6 +130,46 @@ builds their 12-man roster from their own 24 drafted cards (no auto-fill) and pr
 roster" instead of an ordinary save — a locked roster can't be edited. Once both are locked
 the match becomes a series.
 
+## Playoffs series (best-of-seven) — 2026-09-22
+
+Once both rosters are locked a coin flip (`coinFlip(match.seed)`, played once per viewer,
+result stored client-side) decides home court for the NBA 2-2-1-1-1 pattern: games 1, 2, 5
+and 7 at the flip winner, 3, 4 and 6 at the other side. Each game is simulated on the
+SERVER (`POST /api/match/[id]/advance`, the only writer of a series' progress) from a seed
+derived off the match seed and game number, using tournament balance (never the 82:0
+`CHALLENGE_TUNING`) — nobody's client rolls a series game. A game simulates once both
+rosters are ready for it: game 1 as soon as both are locked; game N+1 once both players
+have opened game N, or 24 hours after the first of them did, so a vanished opponent can't
+freeze the series (the standing 7-day forfeit still applies to someone who never opens
+anything). Each player watches at their own pace on `/playoffs/[id]/game/[n]`, replayed
+from the stored seed exactly as the server simulated it — before tip-off, and throughout,
+the opponent's bench, plays, called plays and identity are never shown (only their five
+starters, as the tournament matchup preview already shows); the box score still reveals
+who played, once the game is final.
+
+**The sideboard.** The first time either side reaches 2 wins, the series pauses and both
+players get the 82:0 front office (`PlayoffsFrontOffice`, reusing `FrontOffice`/`Trade`
+unchanged) fed the series' games so far in place of a 41-game half: hold, adjust the
+lineup and plays, or make ONE trade (the offer pool excludes cards either player drafted,
+not just the sideboarding player's). This happens exactly once per series, both sides act
+blind and simultaneously, and the series resumes once both have locked (or 7 days pass).
+The sideboarded roster is a new snapshot — the drafted roster is never mutated — and every
+game from here on plays with it.
+
+**Results.** The series ends the first time either side reaches 4 wins. The results screen
+shows the final line, every game's score and home mark, and a series MVP by combined box
+score (points/rebounds/assists — season-average-style numbers only, never OVR or the seven
+engine ratings, same rule as everywhere else in the app). The loser can call a rematch (a
+fresh invite with a new seed); the winner cannot — their opponent has to call it. Every
+signed-in user's profile menu shows "Playoffs: W-L series" once they have at least one
+finished series (forfeits, voids and declines don't count as a played series).
+
+Engine: `engine/playoffs.ts` (coin flip, home pattern, `seriesState`). Rules: `lib/
+matchAdvance.ts` (`planAdvance`/`applyPlan`, unit-tested without Supabase) and `lib/
+matchSimulate.ts` (`simulateMatchGame`, the actual engine call). Route: `app/api/match/
+[id]/advance/route.ts`. UI: `app/playoffs/[id]/page.tsx` (coin flip, strip, sideboard),
+`app/playoffs/[id]/game/[n]/page.tsx` (the reveal-gated replay), `components/playoffs/`.
+
 ## Roster identities (archetypes) — 2026-09-13
 
 The seven skill badges are the game's colours. At roster lock the player chooses up to

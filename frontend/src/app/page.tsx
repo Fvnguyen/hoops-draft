@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Trophy } from 'lucide-react';
 import { PlayerCard, PlayerCardData } from '../components/PlayerCard';
 import showcaseCards from '@/data/showcase.json';
 import { Button, buttonVariants } from '@/components/ui';
@@ -158,6 +159,28 @@ export default function Home() {
               </span>
               <span className="text-xs font-bold uppercase tracking-widest text-ink-inverse-muted">82 games vs the real NBA · one trade · one grade</span>
             </Button>
+
+            {/* pvp_series D7: a third home entry. No Premier/Quick picker of its own (a
+                live two-player draft, not a solo one) — routes straight to `/playoffs`,
+                which lists any pending invites/in-progress series and a prominent "New
+                series" button, rather than assuming the visitor wants a fresh invite. */}
+            <Link
+              data-testid="cta-playoffs"
+              href="/playoffs"
+              className={cn(
+                buttonVariants({ variant: 'secondary', size: 'stacked' }),
+                'group relative w-full flex-col items-start gap-0.5 whitespace-normal rounded text-left normal-case tracking-normal transition-opacity',
+                'border border-positive/60 bg-surface-inverse-deep text-ink-inverse shadow-[0_0_25px_rgba(34,197,94,0.15)] hover:bg-surface-inverse',
+                openPicker !== null && 'opacity-40',
+              )}
+            >
+              <div className="absolute inset-y-0 left-0 w-1 bg-positive" />
+              <span className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-positive" aria-hidden="true" />
+                <span className="text-xl font-black italic tracking-wider text-ink-inverse drop-shadow-md">PLAYOFFS</span>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-widest text-ink-inverse-muted">Best-of-seven vs a friend · draft, build, battle</span>
+            </Link>
 
             <Link
               href="/rosters"

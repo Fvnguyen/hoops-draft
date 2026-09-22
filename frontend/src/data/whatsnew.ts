@@ -115,4 +115,19 @@ export const WHATS_NEW: ChangelogEntry[] = [
     ],
     cta: 'Back to the court',
   },
+  {
+    id: 'playoffs-2026-09-22',
+    date: '2026-09-22',
+    eyebrow: 'New mode',
+    title: 'Playoffs: you vs a friend',
+    subtitle: 'Draft the same cube live against another player, then settle it in a best-of-seven.',
+    highlights: [
+      { icon: 'trophy', title: 'Invite anyone', body: 'Open Playoffs from the menu or the start page, pick an opponent and send an invite. They accept from the bell and you are both in the draft room.' },
+      { icon: 'hand', title: 'A live draft, head to head', body: 'You sit on opposite sides of one table with six bots between you, 45 seconds a pick. You never see what your opponent takes, and if they drop out you can finish the draft for them.' },
+      { icon: 'activity', title: 'Best of seven, at your own pace', body: 'A coin flip decides home court, 2-2-1-1-1 like the NBA. Every game is played on the server and waits until you have both watched the last one.' },
+      { icon: 'zap', title: 'A deadline in the middle', body: 'The first team to two wins opens the front office for both of you: hold, rework the lineup, or make one trade before the series goes on.' },
+      { icon: 'sparkles', title: 'Also in this update', body: 'A draft now survives a closed app and resumes at the exact pick. The phone version downloads about a third less before it is ready. Saves sync as soon as you sign in and deletes stay deleted. Long-press any card in the deck builder to see it up close. Reopening a roster keeps your play assignments.' },
+    ],
+    cta: 'Challenge someone',
+  },
 ];

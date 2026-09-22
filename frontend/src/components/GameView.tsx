@@ -47,6 +47,11 @@ interface GameViewProps {
   /** Fixtures/screenshots only (/theater-preview, scripts/theater-shot.ts): open the view
    *  already advanced to a possession, on a tab, optionally with the crunch pop-up up. */
   initialState?: { possession?: number; tab?: 'playByPlay' | 'boxScore' | 'matchup'; crunchPopup?: boolean };
+  /** pvp_series D3 reveal gate: the opponent's side in a Playoffs game. When set, that side's
+   *  bench, plays and identity are never listed; before tip-off only its five starters show
+   *  (as the tournament matchup preview shows them); the box score reveals who played.
+   *  Absent (every non-Playoffs caller) = today's view, unchanged. Wired in pvp_series T4. */
+  hideOpponentDetails?: 'home' | 'away';
 }
 
 const TIER_LABEL: Record<ArchetypeTier, string> = { none: 'NONE', online: 'ONLINE', dedicated: 'DEDICATED' };
@@ -157,7 +162,13 @@ function TeamMechanics({ team, playbook }: { team: TeamInfo; playbook: PlaybookS
   );
 }
 
-export const TaleOfTheTape = memo(function TaleOfTheTape({ game }: { game: GameTheater }) {
+/** pvp_series D3: stands in for `TeamMechanics` on the opponent's side under the reveal
+ *  gate — no identity, no plays, nothing to infer their build from. */
+function HiddenTeamMechanics() {
+  return <div className="text-xs text-ink-subtle italic">Hidden until the box score.</div>;
+}
+
+export const TaleOfTheTape = memo(function TaleOfTheTape({ game, hideSide }: { game: GameTheater; hideSide?: Side }) {
   const homeDepth = resolveDepthChart(game.homeTeam.players, game.homeTeam.depthChart);
   const homeId = calcRosterIdentity(homeDepth);
   const awayDepth = resolveDepthChart(game.awayTeam.players, game.awayTeam.depthChart);
@@ -178,14 +189,17 @@ export const TaleOfTheTape = memo(function TaleOfTheTape({ game }: { game: GameT
       <div className="grid grid-cols-2 gap-8">
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2"><span className={cn('mr-1', SIDE_TEXT.away)}>Away</span>{game.awayTeam.name} Mechanics</h3>
-          <TeamMechanics team={game.awayTeam} playbook={game.playbook.away} />
+          {hideSide === 'away' ? <HiddenTeamMechanics /> : <TeamMechanics team={game.awayTeam} playbook={game.playbook.away} />}
         </div>
         <div>
           <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-2"><span className={cn('mr-1', SIDE_TEXT.home)}>Home</span>{game.homeTeam.name} Mechanics</h3>
-          <TeamMechanics team={game.homeTeam} playbook={game.playbook.home} />
+          {hideSide === 'home' ? <HiddenTeamMechanics /> : <TeamMechanics team={game.homeTeam} playbook={game.playbook.home} />}
         </div>
       </div>
 
+      {/* pvp_series D3: the identity matchup bars compare both sides directly, which would
+          leak the hidden side's identity through bar height alone — omitted under the gate. */}
+      {!hideSide && (
       <div className="bg-surface-raised rounded-panel border border-line p-4">
         <h3 className="text-xs font-bold uppercase tracking-widest text-ink-subtle mb-4 text-center">Team Identity Matchup</h3>
         <div className="flex flex-col gap-2">
@@ -206,6 +220,7 @@ export const TaleOfTheTape = memo(function TaleOfTheTape({ game }: { game: GameT
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 });
@@ -332,12 +347,14 @@ const BeatRow = memo(function BeatRow({ beat, text, game }: { beat: Beat; text: 
  *  (`game.possessions`, `texts`, `clocks`), so their identities are stable across ticks —
  *  passed as individual props (not the sliding-window `row` wrapper, which is rebuilt
  *  every tick) so a row already on screen actually skips re-render. */
-const PossessionRow = memo(function PossessionRow({ event, text, clock, game, userSide }: {
+const PossessionRow = memo(function PossessionRow({ event, text, clock, game, userSide, hideSide }: {
   event: PossessionEvent;
   text: string;
   clock: string;
   game: GameTheater;
   userSide: Side | null;
+  /** pvp_series D3: the opponent's called plays are never listed, even in the feed. */
+  hideSide?: Side;
 }) {
   const isScoring = event.outcome === '2pt' || event.outcome === '3pt' || event.outcome === 'and1';
   const side: Side = event.team;
@@ -354,7 +371,7 @@ const PossessionRow = memo(function PossessionRow({ event, text, clock, game, us
       <span className="shrink-0 font-mono text-ink-subtle w-14 whitespace-nowrap">{event.quarter <= 4 ? `Q${event.quarter}` : `OT${event.quarter - 4}`} {clock}</span>
       <span className={cn('shrink-0 text-xs font-black uppercase px-1 rounded w-10 text-center', SIDE_CHIP[side])}>{abbrev(side === 'home' ? game.homeTeam.name : game.awayTeam.name)}</span>
       <span className="flex-1 flex items-center flex-wrap gap-1.5">
-        {event.calledPlays?.map((call, idx) => (
+        {hideSide !== side && event.calledPlays?.map((call, idx) => (
           <span
             key={idx}
             className={`shrink-0 text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded ${call.side === 'offense' ? 'bg-warn-soft text-warn' : 'bg-info-soft text-info'}`}
@@ -375,7 +392,7 @@ const PossessionRow = memo(function PossessionRow({ event, text, clock, game, us
 
 /** `archetypes` is computed once per team by the parent (`useMemo` keyed on the team
  *  object, not on `score`) so a scoring play doesn't re-run archetype evaluation. */
-const TeamBlock = memo(function TeamBlock({ game, side, score, isUser, seasonLine, archetypes }: { game: GameTheater; side: Side; score: number; isUser: boolean; seasonLine: string; archetypes: ArchetypeStatus[] }) {
+const TeamBlock = memo(function TeamBlock({ game, side, score, isUser, seasonLine, archetypes, hideIdentity }: { game: GameTheater; side: Side; score: number; isUser: boolean; seasonLine: string; archetypes: ArchetypeStatus[]; hideIdentity?: boolean }) {
   const team = side === 'home' ? game.homeTeam : game.awayTeam;
   const isHome = side === 'home';
   useEffect(() => { bumpRenderCount('TeamBlock'); });
@@ -392,11 +409,14 @@ const TeamBlock = memo(function TeamBlock({ game, side, score, isUser, seasonLin
           <div className="text-xs text-ink-muted font-mono">{seasonLine}</div>
         </div>
       </div>
-      <div className={cn('flex items-center gap-1 flex-wrap mb-1', isHome && 'justify-end')}>
-        {archetypes.map(s => (
-          <span key={s.def.id} className={cn('text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded', TIER_CLASS[s.tier])} title={TIER_LABEL[s.tier]}>✦ {s.def.name}</span>
-        ))}
-      </div>
+      {/* pvp_series D3: the opponent's archetype chips are identity, never listed. */}
+      {!hideIdentity && (
+        <div className={cn('flex items-center gap-1 flex-wrap mb-1', isHome && 'justify-end')}>
+          {archetypes.map(s => (
+            <span key={s.def.id} className={cn('text-xs font-bold uppercase tracking-wide px-1 py-0.5 rounded', TIER_CLASS[s.tier])} title={TIER_LABEL[s.tier]}>✦ {s.def.name}</span>
+          ))}
+        </div>
+      )}
       <div className={cn('text-5xl font-black leading-none', isUser ? 'text-ink-strong' : 'text-ink')} style={{ fontFamily: 'var(--font-bebas)' }}>{score}</div>
       <div className="mt-3 hidden sm:block"><TeamStarters team={team} isHome={isHome} /></div>
     </div>
@@ -405,7 +425,7 @@ const TeamBlock = memo(function TeamBlock({ game, side, score, isUser, seasonLin
 
 // ── GameView ──────────────────────────────────────────────────────────────────
 
-export function GameView({ game, onCompletionChange, context, initialState }: GameViewProps) {
+export function GameView({ game, onCompletionChange, context, initialState, hideOpponentDetails }: GameViewProps) {
   const [currentPoss, setCurrentPoss] = useState(initialState?.possession ?? -1); // -1 = not started
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedIdx, setSpeedIdx] = useState(0);
@@ -561,7 +581,7 @@ export function GameView({ game, onCompletionChange, context, initialState }: Ga
       {/* Scoreboard */}
       <div className="bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden">
         <div className="flex items-stretch justify-between p-4 border-b border-line bg-surface-sunken gap-2">
-          <TeamBlock game={game} side="away" score={score[1]} isUser={userSide === 'away'} seasonLine={seasonLine('away')} archetypes={awayArchetypes} />
+          <TeamBlock game={game} side="away" score={score[1]} isUser={userSide === 'away'} seasonLine={seasonLine('away')} archetypes={awayArchetypes} hideIdentity={hideOpponentDetails === 'away'} />
 
           {/* Center: status, clock, ticker */}
           <div className="flex flex-col items-center justify-center px-2 sm:px-6 min-w-[110px] sm:min-w-[160px] text-center">
@@ -588,7 +608,7 @@ export function GameView({ game, onCompletionChange, context, initialState }: Ga
             )}
           </div>
 
-          <TeamBlock game={game} side="home" score={score[0]} isUser={userSide === 'home'} seasonLine={seasonLine('home')} archetypes={homeArchetypes} />
+          <TeamBlock game={game} side="home" score={score[0]} isUser={userSide === 'home'} seasonLine={seasonLine('home')} archetypes={homeArchetypes} hideIdentity={hideOpponentDetails === 'home'} />
         </div>
 
         {/* Quarter scores bar */}
@@ -678,7 +698,7 @@ export function GameView({ game, onCompletionChange, context, initialState }: Ga
       </div>
 
       <div className="flex-1 bg-surface-raised rounded-panel border border-line shadow-sm overflow-hidden min-h-0 flex flex-col relative">
-        {activeTab === 'matchup' && <TaleOfTheTape game={game} />}
+        {activeTab === 'matchup' && <TaleOfTheTape game={game} hideSide={hideOpponentDetails} />}
 
         {/* Play-by-Play Feed */}
         {activeTab === 'playByPlay' && currentPoss >= 0 && (
@@ -687,7 +707,7 @@ export function GameView({ game, onCompletionChange, context, initialState }: Ga
               <div className="flex flex-col gap-0.5">
                 {rows.map(row => row.kind === 'beat'
                   ? <BeatRow key={row.key} beat={row.beat} text={row.text} game={game} />
-                  : <PossessionRow key={row.key} event={row.event} text={row.text} clock={row.clock} game={game} userSide={userSide} />
+                  : <PossessionRow key={row.key} event={row.event} text={row.text} clock={row.clock} game={game} userSide={userSide} hideSide={hideOpponentDetails} />
                 )}
               </div>
             </div>
@@ -715,7 +735,7 @@ export function GameView({ game, onCompletionChange, context, initialState }: Ga
                 ? (side === 'home' ? game.boxScore.home : game.boxScore.away)
                 : (side === 'home' ? liveBox.home : liveBox.away);
               return (
-                <BoxScoreTable key={side} teamName={team.name} side={side} box={box} starters={team.starters} isUser={userSide === side} live={!isComplete} />
+                <BoxScoreTable key={side} teamName={team.name} side={side} box={box} starters={team.starters} isUser={userSide === side} live={!isComplete} hideDnp={hideOpponentDetails === side} />
               );
             })}
           </div>

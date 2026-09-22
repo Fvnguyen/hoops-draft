@@ -54,3 +54,19 @@ test.describe('Home page mode + draft-style CTAs', () => {
     await expect(page).toHaveURL(/\/$/);
   });
 });
+
+/**
+ * pvp_series D7: the third home entry. Unlike the two CTAs above it has no Premier/Quick
+ * picker of its own — it is a live two-player draft, not a solo one — so it routes
+ * straight to `/playoffs` on click.
+ */
+test.describe('Home page Playoffs entry', () => {
+  test('Playoffs card is visible and routes to /playoffs', async ({ page }) => {
+    await page.goto('/');
+    await dismissSplash(page);
+    const playoffsCta = page.getByTestId('cta-playoffs');
+    await expect(playoffsCta).toBeVisible();
+    await playoffsCta.click();
+    await expect(page).toHaveURL(/\/playoffs$/);
+  });
+});

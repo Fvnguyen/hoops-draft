@@ -14,7 +14,7 @@ import { coinFlip, homeFor, gameSeed } from '@/engine/playoffs';
 import { createRng } from '@/engine/rng';
 import { BALANCE_VERSION } from '@/engine/balance';
 import { seatFromRoster } from '@/components/challenge/rosterSeat';
-import { simulateMatchGame, validateSimulateRequest } from '@/lib/matchSimulate';
+import { simulateMatchGame, theaterForMatchGame } from '@/lib/matchSimulate';
 import { MATCH_SEAT_ID } from '@/storage/matchTypes';
 import type { Match } from '@/storage/matchTypes';
 import type { SavedRoster } from '@/storage/types';
@@ -142,61 +142,43 @@ describe('simulateMatchGame — reproducibility (D7)', () => {
     }
   });
 
-  it('uses the sideboard roster for a side when present', () => {
-    const withoutSideboard = simulateMatchGame(baseMatch(), 1);
-    const withSideboard = simulateMatchGame(
-      baseMatch({
-        sideboard: { host: { roster: sideboardRoster, lockedAt: '2026-01-05T00:00:00.000Z' } },
-      }),
-      1,
-    );
+  it('plays the sideboard rosters only once BOTH sides have locked one (pvp_series D4)', () => {
+    const locked = simulateMatchGame(baseMatch(), 3);
+    const hostEntry = { roster: sideboardRoster, lockedAt: '2026-01-05T00:00:00.000Z' };
+    const guestLocked = baseMatch().guest_roster!;
+    const guestEntry = { roster: guestLocked, lockedAt: '2026-01-05T00:00:00.000Z' };
 
-    const hostIdsWithout = new Set(withoutSideboard.box.host.map((b) => b.playerId));
-    const hostIdsWith = new Set(withSideboard.box.host.map((b) => b.playerId));
-    const sideboardStarterIds = new Set(Object.values(sideboardRoster.depthChartOrder).flat());
+    // One side locked: the series has not resumed, a game would still use the locked rosters.
+    const oneSided = simulateMatchGame(baseMatch({ sideboard: { host: hostEntry } }), 3);
+    expect(oneSided.rosters).toBe('locked');
+    expect(oneSided.score).toEqual(locked.score);
 
-    // At least the host box score composition changes, and it draws from the sideboard
-    // roster's players rather than the originally-locked host roster's.
-    expect(hostIdsWith).not.toEqual(hostIdsWithout);
+    const both = simulateMatchGame(baseMatch({ sideboard: { host: hostEntry, guest: guestEntry } }), 3);
+    expect(both.rosters).toBe('sideboard');
+    const hostIdsWith = new Set(both.box.host.map((b) => b.playerId));
+    expect(hostIdsWith).not.toEqual(new Set(locked.box.host.map((b) => b.playerId)));
     for (const id of hostIdsWith) {
-      expect(sideboardStarterIds.has(id) || sideboardRoster.draftedCards.some((c) => c.id === id)).toBe(true);
+      expect(sideboardRoster.draftedCards.some((c) => c.id === id)).toBe(true);
     }
   });
-});
 
-describe('validateSimulateRequest — request rules (D7)', () => {
-  it('is ok for a participant on the next game of a series match', () => {
-    expect(validateSimulateRequest(baseMatch(), HOST_ID, 1)).toEqual({ kind: 'ok' });
-    expect(validateSimulateRequest(baseMatch(), GUEST_ID, 1)).toEqual({ kind: 'ok' });
+  it('a replay uses the rosters the game was played with, even after the sideboard', () => {
+    const game1 = simulateMatchGame(baseMatch(), 1);
+    const afterSideboard = baseMatch({
+      games: [game1],
+      sideboard: {
+        host: { roster: sideboardRoster, lockedAt: '2026-01-05T00:00:00.000Z' },
+        guest: { roster: baseMatch().guest_roster!, lockedAt: '2026-01-05T00:00:00.000Z' },
+      },
+    });
+    const { theater, home } = theaterForMatchGame(afterSideboard, 1);
+    const [h, a] = theater.finalScore;
+    expect(home === 'host' ? { host: h, guest: a } : { host: a, guest: h }).toEqual(game1.score);
   });
 
-  it('is idempotent: an already-recorded game is returned instead of refused', () => {
-    const existingGame = simulateMatchGame(baseMatch(), 1);
-    const match = baseMatch({ games: [existingGame] });
-    // The "next" game (2) would be `ok`, but re-requesting game 1 must replay it.
-    expect(validateSimulateRequest(match, HOST_ID, 1)).toEqual({ kind: 'existing', game: existingGame });
-  });
-
-  it('refuses a non-participant', () => {
-    const result = validateSimulateRequest(baseMatch(), 'someone-else', 1);
-    expect(result).toEqual({ kind: 'error', status: 403, reason: 'not_participant' });
-  });
-
-  it('refuses the wrong status (not yet series)', () => {
-    const match = baseMatch({ status: 'building' });
-    const result = validateSimulateRequest(match, HOST_ID, 1);
-    expect(result).toEqual({ kind: 'error', status: 409, reason: 'bad_sequence' });
-  });
-
-  it('refuses an out-of-order game number (skipping ahead)', () => {
-    // games is empty (no game 1 yet), but the caller asks for game 3.
-    const match = baseMatch({ games: [] });
-    const result = validateSimulateRequest(match, HOST_ID, 3);
-    expect(result).toEqual({ kind: 'error', status: 409, reason: 'bad_sequence' });
-  });
-
-  it('refuses a game number outside 1..7', () => {
-    expect(validateSimulateRequest(baseMatch(), HOST_ID, 0)).toEqual({ kind: 'error', status: 409, reason: 'bad_sequence' });
-    expect(validateSimulateRequest(baseMatch(), HOST_ID, 8)).toEqual({ kind: 'error', status: 409, reason: 'bad_sequence' });
+  it('records the five starters on each side', () => {
+    const g = simulateMatchGame(baseMatch(), 1);
+    expect(g.starters?.host).toHaveLength(5);
+    expect(g.starters?.guest).toHaveLength(5);
   });
 });

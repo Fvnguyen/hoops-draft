@@ -1,17 +1,20 @@
 'use client';
 
 /**
- * challenge_mode D9 — the trade deadline (board 5), mounted by `FrontOffice` (T7) when
- * "Make a trade" is pressed.
+ * challenge_mode D9 — the trade deadline (board 5), mounted by `FrontOffice` when "Make
+ * a trade" is pressed. pvp_series D4 reuses this unchanged (props only, no
+ * `ChallengeRun`): `PlayoffsFrontOffice` feeds it the series' games-so-far `half`, both
+ * players' drafted-card ids as `ownedIds`, and `mixSeed(match.seed, 'trade:<side>')` as
+ * `rngSeed`.
  *
  * Step 1 (who goes): the CURRENT roster draft (post any lineup edits already made this
- * break), season averages only — MIN/PTS/+/- off `run.halves[0]`, never a rating. Step 2
- * (the offers): `drawTradeOffers` seeded from `tradeSeed(run.seed)` — same dropped
- * RARITY always draws the same five cards, so re-opening this screen for the same pick
- * is reproducible. The reveal/pick UX is `PackOpener` itself (`variant="trade"`, D9's
- * "gold trim on the existing pack art") rather than a reimplementation — picking a card
- * uses its own confirm dock in place of the board's inline "Confirm trade" button (see
- * the T7 handover notes for why).
+ * break), season averages only — MIN/PTS/+/- off `half`, never a rating. Step 2 (the
+ * offers): `drawTradeOffers` seeded from `rngSeed` — same dropped RARITY always draws
+ * the same five cards, so re-opening this screen for the same pick is reproducible. The
+ * reveal/pick UX is `PackOpener` itself (`variant="trade"`, D9's "gold trim on the
+ * existing pack art") rather than a reimplementation — picking a card uses its own
+ * confirm dock in place of the board's inline "Confirm trade" button (see the T7
+ * handover notes for why).
  *
  * The acquired card lands on the BENCH: it is added to `draftedCards` but never placed
  * into `depthChartOrder`, so `seatFromRoster`'s "anything drafted and not in the depth
@@ -19,10 +22,11 @@
  */
 
 import { useMemo, useState } from 'react';
-import type { ChallengeRun, ChallengeTrade, SavedRoster } from '@/storage/types';
+import type { ChallengeTrade, SavedRoster } from '@/storage/types';
+import type { ChallengeHalf } from '@/engine/challenge';
 import type { PlayerCardData, Rarity } from '@/engine/types';
 import { getAllCards } from '@/engine/cards';
-import { drawTradeOffers, tradeSeed } from '@/engine/challenge';
+import { drawTradeOffers } from '@/engine/challenge';
 import { createRng } from '@/engine/rng';
 import { shortName } from '@/engine/challengeAdvice';
 import { PackOpener, type PackPick } from '@/components/PackOpener';
@@ -43,8 +47,7 @@ interface RosterRow {
 const one = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
 const signed = (n: number) => (n > 0 ? `+${one(n)}` : one(n));
 
-function buildRows(roster: SavedRoster, run: ChallengeRun): RosterRow[] {
-  const half = run.halves[0];
+function buildRows(roster: SavedRoster, half: ChallengeHalf | undefined): RosterRow[] {
   const games = Math.max(1, half?.games.length ?? 1);
   const totalsById = new Map((half?.playerTotals ?? []).map((t) => [t.playerId, t]));
   const byId = new Map(
@@ -72,25 +75,32 @@ function buildRows(roster: SavedRoster, run: ChallengeRun): RosterRow[] {
 }
 
 export interface TradeProps {
-  run: ChallengeRun;
+  /** Season stats for the "who goes" column (MIN/PTS/+/-, never a rating). */
+  half: ChallengeHalf;
   roster: SavedRoster;
+  /** Cards that can never be offered back — 82:0 passes the roster's own drafted-card
+   *  ids; pvp_series (D4) passes BOTH players' drafted-card ids. */
+  ownedIds: Set<string>;
+  /** The trade pack's RNG seed, already resolved by the caller (82:0:
+   *  `tradeSeed(run.seed)`; pvp_series: `mixSeed(match.seed, 'trade:<side>')`) — the
+   *  same dropped rarity always draws the same five offers for a given seed. */
+  rngSeed: number;
   onCancel: () => void;
   onConfirm: (updatedRoster: SavedRoster, trade: ChallengeTrade) => void;
 }
 
-export function Trade({ run, roster, onCancel, onConfirm }: TradeProps) {
-  const rows = useMemo(() => buildRows(roster, run), [roster, run]);
+export function Trade({ half, roster, ownedIds, rngSeed, onCancel, onConfirm }: TradeProps) {
+  const rows = useMemo(() => buildRows(roster, half), [roster, half]);
   const [droppedId, setDroppedId] = useState<string | null>(null);
   const dropped = rows.find((r) => r.id === droppedId) ?? null;
 
   const allCards = useMemo(() => getAllCards(), []);
-  const ownedIds = useMemo(() => new Set(roster.draftedCards.map((c) => c.id)), [roster]);
 
   const offers: PlayerCardData[] = useMemo(() => {
     if (!dropped) return [];
-    const rng = createRng(tradeSeed(run.seed));
+    const rng = createRng(rngSeed);
     return drawTradeOffers(allCards, ownedIds, dropped.card.rarity as Rarity, rng);
-  }, [dropped, allCards, ownedIds, run.seed]);
+  }, [dropped, allCards, ownedIds, rngSeed]);
 
   const handlePick = (pick: PackPick) => {
     if (!dropped || pick.card.type !== 'Player') return;

@@ -33,12 +33,15 @@ import { getAllCards } from '@/engine/cards';
 import { PLAY_CATALOG } from '@/engine/plays';
 import { buildTeamInfo } from '@/engine/game';
 import { randomSeed } from '@/engine/rng';
-import { BALANCE_VERSION } from '@/engine/balance';
+import { BALANCE_VERSION, CHALLENGE_GAMES } from '@/engine/balance';
 import {
-  buildChallengeSchedule, buildNbaTeams, simulateHalf, rosterChanged,
+  buildChallengeSchedule, buildNbaTeams, simulateHalf, rosterChanged, tradeSeed,
   type ChallengeHalf,
 } from '@/engine/challenge';
+import { challengePaceBand } from '@/engine/challengeAdvice';
 import { FrontOffice } from '@/components/challenge/FrontOffice';
+import { TierLadder } from '@/components/challenge/TierLadder';
+import { FlipClock } from '@/components/challenge/FlipClock';
 import { ChallengeReel } from '@/components/challenge/ChallengeReel';
 import { ResultsScreen } from '@/components/challenge/Results';
 import { seatFromRoster } from '@/components/challenge/rosterSeat';
@@ -255,7 +258,61 @@ export default function ChallengePage() {
       );
     }
   } else if (run.phase === 'break') {
-    body = <FrontOffice run={run} onSpin={startSecondHalf} />;
+    const half = run.halves[0];
+    if (!half) {
+      // The page never reaches 'break' before half 1 is committed — defensive only.
+      body = <Notice title="Loading" detail="Opening your 82:0 run…" />;
+    } else {
+      const rosterDraft = run.rosterPost ?? run.rosterPre;
+      const band = challengePaceBand(half.wins);
+      body = (
+        <FrontOffice
+          half={half}
+          seed={run.seed}
+          roster={rosterDraft}
+          trade={run.trade}
+          sessionId={run.sessionId || undefined}
+          tradeOwnedIds={new Set(rosterDraft.draftedCards.map((c) => c.id))}
+          tradeSeed={tradeSeed(run.seed)}
+          primaryLabel="Spin the second half"
+          primaryHint="Both are optional. Changes apply to games 42 to 82."
+          header={
+            <header className="flex h-nav shrink-0 items-center gap-4 border-b border-line pl-6 pr-nav-gear">
+              <span className="font-display text-3xl leading-none text-accent">82:0</span>
+              <span className="text-xs font-black uppercase tracking-widest text-ink-muted">
+                All-Star break &middot; {CHALLENGE_GAMES / 2} games played &middot; trade deadline
+              </span>
+              <div className="grow" />
+              {/* D8: the record stays sealed until game 82 — these are decorative
+                  placeholder flaps, never `half.wins`/`half.losses`, so even a
+                  reduced-motion viewer (whose flaps never blur) can't read a real
+                  result off them. */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-ink-subtle">Record sealed</span>
+                <FlipClock wins={0} losses={0} blur={0.55} size="sm" />
+              </div>
+            </header>
+          }
+          paceDisplay={
+            <div className="flex w-full max-w-4xl flex-col items-center gap-3">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-ink-subtle">On pace for</p>
+              <h1 className="font-display text-5xl leading-none text-ink-strong sm:text-6xl">{band.label}</h1>
+              <TierLadder band={[band.low, band.high]} className="w-full" />
+            </div>
+          }
+          onDraftChange={(roster, trade) => {
+            void getGameStore().saveChallengeRun({ ...run, rosterPost: roster, trade }).catch((err) => {
+              console.error('Failed to save the front office edit:', err);
+            });
+          }}
+          onPrimary={async (roster, trade) => {
+            const next: ChallengeRun = { ...run, rosterPost: roster, trade };
+            await getGameStore().saveChallengeRun(next);
+            startSecondHalf(next);
+          }}
+        />
+      );
+    }
   } else {
     body = <ResultsScreen run={run} />;
   }
