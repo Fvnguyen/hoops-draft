@@ -140,8 +140,9 @@ Weekly card set (season_2026_27 D11): `npm run refresh:season` from the repo roo
 `refresh_season.py`, which freezes the shipping set, bumps `CARD_SET_VERSION` and runs, in
 order: `download_bref.js` -> `fetch_bio.py` -> `fetch_players.py` -> `download_images.py` ->
 `npm run build:cards` -> `refresh_stats.js`. `--skip-scrape` rebuilds from the snapshots on
-disk (no freeze, no bump). The GitHub workflow `season-refresh.yml` runs it every Monday and
-opens a PR.
+disk (no freeze, no bump). It runs on the owner's machine, not GitHub (stats.nba.com times
+out from GitHub's runners): `pwsh -NoProfile -File scripts/weekly-card-set.ps1` refreshes,
+runs the tests and opens the PR (`-DryRun` rebuilds offline, no git).
 
 Daily card-back stats: `npm run refresh:stats` (`refresh_stats.js`) scrapes the current
 season's per-game page into `frontend/public/data/season-stats.json`; the workflow commits

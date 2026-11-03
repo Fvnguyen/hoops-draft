@@ -73,15 +73,15 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   their season ("All-NBA 1st Team · 2024-25"); verified in the browser pane.
 - **Pinning** (`engine/cardSets.ts` `loadCardSet`, frozen `cardsets/2025-26.2.json`): draft
   session stamp, `ChallengeRun.cardSetVersion`, `matches.card_set_version` (missing = legacy).
-- **Refresh**: `npm run refresh:season` (weekly PR) and `npm run refresh:stats` (daily
-  commit) in `.github/workflows/season-refresh.yml`; `--skip-scrape` is deterministic.
+- **Refresh**: daily stats in `.github/workflows/season-refresh.yml` (first dispatch green);
+  weekly card set via `scripts/weekly-card-set.ps1` on the owner's machine (stats.nba.com
+  timed out from GitHub, so that job was removed). Deployed: `5bce515`, 2026-11-03.
 - **Measured** (`npm run balance -- 1000 --seed 42`, 2025-26.2 -> 2026-27.1): PPP 1.061 ->
   1.052, team score mean 108.4 -> 107.2 (sd 14.1), home win 55.8% -> 54.3%, OT 1.9% ->
   1.6%. Rarity M/R/U/C 14/21/206/207 -> 14/25/216/179; OVR mean 44.0 -> 44.8; badges 379 ->
   384. `LINEUP_CENTRE` drift shrank in every channel (playmaking 66.5 -> 65.1 vs 63.0); not
   retuned (D12). `RATING_NORM` is now written by `build:cards`.
-- **Tests**: 755/755; engine tests pinned to named players read frozen 2025-26.2
-  (`loadFixturePlayers`); owner-locked lineup values hold within +/-1.5 (was 0.5).
+- **Tests**: 755/755; named-player engine tests read frozen 2025-26.2 (lineup pins +/-1.5).
 - **Migration APPLIED to production** 2026-11-03 (`matches.card_set_version`,
   `match_invite(uuid, text default null)`) after a rolled-back dry run
   (`scripts/migration-dry-run.mjs`, new 5 + existing 17 cases); both test scripts re-run
@@ -89,8 +89,8 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
 - Playoffs specs (`--workers=1`) green. `pvp-draft.spec` stamps its inserted match with
   `CARD_SET_VERSION` and waits for the guest's pick to reach the row before replaying
   (`fetchRowWithGuestPicks`; the ~300 ms lag was its known flake).
-- **Open, blocking the close**: push, then one `workflow_dispatch` of each
-  `season-refresh.yml` job (if bref blocks the runner, run both from the owner's machine).
+- **Open, blocking the close**: schedule `weekly-card-set.ps1` (Windows Task Scheduler,
+  Mondays) and see its first PR through.
 - **Open, not blocking**: a Playoffs sideboard on a dropped set shows no trade offers
   instead of the older-set notice. The D5 Rare cap never binds: the existing "no award ->
   at most Uncommon" ceiling already holds every rookie at Uncommon. Both pack covers

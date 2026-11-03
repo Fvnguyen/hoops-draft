@@ -52,3 +52,6 @@ frontend/*.png
 
 # supabase CLI scratch dir
 frontend/supabase/.temp/
+
+# --- weekly card-set run log (scripts/weekly-card-set.ps1) ---
+data/weekly-card-set.log
