@@ -4,6 +4,7 @@ the position-count distribution, primary-containment, and adjacency findings sti
 before trusting the resolver's output blind. Not part of the automated pipeline.
 """
 import json
+import os
 import re
 import io
 import sys
@@ -27,7 +28,7 @@ def parse(text):
 
 
 def main():
-    with open('per_game.html', encoding='utf-8') as f:
+    with open(os.path.join('bref', json.load(open('season_config.json'))['current'], 'per_game.html'), encoding='utf-8') as f:
         per_game_html = f.read()
     dfs = pd.read_html(io.StringIO(per_game_html))
     target = None

@@ -5,13 +5,14 @@
  * WITH events to watch the game.
  */
 import { describe, it, expect } from 'vitest';
-import { loadPlayers, runHeadlessDraft, buildTeams, PLAYS } from './helpers';
+import { loadFixturePlayers, runHeadlessDraft, buildTeams, PLAYS } from './helpers';
 import { simulateGame } from '@/engine/game';
 import { simulateHalf, buildNbaTeams, buildChallengeSchedule } from '@/engine/challenge';
 import { CHALLENGE_TUNING } from '@/engine/balance';
 import { createRng } from '@/engine/rng';
 
-const players = loadPlayers();
+// season_2026_27: a fixed pool, so the 50 seeds keep reaching the overtime code path.
+const players = loadFixturePlayers();
 const teams = buildTeams(runHeadlessDraft(players, PLAYS, 2024));
 
 describe('simulateGame events option', () => {

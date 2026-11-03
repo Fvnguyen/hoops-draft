@@ -89,20 +89,20 @@ export const RATING_DIMS: readonly RatingDim[] = [
 ];
 
 /**
- * D1: pool mean / sd per dimension over all 448 player cards in `src/data/cards.json`.
- * Regenerate by `npm run build:cards` (it prints this block); `tests/unit/lineup.test.ts`
+ * D1: pool mean / sd per dimension over every player card in `src/data/cards.json`.
+ * Written by `npm run build:cards` (season_2026_27); `tests/unit/lineup.test.ts`
  * fails if it drifts from cards.json by more than 0.5. Raw ratings are NOT on one scale
  * (playmaking mean 35 / sd 23.5 vs perimeter defence 53.5 / 16.5), which is why k and the
  * edge are computed in standardised space.
  */
 export const RATING_NORM: Record<RatingDim, { mean: number; sd: number }> = {
-  finishing:        { mean: 46.74, sd: 19.63 },
-  midRange:         { mean: 45.90, sd: 20.83 },
-  perimeter:        { mean: 46.57, sd: 20.71 },
-  playmaking:       { mean: 45.42, sd: 17.87 },
-  rebounding:       { mean: 46.33, sd: 18.39 },
-  perimeterDefense: { mean: 48.38, sd: 20.38 },
-  postDefense:      { mean: 49.37, sd: 20.86 },
+  finishing:        { mean: 46.92, sd: 19.58 },
+  midRange:         { mean: 46.20, sd: 21.18 },
+  perimeter:        { mean: 47.33, sd: 20.64 },
+  playmaking:       { mean: 46.01, sd: 17.99 },
+  rebounding:       { mean: 47.02, sd: 18.27 },
+  perimeterDefense: { mean: 47.99, sd: 20.84 },
+  postDefense:      { mean: 49.18, sd: 21.29 },
 };
 
 /** D1: standardised rating = center + spread * z, clamped to [min, max]. */
@@ -312,6 +312,16 @@ export const RATING_CONFIG = {
   rotationMpg: 15,
   /** D2: idx() headroom above "elite" (1.0) — feeds D7's gold-badge overflow. */
   idxMax: 1.25,
+  /** season_2026_27 D3-D5: a card's stats blend a prior season with the current one,
+   *  weight on current = gp / (gp + seasonBlendK). A prior season needs priorMinGp games
+   *  at priorMinMpg; a player without one needs newMinGp games at newMinMpg this season
+   *  and is capped at Rare until he reaches newRareCapGp games. */
+  season: {
+    seasonBlendK: 20,
+    priorMinGp: 20, priorMinMpg: 5,
+    newMinGp: 5, newMinMpg: 15,
+    newRareCapGp: 20,
+  },
   /** D3: defence = magnitude (DBPM/DWS-48 blend) × shape (perimeter/post signal split). */
   defense: {
     magDbpm: 0.6, magDws48: 0.4,

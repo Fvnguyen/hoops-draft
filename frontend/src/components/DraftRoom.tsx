@@ -36,6 +36,8 @@ import { CUBE_PACKS, CUBE_PLAYER_CARDS_PER_PACK, CUBE_SEATS } from '../engine/ba
 import { useAndroidBackGuard } from '../hooks/useAndroidBackGuard';
 import { BackGuardSheet } from './BackGuardSheet';
 import { headshotThumb } from '@/lib/headshotThumb';
+import { CARD_SET_VERSION } from '@/engine/cardSetVersion';
+import { OlderCardSetNotice } from './OlderCardSetNotice';
 
 // Picks per pack = players + the play card; total = packs × picks (see engine/balance.ts).
 const PICKS_PER_PACK = CUBE_PLAYER_CARDS_PER_PACK + 1;
@@ -280,7 +282,19 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
   const gameMode = isPvp ? 'playoffs' : (resumedModes?.gameMode ?? urlGameMode);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const isClient = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  // season_2026_27 D9: the solo room's card set. A NEW draft uses the current set; a
+  // resumed one switches to the set its session was stamped with (`handleResume`), so a
+  // weekly refresh never changes its packs. PvP takes the match's set from `usePvpDraft`.
+  const [soloCardSet, setSoloCardSet] = useState<string>(CARD_SET_VERSION);
+  const [soloPlayers, setSoloPlayers] = useState<{ version: string; players: Player[] } | null>(null);
+  const soloReady = soloPlayers !== null && soloPlayers.version === soloCardSet;
+  const allPlayers = useMemo<Player[]>(
+    () => (isPvp ? pvpRoom.allPlayers : soloReady ? soloPlayers.players : []),
+    [isPvp, pvpRoom.allPlayers, soloReady, soloPlayers],
+  );
+  // The unfinished session's card set, once the resume check found one: whether this build
+  // still carries it decides between the resume sheet and "Started on an older card set".
+  const [resumeSet, setResumeSet] = useState<{ version: string; available: boolean } | null>(null);
   // Sidebar defaults open on lg+ screens (>=1024px), collapsed strip below that.
   // Read only at mount: this component renders null until isClient flips true,
   // so by the time this state is actually shown, `window` is always defined.
@@ -342,7 +356,15 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     if (!storageReady) return;
     let cancelled = false;
     findUnfinishedDraft(getGameStore())
-      .then((session) => {
+      .then(async (session) => {
+        if (session) {
+          const { isCardSetAvailable, resolveCardSetVersion } = await import('@/engine/cardSets');
+          if (cancelled) return;
+          setResumeSet({
+            version: resolveCardSetVersion(session.cardSetVersion),
+            available: isCardSetAvailable(session.cardSetVersion),
+          });
+        }
         if (!cancelled) setResumeCandidate(session);
       })
       .catch((err) => {
@@ -369,6 +391,10 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     resumeDecidedRef.current = true;
     draftStartedRef.current = true;
     setResumedModes({ mode: session.mode ?? 'premier', gameMode: session.gameMode ?? 'tournament' });
+    // D9: replay over the set the draft started on. Switching `soloCardSet` empties
+    // `allPlayers` in the same render (soloReady goes false), so the engine never replays
+    // these picks over the wrong set while the old one loads.
+    if (resumeSet) setSoloCardSet(resumeSet.version);
     resumeDraft(session);
     setResumeCandidate(null);
   };
@@ -393,9 +419,11 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     const pickCount = Object.values(humanPicks).reduce((n, ids) => n + ids.length, 0);
     if (pickCount === 0) return;
     getGameStore()
-      .saveDraftSession(buildInProgressDraftSession(sessionId, draftSeed, humanPicks, humanAutoPicks, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge'))
+      // D9: stamp the room's set explicitly. Left to the storage default, every autosave
+      // of a resumed older draft would restamp it with the CURRENT version.
+      .saveDraftSession({ ...buildInProgressDraftSession(sessionId, draftSeed, humanPicks, humanAutoPicks, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge'), cardSetVersion: soloCardSet })
       .catch((err) => console.error('Failed to autosave draft session:', err));
-  }, [isPvp, draftState, sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode]);
+  }, [isPvp, draftState, sessionId, draftSeed, humanPicks, humanAutoPicks, mode, gameMode, soloCardSet]);
 
   // plan_mobile_native_feel D3: only while still picking — no partial draft is ever
   // persisted (the pod is only saved once, on the transition to 'deckbuilding' above),
@@ -448,7 +476,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     if (isPvp) return; // pvp_draft: never reaches 'deckbuilding' — build page reads the row directly.
     if (draftState === 'deckbuilding' && seats.length > 0 && !completedSessionId && !savingSessionRef.current) {
       savingSessionRef.current = true;
-      const session = buildDraftSession(seats, pickLog, draftSeed, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge', sessionId ?? undefined);
+      const session = { ...buildDraftSession(seats, pickLog, draftSeed, mode as 'quick' | 'premier', gameMode as 'tournament' | 'challenge', sessionId ?? undefined), cardSetVersion: soloCardSet };
       getGameStore()
         .saveDraftSession(session)
         .then(() => {
@@ -464,7 +492,7 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
           }
         });
     }
-  }, [isPvp, draftState, seats, completedSessionId, sessionId, pickLog, draftSeed, mode, gameMode]);
+  }, [isPvp, draftState, seats, completedSessionId, sessionId, pickLog, draftSeed, mode, gameMode, soloCardSet]);
 
   // pvp_draft T3/T4: route away once the room itself has nothing left to show. 'complete'
   // (both made 24 picks — status flipped to 'building') and a 'building' row opened here
@@ -477,16 +505,22 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
     else if (pvpRoom.phase === 'not-participant') router.replace('/playoffs/new');
   }, [isPvp, pvpMatchId, pvpRoom.phase, router]);
 
+  // Solo card pool, through `loadCardSet` (dynamic import: cards.json and any frozen set
+  // stay out of the route's first chunk). PvP loads the match's set in `usePvpDraft`.
   useEffect(() => {
-    import('@/engine/cards')
-      .then(({ getAllCards }) => {
-        const data = getAllCards() as Array<Omit<Player, 'type'>>;
+    if (isPvp) return;
+    let cancelled = false;
+    import('@/engine/cardSets')
+      .then(({ loadCardSet }) => loadCardSet(soloCardSet))
+      .then((data) => {
+        if (cancelled) return;
         // Tag with type for DeckBuilder
-        const cards = data.map(c => ({ ...c, type: 'Player' as const }));
-        setAllPlayers(cards);
+        const players = (data as Array<Omit<Player, 'type'>>).map(c => ({ ...c, type: 'Player' as const }));
+        setSoloPlayers({ version: soloCardSet, players });
       })
       .catch(e => console.error("Failed to load cards API:", e));
-  }, []);
+    return () => { cancelled = true; };
+  }, [isPvp, soloCardSet]);
 
   // Arm the pick clock (D4) once the pack for a live drafting turn is
   // actually in place. No-op in Quick mode / outside 'drafting' (armIntroClock
@@ -561,6 +595,22 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         </div>
       );
     }
+    // D9: the match was started on a card set this build no longer carries.
+    if (pvpRoom.cardSetUnavailable && (pvpRoom.phase === 'picking' || pvpRoom.phase === 'waiting')) {
+      return (
+        <OlderCardSetNotice
+          what="match"
+          onAbandon={async () => {
+            try {
+              await pvpRoom.send({ type: 'void', reason: 'card set no longer available' });
+            } catch (err) {
+              console.error('Failed to abandon the match:', err);
+            }
+            router.replace(`/playoffs/${pvpMatchId}`);
+          }}
+        />
+      );
+    }
     if (pvpRoom.phase === 'not-participant') {
       return (
         <div className="flex h-dvh-z items-center justify-center font-sans">
@@ -577,6 +627,11 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
         </div>
       );
     }
+  }
+
+  if (!isPvp && draftState === 'loading' && resumeCandidate && resumeCandidate !== 'checking' && resumeSet && !resumeSet.available) {
+    const stale = resumeCandidate;
+    return <OlderCardSetNotice what="draft" onAbandon={() => handleAbandon(stale)} />;
   }
 
   if (!isPvp && (draftState === 'loading' || !humanSeat)) {

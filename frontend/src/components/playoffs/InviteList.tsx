@@ -11,7 +11,7 @@ import { UserPlus } from 'lucide-react';
 import { useCurrentProfile } from '@/components/AuthProvider';
 import { useMatchList } from '@/hooks/useMatch';
 import { loadMatchClient } from '@/lib/matchChannel';
-import { matchErrorCode, type DirectoryUser, type MatchSummary } from '@/storage/matchTypes';
+import { matchErrorCode, matchInviteArgs, type DirectoryUser, type MatchSummary } from '@/storage/matchTypes';
 import { Button, Panel } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
@@ -51,7 +51,7 @@ export function InviteList() {
     setInviteState((s) => ({ ...s, [guestId]: 'sending' }));
     try {
       const client = await loadMatchClient();
-      const { error } = await client.rpc('match_invite', { p_guest_id: guestId });
+      const { error } = await client.rpc('match_invite', matchInviteArgs(guestId));
       if (error) {
         const code = matchErrorCode(error.message);
         setInviteState((s) => ({ ...s, [guestId]: code === 'duplicate_invite' ? 'duplicate' : 'error' }));

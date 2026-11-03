@@ -20,7 +20,7 @@ This file says **which plans to tackle in which sequence**. It holds no design d
 | # | Plan | Status | Depends on | Files owned (conflicts) | Wall-clock with agents |
 |---|---|---|---|---|---|
 | 7 | android_twa — Bubblewrap/TWA Play Store listing (proposal G.2). Conditional: only once the installed web app is something the owner would hand to a friend | not yet planned | — (game_canvas done) | — | 2-3 days |
-| 18 | [season_2026_27](plans/plan_season_2026_27_2026-11-03.md) — 2026-27 card set: daily current-season stats on cards, weekly blended ratings (last healthy season + 2026-27, injured stars back if they played this or last year), rookies at 5 GP capped Rare, card-set pinning for in-flight drafts/runs/matches | planned | — | `data/` pipeline, `ratings.ts`, `cardSets.ts` (new), `PlayerCard.tsx`, match migration | 2-3 days |
+| 18 | [season_2026_27](plans/plan_season_2026_27_2026-11-03.md) — 2026-27 card set: daily current-season stats on cards, weekly blended ratings (last healthy season + 2026-27, injured stars back if they played this or last year), rookies at 5 GP capped Rare, card-set pinning for in-flight drafts/runs/matches | in progress (migration pending) | — | `data/` pipeline, `ratings.ts`, `cardSets.ts` (new), `PlayerCard.tsx`, match migration | 2-3 days |
 | 10 | mode_picker — MtG-Arena-style "limited picker" for game modes, mode-specific draft rules (backlog board `Main`), and wiring the start page's disabled "Enter a seed" to `parseSeed` | not yet planned | challenge_mode | `app/page.tsx`, `HomeModePicker.tsx` | — |
 
 **Shipping gate — already crossed (2026-09-17).** `main` was pushed to `origin/main`

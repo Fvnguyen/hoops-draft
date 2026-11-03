@@ -203,65 +203,71 @@ class PositionResolver:
         print(f"Wrote {path}: {len(self.hand_check_needed)} Rare+ players need a manual position check")
 
 
-def fetch_and_generate_players():
-    # Read from local files saved by playwright
-    print("Reading local HTML files...")
-    
-    # 1. Per Game Stats
-    with open("per_game.html", "r", encoding="utf-8") as f:
-        per_game_html = f.read()
-    df_per_game = get_bref_table(per_game_html, "per_game_stats")
-    
-    # 2. Advanced Stats
-    with open("advanced.html", "r", encoding="utf-8") as f:
-        advanced_html = f.read()
-    df_advanced = get_bref_table(advanced_html, "advanced_stats")
-    
+SEASON_CONFIG_PATH = "season_config.json"
 
-    # 3. Shooting Stats
-    with open("shooting.html", "r", encoding="utf-8") as f:
-        shooting_html = f.read()
+# major_awards has no scrape source (MVP/ROTY/DPOY/MIP are not on bref's league page in a
+# stable place) and needs manual upkeep: add the newest season once it is announced.
+MAJOR_AWARDS = {
+    '2025-26': {
+        'Shai Gilgeous-Alexander': ['MVP'],
+        'Cooper Flagg': ['ROTY'],
+        'Victor Wembanyama': ['DPOY'],
+        'Nickeil Alexander-Walker': ['MIP'],
+    },
+    '2024-25': {
+        'Shai Gilgeous-Alexander': ['MVP'],
+        'Stephon Castle': ['ROTY'],
+        'Evan Mobley': ['DPOY'],
+        'Dyson Daniels': ['MIP'],
+    },
+}
+
+# card_balance T2, owner hand-roll (2026-09-16): bref's season Pos and his own bio page both
+# give Jokic a plain 'C', but as a "point-center" he should be slottable at PF without a
+# depth-chart penalty. Keyed by the unidecode'd ASCII name used everywhere else.
+POSITION_OVERRIDES = {
+    'Nikola Jokic': 'PF/C',
+}
+
+NUMERIC_COLS = ['Age', 'G', 'GS', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', '2PA', '2P%',
+                '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P',
+                'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P',
+                'USG%', 'AST%', 'TOV%', 'STL%', 'BLK%', 'ORB%', 'DRB%', 'TRB%', 'OBPM', 'DWS', 'WS/48',
+                "% of FG Ast'd_2P", "% of FG Ast'd_3P"]
+
+
+def load_season(season):
+    """One season's per-game + advanced + shooting tables from data/bref/<season>/, merged
+    on Player, one row per player (a traded player's combined 2TM/3TM row, listed first).
+    No games filter: eligibility lives in ratings.ts (season_2026_27 D2/D3)."""
     import io
-    import pandas as pd
-    dfs = pd.read_html(io.StringIO(shooting_html))
+    d = os.path.join("bref", season)
+    with open(os.path.join(d, "per_game.html"), encoding="utf-8") as f:
+        df_per_game = get_bref_table(f.read(), "per_game_stats")
+    with open(os.path.join(d, "advanced.html"), encoding="utf-8") as f:
+        df_advanced = get_bref_table(f.read(), "advanced_stats")
+    with open(os.path.join(d, "shooting.html"), encoding="utf-8") as f:
+        dfs = pd.read_html(io.StringIO(f.read()))
     df_shooting = None
     for df in dfs:
         if len(df.columns) > 15 and ('Unnamed: 1_level_0', 'Player') in df.columns:
             df_shooting = df
             break
-            
-    # Flatten MultiIndex
+    if df_shooting is None:
+        raise Exception(f"{season}: no shooting table")
     df_shooting.columns = [col[1] if col[0].startswith('Unnamed') else f"{col[0]}_{col[1]}" for col in df_shooting.columns]
-    
 
-
-    # Clean data (handled by numeric conversion below)
-    
-    # For players traded mid-season, B-Ref lists them multiple times (TOT, and then each team).
-    # We want to keep the 'TOT' (Total) row for stats, but we need their actual latest team.
-    # The 'TOT' row appears first, so we can drop duplicates by Player name, keeping the first (TOT),
-    # but we should capture their latest team from the last row.
-    
-    # Get latest team mapping
-    latest_teams = df_per_game.drop_duplicates(subset=['Player'], keep='last').set_index('Player')['Team'].to_dict()
-    
-    # Get TOT (or only) row for stats
+    df_per_game = df_per_game[df_per_game['Player'] != 'League Average']
     df_per_game = df_per_game.drop_duplicates(subset=['Player'], keep='first')
     df_advanced = df_advanced.drop_duplicates(subset=['Player'], keep='first')
-    
-    # Merge datasets
-    # card_ratings_rebalance D1 (2026-09-18): widened from PER/TS%/BPM/DBPM/VORP to the
-    # 13 columns D3-D6's rate-stat formulas need — usg_pct/ast_pct/tov_pct/stl_pct/
-    # blk_pct/orb_pct/drb_pct/trb_pct/obpm/dws/ws_per_48 from the advanced table (already
-    # scraped, never read past this point before) plus pct_ast_fg2/pct_ast_fg3 from the
-    # shooting table (never merged in at all — the self-creation term in D4 needs it).
+    df_shooting = df_shooting.drop_duplicates(subset=['Player'], keep='first')
+
+    # card_ratings_rebalance D1 (2026-09-18): the 13 advanced columns D3-D6's rate-stat
+    # formulas need, plus the shooting table's assisted-FG% (the D4 self-creation term).
     df = pd.merge(df_per_game, df_advanced[[
         'Player', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', 'USG%', 'AST%', 'TOV%', 'STL%',
         'BLK%', 'ORB%', 'DRB%', 'TRB%', 'OBPM', 'DWS', 'WS/48',
     ]], on='Player', how='inner')
-
-    # Correctly merge shooting here!
-    df_shooting = df_shooting.drop_duplicates(subset=['Player'])
     df = pd.merge(df, df_shooting[[
         'Player', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10',
         '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P',
@@ -270,134 +276,144 @@ def fetch_and_generate_players():
         "% of FG Ast'd_2P", "% of FG Ast'd_3P",
     ]], on='Player', how='left')
 
-
-    # Convert numeric columns
-    # card_balance T2 (2026-09-17, owner-approved): GS (games started) added - the real
-    # starter signal for T2's Uncommon rarity floor, replacing a 30 MPG proxy that misses
-    # real starters who just play a lower-minutes role (real starters 180 vs the 30 MPG
-    # proxy's 80, checked in the plan).
-    numeric_cols = ['Age', 'G', 'GS', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG%', '3P%', 'FGA', '3PA', '3P', 'FG', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TOV', 'PER', 'TS%', 'BPM', 'DBPM', 'VORP', '% of FGA by Distance_0-3', '% of FGA by Distance_3-10', '% of FGA by Distance_10-16', '% of FGA by Distance_16-3P', '% of FGA by Distance_3P', 'FG% by Distance_0-3', 'FG% by Distance_3-10', 'FG% by Distance_10-16', 'FG% by Distance_16-3P', 'FG% by Distance_3P',
-                    'USG%', 'AST%', 'TOV%', 'STL%', 'BLK%', 'ORB%', 'DRB%', 'TRB%', 'OBPM', 'DWS', 'WS/48',
-                    "% of FG Ast'd_2P", "% of FG Ast'd_3P"]
-    for col in numeric_cols:
+    for col in NUMERIC_COLS:
+        if col not in df.columns:
+            df[col] = 0
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-    print(f"Total players found: {len(df)}")
-    
-    # Filter: >= 20 GP and >= 5.0 MPG
-    # If it's early in the season and no one has 20 GP, we might need to fallback.
-    max_gp = df['G'].max()
-    print(f"Maximum games played by any player: {max_gp}")
-    
-    if max_gp < 20:
-        print("WARNING: Season 2025-26 has not reached 20 games yet! Using data as-is, but rarity might be skewed.")
-    
-    df_filtered = df[(df['G'] >= 20) & (df['MP'] >= 5.0)].copy()
-    print(f"Players remaining after filters (GP>=20, MP>=5.0): {len(df_filtered)}")
-    
-    all_nba_players = {}
-    all_defensive_players = {}
-    all_star_players = set()
-    
-    try:
-        with open("awards.html", "r", encoding="utf-8") as f:
-            awards_html = f.read()
-        soup = BeautifulSoup(awards_html, 'html.parser')
-        
-        # Scrape All-NBA. Names are unidecode'd to match the ASCII lookup key used at
-        # insert time (`name = unidecode(raw_name)`) — bref's anchor text keeps accents
-        # (e.g. 'Luka Dončić'), which silently failed the `name in all_nba_players` check
-        # and dropped the award (card_balance T2 finding, 2026-09-16).
+    df = df[df['G'] >= 1]
+    print(f"{season}: {len(df)} players, max GP {int(df['G'].max())}")
+    return df
+
+
+def load_awards(season):
+    """[(ascii name, award name, level)] from data/bref/<season>/awards.html plus the
+    hand-kept MAJOR_AWARDS. Names are unidecode'd: bref's anchor text keeps accents
+    ('Luka Dončić'), which silently failed the lookup once (card_balance T2, 2026-09-16)."""
+    out = []
+    path = os.path.join("bref", season, "awards.html")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
         div_all_nba = soup.find('div', id='div_all-nba')
         if div_all_nba:
             for div_team in div_all_nba.find_all('div', class_='data_grid_box'):
-                team_level = 1 if '1' in div_team.get('id', '') else (2 if '2' in div_team.get('id', '') else 3)
+                level = 1 if '1' in div_team.get('id', '') else (2 if '2' in div_team.get('id', '') else 3)
                 for a in div_team.find_all('a'):
                     if '/players/' in a.get('href', ''):
-                        all_nba_players[unidecode(a.text.strip())] = team_level
-
-        # Scrape All-Defensive
+                        out.append((unidecode(a.text.strip()), 'All-NBA', level))
         div_all_def = soup.find('div', id='div_all-defensive')
         if div_all_def:
             for div_team in div_all_def.find_all('div', class_='data_grid_box'):
-                team_level = 1 if '1' in div_team.get('id', '') else 2
+                level = 1 if '1' in div_team.get('id', '') else 2
                 for a in div_team.find_all('a'):
                     if '/players/' in a.get('href', ''):
-                        all_defensive_players[unidecode(a.text.strip())] = team_level
+                        out.append((unidecode(a.text.strip()), 'All-Defensive', level))
+    for name, names in MAJOR_AWARDS.get(season, {}).items():
+        for aw in names:
+            out.append((name, aw, None))
+    print(f"{season} awards: {sum(1 for a in out if a[1] == 'All-NBA')} All-NBA, "
+          f"{sum(1 for a in out if a[1] == 'All-Defensive')} All-Defensive, "
+          f"{sum(1 for a in out if a[2] is None)} major")
+    return out
 
-        # Scrape All-Star
-        div_all_star = soup.find('div', id='div_all_star_game_rosters')
-        if div_all_star:
-            for a in div_all_star.find_all('a'):
-                if '/players/' in a.get('href', ''):
-                    all_star_players.add(unidecode(a.text.strip()))
-                    
-    except Exception as e:
-        print(f"Could not read local awards html: {e}")
 
-    print(f"Scraped awards: {len(all_nba_players)} All-NBA, {len(all_defensive_players)} "
-          f"All-Defensive, {len(all_star_players)} All-Star")
+def stat_row(real_id, season, row):
+    f = lambda k: float(row.get(k, 0) or 0)
+    return (
+        real_id, season, int(row['G']), int(row.get('GS', 0)), f('MP'), round(f('PTS'), 1), round(f('TRB'), 1),
+        round(f('AST'), 1), round(f('STL'), 1), round(f('BLK'), 1), f('FGA'),
+        f('3PA'), f('2PA'), round(f('FG%'), 3), round(f('3P%'), 3),
+        round(f('2P%'), 3), round(f('FT%'), 3), round(f('PER'), 1),
+        round(f('TS%'), 3), round(f('VORP'), 1), round(f('DBPM'), 1), round(f('TOV'), 1),
+        f('% of FGA by Distance_0-3'), f('% of FGA by Distance_3-10'), f('% of FGA by Distance_10-16'), f('% of FGA by Distance_16-3P'), f('% of FGA by Distance_3P'),
+        f('FG% by Distance_0-3'), f('FG% by Distance_3-10'), f('FG% by Distance_10-16'), f('FG% by Distance_16-3P'), f('FG% by Distance_3P'),
+        round(f('USG%') / 100.0, 4), round(f('AST%') / 100.0, 4),
+        round(f('TOV%') / 100.0, 4), round(f('STL%') / 100.0, 4),
+        round(f('BLK%') / 100.0, 4), round(f('ORB%') / 100.0, 4),
+        round(f('DRB%') / 100.0, 4), round(f('TRB%') / 100.0, 4),
+        round(f('OBPM'), 2), round(f('DWS'), 2), round(f('WS/48'), 4),
+        round(f("% of FG Ast'd_2P"), 4), round(f("% of FG Ast'd_3P"), 4),
+    )
 
-    # Calculate Raw Scores for Dimensions
-    df_filtered['3PM'] = df_filtered['3P']
-    df_filtered['2PM'] = df_filtered['FG'] - df_filtered['3P']
-    df_filtered['2P%'] = df_filtered['2PM'] / (df_filtered['FGA'] - df_filtered['3PA']).replace(0, 1)
-    df_filtered['FT%'] = df_filtered['FT%'].fillna(0)
-    df_filtered['FTr'] = (df_filtered['FTA'] / df_filtered['FGA'].replace(0, 1)).fillna(0)
-    
-    # We heavily weight volume averages (PTS, AST, TRB, etc.) to ensure high-minutes production
-    # trumps low-minutes extreme efficiency.
-    df_filtered['Shooting_Raw'] = (df_filtered['PTS'] * 2.0) + (df_filtered['3PM'] * 10.0) + (df_filtered['3P%'] * 50) + (df_filtered['FT%'] * 25)
-    df_filtered['Inside_Raw'] = (df_filtered['PTS'] * 2.0) + (df_filtered['2PM'] * 5.0) + (df_filtered['2P%'] * 50) + (df_filtered['FTr'] * 25)
-    df_filtered['Playmaking_Raw'] = (df_filtered['AST'] * 8.0) + (df_filtered['AST'] / df_filtered['TOV'].replace(0, 0.1))
-    df_filtered['Rebounding_Raw'] = (df_filtered['TRB'] * 6.0) + (df_filtered['ORB'] * 2.0)
-    # NOTE: this Shooting/Inside/Playmaking/Rebounding/PerimDef/PostDef_Raw block (and its
-    # 40-99 percentile scaling just below) is DEAD CODE as of card_balance T2
-    # (2026-09-16 finding): ratings.ts computes finishing/midRange/perimeter/playmaking/
-    # rebounding/perimeterDefense/postDefense independently from SeasonStat's raw columns
-    # (stl, blk, dbpm, ...) via its own getIndex/scaleRaw benchmark-ratio pipeline; none of
-    # these Python-scaled columns are written to game.db or read anywhere downstream. A
-    # DBPM small-sample fix was tried here first and reverted when this was discovered -
-    # it never reached the real formula. The real fix lives in ratings.ts (capLowMinutes).
-    # Left in place rather than deleted (cleanup is a separate T2 task, not this fix).
-    df_filtered['PerimDef_Raw'] = (df_filtered['STL'] * 15.0) + (df_filtered['DBPM'] * 5.0)
-    df_filtered['PostDef_Raw'] = (df_filtered['BLK'] * 15.0) + (df_filtered['DBPM'] * 5.0)
-    
-    # Calculate Percentiles & 40-99 Scale
-    for dim in ['Shooting', 'Inside', 'Playmaking', 'Rebounding', 'PerimDef', 'PostDef']:
-        raw_col = f'{dim}_Raw'
-        pct_col = f'{dim}_Pct'
-        df_filtered[pct_col] = df_filtered[raw_col].rank(pct=True)
-        # Use a cubic curve so 90+ is strictly reserved for the top ~5-10%
-        df_filtered[dim] = 40 + (df_filtered[pct_col] ** 2.5) * 59.0
-        df_filtered[dim] = df_filtered[dim].round().astype(int)
-            
-    df_filtered['PER_Pct'] = df_filtered['PER'].rank(pct=True)
-    df_filtered['VORP_Pct'] = df_filtered['VORP'].rank(pct=True)
-    # Calculate Overall Combo Rank for Rarity
-    df_filtered['Combo_Rank'] = (df_filtered['PER_Pct'] + df_filtered['VORP_Pct']) / 2.0
-    
-    # 3. Load Hard Bio Data
+
+def fetch_and_generate_players():
+    """season_2026_27 D1/D2: the player universe is the current season's NBA rosters
+    (bio.csv, from fetch_bio.py), each on his CURRENT team. Every season in
+    season_config.json contributes one SeasonStat row per rostered player who played in it
+    (GP >= 1); awards are stored per season. Which rows make a card, and how they blend,
+    is decided in frontend/src/engine/ratings.ts."""
+    import sqlite3
+    import difflib
+
+    with open(SEASON_CONFIG_PATH, encoding="utf-8") as f:
+        config = json.load(f)
+    seasons = [config['current']] + config['priors']
+
+    season_dfs = {s: load_season(s) for s in seasons}
+    season_awards = {s: load_awards(s) for s in config['priors']}
+
+    # Roster: NBA id -> bio (current team, height, weight, age).
     df_bio = pd.read_csv("bio.csv")
-
-    # Pre-process Bio Data (height/weight only - position now comes from PositionResolver;
-    # bio.csv's own broad G/F/C position field is no longer used).
-    bio_map = {}
+    roster = {}
+    roster_by_name = {}
     for _, row in df_bio.iterrows():
-        name = unidecode(row['PLAYER'])
-        height = str(row['HEIGHT'])
-        weight = int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0
-        bio_map[name] = {"height": height, "weight": weight}
+        pid = str(int(row['PLAYER_ID']))
+        roster[pid] = {
+            "name": unidecode(row['PLAYER']),
+            "team": row['TEAM_ABBR'],
+            "height": str(row['HEIGHT']),
+            "weight": int(row['WEIGHT']) if pd.notna(row['WEIGHT']) else 0,
+            "age": int(row['AGE']) if pd.notna(row['AGE']) else 0,
+        }
+        roster_by_name[normalise_player_name(row['PLAYER'])] = pid
+    print(f"Roster: {len(roster)} players")
 
-    # D10 follow-up (2026-09-19): see PositionResolver's docstring (module scope) for the
-    # locked rules. rarity_by_name is a proxy from the PREVIOUSLY built cards.json (valid,
-    # since position never feeds OVR/rarity) used only to decide which missing-bio-text
-    # players are worth a human's time to review.
+    nba_index = {'active': {}, 'inactive': {}}
+    try:
+        from nba_api.stats.static import players
+        nba_index = build_nba_index(players.get_players())
+    except Exception as e:
+        print("Could not load the NBA player index (name matching only):", e)
+
+    def roster_id_for(bref_name):
+        """bref name -> rostered NBA id: exact normalised roster name, then the NBA id
+        index, then a close roster-name match. None = not on a current roster."""
+        key = normalise_player_name(bref_name)
+        if key in roster_by_name:
+            return roster_by_name[key]
+        nid = resolve_nba_id(bref_name, nba_index)
+        if nid in roster:
+            return nid
+        close = difflib.get_close_matches(key, list(roster_by_name.keys()), n=1, cutoff=0.9)
+        return roster_by_name[close[0]] if close else None
+
+    # id -> {season: row}, plus the bref display name (accents kept) and latest season Pos.
+    rows_by_id = {}
+    display_name = {}
+    latest_pos = {}
+    unmatched = []
+    for s in seasons:  # current first, so the newest name/Pos wins
+        for _, row in season_dfs[s].iterrows():
+            raw_name = str(row['Player']).replace('*', '')
+            pid = roster_id_for(raw_name)
+            if pid is None:
+                if s == config['current'] and float(row['MP']) >= 15:
+                    unmatched.append(raw_name)
+                continue
+            rows_by_id.setdefault(pid, {})[s] = row
+            display_name.setdefault(pid, raw_name)
+            if pd.notna(row.get('Pos')) and pid not in latest_pos:
+                latest_pos[pid] = str(row['Pos']).strip()
+    if unmatched:
+        print(f"WARNING: {len(unmatched)} current-season players (MPG >= 15) not matched to a roster: {unmatched}")
+    no_stats = [roster[p]['name'] for p in roster if p not in rows_by_id]
+    print(f"Rostered players with no NBA game in {', '.join(seasons)}: {len(no_stats)} (no card)")
+
+    # D10 follow-up (2026-09-19): see PositionResolver's docstring for the locked rules.
     bio_position_texts = {}
     try:
         with open('bref_player_positions.json', 'r', encoding='utf-8') as f:
-            bio_position_texts = json.load(f)
-        bio_position_texts = {unidecode(k): v for k, v in bio_position_texts.items()}
+            bio_position_texts = {unidecode(k): v for k, v in json.load(f).items()}
         print(f"Loaded bref per-player bio positions: {len(bio_position_texts)} players")
     except Exception as e:
         print(f"Could not load bref_player_positions.json (every player falls back to season Pos only): {e}")
@@ -408,218 +424,89 @@ def fetch_and_generate_players():
             for c in json.load(f):
                 rarity_by_name[c['player']['name']] = c['rarity']
     except Exception as e:
-        print(f"No previous cards.json for rarity cross-ref (all missing-position players will need review): {e}")
+        print(f"No previous cards.json for rarity cross-ref: {e}")
 
-    # D10 follow-up (2026-09-19, owner request): for FUTURE ingestions, a missing-bio-text
-    # player should fall back to whatever position we already resolved for him last run
-    # (read from the game.db this run is about to overwrite) rather than dropping straight
-    # to a bare season-Pos-only placeholder every single season. Read-only, best-effort -
-    # a first-ever run (no game.db yet) just has an empty dict and everyone falls all the
-    # way through to season-Pos-only, same as before.
     existing_positions = {}
     try:
-        import sqlite3 as _sqlite3
-        _prev = _sqlite3.connect("../frontend/game.db")
+        _prev = sqlite3.connect("../frontend/game.db")
         for _name, _pos in _prev.execute("SELECT name, position FROM Player"):
             existing_positions[unidecode(_name)] = _pos
         _prev.close()
-        print(f"Loaded {len(existing_positions)} previously-resolved positions from game.db (fallback for missing bio text)")
+        print(f"Loaded {len(existing_positions)} previously-resolved positions from game.db")
     except Exception as e:
-        print(f"No previous game.db to read positions from (first run, or table missing): {e}")
+        print(f"No previous game.db to read positions from: {e}")
 
     position_resolver = PositionResolver(bio_position_texts, rarity_by_name, existing_positions)
 
-    # card_balance T2 finding (2026-09-16): this block used to reassign all_nba_players
-    # and all_defensive_players to a hardcoded snapshot right here, silently discarding
-    # whatever the awards.html scrape above just found. It happened to match this
-    # season's real scrape (verified), but would have frozen every future season's
-    # All-NBA/All-Defensive teams to 2025-26's forever. Removed — the scraped dicts from
-    # above are used as-is. major_awards has no scrape source (MVP/ROTY/DPOY/MIP aren't
-    # decided mid-season on bref's awards page) and needs manual upkeep each season.
-    major_awards = {
-        'Shai Gilgeous-Alexander': ['MVP'],
-        'Cooper Flagg': ['ROTY'],
-        'Victor Wembanyama': ['DPOY'],
-        'Nickeil Alexander-Walker': ['MIP']
-    }
-
-    # card_balance T2, owner hand-roll (2026-09-16): bref's season Pos and his own bio
-    # page both give Jokic a plain 'C' (no crossover), but his real-world reputation as a
-    # "point-center" means he should be slottable at PF without a depth-chart penalty. A
-    # manual override, not stats-driven - same pattern as major_awards/LEGENDARY_PLAYERS.
-    # Keyed by the unidecode'd ASCII name used everywhere else.
-    POSITION_OVERRIDES = {
-        'Nikola Jokic': 'PF/C',
-    }
-
-    import sqlite3
-    db_path = "../frontend/game.db"
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect("../frontend/game.db")
     c = conn.cursor()
-    
-    # Create Tables
     c.executescript("""
     DROP TABLE IF EXISTS Player;
     DROP TABLE IF EXISTS SeasonStat;
     DROP TABLE IF EXISTS Award;
-    
+
     CREATE TABLE Player (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        position TEXT,
-        height TEXT,
-        weight INTEGER,
-        age INTEGER,
-        team TEXT
+        id TEXT PRIMARY KEY, name TEXT, position TEXT, height TEXT, weight INTEGER, age INTEGER, team TEXT
     );
-    
+
     CREATE TABLE SeasonStat (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        playerId TEXT,
-        season TEXT,
-        gp INTEGER,
-        gs INTEGER,
-        mpg REAL,
-        pts REAL,
-        trb REAL,
-        ast REAL,
-        stl REAL,
-        blk REAL,
-        fga REAL,
-        fg3a REAL,
-        fg2a REAL,
-        fg_pct REAL,
-        fg3_pct REAL,
-        fg2_pct REAL,
-        ft_pct REAL,
-        per REAL,
-        ts REAL,
-        vorp REAL,
-        dbpm REAL,
-        tov REAL,
-        pct_fga_0_3 REAL,
-        pct_fga_3_10 REAL,
-        pct_fga_10_16 REAL,
-        pct_fga_16_3p REAL,
-        pct_fga_3p REAL,
-        fg_pct_0_3 REAL,
-        fg_pct_3_10 REAL,
-        fg_pct_10_16 REAL,
-        fg_pct_16_3p REAL,
-        fg_pct_3p REAL,
-        usg_pct REAL,
-        ast_pct REAL,
-        tov_pct REAL,
-        stl_pct REAL,
-        blk_pct REAL,
-        orb_pct REAL,
-        drb_pct REAL,
-        trb_pct REAL,
-        obpm REAL,
-        dws REAL,
-        ws_per_48 REAL,
-        pct_ast_fg2 REAL,
-        pct_ast_fg3 REAL,
+        playerId TEXT, season TEXT,
+        gp INTEGER, gs INTEGER, mpg REAL, pts REAL, trb REAL, ast REAL, stl REAL, blk REAL,
+        fga REAL, fg3a REAL, fg2a REAL, fg_pct REAL, fg3_pct REAL, fg2_pct REAL, ft_pct REAL,
+        per REAL, ts REAL, vorp REAL, dbpm REAL, tov REAL,
+        pct_fga_0_3 REAL, pct_fga_3_10 REAL, pct_fga_10_16 REAL, pct_fga_16_3p REAL, pct_fga_3p REAL,
+        fg_pct_0_3 REAL, fg_pct_3_10 REAL, fg_pct_10_16 REAL, fg_pct_16_3p REAL, fg_pct_3p REAL,
+        usg_pct REAL, ast_pct REAL, tov_pct REAL, stl_pct REAL, blk_pct REAL, orb_pct REAL,
+        drb_pct REAL, trb_pct REAL, obpm REAL, dws REAL, ws_per_48 REAL,
+        pct_ast_fg2 REAL, pct_ast_fg3 REAL,
         FOREIGN KEY(playerId) REFERENCES Player(id)
     );
-    
+
     CREATE TABLE Award (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        playerId TEXT,
-        season TEXT,
-        name TEXT,
-        level INTEGER,
+        playerId TEXT, season TEXT, name TEXT, level INTEGER,
         FOREIGN KEY(playerId) REFERENCES Player(id)
     );
     """)
-    
-    import hashlib
-    
-    # Map real NBA IDs
-    nba_index = {'active': {}, 'inactive': {}}
-    try:
-        from nba_api.stats.static import players
-        nba_index = build_nba_index(players.get_players())
-    except Exception as e:
-        print("Could not map NBA IDs:", e)
 
-    import hashlib
-    import difflib
-
+    name_to_id = {}
     players_json = []
-
-    for _, row in df_filtered.iterrows():
-        raw_name = row['Player'].replace('*', '')
+    for pid in sorted(rows_by_id):
+        bio = roster[pid]
+        raw_name = display_name[pid]
         name = unidecode(raw_name)
-        
-        # Fuzzy match for bio
-        bio_name = name
-        if bio_name not in bio_map:
-            matches = difflib.get_close_matches(bio_name, bio_map.keys(), n=1, cutoff=0.7)
-            if matches:
-                bio_name = matches[0]
-                
-        bio = bio_map.get(bio_name, {"height": "0-0", "weight": 0})
-        bref_season_pos = str(row['Pos']).strip() if pd.notna(row['Pos']) else ""
-        pos = position_resolver.resolve(name, bref_season_pos)
+        name_to_id[name] = pid
+        name_to_id.setdefault(bio['name'], pid)
+        pos = position_resolver.resolve(name, latest_pos.get(pid, ""))
         pos = POSITION_OVERRIDES.get(name, pos)
-        height = bio["height"]
-        weight = bio["weight"]
-        team = latest_teams.get(raw_name, row['Team'])
-        age = int(row['Age'])
-        
-        real_id = resolve_nba_id(name, nba_index) or hashlib.md5((name + team + pos).encode('utf-8')).hexdigest()[:8]
-        
-        # Insert Player
         c.execute("INSERT INTO Player (id, name, position, height, weight, age, team) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  (real_id, raw_name, pos, height, weight, age, team))
-                  
-        # Insert SeasonStat
-        c.execute("""
-            INSERT INTO SeasonStat (
-                playerId, season, gp, gs, mpg, pts, trb, ast, stl, blk, fga, fg3a, fg2a, fg_pct, fg3_pct, fg2_pct, ft_pct, per, ts, vorp, dbpm, tov,
-                pct_fga_0_3, pct_fga_3_10, pct_fga_10_16, pct_fga_16_3p, pct_fga_3p,
-                fg_pct_0_3, fg_pct_3_10, fg_pct_10_16, fg_pct_16_3p, fg_pct_3p,
-                usg_pct, ast_pct, tov_pct, stl_pct, blk_pct, orb_pct, drb_pct, trb_pct, obpm, dws, ws_per_48,
-                pct_ast_fg2, pct_ast_fg3
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            real_id, "2025-26", int(row['G']), int(row.get('GS', 0)), float(row['MP']), round(row['PTS'], 1), round(row['TRB'], 1),
-            round(row['AST'], 1), round(row['STL'], 1), round(row['BLK'], 1), float(row.get('FGA', 0)),
-            float(row.get('3PA', 0)), float(row.get('2PA', 0)), round(row['FG%'], 3), round(row['3P%'], 3),
-            round(float(row.get('2P%', 0)), 3), round(float(row.get('FT%', 0)), 3), round(row['PER'], 1),
-            round(row['TS%'], 3), round(row['VORP'], 1), round(row['DBPM'], 1), round(row['TOV'], 1),
-            float(row.get('% of FGA by Distance_0-3', 0)), float(row.get('% of FGA by Distance_3-10', 0)), float(row.get('% of FGA by Distance_10-16', 0)), float(row.get('% of FGA by Distance_16-3P', 0)), float(row.get('% of FGA by Distance_3P', 0)),
-            float(row.get('FG% by Distance_0-3', 0)), float(row.get('FG% by Distance_3-10', 0)), float(row.get('FG% by Distance_10-16', 0)), float(row.get('FG% by Distance_16-3P', 0)), float(row.get('FG% by Distance_3P', 0)),
-            round(float(row.get('USG%', 0)) / 100.0, 4), round(float(row.get('AST%', 0)) / 100.0, 4),
-            round(float(row.get('TOV%', 0)) / 100.0, 4), round(float(row.get('STL%', 0)) / 100.0, 4),
-            round(float(row.get('BLK%', 0)) / 100.0, 4), round(float(row.get('ORB%', 0)) / 100.0, 4),
-            round(float(row.get('DRB%', 0)) / 100.0, 4), round(float(row.get('TRB%', 0)) / 100.0, 4),
-            round(float(row.get('OBPM', 0)), 2), round(float(row.get('DWS', 0)), 2), round(float(row.get('WS/48', 0)), 4),
-            round(float(row.get("% of FG Ast'd_2P", 0)), 4), round(float(row.get("% of FG Ast'd_3P", 0)), 4)
-        ))
-        
-        # Insert Awards
-        if name in all_nba_players:
-            c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, ?)", 
-                      (real_id, "2025-26", "All-NBA", all_nba_players[name]))
-        if name in all_defensive_players:
-            c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, ?)", 
-                      (real_id, "2025-26", "All-Defensive", all_defensive_players[name]))
-        if name in major_awards:
-            for aw in major_awards[name]:
-                c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, NULL)", 
-                          (real_id, "2025-26", aw))
-                          
-        # We append to players_json just so download_images.py still works
-        players_json.append({"id": real_id, "name": raw_name, "rarity": "Common"})
+                  (pid, raw_name, pos, bio['height'], bio['weight'], bio['age'], bio['team']))
+        for s, row in rows_by_id[pid].items():
+            c.execute("""
+                INSERT INTO SeasonStat (
+                    playerId, season, gp, gs, mpg, pts, trb, ast, stl, blk, fga, fg3a, fg2a, fg_pct, fg3_pct, fg2_pct, ft_pct, per, ts, vorp, dbpm, tov,
+                    pct_fga_0_3, pct_fga_3_10, pct_fga_10_16, pct_fga_16_3p, pct_fga_3p,
+                    fg_pct_0_3, fg_pct_3_10, fg_pct_10_16, fg_pct_16_3p, fg_pct_3p,
+                    usg_pct, ast_pct, tov_pct, stl_pct, blk_pct, orb_pct, drb_pct, trb_pct, obpm, dws, ws_per_48,
+                    pct_ast_fg2, pct_ast_fg3
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, stat_row(pid, s, row))
+        players_json.append({"id": pid, "name": raw_name, "rarity": "Common"})
+
+    award_count = 0
+    for s, awards in season_awards.items():
+        for name, aw, level in awards:
+            pid = name_to_id.get(name)
+            if pid:
+                c.execute("INSERT INTO Award (playerId, season, name, level) VALUES (?, ?, ?, ?)", (pid, s, aw, level))
+                award_count += 1
+    print(f"Inserted {award_count} awards for rostered players")
 
     conn.commit()
     conn.close()
-
     position_resolver.write_review_note()
 
-    # Save the minimal json just for the image downloader script
     with open('players.json', 'w', encoding='utf-8') as f:
         json.dump(players_json, f, indent=2, ensure_ascii=False)
 

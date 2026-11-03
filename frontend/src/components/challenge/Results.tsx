@@ -25,10 +25,10 @@
 import { useMemo, useState } from 'react';
 import { Copy, Check, Share2, ListOrdered, X } from 'lucide-react';
 import type { ChallengeRun } from '@/storage/types';
+import type { PlayerCardData } from '@/engine/types';
 import type { ChallengeGameResult, ChallengePlayerTotals } from '@/engine/challenge';
 import { gradeForWins, mergePlayerTotals } from '@/engine/challenge';
 import { CHALLENGE_GAMES } from '@/engine/balance';
-import { getAllCards } from '@/engine/cards';
 import { shortName } from '@/engine/challengeAdvice';
 import { TIER_FAMILIES, nextFamilyAbove, TierLadder } from './TierLadder';
 import { FlipClock } from './FlipClock';
@@ -399,14 +399,18 @@ export function ResultsScreen({ run }: ResultsScreenProps) {
   const ghostGrade = ghostWinsTotal !== undefined ? gradeForWins(ghostWinsTotal) : null;
   const verdictDiff = ghostWinsTotal !== undefined ? wins - ghostWinsTotal : null;
 
+  // season_2026_27 D9: both cards are in the run's own roster snapshots (dropped from
+  // `rosterPre`, acquired into `rosterPost`), so no card set is loaded: a finished run
+  // still reads right after its set has been pruned.
   const tradeNote = useMemo(() => {
     if (!run.trade) return null;
-    const cards = getAllCards();
+    const cards = [...run.rosterPre.draftedCards, ...(run.rosterPost?.draftedCards ?? [])]
+      .filter((c): c is PlayerCardData => c.type === 'Player');
     const dropped = cards.find((c) => c.id === run.trade!.droppedCardId);
     const acquired = cards.find((c) => c.id === run.trade!.acquiredCardId);
     if (!dropped || !acquired) return null;
     return `${shortName(acquired.player.name)} for ${shortName(dropped.player.name)}.`;
-  }, [run.trade]);
+  }, [run.trade, run.rosterPre, run.rosterPost]);
 
   const streakGames = combinedResults.length > 0
     ? `Games ${streak.startGame} to ${streak.endGame}`

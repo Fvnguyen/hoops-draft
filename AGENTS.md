@@ -119,12 +119,19 @@ Frontend (from `frontend/`): `npm run dev`, `build`, `start`, `lint`, `test:e2e`
 ## Data pipeline
 
 Lives in `data/`, run from `data/`. Script order, inputs/outputs and table schema are in
-`data/README.md` — don't duplicate it here. Short version: `download_bref.js` scrapes HTML ->
-`fetch_players.py` (+ `fetch_bio.py`) builds `frontend/game.db` and `players.json` ->
-`download_images.py` pulls source PNGs into `data/headshots_src/` (logos into `frontend/public`) ->
-`npm run build:cards` turns `game.db` into `src/data/cards.json` + `showcase.json`, backfills a
-missing headshot with a placeholder and writes the 96/480 px WebP sets (`ensure-headshots.mjs`;
-a bref-hash id means no NBA match). Art: `node scripts/gen-art.mjs` from `data/art_src/`.
+`data/README.md` — don't duplicate it here. Seasons come from `data/season_config.json`
+(`current` + `priors`); `game.db` holds one row per rostered player per season and
+`ratings.ts` decides eligibility and the games-weighted blend (`RATING_CONFIG.season`).
+- **Weekly card set**: `npm run refresh:season` (freeze the shipping `cards.json` into
+  `src/data/cardsets/`, bump `CARD_SET_VERSION`, scrape, build; `build:cards` also rewrites
+  `RATING_NORM`). The `season-refresh.yml` workflow opens it as a PR every Monday.
+- **Daily card-back stats**: `npm run refresh:stats` -> `public/data/season-stats.json`
+  (display only, never a version bump); the workflow commits it every morning.
+- **Card sets**: anything that replays (draft resume, 82:0 run, Playoffs match) loads its
+  own set through `loadCardSet` (`engine/cardSets.ts`); never `getAllCards()` for those.
+  Engine tests that pin numbers to named players read `loadFixturePlayers()` (frozen
+  `2025-26.2`), not the weekly pool.
+Art: `node scripts/gen-art.mjs` from `data/art_src/`.
 
 ## Balance workflow (owner-locked, 2026-09-19)
 
@@ -149,7 +156,7 @@ of stages 1-2 and needs its own pass, not an ad-hoc fix, when an earlier stage's
 - `scripts/build-cards.ts` resolves `game.db` relative to `frontend/` — run it via the npm
   script. `/api/game-logs` (dev-only) writes to `../data/game_logs` relative to cwd.
 - The cube draft (`generateCubePool` in `engine/draft.ts`) only guarantees zero duplicate
-  player cards when the pool has 264+ players; it has 448.
+  player cards when the pool has 264+ players; 2026-27.1 has 434 (it moves weekly).
 - Write `frontend/package-lock.json` with npm >= 11.19 (`npx npm@11.19.0 install ...` if the
   global npm is older): npm 11.6.2 drops the wasm32 optional deps' transitive nodes
   (`@emnapi/runtime`, `@emnapi/core`) and every other npm's `npm ci` then fails with

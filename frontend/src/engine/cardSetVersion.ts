@@ -12,4 +12,4 @@
  * one currently shipped. Bump it whenever `computeCards`'s output changes (positions,
  * rarity, badges, ratings).
  */
-export const CARD_SET_VERSION = '2025-26.2';
+export const CARD_SET_VERSION = '2026-27.1';

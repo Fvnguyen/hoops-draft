@@ -65,7 +65,7 @@ The pipeline follows this sequence:
 
 **Working directory:** `data/` (uses relative path `../frontend/game.db` for the database)
 
-**Filters:** Includes only players with ≥20 games played and ≥5.0 minutes per game.
+**Filters:** none at ingest (season_2026_27 D2). Every player on a current-season NBA roster (`bio.csv`) gets one `SeasonStat` row per season in `season_config.json` he played in (GP >= 1); awards are stored per season. Which rows make a card and how they blend is decided in `frontend/src/engine/ratings.ts`.
 
 ### `download_images.py`
 **Purpose:** Downloads player headshots from the NBA CDN.
@@ -93,8 +93,11 @@ that are actually served)
 
 ## Data Files
 
-### `per_game.html`, `advanced.html`, `shooting.html`, `awards.html`
-Raw HTML snapshots from basketball-reference (season 2026 stats). Produced by `download_bref.js`. Do not commit; regenerated as needed.
+### `season_config.json`
+`{ current, priors }`: the season every script reads (season_2026_27 D1). bref names a season by its end year (`2026-27` -> `NBA_2027`).
+
+### `bref/<season>/{per_game,advanced,shooting,awards}.html`
+Raw HTML snapshots from basketball-reference, one folder per season in `season_config.json` (the current season has no `awards.html`). Produced by `download_bref.js`.
 
 ### `bio.csv`
 Hardcoded roster data (player names, heights, weights, positions) from the NBA Stats API. Produced by `fetch_bio.py`. Must be present for `fetch_players.py` to run.
@@ -133,10 +136,15 @@ Curated analysis and game design reports:
 
 ## Run Order
 
-1. `node download_bref.js` – Scrape basketball-reference
-2. `python fetch_bio.py` – Fetch roster bio data
-3. `python fetch_players.py` – Build database and players.json
-4. `python download_images.py` – Download headshots
-5. `python download_logos.py` – Download team logos
+Weekly card set (season_2026_27 D11): `npm run refresh:season` from the repo root runs
+`refresh_season.py`, which freezes the shipping set, bumps `CARD_SET_VERSION` and runs, in
+order: `download_bref.js` -> `fetch_bio.py` -> `fetch_players.py` -> `download_images.py` ->
+`npm run build:cards` -> `refresh_stats.js`. `--skip-scrape` rebuilds from the snapshots on
+disk (no freeze, no bump). The GitHub workflow `season-refresh.yml` runs it every Monday and
+opens a PR.
+
+Daily card-back stats: `npm run refresh:stats` (`refresh_stats.js`) scrapes the current
+season's per-game page into `frontend/public/data/season-stats.json`; the workflow commits
+it every morning when it changed.
 
 All scripts expect to run from the `data/` directory and use relative paths to reference input files and the frontend database.

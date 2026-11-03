@@ -93,6 +93,8 @@ export type Rarity = 'Common' | 'Uncommon' | 'Rare' | 'Mythic';
 /** A single Award row as read from the pipeline (build-cards.ts / the SQLite Award table). */
 export interface AwardRow {
   playerId: string;
+  /** Which season the award belongs to. Absent counts for every season (old fixtures). */
+  season?: string;
   name: string;
   level: number | null;
 }
@@ -102,12 +104,38 @@ export interface RatingsInput {
   players: PlayerBio[];
   stats: (SeasonStat & { playerId: string; season: string })[];
   awards: AwardRow[];
+  /** season_2026_27 D1: which season is current and which seasons may serve as a prior
+   *  (most recent first). Absent = the old single-season behaviour: each player's latest
+   *  row, no eligibility filter, no blend (test fixtures and pre-2026-27 builds). */
+  seasons?: SeasonConfig;
+}
+
+/** season_2026_27 D1: `data/season_config.json`, read by build-cards.ts. */
+export interface SeasonConfig {
+  current: string;
+  priors: string[];
+}
+
+/** season_2026_27 D4: how `stats` was blended. Dev-only (`/data`), never shown to users. */
+export interface StatBlend {
+  /** Weight on the current season, gp / (gp + seasonBlendK). */
+  w: number;
+  currentGp: number;
+  /** The season the prior came from, or null for the rotation-average prior (D5). */
+  priorSeason: string | null;
 }
 
 export interface PlayerCard {
   id: string;
   player: PlayerBio;
+  /** What the engine and the ratings read. Since season_2026_27 this is the D4 blend of
+   *  the prior and current seasons — never shown to users (`seasonStats` is). */
   stats: SeasonStat;
+  /** season_2026_27 D6: the current season's actual per-game row as of the weekly
+   *  build, or null with no games yet. The card back prefers the daily
+   *  `public/data/season-stats.json` and falls back to this. Absent on old sets. */
+  seasonStats?: SeasonStat | null;
+  blend?: StatBlend;
   awards: string[];
   ratings: ComputedRatings;
   traits: Trait[];

@@ -104,6 +104,11 @@ export interface ChallengeRun {
   phase: ChallengePhase;
   rosterPre: SavedRoster;
   rosterPost?: SavedRoster;
+  /** season_2026_27 D9: the card set this run started on (`CARD_SET_VERSION` at creation).
+   *  The 30 NBA teams and the trade pack load it, so a weekly refresh never changes a run
+   *  in progress, while a new run on any roster plays the current league. Missing = the
+   *  legacy set (every run created before this field). */
+  cardSetVersion?: string;
   trade?: ChallengeTrade;
   /** One entry per half simulated so far: length 0 (not started), 1 (first half done,
    *  in the front office), or 2 (both halves done). */

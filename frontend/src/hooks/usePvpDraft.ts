@@ -48,6 +48,16 @@ export interface UsePvpDraftResult {
   me: MatchSide | null;
   /** Null until the row and the card set are loaded. Pass straight to `useDraftEngine`. */
   binding: PvpDraftBinding | null;
+  /** season_2026_27 D9: the match's own card set (`match.card_set_version`, null = legacy),
+   *  tagged `type: 'Player'`. Empty until loaded. The room and the build page replay the
+   *  cube over THIS, never over `getAllCards()`, so a weekly refresh cannot change it. */
+  allPlayers: Player[];
+  /** True when this build no longer carries the match's card set: show "Started on an
+   *  older card set" with Abandon only. */
+  cardSetUnavailable: boolean;
+  /** The match's resolved card set version (`'2025-26.2'` for a legacy null), null until
+   *  the row is loaded. Stamp it on anything saved from this match (the locked roster). */
+  cardSetVersion: string | null;
   opponentName: string | null;
   opponentOnline: boolean;
   /** Epoch ms since the opponent's last heartbeat went stale, null while online. */
@@ -70,19 +80,32 @@ export function usePvpDraft(matchId: string): UsePvpDraftResult {
   const authStatus = useAuthStatus();
   const { match, me, transport, opponentOnline, send, refetch, error: matchError } = useMatch(matchId);
 
-  // Card pool, loaded once (same shape `DraftRoom` loads for the solo path).
-  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  // Card pool: the set the match was started on (season_2026_27 D9), loaded once the row
+  // says which. `undefined` = row not loaded yet; null/missing column = the legacy set.
+  // Dynamic import keeps cards.json (and any frozen set) out of the route's first chunk.
+  const cardSetKey = match ? (match.card_set_version ?? null) : undefined;
+  const [loadedSet, setLoadedSet] = useState<{ key: string | null; version: string; players: Player[]; unavailable: boolean } | null>(null);
   useEffect(() => {
+    if (cardSetKey === undefined) return;
     let cancelled = false;
-    import('@/engine/cards')
-      .then(({ getAllCards }) => {
+    import('@/engine/cardSets')
+      .then(async ({ loadCardSet, isCardSetAvailable, resolveCardSetVersion }) => {
+        const version = resolveCardSetVersion(cardSetKey);
+        if (!isCardSetAvailable(cardSetKey)) {
+          if (!cancelled) setLoadedSet({ key: cardSetKey, version, players: [], unavailable: true });
+          return;
+        }
+        const data = (await loadCardSet(cardSetKey)) as Array<Omit<Player, 'type'>>;
         if (cancelled) return;
-        const data = getAllCards() as Array<Omit<Player, 'type'>>;
-        setAllPlayers(data.map((c) => ({ ...c, type: 'Player' as const })));
+        setLoadedSet({ key: cardSetKey, version, players: data.map((c) => ({ ...c, type: 'Player' as const })), unavailable: false });
       })
       .catch((e) => console.error('usePvpDraft: failed to load cards:', e));
     return () => { cancelled = true; };
-  }, []);
+  }, [cardSetKey]);
+  const loadedForRow = loadedSet !== null && cardSetKey !== undefined && loadedSet.key === cardSetKey;
+  const allPlayers = useMemo<Player[]>(() => (loadedForRow ? loadedSet.players : []), [loadedForRow, loadedSet]);
+  const cardSetUnavailable = loadedForRow && loadedSet.unavailable;
+  const cardSetVersion = loadedForRow ? loadedSet.version : null;
 
   // Opponent's display name, off the approved-user directory (T3: no per-match profile
   // lookup RPC exists, this reuses the same endpoint `/playoffs/new`'s invite list uses).
@@ -272,6 +295,9 @@ export function usePvpDraft(matchId: string): UsePvpDraftResult {
     match,
     me,
     binding,
+    allPlayers,
+    cardSetUnavailable,
+    cardSetVersion,
     opponentName,
     opponentOnline,
     opponentOfflineSince,

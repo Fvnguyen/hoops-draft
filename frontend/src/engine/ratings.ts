@@ -10,7 +10,7 @@
  */
 
 import {
-  SeasonStat, Trait, Rarity, PlayerCard, AwardRow, RatingsInput,
+  SeasonStat, Trait, Rarity, PlayerCard, AwardRow, RatingsInput, SeasonConfig, StatBlend,
 } from './types';
 import { RATING_CONFIG, LEGENDARY_PLAYERS, POSITIONLESS_PLAYERS, BADGE_THRESHOLDS, RARITY_CUTOFFS, type RatingDim } from './balance';
 
@@ -51,22 +51,115 @@ function makeIdx(bounds: { mean: number; elite: number }) {
   };
 }
 
-export function computeCards(input: RatingsInput): PlayerCard[] {
-  const { players, stats: allStats, awards: allAwards } = input;
+type StatRow = SeasonStat & { playerId: string; season: string };
 
-  // Latest season per player: mirrors `ORDER BY season DESC LIMIT 1`, i.e. keep the
-  // max `season` string per playerId, preferring the first-encountered row on ties
-  // (matches SQLite's stable sort over the original table-scan order).
-  const latestStatByPlayer = new Map<string, SeasonStat & { playerId: string; season: string }>();
+/** The SeasonStat columns that are numbers (everything but the db bookkeeping). */
+function numericKeys(rows: SeasonStat[]): (keyof SeasonStat)[] {
+  const keys = new Set<string>();
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v === 'number' && k !== 'id') keys.add(k);
+    }
+  }
+  return [...keys] as (keyof SeasonStat)[];
+}
+
+/** The pipeline row minus its db bookkeeping (`id`, `playerId`, `season`). */
+function statOnly(row: StatRow): SeasonStat {
+  const { playerId: _p, season: _s, ...rest } = row as StatRow & { id?: number };
+  delete (rest as { id?: number }).id;
+  return rest;
+}
+
+/** season_2026_27 D4: `w * current + (1 - w) * prior` per numeric column, rounded to 4
+ *  decimals so cards.json stays stable and small. A column missing on one side counts 0. */
+function blendRows(prior: SeasonStat, current: SeasonStat | null, w: number, keys: (keyof SeasonStat)[]): SeasonStat {
+  const out = {} as Record<string, number>;
+  for (const k of keys) {
+    const p = (prior[k] as number | undefined) ?? 0;
+    const c = current ? ((current[k] as number | undefined) ?? 0) : 0;
+    out[k] = Math.round((w * c + (1 - w) * p) * 10000) / 10000;
+  }
+  return out as unknown as SeasonStat;
+}
+
+interface SeasonPick {
+  stat: SeasonStat;
+  seasonStats: SeasonStat | null;
+  blend: StatBlend;
+  /** D5: no prior season and fewer than newRareCapGp current games. */
+  rareCap: boolean;
+}
+
+/** season_2026_27 D3-D5: which players get a card and the row each card plays on. */
+function pickSeasonStats(allStats: StatRow[], seasons: SeasonConfig): Map<string, SeasonPick> {
+  const cfg = RATING_CONFIG.season;
+  const byPlayer = new Map<string, Map<string, StatRow>>();
   for (const s of allStats) {
-    const existing = latestStatByPlayer.get(s.playerId);
-    if (!existing || s.season > existing.season) {
-      latestStatByPlayer.set(s.playerId, s);
+    let m = byPlayer.get(s.playerId);
+    if (!m) byPlayer.set(s.playerId, (m = new Map()));
+    m.set(s.season, s);
+  }
+  const keys = numericKeys(allStats);
+
+  const qualifiesAsPrior = (r: StatRow | undefined) =>
+    !!r && r.gp >= cfg.priorMinGp && r.mpg >= cfg.priorMinMpg;
+
+  // D5: the rotation-average row over every qualifying row of the most recent prior.
+  const avgPool = allStats.filter(r => r.season === seasons.priors[0] && qualifiesAsPrior(r) && r.mpg >= RATING_CONFIG.rotationMpg);
+  const rotationAverage = {} as Record<string, number>;
+  for (const k of keys) {
+    rotationAverage[k] = avgPool.length
+      ? avgPool.reduce((sum, r) => sum + ((r[k] as number | undefined) ?? 0), 0) / avgPool.length
+      : 0;
+  }
+
+  const picks = new Map<string, SeasonPick>();
+  for (const [playerId, rows] of byPlayer) {
+    const cur = rows.get(seasons.current);
+    const curGp = cur?.gp ?? 0;
+    // D3: at least one game this season or last; nobody returns from two seasons out.
+    const lastSeason = rows.get(seasons.priors[0]);
+    if (curGp < 1 && (lastSeason?.gp ?? 0) < 1) continue;
+
+    const priorSeason = seasons.priors.find(s => qualifiesAsPrior(rows.get(s))) ?? null;
+    const isNew = priorSeason === null;
+    if (isNew && !(cur && cur.gp >= cfg.newMinGp && cur.mpg >= cfg.newMinMpg)) continue;
+
+    const w = curGp / (curGp + cfg.seasonBlendK);
+    const prior = priorSeason ? statOnly(rows.get(priorSeason)!) : (rotationAverage as unknown as SeasonStat);
+    picks.set(playerId, {
+      stat: blendRows(prior, cur ? statOnly(cur) : null, w, keys),
+      seasonStats: cur ? statOnly(cur) : null,
+      blend: { w: Math.round(w * 10000) / 10000, currentGp: curGp, priorSeason },
+      rareCap: isNew && curGp < cfg.newRareCapGp,
+    });
+  }
+  return picks;
+}
+
+export function computeCards(input: RatingsInput): PlayerCard[] {
+  const { players, stats: allStats, awards: allAwards, seasons } = input;
+
+  // season_2026_27: with a season config, the eligible players and their blended rows
+  // (D3-D5). Without one, the old behaviour: each player's latest season row, mirroring
+  // `ORDER BY season DESC LIMIT 1` (keep the max `season` string per playerId, preferring
+  // the first-encountered row on ties).
+  const seasonPicks = seasons ? pickSeasonStats(allStats, seasons) : null;
+  const latestStatByPlayer = new Map<string, StatRow>();
+  if (!seasonPicks) {
+    for (const s of allStats) {
+      const existing = latestStatByPlayer.get(s.playerId);
+      if (!existing || s.season > existing.season) {
+        latestStatByPlayer.set(s.playerId, s);
+      }
     }
   }
 
   const awardsByPlayer = new Map<string, AwardRow[]>();
   for (const a of allAwards) {
+    // D7: awards follow the prior season a card's blend uses; a no-prior player has none.
+    if (seasonPicks && a.season !== undefined && a.season !== seasonPicks.get(a.playerId)?.blend.priorSeason) continue;
     let list = awardsByPlayer.get(a.playerId);
     if (!list) {
       list = [];
@@ -103,7 +196,7 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
   }
 
   const rawScoresRaw = players.map(p => {
-    const stat = latestStatByPlayer.get(p.id) as SeasonStat | undefined;
+    const stat = (seasonPicks ? seasonPicks.get(p.id)?.stat : latestStatByPlayer.get(p.id)) as SeasonStat | undefined;
     const awardsRows = awardsByPlayer.get(p.id) || [];
     if (!stat) return null;
 
@@ -310,6 +403,8 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     let ceiling = RARITY_TIERS.length - 1;
     if (!hasBadges) ceiling = Math.min(ceiling, RARITY_TIERS.indexOf('Uncommon'));
     if (!hasAward) ceiling = Math.min(ceiling, RARITY_TIERS.indexOf('Uncommon'));
+    const pick = seasonPicks?.get(p.id);
+    if (pick?.rareCap) ceiling = Math.min(ceiling, RARITY_TIERS.indexOf('Rare'));
 
     const finalTier = floor > ceiling ? floor : Math.max(floor, Math.min(tier, ceiling));
     const rarity: Rarity = RARITY_TIERS[finalTier];
@@ -328,6 +423,7 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
       id: p.id,
       player: p,
       stats: stat,
+      ...(pick ? { seasonStats: pick.seasonStats, blend: pick.blend } : {}),
       awards: formattedAwards,
       ratings: {
         overall,

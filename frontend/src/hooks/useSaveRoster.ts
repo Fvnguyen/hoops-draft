@@ -96,6 +96,9 @@ export function useSaveRoster({
         archetypes: validArchetypes,
         version: 2,
         sessionId: sessionId ?? null,
+        // season_2026_27 D9: the set these cards came from (every card carries its set's
+        // stamp), so a roster from a resumed older draft is not stamped as the current set.
+        cardSetVersion: draftedCards.find((c): c is PlayerCardData => c.type === 'Player' && !!c.cardSetVersion)?.cardSetVersion,
       };
 
       if (embedOverride) {

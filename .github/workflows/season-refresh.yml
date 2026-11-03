@@ -1,0 +1,87 @@
+# season_2026_27 D11. Daily: the card back's current-season averages
+# (frontend/public/data/season-stats.json), committed to main only when they changed.
+# Weekly (Monday): the whole card set (blended ratings, new players, teams) as a PR for the
+# owner to merge. Both scrape basketball-reference through Playwright; if it or the NBA Stats
+# API ever blocks GitHub's runners, run `npm run refresh:stats` / `npm run refresh:season`
+# from a scheduled task on the owner's machine instead.
+name: Season refresh
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # daily stats, after the night's games
+    - cron: '0 11 * * 1'  # weekly card set
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which refresh to run
+        type: choice
+        options: [stats, season]
+        default: stats
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: season-refresh-${{ github.event.schedule || inputs.job }}
+  cancel-in-progress: false
+
+jobs:
+  stats:
+    if: github.event.schedule == '0 10 * * *' || inputs.job == 'stats'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run refresh:stats
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- frontend/public/data/season-stats.json; then
+            echo "No stat changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data/season-stats.json
+          git commit -m "chore: season stats $(date -u +%F)"
+          git push
+
+  season:
+    if: github.event.schedule == '0 11 * * 1' || inputs.job == 'season'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas lxml html5lib beautifulsoup4 unidecode requests nba_api
+      - run: npm ci
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+      - run: npm run refresh:season -- --summary "$RUNNER_TEMP/summary.md"
+      - name: Read version
+        id: version
+        run: echo "v=$(sed -nE "s/.*CARD_SET_VERSION = '([^']+)'.*/\1/p" frontend/src/engine/cardSetVersion.ts)" >> "$GITHUB_OUTPUT"
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: card-set/${{ steps.version.outputs.v }}
+          commit-message: 'chore: card set ${{ steps.version.outputs.v }}'
+          title: 'chore: card set ${{ steps.version.outputs.v }}'
+          body-path: ${{ runner.temp }}/summary.md
+          add-paths: |
+            data
+            frontend/src
+            frontend/public

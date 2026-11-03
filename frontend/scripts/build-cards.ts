@@ -15,7 +15,7 @@ import path from 'path';
 import fs from 'fs';
 import { computeCards } from '../src/engine/ratings';
 import { CARD_SET_VERSION } from '../src/engine/cardSetVersion';
-import type { PlayerBio, SeasonStat, AwardRow, PlayerCardData } from '../src/engine/types';
+import type { PlayerBio, SeasonStat, AwardRow, PlayerCardData, SeasonConfig } from '../src/engine/types';
 
 function mean(arr: number[]): number {
   return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -30,7 +30,12 @@ function main(): void {
   const awards = db.prepare('SELECT * FROM Award').all() as AwardRow[];
   db.close();
 
-  const cards = computeCards({ players, stats, awards });
+  // season_2026_27 D1: which season is current and which may serve as a prior.
+  const seasons = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), '..', 'data', 'season_config.json'), 'utf-8'),
+  ) as SeasonConfig;
+
+  const cards = computeCards({ players, stats, awards, seasons });
 
   // Tag every card `type: 'Player'` as the FIRST key (matches the shape
   // PlayerCardData/DraftCard expect at runtime), stamped with the card set version
@@ -63,16 +68,24 @@ function main(): void {
     console.log(`  ${key.padEnd(18)} ${m.toFixed(2)}`);
   }
 
-  // engine_possession_model D1: paste this block over RATING_NORM in src/engine/balance.ts
-  // whenever the pool changes (tests/unit/lineup.test.ts fails on >0.5 drift).
-  console.log('\nRATING_NORM (mean / sd per dimension — copy into engine/balance.ts):');
+  // engine_possession_model D1: RATING_NORM in src/engine/balance.ts is the pool's mean/sd
+  // per dimension (tests/unit/lineup.test.ts fails on >0.5 drift). season_2026_27: the
+  // pool changes every weekly refresh, so it is written here, not pasted by hand.
+  const normLines: string[] = [];
   for (const key of ratingKeys) {
     if (key === 'overall') continue;
     const v = tagged.map((c) => c.ratings[key] ?? 0);
     const m = mean(v);
     const sd = Math.sqrt(mean(v.map((x) => (x - m) ** 2)));
-    console.log(`  ${(key + ':').padEnd(18)} { mean: ${m.toFixed(2)}, sd: ${sd.toFixed(2)} },`);
+    normLines.push(`  ${(key + ':').padEnd(17)} { mean: ${m.toFixed(2)}, sd: ${sd.toFixed(2)} },`);
   }
+  const balancePath = path.join(process.cwd(), 'src', 'engine', 'balance.ts');
+  const balanceSrc = fs.readFileSync(balancePath, 'utf-8');
+  const normRe = /(export const RATING_NORM: Record<RatingDim, \{ mean: number; sd: number \}> = \{\r?\n)[\s\S]*?(\r?\n\};)/;
+  if (!normRe.test(balanceSrc)) throw new Error('RATING_NORM block not found in engine/balance.ts');
+  fs.writeFileSync(balancePath, balanceSrc.replace(normRe, (_, open, close) => open + normLines.join('\n') + close));
+  console.log('\nRATING_NORM written to engine/balance.ts:');
+  console.log(normLines.join('\n'));
 
   // card_balance T3 (2026-09-16): an EARLIER equal-percentile pass through this exact
   // cutoff — same top-X% on every dimension — was superseded by the owner as "absolute

@@ -21,11 +21,11 @@
  * chart is bench" rule puts it there for the user to slot before the second half.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ChallengeTrade, SavedRoster } from '@/storage/types';
 import type { ChallengeHalf } from '@/engine/challenge';
 import type { PlayerCardData, Rarity } from '@/engine/types';
-import { getAllCards } from '@/engine/cards';
+import { loadCardSet } from '@/engine/cardSets';
 import { drawTradeOffers } from '@/engine/challenge';
 import { createRng } from '@/engine/rng';
 import { shortName } from '@/engine/challengeAdvice';
@@ -94,10 +94,25 @@ export function Trade({ half, roster, ownedIds, rngSeed, onCancel, onConfirm }: 
   const [droppedId, setDroppedId] = useState<string | null>(null);
   const dropped = rows.find((r) => r.id === droppedId) ?? null;
 
-  const allCards = useMemo(() => getAllCards(), []);
+  // season_2026_27 D9: offers come from the card set the roster was drafted on (82:0: the
+  // run's roster; Playoffs: the locked roster, stamped with the match's set), so a weekly
+  // refresh never changes which five cards a dropped rarity draws.
+  const cardSetVersion = roster.cardSetVersion;
+  const [loadedCards, setLoadedCards] = useState<{ version: string | undefined; cards: PlayerCardData[] } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadCardSet(cardSetVersion)
+      .then((cards) => { if (!cancelled) setLoadedCards({ version: cardSetVersion, cards }); })
+      .catch((err) => console.error('Trade: failed to load the card set:', err));
+    return () => { cancelled = true; };
+  }, [cardSetVersion]);
+  const allCards = useMemo<PlayerCardData[] | null>(
+    () => (loadedCards && loadedCards.version === cardSetVersion ? loadedCards.cards : null),
+    [loadedCards, cardSetVersion],
+  );
 
   const offers: PlayerCardData[] = useMemo(() => {
-    if (!dropped) return [];
+    if (!dropped || !allCards) return [];
     const rng = createRng(rngSeed);
     return drawTradeOffers(allCards, ownedIds, dropped.card.rarity as Rarity, rng);
   }, [dropped, allCards, ownedIds, rngSeed]);

@@ -10,6 +10,7 @@
  */
 
 import { getAllCards } from '@/engine/cards';
+import frozen2025 from '@/data/cardsets/2025-26.2.json';
 import type { PlayerCardData, Play, DraftCard } from '@/components/PlayerCard';
 import { generateCubePool, getBotPick, createBotProfiles, type DraftSeat } from '@/engine/draft';
 import { buildBotRoster, type DraftSessionSeat } from '@/engine/deckbuilder';
@@ -30,6 +31,12 @@ export function loadPlayers(): PlayerCardData[] {
   if (cachedPlayers) return cachedPlayers;
   cachedPlayers = getAllCards();
   return cachedPlayers;
+}
+
+/** season_2026_27: the frozen 2025-26.2 set, for engine-mechanics tests whose numbers were
+ *  measured on specific players. The shipping pool changes with every weekly refresh. */
+export function loadFixturePlayers(): PlayerCardData[] {
+  return frozen2025 as unknown as PlayerCardData[];
 }
 
 // ── Headless draft (mirrors useDraftEngine.ts without React) ───────────────

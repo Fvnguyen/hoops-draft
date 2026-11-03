@@ -12,6 +12,7 @@
 import type { PlayerBoxScore } from '@/engine/gameTypes';
 import type { MatchSide } from '@/engine/playoffs';
 import type { SavedRoster, ChallengeTrade } from './types';
+import { CARD_SET_VERSION } from '@/engine/cardSetVersion';
 
 export type { MatchSide };
 
@@ -106,6 +107,10 @@ export interface Match {
   winner_id: string | null;
   /** pvp_draft D3: why the match was voided (a replay found an illegal pick). */
   void_reason: string | null;
+  /** season_2026_27 D9: the card set (`CARD_SET_VERSION`) the match was started on, set
+   *  by `match_invite` (202611030001). Null/missing = the legacy set `2025-26.2`. Read it
+   *  through `loadCardSet`, never `getAllCards()`. */
+  card_set_version?: string | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -124,8 +129,8 @@ export interface DirectoryUser {
  * require the caller to be an APPROVED profile, and return the updated `matches` row
  * (except where noted). Arguments are prefixed `p_` in SQL.
  *
- *   match_invite(p_guest_id uuid) -> matches
- *     caller = host. guest must be approved and != caller. One `invited` row per pair
+ *   match_invite(p_guest_id uuid, p_card_set_version text default null) -> matches
+ *     caller = host. Records p_card_set_version (202611030001; null = legacy set). guest must be approved and != caller. One `invited` row per pair
  *     (either direction) at a time. seed = DB-drawn non-negative int. status 'invited'.
  *   match_respond(p_id text, p_version int, p_accept boolean) -> matches
  *     caller = guest, status 'invited'. accept -> 'drafting' with pick_deadline NULL (no
@@ -224,6 +229,13 @@ export function matchHref(match: Pick<Match, 'id' | 'status'>): string {
   if (match.status === 'drafting') return `/playoffs/${match.id}/draft`;
   if (match.status === 'building') return `/playoffs/${match.id}/build`;
   return `/playoffs/${match.id}`;
+}
+
+/** season_2026_27 D9: the `match_invite` arguments. A new match records the card set
+ *  this build ships, so a later weekly refresh never changes its cube mid-draft. Needs
+ *  migration 202611030001 (the trailing parameter) applied before this client deploys. */
+export function matchInviteArgs(guestId: string): { p_guest_id: string; p_card_set_version: string } {
+  return { p_guest_id: guestId, p_card_set_version: CARD_SET_VERSION };
 }
 
 /** Which side the user is on, or null when not a participant. */

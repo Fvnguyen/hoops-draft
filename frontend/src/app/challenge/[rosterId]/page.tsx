@@ -24,12 +24,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { getGameStore } from '@/storage';
 import { challengeRunIdForRoster } from '@/storage/types';
 import type { ChallengeRun, SavedRoster } from '@/storage/types';
 import { useStorageReady } from '@/components/StorageProvider';
-import { getAllCards } from '@/engine/cards';
+import { loadCardSet, isCardSetAvailable } from '@/engine/cardSets';
+import { CARD_SET_VERSION } from '@/engine/cardSetVersion';
+import { OlderCardSetNotice } from '@/components/OlderCardSetNotice';
 import { PLAY_CATALOG } from '@/engine/plays';
 import { buildTeamInfo } from '@/engine/game';
 import { randomSeed } from '@/engine/rng';
@@ -58,6 +60,7 @@ export default function ChallengePage() {
   const params = useParams();
   const rosterId = decodeURIComponent(String(params.rosterId ?? ''));
   const ready = useStorageReady();
+  const router = useRouter();
 
   const [roster, setRoster] = useState<SavedRoster | null>(null);
   const [run, setRun] = useState<ChallengeRun | null>(null);
@@ -104,6 +107,7 @@ export default function ChallengePage() {
         balanceVersion: BALANCE_VERSION,
         phase: 'first',
         rosterPre: saved,
+        cardSetVersion: CARD_SET_VERSION,
         halves: [],
       }));
       if (cancelled) return;
@@ -144,8 +148,16 @@ export default function ChallengePage() {
 
   const simulating = useRef<string | null>(null);
 
+  // season_2026_27 D9: the 30 NBA teams (and the trade pack, via the roster handed to
+  // `Trade`) come from the card set the RUN started on, so a weekly refresh never changes
+  // the opponents mid-run. `loadCardSet` returns one array per version, so
+  // `buildNbaTeams`' cache still hits.
+  const runCardSet = run?.cardSetVersion;
+  const cardSetAvailable = isCardSetAvailable(runCardSet);
+
   useEffect(() => {
     if (!run || !roster || needsHalf === null) return;
+    if (!cardSetAvailable) return;
     const token = `${run.id}:${needsHalf}`;
     if (simulating.current === token) return;
     simulating.current = token;
@@ -153,9 +165,9 @@ export default function ChallengePage() {
 
     // Out of the render path: building 30 opponents and playing 41 games is ~150ms of
     // synchronous work, and D7 wants it finished before a single flap turns.
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(async () => {
       try {
-        const cards = getAllCards();
+        const cards = await loadCardSet(runCardSet);
         // Real NBA rosters are locked-in: a drafted player still suits up for his own
         // team against you (owner decision, 2026-09-17).
         const opponents = buildNbaTeams(cards, PLAY_CATALOG);
@@ -190,7 +202,7 @@ export default function ChallengePage() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [run, roster, needsHalf, commit]);
+  }, [run, roster, needsHalf, commit, cardSetAvailable, runCardSet]);
 
   // ── phase transitions ────────────────────────────────────────────────────
   const finishFirstHalf = useCallback(() => {
@@ -233,7 +245,26 @@ export default function ChallengePage() {
 
   let body: React.ReactNode;
 
-  if (error) {
+  if (run && !cardSetAvailable && run.phase !== 'done' && (needsHalf !== null || run.phase === 'break')) {
+    // D9: a half still has to be simulated (or a trade drawn) on a set this build no longer
+    // carries. Replayed halves and a finished run need no cards, so they still show.
+    body = (
+      <OlderCardSetNotice
+        what="82:0 run"
+        onAbandon={async () => {
+          const store = getGameStore();
+          try {
+            // The roster is a card snapshot and is not tied to a set: only the run goes,
+            // and a new run on this roster plays the current league.
+            await store.deleteChallengeRun(run.id);
+          } catch (err) {
+            console.error('Failed to abandon the 82:0 run:', err);
+          }
+          router.replace('/rosters');
+        }}
+      />
+    );
+  } else if (error) {
     body = <Notice title="Can't start this run" detail={error} action={{ href: '/rosters', label: 'My rosters' }} />;
   } else if (!run || !roster) {
     body = <Notice title="Loading" detail="Opening your 82:0 run…" />;
@@ -269,7 +300,7 @@ export default function ChallengePage() {
         <FrontOffice
           half={half}
           seed={run.seed}
-          roster={rosterDraft}
+          roster={{ ...rosterDraft, cardSetVersion: run.cardSetVersion }}
           trade={run.trade}
           sessionId={run.sessionId || undefined}
           tradeOwnedIds={new Set(rosterDraft.draftedCards.map((c) => c.id))}

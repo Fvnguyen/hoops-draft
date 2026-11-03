@@ -8,6 +8,7 @@ import { useHoverPreview } from './useHoverPreview';
 import { headshotThumb } from '@/lib/headshotThumb';
 import { useLongPressPreview } from '@/hooks/useLongPressPreview';
 import { useHasFinePointer } from '@/hooks/useHasFinePointer';
+import { useSeasonStats, seasonLabel, type DailyStatRow } from '@/lib/seasonStats';
 import { PlayBoardGraphic } from './PlayArt';
 import { BadgeIcon, BADGE_DESCRIPTIONS, ICON_ONLY_BADGE_SIZES } from './BadgeIcon';
 
@@ -260,6 +261,24 @@ export function CardListRow({ card, onClick, selected = false, trailing, classNa
   );
 }
 
+const fmt = (n: number | undefined) => (n === undefined ? '–' : n.toFixed(1));
+
+/**
+ * season_2026_27 D6: the season averages a card shows. `card.stats` is a prior/current
+ * blend once a card carries `seasonStats` (or a daily row exists), so it is only shown for
+ * legacy cards with neither. `row` null + `empty` = no 2026-27 games yet.
+ */
+function useDisplayStats(player: PlayerCardData): { row: DailyStatRow | null; empty: boolean; label: string | null } {
+  const { stats, asOf, season } = useSeasonStats(player);
+  if (stats) {
+    if (stats.gp <= 0) return { row: null, empty: true, label: season ?? '2026-27' };
+    return { row: stats, empty: false, label: seasonLabel(season ?? '2026-27', asOf) };
+  }
+  if (player.seasonStats === null) return { row: null, empty: true, label: season ?? '2026-27' };
+  // Legacy (pinned 2025-26) card without a daily row: show its own frozen stats.
+  return { row: player.stats as unknown as DailyStatRow, empty: false, label: null };
+}
+
 // One cell of the front card's stats row.
 function StatCell({ label, value, border = true, className = '' }: { label: string; value: string; border?: boolean; className?: string }) {
   return (
@@ -326,6 +345,7 @@ export function MiniPlayerCard({ player, className = "", onClick }: { player: Pl
 
 export function PlayerCardFront({ player, isSelected = false, size = 'md', wide = false }: { player: PlayerCardData; isSelected?: boolean; size?: 'sm' | 'md'; wide?: boolean }) {
   const [c1, c2] = getPosColors(player.player.position);
+  const display = useDisplayStats(player);
   const teamColor = teamColors[player.player.team] || defaultTeamColorDark;
   const teamId = teamIds[player.player.team];
   const headshotUrl = headshotThumb(player.player.id, 480);
@@ -406,12 +426,12 @@ export function PlayerCardFront({ player, isSelected = false, size = 'md', wide 
           G-League, hover popups). */}
       {size !== 'sm' && (
         <div className="grid text-center bg-surface-raised border-t border-line grid-cols-4 @[180px]:grid-cols-6">
-          <StatCell label="PPG" value={player.stats.pts.toFixed(1)} />
-          <StatCell label="RPG" value={player.stats.trb.toFixed(1)} />
-          <StatCell label="APG" value={player.stats.ast.toFixed(1)} />
-          <StatCell label="SPG" value={player.stats.stl.toFixed(1)} className="hidden @[180px]:block" />
-          <StatCell label="BPG" value={player.stats.blk.toFixed(1)} className="hidden @[180px]:block" />
-          <StatCell label="FG%" value={(player.stats.fg_pct * 100).toFixed(0)} border={false} />
+          <StatCell label="PPG" value={fmt(display.row?.pts)} />
+          <StatCell label="RPG" value={fmt(display.row?.trb)} />
+          <StatCell label="APG" value={fmt(display.row?.ast)} />
+          <StatCell label="SPG" value={fmt(display.row?.stl)} className="hidden @[180px]:block" />
+          <StatCell label="BPG" value={fmt(display.row?.blk)} className="hidden @[180px]:block" />
+          <StatCell label="FG%" value={display.row ? (display.row.fg_pct * 100).toFixed(0) : '–'} border={false} />
         </div>
       )}
 
@@ -476,6 +496,8 @@ function BadgePanel({ traits }: { traits: Trait[] }) {
  */
 export function PlayerCardBack({ player, flipped = true }: { player: PlayerCardData; flipped?: boolean }) {
   const [c1, c2] = getPosColors(player.player.position);
+  const display = useDisplayStats(player);
+  const st = display.row;
   return (
     <div
       className="absolute inset-0 flex flex-col rounded-lg shadow-lg group-hover:shadow-2xl transition-shadow overflow-hidden bg-surface-inverse text-ink-inverse border border-line-inverse"
@@ -530,23 +552,26 @@ export function PlayerCardBack({ player, flipped = true }: { player: PlayerCardD
           </div>
         )}
 
-        <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">Season Averages</div>
+        <div className="text-xs text-ink-inverse-muted font-bold uppercase tracking-widest mb-1 text-center">{display.label ?? 'Season Averages'}</div>
+        {display.empty || !st ? (
+          <div className="px-1.5 py-2 text-center text-xs font-bold text-ink-inverse-muted">No {display.label ?? '2026-27'} games yet</div>
+        ) : (
         <div className="grid grid-cols-2 gap-x-1 gap-y-[2px]">
           {[
-            ['GP', String(player.stats.gp)],
-            ['MPG', player.stats.mpg.toFixed(1)],
-            ['PTS', player.stats.pts.toFixed(1)],
-            ['FGA', (player.stats.fga || 0).toFixed(1)],
-            ['TRB', player.stats.trb.toFixed(1)],
-            ['FG%', (player.stats.fg_pct * 100).toFixed(1)],
-            ['AST', player.stats.ast.toFixed(1)],
-            ['2PA', Math.max(0, (player.stats.fga || 0) - (player.stats.fg3a || 0)).toFixed(1)],
-            ['STL', player.stats.stl.toFixed(1)],
-            ['2P%', ((player.stats.fg2_pct || 0) * 100).toFixed(1)],
-            ['BLK', player.stats.blk.toFixed(1)],
-            ['3PA', (player.stats.fg3a || 0).toFixed(1)],
-            ['FT%', ((player.stats.ft_pct || 0) * 100).toFixed(1)],
-            ['3P%', (player.stats.fg3_pct * 100).toFixed(1)],
+            ['GP', String(st.gp)],
+            ['MPG', st.mpg.toFixed(1)],
+            ['PTS', st.pts.toFixed(1)],
+            ['FGA', (st.fga || 0).toFixed(1)],
+            ['TRB', st.trb.toFixed(1)],
+            ['FG%', (st.fg_pct * 100).toFixed(1)],
+            ['AST', st.ast.toFixed(1)],
+            ['2PA', Math.max(0, (st.fga || 0) - (st.fg3a || 0)).toFixed(1)],
+            ['STL', st.stl.toFixed(1)],
+            ['2P%', ((st.fg2_pct || 0) * 100).toFixed(1)],
+            ['BLK', st.blk.toFixed(1)],
+            ['3PA', (st.fg3a || 0).toFixed(1)],
+            ['FT%', ((st.ft_pct || 0) * 100).toFixed(1)],
+            ['3P%', (st.fg3_pct * 100).toFixed(1)],
           ].map(([label, val]) => (
             <div key={label} className="flex justify-between items-center px-1.5 py-[2px] bg-surface-inverse-deep rounded border border-line-inverse">
               <span className="text-xs text-ink-inverse-muted font-bold uppercase">{label}</span>
@@ -554,6 +579,7 @@ export function PlayerCardBack({ player, flipped = true }: { player: PlayerCardD
             </div>
           ))}
         </div>
+        )}
 
         {/* Bio — only when there is room */}
         <div className="mt-auto pt-1 text-center text-xs text-ink-inverse-muted font-bold tracking-widest uppercase hidden @[200px]:block">

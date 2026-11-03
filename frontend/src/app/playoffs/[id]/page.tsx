@@ -19,7 +19,7 @@ import { PlayoffsFrontOffice } from '@/components/playoffs/PlayoffsFrontOffice';
 import { SeriesResults } from '@/components/playoffs/SeriesResults';
 import { WaitingFor } from '@/components/playoffs/WaitingFor';
 import { loadMatchClient } from '@/lib/matchChannel';
-import { matchHref, type DirectoryUser, type Match, type MatchSide } from '@/storage/matchTypes';
+import { matchHref, matchInviteArgs, type DirectoryUser, type Match, type MatchSide } from '@/storage/matchTypes';
 import type { SavedRoster, ChallengeTrade } from '@/storage/types';
 
 function coinflipMetaKey(matchId: string): string {
@@ -122,7 +122,7 @@ export default function PlayoffsSeriesPage() {
   const handleRematch = async () => {
     if (!match || !opponentId) return;
     const client = await loadMatchClient();
-    const { data, error } = await client.rpc('match_invite', { p_guest_id: opponentId });
+    const { data, error } = await client.rpc('match_invite', matchInviteArgs(opponentId));
     if (error) throw new Error(error.message ?? 'Failed to invite a rematch');
     const created = data as Match;
     router.push(`/playoffs/${created.id}`);

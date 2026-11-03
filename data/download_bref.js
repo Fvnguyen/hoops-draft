@@ -11,33 +11,35 @@ async function scrapeBRef() {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     });
 
-    const season = 2026;
-    console.log("Fetching Per Game stats...");
-    await page.goto(`https://www.basketball-reference.com/leagues/NBA_${season}_per_game.html`, { waitUntil: 'networkidle' });
-    const perGameHTML = await page.content();
-    fs.writeFileSync(path.join(__dirname, 'per_game.html'), perGameHTML);
-
-    console.log("Fetching Advanced stats...");
-    await page.waitForTimeout(3000); // polite delay
-    await page.goto(`https://www.basketball-reference.com/leagues/NBA_${season}_advanced.html`, { waitUntil: 'networkidle' });
-    const advancedHTML = await page.content();
-    fs.writeFileSync(path.join(__dirname, 'advanced.html'), advancedHTML);
-
-    console.log("Fetching Shooting stats...");
-    await page.waitForTimeout(3000); // polite delay
-    await page.goto(`https://www.basketball-reference.com/leagues/NBA_${season}_shooting.html`, { waitUntil: 'networkidle' });
-    const shootingHTML = await page.content();
-    fs.writeFileSync(path.join(__dirname, 'shooting.html'), shootingHTML);
-
-    console.log("Fetching Awards...");
-    await page.waitForTimeout(3000);
-    const awardsUrl = `https://www.basketball-reference.com/leagues/NBA_${season}.html`;
-    try {
-        await page.goto(awardsUrl, { waitUntil: 'networkidle' });
-        const awardsHTML = await page.content();
-        fs.writeFileSync(path.join(__dirname, 'awards.html'), awardsHTML);
-    } catch (e) {
-        console.log("Failed to fetch awards", e);
+    // season_2026_27 D1: every season string comes from season_config.json. bref names a
+    // season by its END year ("2026-27" -> NBA_2027). Each season's pages land in
+    // data/bref/<season>/. The current season has no awards yet; priors get theirs, since
+    // a player's awards follow the prior season his blend uses (D7).
+    const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'season_config.json'), 'utf-8'));
+    const endYear = (s) => Number(s.split('-')[0]) + 1;
+    const season = endYear(config.current);
+    const pages = [
+        ['per_game', (y) => `NBA_${y}_per_game.html`],
+        ['advanced', (y) => `NBA_${y}_advanced.html`],
+        ['shooting', (y) => `NBA_${y}_shooting.html`],
+        ['awards', (y) => `NBA_${y}.html`],
+    ];
+    for (const s of [config.current, ...config.priors]) {
+        const dir = path.join(__dirname, 'bref', s);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        for (const [name, url] of pages) {
+            if (name === 'awards' && s === config.current) continue;
+            console.log(`Fetching ${s} ${name}...`);
+            await page.waitForTimeout(3000); // polite delay
+            try {
+                const resp = await page.goto(`https://www.basketball-reference.com/leagues/${url(endYear(s))}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                if (!resp || resp.status() !== 200) throw new Error(`status ${resp && resp.status()}`);
+                fs.writeFileSync(path.join(dir, `${name}.html`), await page.content());
+            } catch (e) {
+                console.log(`Failed to fetch ${s} ${name}`, e.message);
+                process.exitCode = 1;
+            }
+        }
     }
 
     // card_ratings_rebalance D10 (2026-09-18): the 26 letter-index pages
@@ -81,7 +83,7 @@ async function scrapeBRef() {
         rowRe.lastIndex = 0;
         while ((m = rowRe.exec(html))) {
             const [, id, name, toYear] = m;
-            if (toYear === String(season)) activeIds[name] = id;
+            if (Number(toYear) >= season - 1) activeIds[name] = id;
         }
     }
     console.log(`Found ${Object.keys(activeIds).length} active players.`);

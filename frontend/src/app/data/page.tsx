@@ -34,6 +34,7 @@ export default function DatabasePage() {
     PTS: true, TRB: true, AST: true, STL: true, BLK: true,
     'FG%': false, '3P%': false, 'FT%': false,
     MPG: false, GP: false,
+    'Cur PTS': true, 'Cur GP': true, 'Blend w': true, Prior: true,
     Traits: true,
   });
   
@@ -77,6 +78,9 @@ export default function DatabasePage() {
       case 'ft%': return c.stats.ft_pct;
       case 'mpg': return c.stats.mpg;
       case 'gp': return c.stats.gp;
+      case 'curpts': return c.seasonStats?.pts ?? -1;
+      case 'curgp': return c.seasonStats?.gp ?? -1;
+      case 'blendw': return c.blend?.w ?? -1;
       case 'height': return parseFloat(c.player.height.replace('-', '.'));
       case 'weight': return c.player.weight;
       default: return 0;
@@ -221,6 +225,10 @@ export default function DatabasePage() {
                 {visibleColumns['FT%'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('ft%')}>FT%</th>}
                 {visibleColumns['MPG'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('mpg')}>MPG</th>}
                 {visibleColumns['GP'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('gp')}>GP</th>}
+                {visibleColumns['Cur PTS'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('curpts')} title="Current-season actual PPG (seasonStats)">Cur PTS</th>}
+                {visibleColumns['Cur GP'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('curgp')}>Cur GP</th>}
+                {visibleColumns['Blend w'] && <th className="px-3 py-3 cursor-pointer hover:text-stone-800" onClick={() => handleSort('blendw')} title="Weight on the current season in the blended stats">Blend w</th>}
+                {visibleColumns['Prior'] && <th className="px-3 py-3" title="Season the prior came from (blend.priorSeason); blended PTS/TRB/... columns above are card.stats">Prior</th>}
                 {visibleColumns['Traits'] && <th className="px-3 py-3">Traits / Awards</th>}
               </tr>
             </thead>
@@ -285,6 +293,10 @@ export default function DatabasePage() {
                     {visibleColumns['MPG'] && <td className="px-3 py-2 text-stone-400">{c.stats.mpg.toFixed(1)}</td>}
                     {visibleColumns['GP'] && <td className="px-3 py-2 text-stone-400">{c.stats.gp}</td>}
                     
+                    {visibleColumns['Cur PTS'] && <td className="px-3 py-2 text-stone-300">{c.seasonStats ? c.seasonStats.pts.toFixed(1) : (c.seasonStats === null ? '0 GP' : '–')}</td>}
+                    {visibleColumns['Cur GP'] && <td className="px-3 py-2 text-stone-400">{c.seasonStats ? c.seasonStats.gp : '–'}</td>}
+                    {visibleColumns['Blend w'] && <td className="px-3 py-2 text-stone-400">{c.blend ? c.blend.w.toFixed(2) : '–'}</td>}
+                    {visibleColumns['Prior'] && <td className="px-3 py-2 text-stone-400">{c.blend ? (c.blend.priorSeason ?? 'rotation avg') : '–'}</td>}
                     {visibleColumns['Traits'] && (
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1 items-center max-w-xs">

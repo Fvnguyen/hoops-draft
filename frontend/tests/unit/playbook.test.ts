@@ -12,7 +12,7 @@ import {
 import { simulateGame, type TeamInfo } from '@/engine/game';
 import { createRng } from '@/engine/rng';
 import { PLAY_BUDGET_OFFENSE } from '@/engine/balance';
-import { loadPlayers } from './helpers';
+import { loadPlayers, loadFixturePlayers } from './helpers';
 
 // ── Fixture helpers ──────────────────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ describe('evaluatePlayAssignment / evaluatePlaybook', () => {
 // ── (b)/(c)/(d) High Pick & Roll in-game behaviour ──────────────────────────
 
 describe('High Pick & Roll in-game call resolution', () => {
-  const players = loadPlayers();
+  const players = loadFixturePlayers();
   const used = new Set<string>();
 
   const starterPG = pickAny(players, used);

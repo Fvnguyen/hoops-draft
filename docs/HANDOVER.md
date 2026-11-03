@@ -1,4 +1,4 @@
-# Handover — 2026-09-22
+# Handover — 2026-11-03
 
 ## Current state
 
@@ -21,7 +21,7 @@ sync_outbox below). The UI runs on semantic tokens + `data-theme` and five
 `components/ui` primitives (ui_foundation); `npm run check:styles` is a blocking CI gate
 at 0 violations. On phones (coarse pointer under 1000px) the whole document renders at
 CSS `zoom: 0.7` with `h-dvh-z` shells and a long-press card preview (game_canvas).
-632/632 Vitest tests pass; one is an `it.fails` marker on the known `LINEUP_CENTRE` drift in `lineup.test.ts` (see below), so it turns red the moment a recalibration fixes the numbers, type-check is clean, `npm run lint` is
+755/755 Vitest tests pass; one is an `it.fails` marker on the known `LINEUP_CENTRE` drift in `lineup.test.ts` (see below), so it turns red the moment a recalibration fixes the numbers, type-check is clean, `npm run lint` is
 0 errors / warnings-only (all `<img>`/unused-var, none blocking), `smoke.spec.ts` is 9/9. GitHub Actions CI
 (`.github/workflows/ci.yml`) runs tsc/lint/test/build on every push and PR (green since
 2026-09-22; before that every run died at `npm ci` on Node 22, see the workflow comment). A runtime
@@ -56,7 +56,46 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **sync_outbox** (2026-09-21, `plan_sync_outbox_2026-09-21.md`): local-first writes through a persisted outbox, tombstones, persisted baselines (relaunch downloads 0 KB), deterministic season/82:0 ids, approved-only writes; migration applied. Still open: no UI for `SyncStatus.blocked`; 82:0 run creation never exercised in a browser.
 - **pvp_match** (2026-09-22, `plan_pvp_match_2026-09-22.md`): `public.matches` + security-definer RPCs (invite/respond/pick/autopick/lock/sideboard/seen/heartbeat/expire/void), version CAS, participant-only RLS, approved-only `user_directory`; Realtime with a polling fallback (`lib/matchChannel.ts`, `useMatch`), invites from the bell. Migrations `202609220001`/`202609220002` applied to production after rolled-back dry runs; `supabase/tests/202609220001_matches_test.sql` is the 17-case script to re-run against a branch DB.
 - **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
+- **draft_resume** (2026-09-22, `plan_draft_resume_2026-09-22.md`): `replayDraft(seed, humanPicks)` rebuilds a room, the in-progress `DraftSession` (`status: 'drafting'`) is saved after every pick, `DraftRoom` asks Resume/Abandon; specs on the shared E2E account must call `clearAnyUnfinishedDraft` first.
 - **render_and_engine_perf** (2026-09-22, `plan_render_and_engine_perf_2026-09-21.md`): 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms; `game.ts` 1500 -> 364 lines over five modules, `DeckBuilder.tsx` 1536 -> 686, `PlayerCard.tsx` 1450 -> 918; seasons reproducible from their seed; narration off the engine's rng; long-press preview on every deck-builder card. Engine checksum 219438687 is the behaviour baseline (`scripts/bench-engine.ts`).
+
+## season_2026_27 — in progress (2026-11-03, migration pending)
+
+Plan: `docs/plans/plan_season_2026_27_2026-11-03.md`. The card pool moved to 2026-27:
+card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`.
+- **Ratings** blend each player's last qualifying season (2025-26, else 2024-25) with
+  2026-27, weight on current = GP / (GP + 20) (`ratings.ts` `pickSeasonStats`). Eligible:
+  on a 2026-27 roster, played in 2025-26 or 2026-27, and a prior (20 GP, 5 MPG) or 5 GP at
+  15 MPG this season. Rookies blend toward the rotation average; awards follow the prior.
+  Trae Young (WAS, Uncommon), Tatum (BOS, Mythic), Haliburton (IND, Mythic) are back on
+  2024-25 priors; 25 cards use a 2024-25 prior, 17 have none, 44 have 0 GP this season.
+- **Card back** shows 2026-27 actuals from `public/data/season-stats.json` ("2026-27 · as of
+  Nov 3", or "No 2026-27 games yet"); verified in the browser pane on Siakam and Cardwell.
+- **Pinning**: `engine/cardSets.ts` `loadCardSet`; frozen `cardsets/2025-26.2.json`. Draft
+  resume uses the session's stamp, an 82:0 run `ChallengeRun.cardSetVersion` (missing =
+  legacy), a match `matches.card_set_version`. Rosters take their stamp from their cards.
+- **Refresh**: `npm run refresh:season` (weekly PR) and `npm run refresh:stats` (daily
+  commit), both in `.github/workflows/season-refresh.yml`, never run on GitHub yet.
+  `--skip-scrape` twice gives the identical `cards.json` (md5 `60c202a2…`).
+- **Measured** (`npm run balance -- 1000 --seed 42`, 2025-26.2 -> 2026-27.1): PPP 1.061 ->
+  1.052, team score mean 108.4 -> 107.2 (sd 14.1), home win 55.8% -> 54.3%, OT 1.9% ->
+  1.6%. Rarity M/R/U/C 14/21/206/207 -> 14/25/216/179; OVR mean 44.0 -> 44.8; badges 379 ->
+  384. `LINEUP_CENTRE` drift shrank in every channel (playmaking 66.5 -> 65.1 vs 63.0); not
+  retuned (D12). `RATING_NORM` is now written by `build:cards`.
+- **Tests**: 755/755. Engine tests pinned to named players now read the frozen 2025-26.2
+  set (`loadFixturePlayers`); the owner-locked lineup values hold within +/-1.5 (was 0.5)
+  because `RATING_NORM` moves weekly. Smoke green.
+- **Open, blocking the close**: (1) apply `202611030001_match_card_set.sql` to production
+  BEFORE this client deploys: the new client sends `p_card_set_version` to `match_invite`.
+  Dry run: `node scripts/migration-dry-run.mjs supabase/migrations/202611030001_match_card_set.sql
+  supabase/tests/202611030001_match_card_set_test.sql` (from `frontend/`, manual mode);
+  apply with `npm run migrate -- <file>`. (2) then `pvp-draft.spec`/`pvp-series.spec`.
+  (3) first `workflow_dispatch` of both workflow jobs.
+- **Open, not blocking**: a Playoffs sideboard on a dropped set shows no trade offers
+  instead of the older-set notice. The D5 Rare cap never binds: the existing "no award ->
+  at most Uncommon" ceiling already holds every rookie at Uncommon. AJ Dybantsa (3 GP)
+  appears at 5 GP. `draft-resume.spec`'s abandon test fails when the whole file runs in
+  sequence on the shared account (same on the pre-change code; passes alone).
 
 ## pvp_series — done 2026-09-22
 
@@ -118,23 +157,6 @@ offline, and it stops when the opponent's heartbeat returns.
   Both clients must run the same card set: a replay on different `cards.json` versions
   would reject a legal pick and void the match (store the version on the row if deploys
   ever straddle a live draft).
-
-## draft_resume — done 2026-09-22
-
-Plan: `docs/completed/plan_draft_resume_2026-09-22.md`, commits `b86dbe4` + the close-out.
-- `engine/draftReplay.ts`: `replayDraft(seed, humanPicks, ...)` rebuilds the room; bots are
-  deterministic from the seed. Takes several human seats (`human-0`, `human-4`) for pvp_draft.
-- `useDraftEngine` state is `(seed, humanPicks, humanAutoPicks)`, no cached packs; it no
-  longer auto-starts: `DraftRoom` calls `startNewDraft()` or `resumeDraft(session)` once
-  the unfinished-session check resolves. A resumed draft keeps its saved mode/game.
-- The in-progress `DraftSession` (`status: 'drafting'`, `seats: []`) is saved after every
-  pick under the id the complete session later overwrites.
-- Tests share one cloud-synced E2E account, so a spec that stops mid-draft leaves a resume
-  sheet for the next one: call `clearAnyUnfinishedDraft` (`tests/helpers/draft.ts`) before
-  visiting `/draft` (it broke `mobile-audit` once).
-- Verified: 200-draft equivalence vs the old hook's logic; `npm test` 655/655; bench
-  checksum 219438687; `playwright test draft draft-resume visual smoke topnav` 20/20;
-  `mobile-audit --project=phone-landscape` 0 findings over 9 screens.
 
 ## How to run everything
 

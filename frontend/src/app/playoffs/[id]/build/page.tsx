@@ -7,17 +7,17 @@
  * lock theirs; when the row reaches `series`, routes to `/playoffs/[id]`. A match still
  * `drafting` routes back to the draft room; anything else routes to the match page.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStatus } from '@/components/AuthProvider';
 import { usePvpDraft } from '@/hooks/usePvpDraft';
 import { DeckBuilder } from '@/components/DeckBuilder';
 import { WaitingFor } from '@/components/playoffs/WaitingFor';
+import { OlderCardSetNotice } from '@/components/OlderCardSetNotice';
 import { validateReplay, type HumanPicks } from '@/engine/draftReplay';
 import { PLAY_CATALOG as playsDB } from '@/engine/plays';
 import { MATCH_SEAT_ID, type Match } from '@/storage/matchTypes';
 import type { SavedRoster } from '@/storage/types';
-import type { Player } from '@/components/PlayerCard';
 import type { DraftCard } from '@/engine/types';
 
 function myLockedAt(match: Match, me: 'host' | 'guest'): string | null {
@@ -29,20 +29,9 @@ export default function PlayoffsBuildPage() {
   const matchId = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const authStatus = useAuthStatus();
-  const { match, me, opponentName, opponentOnline, send } = usePvpDraft(matchId);
-
-  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    import('@/engine/cards')
-      .then(({ getAllCards }) => {
-        if (cancelled) return;
-        const data = getAllCards() as Array<Omit<Player, 'type'>>;
-        setAllPlayers(data.map((c) => ({ ...c, type: 'Player' as const })));
-      })
-      .catch((e) => console.error('Failed to load cards:', e));
-    return () => { cancelled = true; };
-  }, []);
+  // season_2026_27 D9: `allPlayers` is the match's own card set (`card_set_version`), not
+  // today's `cards.json`, so the replay below rebuilds the same 24 cards after a refresh.
+  const { match, me, opponentName, opponentOnline, send, allPlayers, cardSetUnavailable, cardSetVersion } = usePvpDraft(matchId);
 
   // Route away once this page has nothing to show. `binding` is only non-null while the
   // match is 'drafting' (usePvpDraft), so a `binding` here would mean the match regressed —
@@ -67,6 +56,22 @@ export default function PlayoffsBuildPage() {
     const seatId = MATCH_SEAT_ID[me];
     return result.state.seats.find((s) => s.id === seatId)?.drafted ?? null;
   }, [match, me, allPlayers]);
+
+  if (match && me && match.status === 'building' && cardSetUnavailable) {
+    return (
+      <OlderCardSetNotice
+        what="match"
+        onAbandon={async () => {
+          try {
+            await send({ type: 'void', reason: 'card set no longer available' });
+          } catch (err) {
+            console.error('Failed to abandon the match:', err);
+          }
+          router.replace(`/playoffs/${matchId}`);
+        }}
+      />
+    );
+  }
 
   if (!match || !me || match.status === 'drafting') {
     return (
@@ -100,7 +105,11 @@ export default function PlayoffsBuildPage() {
   }
 
   const handleLock = (roster: SavedRoster) => {
-    void send({ type: 'lockRoster', roster }).catch((err: unknown) => {
+    // Stamp the match's set on the locked roster: the sideboard's trade pack (`Trade`)
+    // reads `roster.cardSetVersion`, so it draws from the same set as the draft.
+    // (`draftedCards` is only non-null once the set loaded, so `cardSetVersion` is set.)
+    const pinned: SavedRoster = cardSetVersion ? { ...roster, cardSetVersion } : roster;
+    void send({ type: 'lockRoster', roster: pinned }).catch((err: unknown) => {
       console.error('Failed to lock roster:', err);
     });
   };

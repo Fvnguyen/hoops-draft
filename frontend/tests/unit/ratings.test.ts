@@ -4,8 +4,10 @@ import { loadPlayers } from './helpers';
 describe('ratings (engine.ts getAllCards)', () => {
   const players = loadPlayers();
 
-  it('returns 448 cards', () => {
-    expect(players.length).toBe(448);
+  // season_2026_27: the pool changes with every weekly refresh; the cube needs 264+
+  // players for zero duplicate cards (generateCubePool).
+  it('returns enough cards for a duplicate-free cube', () => {
+    expect(players.length).toBeGreaterThanOrEqual(264);
   });
 
   // card_ratings_rebalance D8 (2026-09-18, rescaled 2026-09-19): OVR is a composite of

@@ -14,7 +14,9 @@
     "screenshot": "node scripts/screenshot.js",
     "feasibility": "npm --prefix frontend run feasibility",
     "player-bootstrap": "npm --prefix frontend run player-bootstrap --",
-    "challenge": "npm --prefix frontend run challenge --"
+    "challenge": "npm --prefix frontend run challenge --",
+    "refresh:season": "python data/refresh_season.py",
+    "refresh:stats": "node data/refresh_stats.js"
   },
   "devDependencies": {
     "playwright": "^1.63.0"
