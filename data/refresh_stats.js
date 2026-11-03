@@ -30,7 +30,10 @@ async function main() {
   });
   const url = `https://www.basketball-reference.com/leagues/NBA_${endYear}_per_game.html`;
   console.log(`Fetching ${url}`);
-  await page.goto(url, { waitUntil: 'networkidle' });
+  // Not 'networkidle': ad and tracker requests keep the page busy, and from a CI runner
+  // it never settles. The table is in the server-rendered HTML.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+  await page.waitForSelector('#per_game_stats tbody tr', { timeout: 60000 });
   const rows = await page.evaluate(() => {
     const out = [];
     document.querySelectorAll('#per_game_stats tbody tr').forEach((tr) => {
