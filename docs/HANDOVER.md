@@ -59,7 +59,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **draft_resume** (2026-09-22, `plan_draft_resume_2026-09-22.md`): `replayDraft(seed, humanPicks)` rebuilds a room, the in-progress `DraftSession` (`status: 'drafting'`) is saved after every pick, `DraftRoom` asks Resume/Abandon; specs on the shared E2E account must call `clearAnyUnfinishedDraft` first.
 - **render_and_engine_perf** (2026-09-22, `plan_render_and_engine_perf_2026-09-21.md`): 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms; `game.ts` 1500 -> 364 lines over five modules, `DeckBuilder.tsx` 1536 -> 686, `PlayerCard.tsx` 1450 -> 918; seasons reproducible from their seed; narration off the engine's rng; long-press preview on every deck-builder card. Engine checksum 219438687 is the behaviour baseline (`scripts/bench-engine.ts`).
 
-## season_2026_27 — in progress (2026-11-03, migration pending)
+## season_2026_27 — in progress (2026-11-03, push + workflow runs pending)
 
 Plan: `docs/plans/plan_season_2026_27_2026-11-03.md`. The card pool moved to 2026-27:
 card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`.
@@ -69,28 +69,29 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   15 MPG this season. Rookies blend toward the rotation average; awards follow the prior.
   Trae Young (WAS, Uncommon), Tatum (BOS, Mythic), Haliburton (IND, Mythic) are back on
   2024-25 priors; 25 cards use a 2024-25 prior, 17 have none, 44 have 0 GP this season.
-- **Card back** shows 2026-27 actuals from `public/data/season-stats.json` ("2026-27 · as of
-  Nov 3", or "No 2026-27 games yet"); verified in the browser pane on Siakam and Cardwell.
+- **Card back**: 2026-27 actuals from `public/data/season-stats.json` ("2026-27 · as of Nov
+  3" / "No 2026-27 games yet"), verified in the browser pane (Siakam, Cardwell).
 - **Pinning**: `engine/cardSets.ts` `loadCardSet`; frozen `cardsets/2025-26.2.json`. Draft
   resume uses the session's stamp, an 82:0 run `ChallengeRun.cardSetVersion` (missing =
   legacy), a match `matches.card_set_version`. Rosters take their stamp from their cards.
 - **Refresh**: `npm run refresh:season` (weekly PR) and `npm run refresh:stats` (daily
-  commit), both in `.github/workflows/season-refresh.yml`, never run on GitHub yet.
-  `--skip-scrape` twice gives the identical `cards.json` (md5 `60c202a2…`).
+  commit) in `.github/workflows/season-refresh.yml`; `--skip-scrape` is deterministic.
 - **Measured** (`npm run balance -- 1000 --seed 42`, 2025-26.2 -> 2026-27.1): PPP 1.061 ->
   1.052, team score mean 108.4 -> 107.2 (sd 14.1), home win 55.8% -> 54.3%, OT 1.9% ->
   1.6%. Rarity M/R/U/C 14/21/206/207 -> 14/25/216/179; OVR mean 44.0 -> 44.8; badges 379 ->
   384. `LINEUP_CENTRE` drift shrank in every channel (playmaking 66.5 -> 65.1 vs 63.0); not
   retuned (D12). `RATING_NORM` is now written by `build:cards`.
-- **Tests**: 755/755. Engine tests pinned to named players now read the frozen 2025-26.2
-  set (`loadFixturePlayers`); the owner-locked lineup values hold within +/-1.5 (was 0.5)
-  because `RATING_NORM` moves weekly. Smoke green.
-- **Open, blocking the close**: (1) apply `202611030001_match_card_set.sql` to production
-  BEFORE this client deploys: the new client sends `p_card_set_version` to `match_invite`.
-  Dry run: `node scripts/migration-dry-run.mjs supabase/migrations/202611030001_match_card_set.sql
-  supabase/tests/202611030001_match_card_set_test.sql` (from `frontend/`, manual mode);
-  apply with `npm run migrate -- <file>`. (2) then `pvp-draft.spec`/`pvp-series.spec`.
-  (3) first `workflow_dispatch` of both workflow jobs.
+- **Tests**: 755/755; engine tests pinned to named players read frozen 2025-26.2
+  (`loadFixturePlayers`); owner-locked lineup values hold within +/-1.5 (was 0.5).
+- **Migration APPLIED to production** 2026-11-03 (`matches.card_set_version`,
+  `match_invite(uuid, text default null)`) after a rolled-back dry run
+  (`scripts/migration-dry-run.mjs`, new 5 + existing 17 cases); both test scripts re-run
+  live. The old client's one-argument invite still works (NULL = legacy set).
+- Playoffs specs (`--workers=1`) green. `pvp-draft.spec` stamps its inserted match with
+  `CARD_SET_VERSION` and waits for the guest's pick to reach the row before replaying
+  (`fetchRowWithGuestPicks`; the ~300 ms lag was its known flake).
+- **Open, blocking the close**: push, then one `workflow_dispatch` of each
+  `season-refresh.yml` job (if bref blocks the runner, run both from the owner's machine).
 - **Open, not blocking**: a Playoffs sideboard on a dropped set shows no trade offers
   instead of the older-set notice. The D5 Rare cap never binds: the existing "no award ->
   at most Uncommon" ceiling already holds every rookie at Uncommon. AJ Dybantsa (3 GP)

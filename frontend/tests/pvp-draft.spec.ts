@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import { dismissSplash, clickPastSplash } from './helpers/splash';
 import { replayDraft, type HumanPicks, type DraftState } from '@/engine/draftReplay';
-import { getAllCards } from '@/engine/cards';
+import { getAllCards, CARD_SET_VERSION } from '@/engine/cards';
 import { PLAY_CATALOG as playsDB } from '@/engine/plays';
 
 /**
@@ -96,9 +96,24 @@ async function fetchRow(id: string): Promise<Row> {
   return data as Row;
 }
 
+/** The row once it holds at least `guestPicks` guest picks. A pick is optimistic on
+ *  screen and reaches the row ~300 ms later, so reading right after `pickOne` could
+ *  replay a round the guest has already left (the spec's known flake). */
+async function fetchRowWithGuestPicks(id: string, guestPicks: number): Promise<Row> {
+  const started = Date.now();
+  let row = await fetchRow(id);
+  while (row.guest_picks.length < guestPicks && Date.now() - started < 15_000) {
+    await new Promise((r) => setTimeout(r, 250));
+    row = await fetchRow(id);
+  }
+  return row;
+}
+
 async function createDraftingMatch(hostId: string, guestId: string, seed: number): Promise<string> {
   const id = `e2e-pvp-draft-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const { error } = await admin!.from('matches').insert({ id, seed, host_id: hostId, guest_id: guestId, status: 'drafting' });
+  // season_2026_27 D9: stamp the current set like a real invite does. A row without one is
+  // a legacy match: the client replays it over the frozen 2025-26.2 set, not getAllCards().
+  const { error } = await admin!.from('matches').insert({ id, seed, host_id: hostId, guest_id: guestId, status: 'drafting', card_set_version: CARD_SET_VERSION });
   if (error) throw error;
   return id;
 }
@@ -254,7 +269,7 @@ test.describe('pvp draft', () => {
         if (round === 1 || round === 12) {
           // Both have now picked this round — B's next pack (a fresh one) also matches
           // what the row-driven replay says seat human-4 holds.
-          const row = await fetchRow(matchId);
+          const row = await fetchRowWithGuestPicks(matchId, round);
           const expectedB = seatPackNames(row, 'human-4');
           const domB = await domPackNames(pageB, expectedB.length);
           expect(domB).toEqual(expectedB);
