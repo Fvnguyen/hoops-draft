@@ -507,7 +507,8 @@ def fetch_and_generate_players():
     conn.close()
     position_resolver.write_review_note()
 
-    with open('players.json', 'w', encoding='utf-8') as f:
+    # newline: LF on Windows too, so a clone with core.autocrlf=false (fvn-box) stays clean.
+    with open('players.json', 'w', encoding='utf-8', newline='\n') as f:
         json.dump(players_json, f, indent=2, ensure_ascii=False)
 
     print("Database created at frontend/game.db")

@@ -124,7 +124,7 @@ Lives in `data/`, run from `data/`. Script order, inputs/outputs and table schem
 `ratings.ts` decides eligibility and the games-weighted blend (`RATING_CONFIG.season`).
 - **Weekly card set**: `npm run refresh:season` (freeze the shipping `cards.json` into
   `src/data/cardsets/`, bump `CARD_SET_VERSION`, scrape, build; `build:cards` also rewrites
-  `RATING_NORM`). Runs on the owner's machine (`scripts/weekly-card-set.ps1` opens the PR):
+  `RATING_NORM`). Runs on fvn-box (Task Scheduler, `scripts/weekly-card-set.ps1` opens the PR):
   stats.nba.com times out from GitHub's runners.
 - **Daily card-back stats**: `npm run refresh:stats` -> `public/data/season-stats.json`
   (display only, never a version bump); the workflow commits it every morning.

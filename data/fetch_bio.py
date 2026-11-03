@@ -23,7 +23,7 @@ def fetch_bios():
         time.sleep(0.5)  # Avoid rate limit
 
     final_df = pd.concat(dfs, ignore_index=True)
-    final_df.to_csv("bio.csv", index=False)
+    final_df.to_csv("bio.csv", index=False, lineterminator="\n")  # LF on Windows too: a tracked file
     print(f"Saved bio.csv: {len(final_df)} players on {final_df['TEAM_ABBR'].nunique()} teams")
 
 

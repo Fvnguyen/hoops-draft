@@ -73,9 +73,11 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   their season ("All-NBA 1st Team · 2024-25"); verified in the browser pane.
 - **Pinning** (`engine/cardSets.ts` `loadCardSet`, frozen `cardsets/2025-26.2.json`): draft
   session stamp, `ChallengeRun.cardSetVersion`, `matches.card_set_version` (missing = legacy).
-- **Refresh**: daily stats in `.github/workflows/season-refresh.yml` (first dispatch green);
-  weekly card set via `scripts/weekly-card-set.ps1` on the owner's machine (stats.nba.com
-  timed out from GitHub, so that job was removed). Deployed: `5bce515`, 2026-11-03.
+- **Refresh**: daily stats in `.github/workflows/season-refresh.yml`. Weekly card set on
+  fvn-box (stats.nba.com times out from GitHub): Task Scheduler `Hoops-Draft-Weekly-Card-Set`,
+  Mondays 12:00 Berlin, clone `C:\Users\fabia\work\hoops-draft`, wrapper + log in
+  `C:\Users\fabia\work\hoops-draft-run\`. Never commit on that clone; its frontend `npm ci`
+  needs `--ignore-scripts` (better-sqlite3 13.0.3 has no win32 prebuild). Deployed `5bce515`.
 - **Measured** (`npm run balance -- 1000 --seed 42`, 2025-26.2 -> 2026-27.1): PPP 1.061 ->
   1.052, team score mean 108.4 -> 107.2 (sd 14.1), home win 55.8% -> 54.3%, OT 1.9% ->
   1.6%. Rarity M/R/U/C 14/21/206/207 -> 14/25/216/179; OVR mean 44.0 -> 44.8; badges 379 ->
@@ -86,11 +88,9 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   `match_invite(uuid, text default null)`) after a rolled-back dry run
   (`scripts/migration-dry-run.mjs`, new 5 + existing 17 cases); both test scripts re-run
   live. The old client's one-argument invite still works (NULL = legacy set).
-- Playoffs specs (`--workers=1`) green. `pvp-draft.spec` stamps its inserted match with
-  `CARD_SET_VERSION` and waits for the guest's pick to reach the row before replaying
-  (`fetchRowWithGuestPicks`; the ~300 ms lag was its known flake).
-- **Open, blocking the close**: schedule `weekly-card-set.ps1` (Windows Task Scheduler,
-  Mondays) and see its first PR through.
+- Playoffs specs (`--workers=1`) green; `pvp-draft.spec` stamps its match's set and waits
+  for the guest's pick to reach the row (`fetchRowWithGuestPicks`, its old flake).
+- **Open, blocking the close**: the first weekly PR from fvn-box (Monday 2026-11-09).
 - **Open, not blocking**: a Playoffs sideboard on a dropped set shows no trade offers
   instead of the older-set notice. The D5 Rare cap never binds: the existing "no award ->
   at most Uncommon" ceiling already holds every rookie at Uncommon. Both pack covers
