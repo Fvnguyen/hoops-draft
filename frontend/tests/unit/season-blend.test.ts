@@ -132,7 +132,7 @@ describe('season blend: weights (D4) and rookies (D5)', () => {
         { playerId: 'star', season: '2025-26', name: 'All-Defensive', level: 1 },
       ],
     });
-    expect(cards.get('star')!.awards).toEqual(['All-NBA 1st Team']);
+    expect(cards.get('star')!.awards).toEqual(['All-NBA 1st Team · 2024-25']);
   });
 });
 

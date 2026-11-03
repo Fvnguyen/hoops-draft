@@ -409,13 +409,16 @@ export function computeCards(input: RatingsInput): PlayerCard[] {
     const finalTier = floor > ceiling ? floor : Math.max(floor, Math.min(tier, ceiling));
     const rarity: Rarity = RARITY_TIERS[finalTier];
 
+    // season_2026_27: with a season config, an award names its season, so a 2024-25 honour
+    // on a card showing 2026-27 averages does not read as this year's.
+    const awardSeason = (a: AwardRow) => (seasonPicks && a.season ? ` · ${a.season}` : '');
     const formattedAwards: string[] = [];
     for (const a of r.awards) {
       if (a.name === 'All-NBA' || a.name === 'All-Defensive') {
         const suffix = a.level === 1 ? '1st' : a.level === 2 ? '2nd' : '3rd';
-        formattedAwards.push(`${a.name} ${suffix} Team`);
+        formattedAwards.push(`${a.name} ${suffix} Team${awardSeason(a)}`);
       } else {
-        formattedAwards.push(a.name);
+        formattedAwards.push(`${a.name}${awardSeason(a)}`);
       }
     }
 

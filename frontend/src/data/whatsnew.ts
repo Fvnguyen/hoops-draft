@@ -130,4 +130,20 @@ export const WHATS_NEW: ChangelogEntry[] = [
     ],
     cta: 'Challenge someone',
   },
+  {
+    id: 'season-2026-27-2026-11-03',
+    date: '2026-11-03',
+    eyebrow: 'New season',
+    title: 'The 2026-27 season tips off',
+    subtitle: 'Every card moved to this season: new teams, new rookies, and the stars who sat out last year are back.',
+    highlights: [
+      { icon: 'trophy', title: 'Back from injury', body: 'Trae Young, Jayson Tatum and Tyrese Haliburton are back in the draft, along with everyone else who missed most of last season. Their cards start from their last full season.' },
+      { icon: 'sparkles', title: 'Rookies join the draft', body: 'First-year players earn a card once they have played five games. Darryn Peterson, Cameron Boozer and Kingston Flemings already have one.' },
+      { icon: 'grid', title: "This season's teams", body: 'Every player suits up for his 2026-27 team, so the 82:0 Challenge faces the real rosters after a summer of moves.' },
+      { icon: 'chart', title: 'Live season stats', body: "The back of every card shows this season's averages, updated every day." },
+      { icon: 'activity', title: 'Cards that keep up', body: 'Cards blend last season with this one and refresh every week. The more games a player has this season, the more they count.' },
+      { icon: 'zap', title: 'Nothing changes mid-run', body: 'A draft, 82:0 run or Playoffs series you already started keeps the cards it began with.' },
+    ],
+    cta: 'Back to the court',
+  },
 ];

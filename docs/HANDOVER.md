@@ -69,11 +69,10 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   15 MPG this season. Rookies blend toward the rotation average; awards follow the prior.
   Trae Young (WAS, Uncommon), Tatum (BOS, Mythic), Haliburton (IND, Mythic) are back on
   2024-25 priors; 25 cards use a 2024-25 prior, 17 have none, 44 have 0 GP this season.
-- **Card back**: 2026-27 actuals from `public/data/season-stats.json` ("2026-27 · as of Nov
-  3" / "No 2026-27 games yet"), verified in the browser pane (Siakam, Cardwell).
-- **Pinning**: `engine/cardSets.ts` `loadCardSet`; frozen `cardsets/2025-26.2.json`. Draft
-  resume uses the session's stamp, an 82:0 run `ChallengeRun.cardSetVersion` (missing =
-  legacy), a match `matches.card_set_version`. Rosters take their stamp from their cards.
+- **Card back**: 2026-27 actuals from `public/data/season-stats.json`, awards labelled with
+  their season ("All-NBA 1st Team · 2024-25"); verified in the browser pane.
+- **Pinning** (`engine/cardSets.ts` `loadCardSet`, frozen `cardsets/2025-26.2.json`): draft
+  session stamp, `ChallengeRun.cardSetVersion`, `matches.card_set_version` (missing = legacy).
 - **Refresh**: `npm run refresh:season` (weekly PR) and `npm run refresh:stats` (daily
   commit) in `.github/workflows/season-refresh.yml`; `--skip-scrape` is deterministic.
 - **Measured** (`npm run balance -- 1000 --seed 42`, 2025-26.2 -> 2026-27.1): PPP 1.061 ->
@@ -94,8 +93,9 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   `season-refresh.yml` job (if bref blocks the runner, run both from the owner's machine).
 - **Open, not blocking**: a Playoffs sideboard on a dropped set shows no trade offers
   instead of the older-set notice. The D5 Rare cap never binds: the existing "no award ->
-  at most Uncommon" ceiling already holds every rookie at Uncommon. AJ Dybantsa (3 GP)
-  appears at 5 GP. `draft-resume.spec`'s abandon test fails when the whole file runs in
+  at most Uncommon" ceiling already holds every rookie at Uncommon. Both pack covers
+  (`public/art/pack-2025-26*.webp`) still print "2025 - 2026"; new art needs a new filename
+  (`/art/` is cached immutable). `draft-resume.spec`'s abandon test fails when the whole file runs in
   sequence on the shared account (same on the pre-change code; passes alone).
 
 ## pvp_series — done 2026-09-22

@@ -331,7 +331,7 @@ export function PackOpener({
             >
               <Image
                 src={variant === 'trade' ? '/art/pack-2025-26-820.webp' : '/art/pack-2025-26.webp'}
-                alt={variant === 'trade' ? 'Magic Ball 82:0 challenge pack' : 'Magic Ball 2025-26 draft pack'}
+                alt={variant === 'trade' ? 'Magic Ball 82:0 challenge pack' : 'Magic Ball draft pack'}
                 width={1024}
                 height={1536}
                 sizes="208px"

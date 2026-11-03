@@ -49,7 +49,7 @@ test.describe('Home page mode + draft-style CTAs', () => {
     await dismissSplash(page);
     await page.getByTestId('cta-tournament').click();
     await expect(page.getByTestId('home-mode-picker')).toBeVisible();
-    await page.getByText('Back').click();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(page.getByTestId('home-mode-picker')).not.toBeVisible();
     await expect(page).toHaveURL(/\/$/);
   });

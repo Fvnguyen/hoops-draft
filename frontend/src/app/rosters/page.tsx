@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Download, Pencil, Swords, Trash2, Upload } from 'lucide-react';
 import { getGameStore, SavedRoster, CURRENT_CARD_SET_VERSION } from '@/storage';
+import { cardSetSeason } from '@/engine/cardSetVersion';
 import type { ChallengeRun } from '@/storage/types';
 import { useStorageReady } from '@/components/StorageProvider';
 import { getSeasonPhase, HUMAN_SEAT_ID, type Season, type SeasonPhase } from '@/engine/season';
@@ -304,12 +305,15 @@ export default function RostersPage() {
                           {challengeSummary}
                         </span>
                       )}
-                      {rosterObj.cardSetVersion && rosterObj.cardSetVersion !== CURRENT_CARD_SET_VERSION && (
+                      {/* season_2026_27: a roster keeps the cards it was drafted with, so a
+                          weekly refresh changes nothing about it. Only a different SEASON is
+                          worth a label (versions read "<season>.<step>"). */}
+                      {rosterObj.cardSetVersion && cardSetSeason(rosterObj.cardSetVersion) !== cardSetSeason(CURRENT_CARD_SET_VERSION) && (
                         <span
-                          className="rounded-full bg-warn-soft px-2 py-0.5 normal-case tracking-normal font-semibold text-warn"
-                          title={`Built from an older card set (${rosterObj.cardSetVersion}); ratings may have changed since.`}
+                          className="rounded-full bg-surface-sunken px-2 py-0.5 normal-case tracking-normal font-semibold text-ink-muted"
+                          title={`Drafted from the ${cardSetSeason(rosterObj.cardSetVersion)} cards; this roster keeps them.`}
                         >
-                          older card set
+                          {cardSetSeason(rosterObj.cardSetVersion)} cards
                         </span>
                       )}
                     </div>

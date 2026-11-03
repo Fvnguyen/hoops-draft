@@ -13,3 +13,8 @@
  * rarity, badges, ratings).
  */
 export const CARD_SET_VERSION = '2026-27.1';
+
+/** season_2026_27 D8: the season part of a version ("2026-27.3" -> "2026-27"). */
+export function cardSetSeason(version: string): string {
+  return version.split('.')[0];
+}
