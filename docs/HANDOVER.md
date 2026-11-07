@@ -58,6 +58,7 @@ One line each (full write-ups live in the linked plans under `docs/completed/`):
 - **mobile_load** (2026-09-21, `plan_mobile_load_2026-09-21.md`): first-load JS gz `/login` 405 -> 262 KB, `/` 469 -> 333 (card set out of the root layout, supabase-js lazy; a Postgrest builder is a thenable, build queries inside one callback); `public/` 104 -> 13 MB, headshot URLs only via `headshotThumb`; proxy verifies the session locally; asset-only service worker. Measure with `node scripts/route-js-size.mjs` after `npm run build`.
 - **draft_resume** (2026-09-22, `plan_draft_resume_2026-09-22.md`): `replayDraft(seed, humanPicks)` rebuilds a room, the in-progress `DraftSession` (`status: 'drafting'`) is saved after every pick, `DraftRoom` asks Resume/Abandon; specs on the shared E2E account must call `clearAnyUnfinishedDraft` first.
 - **render_and_engine_perf** (2026-09-22, `plan_render_and_engine_perf_2026-09-21.md`): 82:0 half 136 -> 71 ms, half + ghost 263 -> 149 ms; `game.ts` 1500 -> 364 lines over five modules, `DeckBuilder.tsx` 1536 -> 686, `PlayerCard.tsx` 1450 -> 918; seasons reproducible from their seed; narration off the engine's rng; long-press preview on every deck-builder card. Engine checksum 219438687 is the behaviour baseline (`scripts/bench-engine.ts`).
+- **pvp_draft** (2026-09-22, `plan_pvp_draft_2026-09-22.md`): two humans draft one cube from seats 0 and 4 (`usePvpDraft` over `PvpDraftBinding`, `WaitingFor`); `match_void`/`void_reason`, no pick clock before pick 1, "Finish the draft" after 5 min offline; Realtime must join after `getSession` (else RLS drops every event).
 
 ## season_2026_27 — in progress (2026-11-03, push + workflow runs pending)
 
@@ -98,19 +99,14 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   (`/art/` is cached immutable). `draft-resume.spec`'s abandon test fails when the whole file runs in
   sequence on the shared account (same on the pre-change code; passes alone).
 
-## Fix 2026-11-07: Playoffs draft fell onto the error screen
+## Fix 2026-11-07: Playoffs draft error screen
 
-While a seat waits for the opponent the replay is paused, so its pack on screen is the one
-it just picked from. A second click or the 2 s auto-confirm sent a pick from that pack for
-the NEXT index; `match_pick` checks order only, so if the opponent's pick got there first
-it was accepted, and `replayDraft` threw at the next round on both clients (error
-boundary). Separately, an RPC reply landing after a newer Realtime row rolled the room
-back a pick. Fixed: `usePvpDraft` refuses a pick more than one ahead and only passes an
-optimistic tail that replays; the binding is null for a row that fails validation (it is
-voided, not rendered); `useMatch` never applies a lower `version`; DraftRoom ignores clicks
-while waiting. Regression in `pvp-draft.test.ts`. Not verified live with two accounts
-(needs the Supabase E2E creds): run `pvp-draft.spec` before closing. Matches already
-corrupted this way now show the void screen instead of crashing.
+While waiting, the pack on screen is the one just picked from; a second click / 2 s
+auto-confirm sent a wrong-pack pick that `match_pick` (order-only) could accept, and
+`replayDraft` then threw on both clients. Stale RPC replies also rolled the room back a
+pick. Fixed in `usePvpDraft` (no pick >1 ahead, tail must replay, no binding for an
+invalid row -> void screen), `useMatch` (never apply a lower `version`), `DraftRoom` (no
+clicks while waiting); regression in `pvp-draft.test.ts`. Not verified live: run `pvp-draft.spec`.
 
 ## pvp_series — done 2026-09-22
 
@@ -154,24 +150,6 @@ office as a mid-series sideboard, results, rematch and the `/playoffs` list.
   and are not in the audit's no-scroll list. A match does not record its card-set version,
   so a deploy landing mid-draft could make one client reject a legal pick and void the
   match. `pvp-draft.spec`'s 24-round test flaked once in four full-suite runs.
-
-## pvp_draft — done 2026-09-22
-
-Two humans draft one cube live from seats 0 and 4 (`usePvpDraft` over `useDraftEngine`'s
-`PvpDraftBinding`, `/playoffs/[id]/draft` and `/build`, `WaitingFor`). Migration
-`202609220002_match_void.sql` APPLIED to production (dry run 17/17): `match_void`,
-`void_reason`, and no pick clock until the first pick (accepting used to start it, so an
-absent host's pick 1 was auto-picked on arrival). "Finish the draft" only after 5 min
-offline, and it stops when the opponent's heartbeat returns.
-- Fixed on the way: Realtime joined before the session loaded, so RLS silently dropped
-  every event (`loadMatchClient` awaits `getSession`); the heartbeat called `.catch` on a
-  Postgrest thenable; the nav bar covered "Lock roster" (PvP draft/build are game routes).
-- Verified: `npm test` 670/670; `pvp-draft.spec` 2/2 (24 rounds + build + lock -> series,
-  offline finish) plus draft/resume/visual/smoke/topnav/invite 24/24; phone audit 0 over 11.
-- Open: owner plays one full PvP draft on phone + desktop, then `/roadmap done pvp_draft`.
-  Both clients must run the same card set: a replay on different `cards.json` versions
-  would reject a legal pick and void the match (store the version on the row if deploys
-  ever straddle a live draft).
 
 ## How to run everything
 
