@@ -37,7 +37,15 @@ export function useMatch(id: string | null | undefined): UseMatchResult {
   const matchRef = useRef<Match | null>(null);
   const clientRef = useRef<MatchClient | null>(null);
 
+  // Rows arrive from three places (the RPC reply, Realtime, a refetch/poll) and can land
+  // out of order: our own pick's reply (version v) after the opponent's pick on Realtime
+  // (v+1) rolled the room back a pick, and with no further change to push a fresh row the
+  // two clients stayed out of sync until a reload. `version` only grows, so never step
+  // back to a lower one for the same match; an equal version (a heartbeat, which does not
+  // bump it) still applies.
   const applyMatch = useCallback((row: Match | null) => {
+    const current = matchRef.current;
+    if (row && current && row.id === current.id && row.version < current.version) return;
     matchRef.current = row;
     setMatch(row);
   }, []);
@@ -55,7 +63,7 @@ export function useMatch(id: string | null | undefined): UseMatchResult {
       if (fetchError) throw new Error(fetchError.message ?? 'Failed to load match');
       applyMatch(data ?? null);
       setError(null);
-      return data ?? null;
+      return matchRef.current;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load match');
       return null;
@@ -145,7 +153,7 @@ export function useMatch(id: string | null | undefined): UseMatchResult {
       () => fetchMatch(),
     );
     applyMatch(result);
-    return result;
+    return matchRef.current ?? result;
   }, [id, getClient, fetchMatch, applyMatch]);
 
   return { match, me, transport, opponentOnline, error, send, refetch };

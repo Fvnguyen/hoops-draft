@@ -267,3 +267,31 @@ describe('validateReplay', () => {
     }
   });
 });
+
+describe('pvp waiting-room double pick (the error-screen bug)', () => {
+  it('a second pick taken from the pack on screen while waiting stops replaying once the opponent picks', () => {
+    const seed = 7;
+    const start = replayDraft(seed, { [HOST]: [], [GUEST]: [] }, players, PLAYS);
+    const hostPack = start.seats.find((s) => s.id === HOST)!.currentPack;
+    const guestPack = start.seats.find((s) => s.id === GUEST)!.currentPack;
+
+    // Host picked; the replay waits for the guest, so the host still sees the SAME pack.
+    const waiting = replayDraft(seed, { [HOST]: [hostPack[0].id], [GUEST]: [] }, players, PLAYS);
+    expect(waiting.awaiting).toEqual([GUEST]);
+    const stillShown = waiting.seats.find((s) => s.id === HOST)!.currentPack;
+    expect(stillShown.map((c) => c.id)).toEqual(hostPack.map((c) => c.id));
+
+    // A second click on that pack queues a card for the NEXT index. The server only checks
+    // ORDER (index, at most one ahead), not which pack the card came from: if the guest's
+    // pick reached it first, it accepted this one. The replay cannot reject it yet...
+    const committed = { [HOST]: [hostPack[0].id, hostPack[1].id], [GUEST]: [guestPack[0].id] };
+    expect(validateReplay(seed, committed, players, PLAYS).ok).toBe(true);
+    // ...but at the guest's next pick, pick 1 is checked against the host's NEW pack and
+    // `replayDraft` throws: both rooms hit the error screen. usePvpDraft must refuse the
+    // second pick while waiting and never hand the engine a tail that does not replay.
+    const next = replayDraft(seed, committed, players, PLAYS).seats.find((s) => s.id === GUEST)!.currentPack;
+    const afterGuest = { [HOST]: committed[HOST], [GUEST]: [guestPack[0].id, next[0].id] };
+    expect(validateReplay(seed, afterGuest, players, PLAYS).ok).toBe(false);
+    expect(() => replayDraft(seed, afterGuest, players, PLAYS)).toThrow(/not in its pack/);
+  });
+});

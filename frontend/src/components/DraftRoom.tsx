@@ -557,7 +557,16 @@ export function DraftRoom({ mode: urlMode = 'premier', gameMode: urlGameMode = '
   // game_canvas (owner): on a touch device a second tap DESELECTS (there is no hover
   // to preview with, so the player taps to look); the dock's Confirm button is the only
   // way to pick, and the 2s auto-pick below is off. Pointer keeps double-click-to-pick.
+  // PvP: the local seat already picked this round and the pack on screen is the one it
+  // picked from, so there is nothing to pick until the opponent does.
+  const pvpWaiting = isPvp && pvpRoom.phase === 'waiting';
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drop a stale selection when the seat starts waiting
+    if (pvpWaiting) setSelectedCardId(null);
+  }, [pvpWaiting]);
+
   const handleCardClick = (cardId: string) => {
+    if (pvpWaiting) return;
     if (selectedCardId === cardId) {
       if (isCoarsePointer()) { setSelectedCardId(null); return; }
       processPickAndPass(cardId);

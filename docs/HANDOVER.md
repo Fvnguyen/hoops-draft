@@ -98,6 +98,20 @@ card set `2026-27.1`, 434 cards (was 448), built from three seasons in `game.db`
   (`/art/` is cached immutable). `draft-resume.spec`'s abandon test fails when the whole file runs in
   sequence on the shared account (same on the pre-change code; passes alone).
 
+## Fix 2026-11-07: Playoffs draft fell onto the error screen
+
+While a seat waits for the opponent the replay is paused, so its pack on screen is the one
+it just picked from. A second click or the 2 s auto-confirm sent a pick from that pack for
+the NEXT index; `match_pick` checks order only, so if the opponent's pick got there first
+it was accepted, and `replayDraft` threw at the next round on both clients (error
+boundary). Separately, an RPC reply landing after a newer Realtime row rolled the room
+back a pick. Fixed: `usePvpDraft` refuses a pick more than one ahead and only passes an
+optimistic tail that replays; the binding is null for a row that fails validation (it is
+voided, not rendered); `useMatch` never applies a lower `version`; DraftRoom ignores clicks
+while waiting. Regression in `pvp-draft.test.ts`. Not verified live with two accounts
+(needs the Supabase E2E creds): run `pvp-draft.spec` before closing. Matches already
+corrupted this way now show the void screen instead of crashing.
+
 ## pvp_series — done 2026-09-22
 
 Best-of-seven Playoffs: coin flip (2-2-1-1-1), server-simulated games, the 82:0 front

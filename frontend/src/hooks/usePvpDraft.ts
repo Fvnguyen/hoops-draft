@@ -147,7 +147,15 @@ export function usePvpDraft(matchId: string): UsePvpDraftResult {
   const applyLocalPick = useCallback((cardId: string, auto: boolean) => {
     if (!match || !me) return;
     const mineRow = me === 'host' ? match.host_picks : match.guest_picks;
+    const theirRow = me === 'host' ? match.guest_picks : match.host_picks;
     const index = mineRow.length + optimisticRef.current.length;
+    // Nobody runs more than one pick ahead (the server's `match_pick` rule). While the
+    // room waits for the opponent the replay is paused, so the local pack still shows the
+    // pack just picked from: a second click (or the 2 s auto-confirm) used to queue a pick
+    // from THAT pack for the NEXT index. The server rejected it, but until the rejection
+    // landed the opponent's pick could arrive, the replay advanced, the queued card was not
+    // in the new pack and `replayDraft` threw: the error screen. Refuse it here instead.
+    if (index > theirRow.length) return;
     setOptimisticExtra([...optimisticRef.current, cardId]);
     void send({ type: 'pick', index, cardId, auto }).catch(() => {
       // D1: the RPC raised (version or sequencing) — drop the optimistic tail, the row wins.
@@ -186,18 +194,29 @@ export function usePvpDraft(matchId: string): UsePvpDraftResult {
 
   // ── Binding for `useDraftEngine` (visible picks include our own optimistic tail so the
   //    local seat's own pack updates instantly) ──
+  //    local seat's own pack updates instantly). The optimistic tail is only used when it
+  //    replays cleanly: `useDraftEngine` calls `replayDraft`, which throws on a card that
+  //    is not in its pack, and a throw there takes the whole page down to the error screen.
+  //    A tail that does not fit the confirmed row is stale; the row wins (D1).
   const humanPicks: HumanPicks = useMemo(() => {
     if (!match) return {} as HumanPicks;
+    if (optimisticExtra.length === 0 || allPlayers.length === 0) return rowHumanPicks;
     const hostExtra = me === 'host' ? optimisticExtra : [];
     const guestExtra = me === 'guest' ? optimisticExtra : [];
-    return {
+    const withTail: HumanPicks = {
       'human-0': [...match.host_picks, ...hostExtra],
       'human-4': [...match.guest_picks, ...guestExtra],
     };
-  }, [match, me, optimisticExtra]);
+    return validateReplay(match.seed, withTail, allPlayers, playsDB, { autoPicked: rowAutoPicks }).ok
+      ? withTail
+      : rowHumanPicks;
+  }, [match, me, optimisticExtra, allPlayers, rowHumanPicks, rowAutoPicks]);
 
   const binding: PvpDraftBinding | null = useMemo(() => {
     if (!match || !me || allPlayers.length === 0 || match.status !== 'drafting') return null;
+    // A row that does not replay is being voided (D3, effect above); feeding it to
+    // `useDraftEngine` would throw during render before the void lands.
+    if (!validation?.ok) return null;
     return {
       seed: match.seed,
       localSeatId: MATCH_SEAT_ID[me] as 'human-0' | 'human-4',
@@ -206,7 +225,7 @@ export function usePvpDraft(matchId: string): UsePvpDraftResult {
       pickDeadline: match.pick_deadline ? new Date(match.pick_deadline).getTime() : null,
       onLocalPick,
     };
-  }, [match, me, allPlayers.length, humanPicks, rowAutoPicks, onLocalPick]);
+  }, [match, me, allPlayers.length, validation, humanPicks, rowAutoPicks, onLocalPick]);
 
   // ── Phase (D2) ────────────────────────────────────────────────────────────
   const mineEffectiveLen = mineRowLen + optimisticExtra.length;
